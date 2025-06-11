@@ -5,6 +5,11 @@ on:
     branches:
       - main
 
+  schedule:
+    - cron: '0 2 * * *' # Every day at 2AM UTC
+
+  workflow_dispatch: # Manual trigger button
+  
 jobs:
   deploy:
     runs-on: ubuntu-latest
