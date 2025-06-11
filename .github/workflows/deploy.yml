@@ -1,0 +1,27 @@
+name: Auto Deploy to VPN Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: 94.237.52.172
+          username: root
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd /var/www/aiovpn
+            git pull origin main
+            php artisan migrate --force || true
+            php artisan config:clear
+            php artisan cache:clear
