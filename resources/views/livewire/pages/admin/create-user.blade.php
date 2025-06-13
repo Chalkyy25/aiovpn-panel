@@ -11,33 +11,36 @@
         <!-- Name -->
         <div>
             <x-label for="name" value="Name" />
-            <x-input id="name" type="text" wire:model.defer="name" class="w-full" />
+            <x-input id="name" type="text" wire:model.defer="name" class="w-full"
+                placeholder="Enter name" />
             @error('name') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
         <!-- Email -->
         <div>
             <x-label for="email" value="Email" />
-            <x-input id="email" type="email" wire:model.defer="email" class="w-full" />
+            <x-input id="email" type="email" wire:model.defer="email" class="w-full"
+                placeholder="Enter email" />
             @error('email') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
         <!-- Password -->
         <div>
             <x-label for="password" value="Password" />
-            <x-input id="password" type="password" wire:model.defer="password" class="w-full" />
+            <x-input id="password" type="password" wire:model.defer="password" class="w-full"
+                placeholder="Enter password" />
             @error('password') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
         <!-- Role -->
         <div>
             <x-label for="role" value="Role" />
-            <x-select id="role" wire:model.defer="role" class="w-full">
+            <select id="role" wire:model.defer="role" class="w-full">
                 <option value="">-- Select Role --</option>
                 <option value="admin">Admin</option>
                 <option value="reseller">Reseller</option>
                 <option value="client">Client</option>
-            </x-select>
+            </select>
             @error('role') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 

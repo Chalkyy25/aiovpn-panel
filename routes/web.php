@@ -10,6 +10,7 @@ use App\Livewire\Pages\Admin\UserList;
 use App\Livewire\Pages\Admin\VpnServerList;
 use App\Livewire\Pages\Admin\ServerCreate;
 use App\Livewire\Pages\Admin\VpnServerEdit;
+use App\Livewire\Pages\Client\Dashboard;
 
 // 🌐 Landing page
 Route::get('/', fn () => view('welcome'));
@@ -21,7 +22,7 @@ Route::get('/dashboard', fn () => view('dashboard'))
 
 // ✅ Admin routes
 Route::middleware(['auth', 'verified', 'role:admin'])
-    ->prefix('admin')
+    ->prefix('admin' )
     ->name('admin.')
     ->group(function () {
         Route::get('/dashboard', function () {
@@ -59,8 +60,10 @@ Route::middleware(['auth', 'verified', 'role:client'])
     ->prefix('client')
     ->name('client.')
     ->group(function () {
-        Route::get('/dashboard', fn () => view('dashboards.client'))->name('dashboard');
+        Route::get('/dashboard', \App\Livewire\Pages\Client\Dashboard::class)->name('dashboard');
+        Route::get('/vpn/{server}/download', [\App\Http\Controllers\VpnConfigController::class, 'download'])->name('vpn.download');
     });
+
 
 // ✅ Profile settings
 Route::middleware('auth')->group(function () {

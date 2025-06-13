@@ -1,4 +1,5 @@
-<div class="p-6">tail -f /var/www/aiovpn/storage/logs/laravel.log <div class="flex justify-between items-center mb-4">
+<div class="p-6">
+    <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-bold">🌐 VPN Servers</h2>
         <a href="{{ route('admin.servers.create') }}">
             <x-button>Add Server</x-button>
@@ -37,9 +38,9 @@
                             </span>
                         </td>
                         <td class="px-4 py-2 text-right space-x-2">
-			   <a href="{{ route('admin.servers.edit', $server->id) }}">
-    			    <x-button class="bg-yellow-500 hover:bg-yellow-600 text-white">✏️ Edit</x-button>
-		 	    </a>
+                            <a href="{{ route('admin.servers.edit', $server->id) }}">
+                                <x-button class="bg-yellow-500 hover:bg-yellow-600 text-white">✏️ Edit</x-button>
+                            </a>
                             <x-button class="bg-red-600 hover:bg-red-700">Delete</x-button>
                         </td>
                     </tr>

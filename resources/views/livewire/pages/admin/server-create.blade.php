@@ -1,5 +1,4 @@
-<x-app-layout>
-    <x-slot name="header">
+<x-slot name="header">
         <h2 class="text-xl font-semibold text-gray-800">Create New VPN Server</h2>
     </x-slot>
 
@@ -57,4 +56,4 @@
             </div>
         </div>
     </div>
-</x-app-layout>
+

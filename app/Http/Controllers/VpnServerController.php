@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\VpnServer;
-use App\Jobs\DeployVpnToServer;
+use App\Jobs\DeployVpnServer;
 
 class VpnServerController extends Controller
 {
@@ -27,7 +27,7 @@ class VpnServerController extends Controller
             'protocol' => $validated['protocol'],
         ]);
 
-        DeployVpnToServer::dispatch($server);
+        dispatch(new DeployVpnServer($server));
 
         return redirect()->route('vpn_servers.show', $server->id);
     }

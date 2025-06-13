@@ -35,4 +35,42 @@ class User extends Authenticatable
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+    public function vpnServers()
+{
+    return $this->belongsToMany(VpnServer::class, 'client_vpn_server'); // adjust pivot table name if needed
+}
+    public function isAdmin()
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isReseller()
+    {
+        return $this->role === 'reseller';
+    }
+
+    public function isClient()
+    {
+        return $this->role === 'client';
+    }
+    public function isActive()
+    {
+        return $this->is_active;
+    }
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
+    public function scopeRole($query, $role)
+    {
+        return $query->where('role', $role);
+    }
+    public function scopeCreatedBy($query, $userId)
+    {
+        return $query->where('created_by', $userId);
+    }
 }

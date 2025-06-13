@@ -12,25 +12,33 @@
 
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex">
-                    <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
-                        {{ __('Dashboard') }}
-                    </x-nav-link>
-
                     @if(auth()->user()?->role === 'admin')
+                        <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
+                            {{ __('Dashboard') }}
+                        </x-nav-link>
                         <x-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
                             {{ __('Create User') }}
                         </x-nav-link>
-
-                        <x-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
+                    <x-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
                             {{ __('Manage Users') }}
                         </x-nav-link>
-			<x-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
-   			 {{ __('VPN Servers') }}
-			</x-nav-link>
-			<x-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
-			    {{ __('Settings') }}
-			</x-nav-link>
-	       	@endif
+                        <x-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
+                            {{ __('VPN Servers') }}
+                        </x-nav-link>
+                        <x-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
+                            {{ __('Settings') }}
+                        </x-nav-link>
+                    @elseif(auth()->user()?->role === 'reseller')
+                        <x-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
+                            {{ __('Dashboard') }}
+                        </x-nav-link>
+                        {{-- Add more reseller links here --}}
+                    @elseif(auth()->user()?->role === 'client')
+                        <x-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
+                            {{ __('Dashboard') }}
+                        </x-nav-link>
+                        {{-- Add more client links here --}}
+                    @endif
                 </div>
             </div>
 
@@ -83,23 +91,33 @@
                 {{ __('Dashboard') }}
             </x-responsive-nav-link>
 
-		@if(auth()->user()?->role === 'admin')
-    <x-responsive-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
-        {{ __('Create User') }}
-    </x-responsive-nav-link>
+            @if(auth()->user()?->role === 'admin')
+                <x-responsive-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
+                    {{ __('Create User') }}
+                </x-responsive-nav-link>
 
-    <x-responsive-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
-        {{ __('Manage Users') }}
-    </x-responsive-nav-link>
+                <x-responsive-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
+                    {{ __('Manage Users') }}
+                </x-responsive-nav-link>
 
-    <x-responsive-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
-        {{ __('VPN Servers') }}
-    </x-responsive-nav-link>
+                <x-responsive-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
+                    {{ __('VPN Servers') }}
+                </x-responsive-nav-link>
 
-    <x-responsive-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
-        {{ __('Settings') }}
-    </x-responsive-nav-link>
-@endif
+                <x-responsive-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
+                    {{ __('Settings') }}
+                </x-responsive-nav-link>
+            @elseif(auth()->user()?->role === 'reseller')
+                <x-responsive-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
+                    {{ __('Dashboard') }}
+                </x-responsive-nav-link>
+                {{-- Add more reseller links here --}}
+            @elseif(auth()->user()?->role === 'client')
+                <x-responsive-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
+                    {{ __('Dashboard') }}
+                </x-responsive-nav-link>
+                {{-- Add more client links here --}}
+            @endif
 
         </div>
 

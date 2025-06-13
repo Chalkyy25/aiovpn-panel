@@ -4,7 +4,7 @@ namespace App\Livewire\Pages\Admin;
 
 use Livewire\Component;
 use App\Models\VpnServer;
-use App\Jobs\DeployVpnToServer;
+use App\Jobs\DeployVpnServer;
 use Livewire\Attributes\Layout;
 
 #[Layout('layouts.app')]
@@ -66,7 +66,7 @@ class ServerCreate extends Component
             'deployment_log' => '',
         ]);
 
-        DeployVpnToServer::dispatch($server);
+        dispatch(new DeployVpnServer($server));
 
         session()->flash('status-message', '✅ Server saved & deployment started.');
         return redirect()->route('admin.servers.index');

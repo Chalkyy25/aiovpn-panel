@@ -1,0 +1,29 @@
+<?php
+
+namespace App\Livewire\Pages\Client;
+
+use Livewire\Component;
+use Livewire\Attributes\Layout;
+use Illuminate\Support\Facades\Auth;
+
+#[Layout('layouts.app')]  // <-- Add this here
+
+class Dashboard extends Component
+{
+    public $user;
+    public $vpnServers;
+
+    public function mount()
+    {
+        $this->user = Auth::user();
+        $this->vpnServers = $this->user->vpnServers()->get();
+    }
+
+    public function render()
+    {
+        return view('livewire.pages.client.dashboard', [
+            'user' => $this->user,
+            'vpnServers' => $this->vpnServers,
+        ]);
+    }
+}

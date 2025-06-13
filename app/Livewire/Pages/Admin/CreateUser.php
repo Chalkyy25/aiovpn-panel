@@ -11,13 +11,16 @@ use Illuminate\Support\Facades\Auth;
 #[Layout('layouts.app')]
 class CreateUser extends Component
 {
-    public $name, $email, $password, $role;
+    public $name = '';
+    public $email = '';
+    public $password = '';
+    public $role = '';
 
     public function save()
     {
         $this->validate([
             'name' => 'required',
-            'email' => 'required|email|unique:users',
+            'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6',
             'role' => 'required|in:admin,reseller,client',
         ]);
@@ -25,14 +28,12 @@ class CreateUser extends Component
         User::create([
             'name' => $this->name,
             'email' => $this->email,
-            'password' => Hash::make($this->password),
+            'password' => bcrypt($this->password),
             'role' => $this->role,
-            'created_by' => Auth::id(),
-            'is_active' => true,
         ]);
 
-        session()->flash('message', '✅ User created successfully.');
-        $this->reset();
+        // Redirect to the manage users page (adjust route as needed)
+        return redirect()->route('admin.users.index');
     }
 
     public function render()

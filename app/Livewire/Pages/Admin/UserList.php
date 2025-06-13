@@ -45,7 +45,7 @@ class UserList extends Component
 
     public function startEdit($userId)
     {
-dd("Start edit clicked for user ID: $userId");
+
         $this->editingUser = User::find($userId);
 
         $this->editName = $this->editingUser->name;
@@ -61,13 +61,21 @@ dd("Start edit clicked for user ID: $userId");
             'editRole' => 'required|in:admin,reseller,client',
         ]);
 
-        $this->editingUser->update([
-            'name' => $this->editName,
-            'email' => $this->editEmail,
-            'role' => $this->editRole,
-        ]);
+        if ($this->editingUser) {
+            $this->editingUser->update([
+                'name' => $this->editName,
+                'email' => $this->editEmail,
+                'role' => $this->editRole,
+            ]);
+        }
 
         session()->flash('status-message', 'User updated successfully.');
+        $this->dispatch('userUpdated');
+        $this->editingUser = null;
+    }
+
+    public function cancelEdit()
+    {
         $this->editingUser = null;
     }
 
