@@ -41,7 +41,9 @@
                             <a href="{{ route('admin.servers.edit', $server->id) }}">
                                 <x-button class="bg-yellow-500 hover:bg-yellow-600 text-white">✏️ Edit</x-button>
                             </a>
-                            <x-button class="bg-red-600 hover:bg-red-700">Delete</x-button>
+                            <x-button wire:click="deleteServer({{ $server->id }})" class="bg-red-600 hover:bg-red-700 text-white">
+                                Delete
+                            </x-button>
                         </td>
                     </tr>
                 @endforeach

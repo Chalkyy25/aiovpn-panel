@@ -29,47 +29,66 @@ class ServerCreate extends Component
     public $header1 = false;
     public $header2 = false;
 
+    public $serverId = null;
+    public $deploymentLog = '';
+    public $isDeploying = false;
+
+    public function refreshLog()
+    {
+        if ($this->serverId) {
+            $server = VpnServer::find($this->serverId);
+            $this->deploymentLog = $server->deployment_log ?? '';
+        }
+    }
+
     public function create()
     {
-        $this->validate([
-            'name' => 'required|string|max:100',
-            'ip' => 'required|ip',
-            'protocol' => 'required|in:OpenVPN,WireGuard',
-            'sshPort' => 'required|integer|min:1|max:65535',
-            'sshType' => 'required|in:key,password',
-            'sshUsername' => 'required|string',
-            'sshPassword' => $this->sshType === 'password' ? 'required|string' : 'nullable',
-            'sshKey' => $this->sshType === 'key' ? 'required|string' : 'nullable',
-            'port' => 'nullable|integer',
-            'transport' => 'nullable|in:udp,tcp',
-            'dns' => 'nullable|string',
-        ]);
+        $this->isDeploying = true;
 
-        $server = VpnServer::create([
-            'name' => $this->name,
-            'ip_address' => $this->ip,
-            'protocol' => strtolower($this->protocol),
-            'ssh_port' => $this->sshPort,
-            'ssh_user' => $this->sshUsername,
-            'ssh_type' => $this->sshType,
-            'ssh_password' => $this->sshType === 'password' ? $this->sshPassword : null,
-            'ssh_key' => $this->sshType === 'key' ? $this->sshKey : null,
-            'port' => $this->port,
-            'transport' => $this->transport,
-            'dns' => $this->dns,
-            'enable_ipv6' => $this->enableIPv6,
-            'enable_logging' => $this->enableLogging,
-            'enable_proxy' => $this->enableProxy,
-            'header_1' => $this->header1,
-            'header_2' => $this->header2,
-            'deployment_status' => 'queued',
-            'deployment_log' => '',
-        ]);
+        try {
+            $this->validate([
+                'name' => 'required|string|max:100',
+                'ip' => 'required|ip',
+                'protocol' => 'required|in:OpenVPN,WireGuard',
+                'sshPort' => 'required|integer|min:1|max:65535',
+                'sshType' => 'required|in:key,password',
+                'sshUsername' => 'required|string',
+                'sshPassword' => $this->sshType === 'password' ? 'required|string' : 'nullable',
+                'sshKey' => $this->sshType === 'key' ? 'required|string' : 'nullable',
+                'port' => 'nullable|integer',
+                'transport' => 'nullable|in:udp,tcp',
+                'dns' => 'nullable|string',
+            ]);
 
-        dispatch(new DeployVpnServer($server));
+            $server = VpnServer::create([
+                'name' => $this->name,
+                'ip_address' => $this->ip,
+                'protocol' => strtolower($this->protocol),
+                'ssh_port' => $this->sshPort,
+                'ssh_user' => $this->sshUsername,
+                'ssh_type' => $this->sshType,
+                'ssh_password' => $this->sshType === 'password' ? $this->sshPassword : null,
+                'ssh_key' => $this->sshType === 'key' ? $this->sshKey : null,
+                'port' => $this->port,
+                'transport' => $this->transport,
+                'dns' => $this->dns,
+                'enable_ipv6' => $this->enableIPv6,
+                'enable_logging' => $this->enableLogging,
+                'enable_proxy' => $this->enableProxy,
+                'header1' => $this->header1,
+                'header2' => $this->header2,
+                'deployment_status' => 'queued',
+                'deployment_log' => '',
+            ]);
 
-        session()->flash('status-message', '✅ Server saved & deployment started.');
-        return redirect()->route('admin.servers.index');
+            $this->serverId = $server->id;
+            $this->deploymentLog = '';
+            dispatch(new DeployVpnServer($server));
+            $this->isDeploying = false;
+        } catch (\Exception $e) {
+            $this->deploymentLog = "❌ Error: " . $e->getMessage();
+            $this->isDeploying = false;
+        }
     }
 
     public function render()

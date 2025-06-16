@@ -42,6 +42,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/servers', VpnServerList::class)->name('servers.index');
         Route::get('/servers/create', ServerCreate::class)->name('servers.create');
         Route::get('/servers/{vpnServer}/edit', VpnServerEdit::class)->name('servers.edit');
+        Route::delete('/servers/{vpnServer}', [\App\Http\Controllers\VpnServerController::class, 'destroy'])->name('servers.destroy');
 
         // ✅ Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');

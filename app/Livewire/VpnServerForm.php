@@ -1,7 +1,13 @@
+<?php
 namespace App\Http\Livewire;
 
 use Livewire\Component;
 use App\Models\VpnServer;
+use App\Jobs\DeployVpnServer; // Assuming you have a job for deployment
+use Illuminate\Support\Facades\Log;
+/**
+ * Livewire component for creating and deploying VPN servers.
+ */
 
 class VpnServerForm extends Component
 {

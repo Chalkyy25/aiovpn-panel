@@ -119,4 +119,12 @@ BASH;
             @unlink($keyPath);
         }
     }
+
+    public function failed(\Exception $exception): void
+    {
+        $this->server->update([
+            'deployment_status' => 'failed',
+            'deployment_log' => "❌ Deployment failed: " . $exception->getMessage()
+        ]);
+    }
 }

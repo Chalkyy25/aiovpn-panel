@@ -49,6 +49,12 @@
                 </div>
             @endif
 
+            @if($serverId)
+                <div wire:poll.2s="refreshLog" class="bg-black text-green-400 font-mono p-4 rounded mb-4 h-48 overflow-y-auto text-xs">
+                    {!! nl2br(e($deploymentLog)) !!}
+                </div>
+            @endif
+
             <div class="text-right">
                 <x-button wire:click="create">
                     🚀 Deploy Server

@@ -37,4 +37,12 @@ class VpnServerController extends Controller
         $vpnServer = VpnServer::findOrFail($id);
         return view('vpn_servers.show', compact('vpnServer'));
     }
+
+    public function destroy($id)
+    {
+        $vpnServer = VpnServer::findOrFail($id);
+        $vpnServer->delete();
+
+        return redirect()->route('admin.servers.index')->with('success', 'Server deleted successfully.');
+    }
 }

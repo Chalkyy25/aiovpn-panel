@@ -14,6 +14,9 @@ class VpnServerList extends Component
 
     public $name, $ip, $protocol = 'OpenVPN', $status = 'offline';
 
+    public $deployLog = [];
+    public $isDeploying = false;
+
     public function mount()
     {
         $this->loadServers();
@@ -43,6 +46,13 @@ class VpnServerList extends Component
         $this->loadServers();
 
         session()->flash('status-message', '✅ VPN Server added successfully.');
+    }
+
+    public function deleteServer($id)
+    {
+        VpnServer::find($id)?->delete();
+        $this->loadServers();
+        session()->flash('status-message', '🗑️ VPN Server deleted.');
     }
 
     public function render()
