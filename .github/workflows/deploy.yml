@@ -6,19 +6,19 @@ on:
       - main
 
   schedule:
-    - cron: '0 2 * * *' # Every day at 2AM UTC
+    - cron: '0 2 * * *'  # Every day at 2AM UTC
 
-  workflow_dispatch: # Manual trigger button
-  
+  workflow_dispatch:  # Manual deploy button
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Deploy via SSH
+    - name: Deploy to server via SSH
       uses: appleboy/ssh-action@v0.1.7
       with:
         host: ${{ secrets.SERVER_HOST }}
@@ -27,3 +27,6 @@ jobs:
         script: |
           cd /var/www/aiovpn
           git pull origin main
+          php artisan migrate --force
+          php artisan config:cache
+          php artisan route:cache
