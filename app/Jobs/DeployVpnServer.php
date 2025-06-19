@@ -55,6 +55,8 @@ class DeployVpnServer implements ShouldQueue
         /* ───── Bash script (idempotent) ───── */
 $script = <<<'BASH'
 set -e
+trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
+
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="OpenVPN-CA"
 
@@ -131,6 +133,7 @@ echo "EXIT_CODE:$EXIT_CODE"
 exit $EXIT_CODE
 
 BASH;
+
 
 
         /* ───── Launch SSH process ───── */
