@@ -53,13 +53,16 @@ class DeployVpnServer implements ShouldQueue
         ]);
 
         /* ───── Bash script (idempotent) ───── */
-        $script = <<<'BASH'
+$script = <<<'BASH'
 set -e
+export EASYRSA_BATCH=1
+export EASYRSA_REQ_CN="OpenVPN-CA"
+
 echo "[1/8] Clearing old OpenVPN setup (if any)…"
 systemctl stop openvpn@server || true
 rm -rf /etc/openvpn/*
 mkdir -p /etc/openvpn/auth
-echo > /etc/openvpn/ipp.txt
+: > /etc/openvpn/ipp.txt
 
 echo "[2/8] Updating packages…"
 apt-get update -y
@@ -69,14 +72,14 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y openvpn easy-rsa
 
 echo "[4/8] Setting up Easy-RSA PKI & generating certificates…"
 EASYRSA_DIR=/etc/openvpn/easy-rsa
-cp -r /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
+cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
 cd "$EASYRSA_DIR"
 ./easyrsa init-pki
-echo | ./easyrsa build-ca nopass
+./easyrsa build-ca nopass
 ./easyrsa gen-dh
 openvpn --genkey --secret ta.key
 ./easyrsa gen-req server nopass
-echo yes | ./easyrsa sign-req server server
+./easyrsa sign-req server server
 
 echo "[5/8] Copying certs and keys to /etc/openvpn…"
 cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
@@ -84,12 +87,12 @@ cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key 
 echo "[6/8] Creating user/pass auth files…"
 echo "testuser testpass" > /etc/openvpn/auth/psw-file
 chmod 600 /etc/openvpn/auth/psw-file
-cat <<'SCRIPT' > /etc/openvpn/auth/checkpsw.sh
+cat <<'SH' > /etc/openvpn/auth/checkpsw.sh
 #!/bin/sh
 PASSFILE="/etc/openvpn/auth/psw-file"
 CORRECT=$(grep "^$1 " "$PASSFILE" | cut -d' ' -f2-)
 [ "$2" = "$CORRECT" ] && exit 0 || exit 1
-SCRIPT
+SH
 chmod 700 /etc/openvpn/auth/checkpsw.sh
 
 echo "[7/8] Writing server.conf…"
@@ -121,8 +124,12 @@ CONF
 echo "[8/8] Enabling and starting OpenVPN service…"
 systemctl enable openvpn@server
 systemctl restart openvpn@server
-echo "✅ Deployment complete. OpenVPN is ready."
+
+EXIT_CODE=$?
+echo "EXIT_CODE:${EXIT_CODE}"
+exit $EXIT_CODE
 BASH;
+
 
         /* ───── Launch SSH process ───── */
         $proc = proc_open(
