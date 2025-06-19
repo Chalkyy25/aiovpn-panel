@@ -39,7 +39,8 @@ class ServerCreate extends Component
     public function refreshLog()
     {
         if ($this->serverId) {
-            $this->deploymentLog = VpnServer::find($this->serverId)->deployment_log ?? '';
+            $server = VpnServer::find($this->serverId);
+            $this->deploymentLog = $server->deployment_log ?? '';
         }
     }
 
@@ -59,7 +60,7 @@ class ServerCreate extends Component
             'dns'        => 'nullable|string',
         ]);
 
-        $vpn = VpnServer::create([
+        $server = VpnServer::create([
             'name'            => $this->name,
             'ip_address'      => $this->ip,
             'protocol'        => strtolower($this->protocol),
@@ -80,13 +81,13 @@ class ServerCreate extends Component
         ]);
 
         /* set UI state before launching job */
-        $this->serverId      = $vpn->id;
+        $this->serverId      = $server->id;
         $this->deploymentLog = '';
         $this->isDeploying   = true;
 
-        Log::info("🚀 Dispatching DeployVpnServer for #{$vpn->id}");
+        Log::info("🚀 Dispatching DeployVpnServer for #{$server->id}");
         /** sync queue = immediate run but in queue lifecycle */
-        dispatch(new DeployVpnServer($vpn))
+        dispatch(new DeployVpnServer($server))
             ->onQueue('deployments');
 
         $this->isDeploying = false;
