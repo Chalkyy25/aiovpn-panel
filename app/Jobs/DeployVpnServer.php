@@ -57,26 +57,84 @@ class DeployVpnServer implements ShouldQueue
 
         /* ───── Provision script ─────────────────────────── */
 $script = <<<'BASH'
-echo "[1/5] Updating packages…"
+set -e
+
+echo "[1/7] Updating packages…"
 apt-get update -y
 
-echo "[2/5] Installing OpenVPN & Easy-RSA…"
+echo "[2/7] Installing OpenVPN & Easy-RSA…"
 DEBIAN_FRONTEND=noninteractive apt-get install -y openvpn easy-rsa
 
-echo "[3/5] Creating auth directory & psw-file…"
+echo "[3/7] Setting up Easy-RSA PKI & generating certificates…"
+EASYRSA_DIR=/etc/openvpn/easy-rsa
+if [ ! -d "$EASYRSA_DIR" ]; then
+  cp -r /usr/share/easy-rsa "$EASYRSA_DIR"
+fi
+cd "$EASYRSA_DIR"
+[ ! -d "pki" ] && ./easyrsa init-pki
+[ ! -f "pki/private/ca.key" ] && echo | ./easyrsa build-ca nopass
+[ ! -f "pki/dh.pem" ] && ./easyrsa gen-dh
+[ ! -f "ta.key" ] && openvpn --genkey --secret ta.key
+[ ! -f "pki/private/server.key" ] && ./easyrsa gen-req server nopass
+[ ! -f "pki/issued/server.crt" ] && echo yes | ./easyrsa sign-req server server
+
+echo "[4/7] Copying certs and keys to /etc/openvpn…"
+cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
+
+echo "[5/7] Creating /etc/openvpn/auth/psw-file for user/pass auth…"
 mkdir -p /etc/openvpn/auth
-echo "testuser testpass" > /etc/openvpn/auth/psw-file
-chmod 400 /etc/openvpn/auth/psw-file
+if [ ! -f /etc/openvpn/auth/psw-file ]; then
+  echo "testuser testpass" > /etc/openvpn/auth/psw-file
+  chmod 400 /etc/openvpn/auth/psw-file
+fi
 
-echo "[4/5] (Put additional server.conf tweaks here)"
+echo "[6/7] Creating /etc/openvpn/auth/checkpsw.sh…"
+cat <<'SCRIPT' > /etc/openvpn/auth/checkpsw.sh
+#!/bin/sh
+PASSFILE="/etc/openvpn/auth/psw-file"
+CORRECT_PASSWORD=$(grep "^$1 " "$PASSFILE" | cut -d' ' -f2-)
+if [ "$2" = "$CORRECT_PASSWORD" ]; then
+    exit 0
+else
+    exit 1
+fi
+SCRIPT
+chmod +x /etc/openvpn/auth/checkpsw.sh
 
-echo "[5/5] Enabling and starting OpenVPN service…"
+echo "[7/7] Creating server.conf if missing…"
+if [ ! -f /etc/openvpn/server.conf ]; then
+  cat <<'CONF' > /etc/openvpn/server.conf
+port 1194
+proto udp
+dev tun
+ca ca.crt
+cert server.crt
+key server.key
+dh dh.pem
+auth SHA256
+tls-auth ta.key 0
+topology subnet
+server 10.8.0.0 255.255.255.0
+ifconfig-pool-persist /etc/openvpn/ipp.txt
+keepalive 10 120
+cipher AES-256-CBC
+user nobody
+group nogroup
+persist-key
+persist-tun
+status openvpn-status.log
+verb 3
+auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-env
+script-security 3
+CONF
+fi
+
+echo "[8/8] Enabling and starting OpenVPN service…"
 systemctl enable openvpn@server
-systemctl start  openvpn@server
+systemctl restart openvpn@server
 
-echo "✅ Deployment complete."
+echo "✅ Deployment complete. Server certs and config in place."
 BASH;
-
         /* ───── Execute ─────────────────────────────────── */
         $proc = proc_open($sshCmd,
             [ 0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w'] ],
