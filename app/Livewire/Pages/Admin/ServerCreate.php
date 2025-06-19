@@ -90,7 +90,13 @@ class ServerCreate extends Component
         dispatch(new DeployVpnServer($server))
             ->onQueue('deployments');
 
-        $this->isDeploying = false;
+	$this->isDeploying = false;
+
+	return redirect()->route('admin.servers.install-status', [
+   	 'vpnServer' => $server->id
+	]);
+
+
     }
 
     public function render()
