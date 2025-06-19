@@ -50,24 +50,35 @@
         </div>
     </div>
 
-    {{-- Action & Feedback --}}
-    <div class="p-6">
-        @if (session()->has('status-message'))
-            <div class="mb-4 text-green-600 font-semibold">
-                {{ session('status-message') }}
-            </div>
-        @endif
+{{-- Action & Feedback --}}
+<div class="p-6">
 
-        @if($serverId)
-            <div wire:poll.2s="refreshLog" class="bg-black text-green-400 font-mono p-4 rounded mb-4 h-48 overflow-y-auto text-xs">
-                {!! nl2br(e($deploymentLog)) !!}
-            </div>
-        @endif
-
-        <div class="text-right">
-            <x-button wire:click="create">
-                🚀 Deploy Server
-            </x-button>
+    @if (session()->has('status-message'))
+        <div class="mb-4 text-green-600 font-semibold">
+            {{ session('status-message') }}
         </div>
+    @endif
+
+    @if ($serverId)
+        <div  id="deploy-log"
+              wire:poll.2s="refreshLog"
+              class="bg-black text-green-400 font-mono text-xs p-4 rounded
+                     h-96 overflow-y-auto whitespace-pre-line">
+            {{ $deploymentLog }}
+        </div>
+    @endif
+
+    <div class="text-right mt-4">
+        <x-button wire:click="create">🚀 Deploy Server</x-button>
     </div>
 </div>
+
+{{-- keep outside Livewire markup so it’s injected only once --}}
+@push('scripts')
+<script>
+    document.addEventListener('livewire:update', () => {
+        const box = document.getElementById('deploy-log');
+        if (box) box.scrollTop = box.scrollHeight;
+    });
+</script>
+@endpush
