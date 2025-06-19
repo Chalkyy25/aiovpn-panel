@@ -9,14 +9,14 @@ return new class extends Migration
 public function up()
 {
     Schema::table('vpn_servers', function (Blueprint $table) {
-        $table->integer('port')->nullable();
-        $table->string('transport')->nullable();
-        $table->string('dns')->nullable();
-        $table->boolean('enable_ipv6')->default(false);
-        $table->boolean('enable_logging')->default(false);
-        $table->boolean('enable_proxy')->default(false);
-        $table->boolean('header1')->default(false);
-        $table->boolean('header2')->default(false);
+      //  $table->integer('port')->nullable();
+      //  $table->string('transport')->nullable();
+      //  $table->string('dns')->nullable();
+      //  $table->boolean('enable_ipv6')->default(false);
+      //  $table->boolean('enable_logging')->default(false);
+      //  $table->boolean('enable_proxy')->default(false);
+      //  $table->boolean('header1')->default(false);
+      //  $table->boolean('header2')->default(false);
     });
 }
 

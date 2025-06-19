@@ -9,8 +9,8 @@ return new class extends Migration
     public function up()
     {
         Schema::table('vpn_servers', function (Blueprint $table) {
-            $table->string('ssh_type')->nullable();
-            $table->string('ssh_password')->nullable();
+            //$table->string('ssh_type')->nullable();
+           // $table->string('ssh_password')->nullable();
         });
     }
 

@@ -86,7 +86,8 @@ class ServerCreate extends Component
 
         Log::info("🚀 Dispatching DeployVpnServer for #{$vpn->id}");
         /** sync queue = immediate run but in queue lifecycle */
-        dispatch_sync(new DeployVpnServer($vpn));
+        dispatch(new DeployVpnServer($vpn))
+            ->onQueue('deployments');
 
         $this->isDeploying = false;
     }
