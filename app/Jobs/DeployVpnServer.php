@@ -35,7 +35,7 @@ class DeployVpnServer implements ShouldQueue
 
         if ($sshType === 'key' && ! is_file($keyPath)) {
             $this->server->update([
-                'deployment_status' => 'error',
+                'deployment_status' => 'failed',
                 'deployment_log'    => "❌ Missing SSH key: {$keyPath}\n",
             ]);
             return;
@@ -43,8 +43,8 @@ class DeployVpnServer implements ShouldQueue
 
         $opts  = "-p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
         $ssh   = $sshType === 'key'
-            ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'bash -s'"
-            : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'bash -s'";
+            ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'bash -s; echo EXIT_CODE:\$?'"
+            : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'bash -s; echo EXIT_CODE:\$?'";
 
         /* ───── Initial DB state ───── */
         $this->server->update([
@@ -147,6 +147,7 @@ BASH;
         stream_set_blocking($pipes[2], false);
 
         $log = $this->server->deployment_log;
+        $outputBuffer = '';
 
         /* ───── Live loop ───── */
         while (true) {
@@ -155,6 +156,7 @@ BASH;
 
             if ($out !== '' || $err !== '') {
                 $log .= $out.$err;
+                $outputBuffer .= $out;
                 // atomic append
                 $this->server->update(['deployment_log' => $log]);
             }
@@ -167,14 +169,25 @@ BASH;
         }
 
         fclose($pipes[1]); fclose($pipes[2]);
-        $exit = proc_close($proc);
+        proc_close($proc);
 
+        // Parse the exit code from the output buffer
+        $exit = null;
+        if (preg_match('/EXIT_CODE:(\d+)/', $outputBuffer, $matches)) {
+            $exit = (int)$matches[1];
+            // Remove the EXIT_CODE line from the log
+            $log = preg_replace('/EXIT_CODE:\d+\s*/', '', $log);
+        } else {
+            $exit = 255; // Unknown error
+            $log .= "\n❌ Could not determine remote exit code\n";
+        }
+
+        $statusText = $exit === 0 ? 'succeeded' : 'failed';
         $this->server->update([
-            'deployment_status' => $exit === 0 ? 'deployed' : 'failed',
-            'deployment_log'    => $log . ($exit ? "\n❌ Exit code {$exit}\n" : ''),
+            'deployment_status' => $statusText,
+            'deployment_log'    => $log,
         ]);
-
-        Log::info("DeployVpnServer finished for {$ip} (exit {$exit})");
+        Log::info("DeployVpnServer finished for {$ip} (exit {$exit}, status: {$statusText})");
     }
 
     public function failed(\Throwable $e): void
