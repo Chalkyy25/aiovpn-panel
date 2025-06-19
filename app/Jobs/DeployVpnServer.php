@@ -126,8 +126,10 @@ systemctl enable openvpn@server
 systemctl restart openvpn@server
 
 EXIT_CODE=$?
-echo "EXIT_CODE:${EXIT_CODE}"
+echo "✅ Deployment finished with code: $EXIT_CODE"
+echo "EXIT_CODE:$EXIT_CODE"
 exit $EXIT_CODE
+
 BASH;
 
 
