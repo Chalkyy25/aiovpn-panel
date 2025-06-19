@@ -173,9 +173,8 @@ BASH;
             $err = fgets($pipes[2]) ?: '';
 
             if ($out !== '' || $err !== '') {
-                $log .= $out.$err;
-                $outputBuffer .= $out;
-                // atomic append
+                $log .= $out . $err;
+                $outputBuffer .= $out . $err; // <--- append both
                 $this->server->update(['deployment_log' => $log]);
             }
 
