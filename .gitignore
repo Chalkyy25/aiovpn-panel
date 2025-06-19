@@ -18,3 +18,5 @@ yarn-error.log
 /.idea
 /.vscode
 aiovpn-panel
+# Ignore global SSH key used for auto-deployment
+/storage/app/ssh_keys/id_rsa

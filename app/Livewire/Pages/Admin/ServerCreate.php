@@ -17,7 +17,6 @@ class ServerCreate extends Component
     public $sshPort = 22;
     public $sshUsername = 'root';
     public $sshPassword;
-    public $sshKey;
 
     public $port = 1194;
     public $transport = 'udp';
@@ -43,6 +42,10 @@ class ServerCreate extends Component
 
     public function create()
     {
+        // Add a debug flash here to test Livewire is firing
+\Log::info('🔥 Livewire method is running!');
+        session()->flash('debug', 'Button click received!');
+
         $this->isDeploying = true;
 
         try {
@@ -54,7 +57,6 @@ class ServerCreate extends Component
                 'sshType' => 'required|in:key,password',
                 'sshUsername' => 'required|string',
                 'sshPassword' => $this->sshType === 'password' ? 'required|string' : 'nullable',
-                'sshKey' => $this->sshType === 'key' ? 'required|string' : 'nullable',
                 'port' => 'nullable|integer',
                 'transport' => 'nullable|in:udp,tcp',
                 'dns' => 'nullable|string',
@@ -68,7 +70,7 @@ class ServerCreate extends Component
                 'ssh_user' => $this->sshUsername,
                 'ssh_type' => $this->sshType,
                 'ssh_password' => $this->sshType === 'password' ? $this->sshPassword : null,
-                'ssh_key' => $this->sshType === 'key' ? $this->sshKey : null,
+                // 'ssh_key' is gone, always using global key
                 'port' => $this->port,
                 'transport' => $this->transport,
                 'dns' => $this->dns,
@@ -83,8 +85,16 @@ class ServerCreate extends Component
 
             $this->serverId = $server->id;
             $this->deploymentLog = '';
-            dispatch(new DeployVpnServer($server));
-            $this->isDeploying = false;
+
+            // You can add a debug flash here too
+            session()->flash('debug', '✅ Created server: ' . $server->id);
+\Log::info('About to create DeployVpnServer instance!');
+$job = new \App\Jobs\DeployVpnServer($server);
+\Log::info('DeployVpnServer instance created, about to call handle!');
+$job->handle();
+\Log::info('Returned from handle()!');
+$this->isDeploying = false;
+
         } catch (\Exception $e) {
             $this->deploymentLog = "❌ Error: " . $e->getMessage();
             $this->isDeploying = false;
