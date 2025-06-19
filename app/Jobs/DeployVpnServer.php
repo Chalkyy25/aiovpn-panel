@@ -21,6 +21,12 @@ class DeployVpnServer implements ShouldQueue
         $this->server = $server;
     }
 
+    protected function log($message)
+    {
+        $this->server->deployment_log = trim($this->server->deployment_log . "\n" . now() . ' ' . $message);
+        $this->server->save();
+    }
+
     public function handle(): void
     {
         Log::info('🔥 DeployVpnServer started for #' . $this->server->id);
