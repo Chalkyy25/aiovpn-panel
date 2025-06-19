@@ -7,7 +7,6 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class DeployVpnServer implements ShouldQueue
@@ -31,7 +30,6 @@ class DeployVpnServer implements ShouldQueue
     {
         Log::info('🔥 DeployVpnServer started for #' . $this->server->id);
 
-        /* ───── Connection details ───── */
         $ip       = $this->server->ip_address;
         $port     = $this->server->ssh_port;
         $user     = $this->server->ssh_user;
@@ -52,14 +50,12 @@ class DeployVpnServer implements ShouldQueue
             ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'bash -s; echo EXIT_CODE:\$?'"
             : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'bash -s; echo EXIT_CODE:\$?'";
 
-        /* ───── Initial DB state ───── */
         $this->server->update([
             'deployment_status' => 'running',
             'deployment_log'    => "Starting deployment on {$ip} …\n",
         ]);
 
-        /* ───── Bash script (idempotent) ───── */
-$script = <<<'BASH'
+        $script = <<<'BASH'
 set -e
 trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
 
@@ -140,9 +136,6 @@ exit $EXIT_CODE
 
 BASH;
 
-
-
-        /* ───── Launch SSH process ───── */
         $proc = proc_open(
             $ssh,
             [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']],
@@ -156,25 +149,22 @@ BASH;
             return;
         }
 
-        /* Send script */
         fwrite($pipes[0], $script);
         fclose($pipes[0]);
 
-        /* Non-blocking streams */
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
 
         $log = $this->server->deployment_log;
         $outputBuffer = '';
 
-        /* ───── Live loop ───── */
         while (true) {
             $out = fgets($pipes[1]) ?: '';
             $err = fgets($pipes[2]) ?: '';
 
             if ($out !== '' || $err !== '') {
                 $log .= $out . $err;
-                $outputBuffer .= $out . $err; // <--- append both
+                $outputBuffer .= $out . $err; // append both stdout and stderr
                 $this->server->update(['deployment_log' => $log]);
             }
 
@@ -185,17 +175,20 @@ BASH;
             usleep(200_000); // 0.2 s
         }
 
-        fclose($pipes[1]); fclose($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
         proc_close($proc);
+
+        // Final flush
+        $this->server->update(['deployment_log' => $log]);
 
         // Parse the exit code from the output buffer
         $exit = null;
         if (preg_match('/EXIT_CODE:(\d+)/', $outputBuffer, $matches)) {
             $exit = (int)$matches[1];
-            // Remove the EXIT_CODE line from the log
             $log = preg_replace('/EXIT_CODE:\d+\s*/', '', $log);
         } else {
-            $exit = 255; // Unknown error
+            $exit = 255;
             $log .= "\n❌ Could not determine remote exit code\n";
         }
 
