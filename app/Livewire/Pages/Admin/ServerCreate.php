@@ -5,7 +5,6 @@ namespace App\Livewire\Pages\Admin;
 use Livewire\Component;
 use App\Models\VpnServer;
 use App\Jobs\DeployVpnServer;
-use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 
 #[Layout('layouts.app')]
@@ -19,6 +18,7 @@ class ServerCreate extends Component
     public $sshPort    = 22;
     public $sshUsername = 'root';
     public $sshPassword;
+    public $sshKey;
 
     public $port       = 1194;
     public $transport  = 'udp';
@@ -51,10 +51,11 @@ public function create()
         'name'        => 'required|string|max:100',
         'ip'          => 'required|ip',
         'protocol'    => 'required|in:OpenVPN,WireGuard',
-        'sshPort'     => 'required|integer|between:1,65535',
+        'sshPort'     => 'required|integer|min:1|max:65535',
         'sshType'     => 'required|in:key,password',
         'sshUsername' => 'required|string',
         'sshPassword' => $this->sshType === 'password' ? 'required|string' : 'nullable',
+        'sshKey'      => $this->sshType === 'key' ? 'required|string' : 'nullable',
         'port'        => 'nullable|integer',
         'transport'   => 'nullable|in:udp,tcp',
         'dns'         => 'nullable|string',
@@ -68,6 +69,7 @@ public function create()
         'ssh_user'         => $this->sshUsername,
         'ssh_type'         => $this->sshType,
         'ssh_password'     => $this->sshType === 'password' ? $this->sshPassword : null,
+        'ssh_key'          => $this->sshType === 'key' ? $this->sshKey : null,
         'port'             => $this->port,
         'transport'        => $this->transport,
         'dns'              => $this->dns,
@@ -80,16 +82,13 @@ public function create()
         'deployment_log'   => '',
     ]);
 
-    Log::info("🚀 Dispatching DeployVpnServer for #{$server->id}");
-    dispatch(new DeployVpnServer($server))->onQueue('deployments');
-    Log::info("✅ DeployVpnServer job was successfully dispatched to the queue for IP: {$server->ip_address}");
+    dispatch(new DeployVpnServer($server));
 
-    return redirect()->route('admin.servers.install-status', $server)
-        ->with('success', 'Server created and deployment started successfully!');
+    // Redirect to the install status page for this server
+    return redirect()->route('admin.servers.install-status', $server);
     }
    
-   
-    public function render()
+   public function render()
     {
         return view('livewire.pages.admin.server-create');
     }
