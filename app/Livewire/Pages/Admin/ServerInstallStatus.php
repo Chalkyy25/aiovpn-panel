@@ -9,21 +9,21 @@ use Livewire\Attributes\Layout;
 #[Layout('layouts.app')]
 class ServerInstallStatus extends Component
 {
-    public VpnServer $server;
+    public VpnServer $vpnServer;
     public $deploymentLog = '';
     public $deploymentStatus = '';
 
     public function mount(VpnServer $vpnServer)
     {
-        $this->server = $vpnServer;
+        $this->vpnServer = $vpnServer;
         $this->refreshStatus();
     }
 
     public function refreshStatus()
     {
-        $this->server->refresh();
-        $this->deploymentLog = $this->server->deployment_log ?? '';
-        $this->deploymentStatus = $this->server->deployment_status ?? '';
+        $this->vpnServer->refresh();
+        $this->deploymentLog = $this->vpnServer->deployment_log ?? '';
+        $this->deploymentStatus = $this->vpnServer->deployment_status ?? '';
     }
 
     public function render()
