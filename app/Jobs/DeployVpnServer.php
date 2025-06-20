@@ -166,7 +166,7 @@ BASH;
             $log .= "\n❌ Could not determine remote exit code\n";
         }
 
-        $statusText = $exit === 0 ? 'succeeded' : 'failed';
+        $statusText = $exit === 0 ? 'success' : 'failed';
         $this->server->update([
             'deployment_status' => $statusText,
             'deployment_log'    => $log,
