@@ -6,6 +6,7 @@ use Livewire\Component;
 use App\Models\VpnServer;
 use App\Jobs\DeployVpnServer;
 use Livewire\Attributes\Layout;
+use Illuminate\Support\Facades\Log;
 
 #[Layout('layouts.app')]
 class ServerCreate extends Component
@@ -32,6 +33,8 @@ class ServerCreate extends Component
     /* Create & deploy */
     public function create()
     {
+        Log::info('ServerCreate@create called');
+
         $this->validate([
             'name'        => 'required|string|max:100',
             'ip'          => 'required|ip',
@@ -66,6 +69,8 @@ class ServerCreate extends Component
             'deployment_status'=> 'queued',
             'deployment_log'   => '',
         ]);
+
+        Log::info('Dispatching DeployVpnServer job');
 
         dispatch(new DeployVpnServer($server));
         return redirect()->route('admin.servers.install-status', $server);
