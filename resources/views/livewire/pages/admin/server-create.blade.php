@@ -63,3 +63,10 @@
         </div>
     </form>
 </div>
+@push('scripts')
+<script>
+    Livewire.on('redirectToInstallStatus', (id) => {
+        window.location.href = `/admin/servers/${id}/install-status`;
+    });
+</script>
+@endpush

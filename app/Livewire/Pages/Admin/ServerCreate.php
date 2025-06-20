@@ -73,7 +73,9 @@ class ServerCreate extends Component
         Log::info('Dispatching DeployVpnServer job');
 
         dispatch(new DeployVpnServer($server));
-        return redirect()->route('admin.servers.install-status', $server);
+
+        $this->dispatch('redirectToInstallStatus', id: $server->id);
+        
     }
 
     public function render()
