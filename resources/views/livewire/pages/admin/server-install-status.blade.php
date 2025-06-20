@@ -1,4 +1,4 @@
-<div wire:poll.5s="refreshServer" class="max-w-4xl mx-auto p-6 bg-white rounded shadow">
+<div wire:poll.5s="refreshStatus" class="max-w-4xl mx-auto p-6 bg-white rounded shadow">
     <h2 class="text-2xl font-semibold mb-4">Server Install Status: {{ $vpnServer->name }}</h2>
 
     {{-- Status box --}}
