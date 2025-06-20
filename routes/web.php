@@ -9,8 +9,9 @@ use App\Livewire\Pages\Admin\CreateUser;
 use App\Livewire\Pages\Admin\UserList;
 use App\Livewire\Pages\Admin\VpnServerList;
 use App\Livewire\Pages\Admin\ServerCreate;
-use App\Livewire\Pages\Admin\VpnServerEdit;
-use App\Livewire\Pages\Client\Dashboard;
+use App\Livewire\Pages\Admin\VpnServerEdit; 
+use App\Livewire\Pages\Admin\ServerInstallStatus;
+
 
 // 🌐 Landing page
 Route::get('/', fn () => view('welcome'));
@@ -42,7 +43,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/servers', VpnServerList::class)->name('servers.index');
         Route::get('/servers/create', ServerCreate::class)->name('servers.create');
         Route::get('/servers/{vpnServer}/edit', VpnServerEdit::class)->name('servers.edit');
-	Route::get('/servers/{vpnServer}/install-status', \App\Livewire\Admin\ServerInstallStatus::class)->name('servers.install-status');
+	    Route::get('/servers/{vpnServer}/install-status', ServerInstallStatus::class)->name('servers.install-status');
         Route::delete('/servers/{vpnServer}', [\App\Http\Controllers\VpnServerController::class, 'destroy'])->name('servers.destroy');
 
         // ✅ Settings
