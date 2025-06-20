@@ -1,3 +1,5 @@
+{{-- filepath: resources/views/livewire/pages/admin/server-create.blade.php --}}
+
 <x-slot name="header">
     <h2 class="text-xl font-semibold text-gray-800">Create New VPN Server</h2>
 </x-slot>
@@ -9,18 +11,25 @@
         <h3 class="text-lg font-bold mb-4">Server Details</h3>
 
         <x-input label="Server Name" wire:model.live="name" />
+        @error('name') <span class="text-red-600">{{ $message }}</span> @enderror
+
         <x-input label="IP Address" wire:model.live="ip" class="mt-4" />
+        @error('ip') <span class="text-red-600">{{ $message }}</span> @enderror
+
         <x-select label="Protocol" wire:model.live="protocol" :options="['OpenVPN' => 'OpenVPN', 'WireGuard' => 'WireGuard']" class="mt-4" />
+        @error('protocol') <span class="text-red-600">{{ $message }}</span> @enderror
 
         <div class="mt-4 grid grid-cols-2 gap-4">
             <x-input label="SSH Port" wire:model.live="sshPort" />
+            @error('sshPort') <span class="text-red-600">{{ $message }}</span> @enderror
+
             <x-select label="SSH Login Type" wire:model.live="sshType" :options="['key' => 'SSH Key', 'password' => 'Password']" />
+            @error('sshType') <span class="text-red-600">{{ $message }}</span> @enderror
         </div>
 
-        @if($sshType === 'key')
-            <x-textarea label="SSH Public Key" wire:model.live="sshKey" class="mt-4" />
-        @else
+        @if($sshType === 'password')
             <x-input label="SSH Password" wire:model.live="sshPassword" type="password" class="mt-4" />
+            @error('sshPassword') <span class="text-red-600">{{ $message }}</span> @enderror
         @endif
     </div>
 
@@ -29,8 +38,13 @@
         <h3 class="text-lg font-bold mb-4">Advanced Settings</h3>
 
         <x-input label="OpenVPN Port" wire:model.live="port" />
+        @error('port') <span class="text-red-600">{{ $message }}</span> @enderror
+
         <x-select label="Transport Protocol" wire:model.live="transport" :options="['udp' => 'UDP', 'tcp' => 'TCP']" class="mt-4" />
+        @error('transport') <span class="text-red-600">{{ $message }}</span> @enderror
+
         <x-input label="DNS Resolver (e.g. 1.1.1.1)" wire:model.live="dns" class="mt-4" />
+        @error('dns') <span class="text-red-600">{{ $message }}</span> @enderror
 
         <div class="grid grid-cols-2 gap-4 mt-6">
             <x-checkbox label="Enable IPv6" wire:model.live="enableIPv6" />
@@ -43,12 +57,6 @@
 
     {{-- Action & Feedback --}}
     <div class="p-6">
-        @if (session()->has('status-message'))
-            <div class="mb-4 text-green-600 font-semibold">
-                {{ session('status-message') }}
-            </div>
-        @endif
-
         <div class="text-right">
             <x-button wire:click="create">
                 🚀 Deploy Server
