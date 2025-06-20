@@ -20,12 +20,6 @@ class DeployVpnServer implements ShouldQueue
         $this->server = $server;
     }
 
-    protected function log($message)
-    {
-        $this->server->deployment_log = trim($this->server->deployment_log . "\n" . now() . ' ' . $message);
-        $this->server->save();
-    }
-
     public function handle(): void
     {
         Log::info('🔥 DeployVpnServer started for #' . $this->server->id);
@@ -152,39 +146,19 @@ BASH;
         fwrite($pipes[0], $script);
         fclose($pipes[0]);
 
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-
-        $log = $this->server->deployment_log;
-        $outputBuffer = '';
-
-        while (true) {
-            $out = fgets($pipes[1]) ?: '';
-            $err = fgets($pipes[2]) ?: '';
-
-            if ($out !== '' || $err !== '') {
-                $log .= $out . $err;
-                $outputBuffer .= $out . $err; // append both stdout and stderr
-                $this->server->update(['deployment_log' => $log]);
-            }
-
-            $status = proc_get_status($proc);
-            if (! $status['running']) {
-                break;
-            }
-            usleep(200_000); // 0.2 s
-        }
+        // Remove live log streaming, just collect all output at once
+        $output = stream_get_contents($pipes[1]);
+        $error  = stream_get_contents($pipes[2]);
 
         fclose($pipes[1]);
         fclose($pipes[2]);
         proc_close($proc);
 
-        // Final flush
-        $this->server->update(['deployment_log' => $log]);
+        $log = $this->server->deployment_log . $output . $error;
 
-        // Parse the exit code from the output buffer
+        // Parse the exit code from the output
         $exit = null;
-        if (preg_match('/EXIT_CODE:(\d+)/', $outputBuffer, $matches)) {
+        if (preg_match('/EXIT_CODE:(\d+)/', $output . $error, $matches)) {
             $exit = (int)$matches[1];
             $log = preg_replace('/EXIT_CODE:\d+\s*/', '', $log);
         } else {

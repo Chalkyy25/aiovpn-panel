@@ -89,6 +89,8 @@ class ServerCreate extends Component
         /** sync queue = immediate run but in queue lifecycle */
         dispatch(new DeployVpnServer($server))
             ->onQueue('deployments');
+            Log::info("✅ DeployVpnServer job was successfully dispatched to the queue for IP: {$server->ip_address}");
+
 
 	$this->isDeploying = false;
 
