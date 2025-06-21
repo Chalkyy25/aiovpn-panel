@@ -38,7 +38,7 @@
     {{-- View Server button once it’s done --}}
     @if ($deploymentStatus === 'succeeded')
         <div class="mt-6">
-            <a href="{{ route('admin.servers.edit', $vpnServer->id) }}"
+            <a href="{{ route('admin.servers.show', $server->id) }}"
                class="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
                 View Server
             </a>
