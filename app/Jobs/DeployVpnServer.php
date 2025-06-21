@@ -29,7 +29,7 @@ class DeployVpnServer implements ShouldQueue
         $user     = $this->server->ssh_user;
         $sshType  = $this->server->ssh_type;
         $password = $this->server->ssh_password;
-        $keyPath  = $this->server->ssh_key_path ?? '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+        $keyPath  = $this->server->ssh_key ?? '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
 
         if ($sshType === 'key' && !is_file($keyPath)) {
             $this->server->update([

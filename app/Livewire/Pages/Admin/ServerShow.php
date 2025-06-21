@@ -97,10 +97,10 @@ class ServerShow extends Component
 
         // credential handling
         if ($this->vpnServer->ssh_type === 'key') {
-            if (blank($this->vpnServer->ssh_key_path) || !is_file($this->vpnServer->ssh_key_path)) {
+            if (blank($this->vpnServer->ssh_key) || !is_file($this->vpnServer->ssh_key)) {
                 throw new \RuntimeException('SSH key not found');
             }
-            $key = PublicKeyLoader::load(file_get_contents($this->vpnServer->ssh_key_path));
+            $key = PublicKeyLoader::load(file_get_contents($this->vpnServer->ssh_key));
             $login = $ssh->login($this->vpnServer->ssh_user, $key);
         } else {
             $login = $ssh->login($this->vpnServer->ssh_user, $this->vpnServer->ssh_password);

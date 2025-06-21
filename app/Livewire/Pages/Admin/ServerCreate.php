@@ -62,7 +62,7 @@ class ServerCreate extends Component
             'ssh_user'          => $this->sshUsername,
             'ssh_type'          => $this->sshType,
             'ssh_password'      => $this->sshType === 'password' ? $this->sshPassword : null,
-            'ssh_key_path'      => $sshKeyPath,
+            'ssh_key'           => $sshKeyPath, // <-- FIXED: use 'ssh_key'
             'port'              => $this->port,
             'transport'         => $this->transport,
             'dns'               => $this->dns,
