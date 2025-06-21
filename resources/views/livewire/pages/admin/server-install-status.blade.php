@@ -54,7 +54,7 @@
             </button>
         </div>
     @endif
-
+    <pre>RAW: {{ var_dump($deploymentStatus) }}</pre>
     {{-- Debug info --}}
     @if (session()->has('debug'))
         <div class="mt-6 p-4 bg-yellow-100 text-black rounded">
