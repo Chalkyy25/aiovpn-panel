@@ -7,8 +7,8 @@ use App\Models\VpnServer;
 use phpseclib3\Net\SSH2;
 use phpseclib3\Crypt\PublicKeyLoader;
 use Livewire\Attributes\Layout;
-#[Layout('layouts.app')]
 
+#[Layout('layouts.app')]
 class ServerShow extends Component
 {
     public VpnServer $server;
@@ -27,7 +27,7 @@ class ServerShow extends Component
             logger()->error("Missing IP for Server ID {$server->id}");
         }
 
-        $this->refresh();
+        $this->refresh(); // preload
     }
 
     public function refresh()
@@ -35,12 +35,23 @@ class ServerShow extends Component
         $this->server->refresh(); // get latest DB info
         $this->deploymentStatus = $this->server->deployment_status;
 
+        $ip = trim((string) $this->server->ip_address);
+        $port = $this->server->ssh_port ?? 22;
+
+        if (empty($ip)) {
+            $this->uptime = '❌ IP address is missing';
+            return;
+        }
+
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            $this->uptime = "❌ Invalid IP address: [$ip]";
+            return;
+        }
+
+        logger()->info("Connecting to SSH on $ip:$port");
+
         try {
-            $ip = (string) $this->server->ip_address;
-            $port = $this->server->ssh_port ?? 22;
-
             $ssh = new SSH2($ip, $port);
-
 
             if ($this->server->ssh_type === 'key') {
                 $key = PublicKeyLoader::load(file_get_contents($this->server->ssh_key_path));
@@ -54,13 +65,14 @@ class ServerShow extends Component
                 return;
             }
 
-            $this->uptime   = trim($ssh->exec('uptime'));
-            $this->cpu      = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
-            $this->memory   = trim($ssh->exec("free -h | grep Mem || vm_stat | grep 'Pages'"));
-            $this->bandwidth= trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
+            $this->uptime    = trim($ssh->exec('uptime'));
+            $this->cpu       = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
+            $this->memory    = trim($ssh->exec("free -h | grep Mem || vm_stat | grep 'Pages'"));
+            $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
 
         } catch (\Exception $e) {
             $this->uptime = '❌ ' . $e->getMessage();
+            logger()->error('SSH connection failed', ['error' => $e->getMessage()]);
         }
     }
 
