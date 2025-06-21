@@ -29,9 +29,9 @@ class DeployVpnServer implements ShouldQueue
         $user     = $this->server->ssh_user;
         $sshType  = $this->server->ssh_type;
         $password = $this->server->ssh_password;
-        $keyPath  = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+        $keyPath  = $this->server->ssh_key_path ?? '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
 
-        if ($sshType === 'key' && ! is_file($keyPath)) {
+        if ($sshType === 'key' && !is_file($keyPath)) {
             $this->server->update([
                 'deployment_status' => 'failed',
                 'deployment_log'    => "❌ Missing SSH key: {$keyPath}\n",
@@ -39,10 +39,10 @@ class DeployVpnServer implements ShouldQueue
             return;
         }
 
-        $opts  = "-p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
-        $ssh   = $sshType === 'key'
-            ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'bash -s; echo EXIT_CODE:\$?'"
-            : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'bash -s; echo EXIT_CODE:\$?'";
+        $opts = "-p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
+        $ssh = $sshType === 'key'
+            ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s; echo EXIT_CODE:\$?'"
+            : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s; echo EXIT_CODE:\$?'";
 
         $this->server->update([
             'deployment_status' => 'running',
@@ -161,6 +161,7 @@ BASH;
             foreach ([1, 2] as $i) {
                 $line = fgets($pipes[$i]);
                 if ($line !== false) {
+                    // Append each line to the deployment log for live updates
                     $this->server->appendLog(rtrim($line, "\r\n"));
                     if ($i === 1) {
                         $output .= $line;
@@ -175,6 +176,7 @@ BASH;
         fclose($pipes[2]);
         proc_close($proc);
 
+        // Combine logs for final status
         $log = $this->server->deployment_log . $output . $error;
 
         // Parse the exit code from the output
@@ -187,10 +189,9 @@ BASH;
             $log .= "\n❌ Could not determine remote exit code\n";
         }
 
-        // After collecting $log or $outputBuffer
+        // Filter out noisy lines
         $lines = explode("\n", $log);
         $filtered = array_filter($lines, function ($line) {
-            // Filter out DH parameter lines, warnings, or other noisy output
             return !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters/', $line)
                 && !preg_match('/DEPRECATED OPTION/', $line)
                 && trim($line) !== '';
@@ -208,7 +209,7 @@ BASH;
         }
 
         $this->server->update([
-            'deployment_status' => strtolower($statusText), // force lowercase
+            'deployment_status' => strtolower($statusText),
             'deployment_log'    => $log,
         ]);
     }

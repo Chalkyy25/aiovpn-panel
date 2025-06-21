@@ -48,7 +48,7 @@ class ServerCreate extends Component
 
         $sshKeyPath = null;
         if ($this->sshType === 'key') {
-            $sshKeyPath = storage_path('app/ssh_keys/id_rsa');
+            $sshKeyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
             if (!file_exists($sshKeyPath)) {
                 Log::warning("⚠️ SSH key path missing: $sshKeyPath");
             }
