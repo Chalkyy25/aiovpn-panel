@@ -19,12 +19,12 @@ class ServerShow extends Component
     public $bandwidth = '...';
     public $deploymentStatus = '...';
 
-    public function mount(VpnServer $server)
+    public function mount(VpnServer $vpnServer)
     {
-        $this->server = $server;
+        $this->server = $vpnServer;
 
-        if (empty($server->ip_address)) {
-            logger()->error("Missing IP for Server ID {$server->id}");
+        if (empty($vpnserver->ip_address)) {
+            logger()->error("Missing IP for Server ID {$vpnServer->id}");
         }
 
         $this->refresh(); // preload
