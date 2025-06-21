@@ -166,6 +166,16 @@ BASH;
             $log .= "\n❌ Could not determine remote exit code\n";
         }
 
+        // After collecting $log or $outputBuffer
+        $lines = explode("\n", $log);
+        $filtered = array_filter($lines, function ($line) {
+            // Filter out DH parameter lines, warnings, or other noisy output
+            return !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters/', $line)
+                && !preg_match('/DEPRECATED OPTION/', $line)
+                && trim($line) !== '';
+        });
+        $log = implode("\n", $filtered);
+
         $statusText = $exit === 0 ? 'success' : 'failed';
         $this->server->update([
             'deployment_status' => $statusText,
