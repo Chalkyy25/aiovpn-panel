@@ -55,3 +55,5 @@
         @if($deploymentStatus)
             <div class="mt-4 text-sm text-gray-600">
                 <strong>Status:</strong>
+            </div>
+        @endif

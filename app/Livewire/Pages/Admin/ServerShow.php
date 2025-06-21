@@ -6,6 +6,8 @@ use Livewire\Component;
 use App\Models\VpnServer;
 use phpseclib3\Net\SSH2;
 use phpseclib3\Crypt\PublicKeyLoader;
+use Livewire\Attributes\Layout;
+#[Layout('layouts.app')]
 
 class ServerShow extends Component
 {
