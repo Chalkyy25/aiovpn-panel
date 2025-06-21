@@ -187,7 +187,7 @@ BASH;
         }
 
         $this->server->update([
-            'deployment_status' => $statusText,
+            'deployment_status' => strtolower($statusText), // force lowercase
             'deployment_log'    => $log,
         ]);
     }
