@@ -36,6 +36,7 @@ class VpnServer extends Model
      */
     public function appendLog(string $line)
     {
+        $this->refresh(); // <--- Add this line
         $this->update([
             'deployment_log' => trim(($this->deployment_log ?? '') . "\n" . $line),
         ]);

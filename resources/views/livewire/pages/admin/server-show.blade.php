@@ -46,7 +46,7 @@
         <h3 class="text-lg font-bold mb-4">Deployment&nbsp;Logs</h3>
 
         <pre class="bg-black text-green-400 font-mono text-xs rounded p-4 max-h-[300px] overflow-y-auto">
-{{ $vpnServer->deployment_log ?: '⏳ Waiting for logs…' }}
+{{ $deploymentLog }}
         </pre>
     </div>
 

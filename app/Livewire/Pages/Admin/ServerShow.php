@@ -19,6 +19,7 @@ class ServerShow extends Component
     public string $memory          = '…';
     public string $bandwidth       = '…';
     public string $deploymentStatus = '…';
+    public string $deploymentLog   = '';
 
     /* ───────── Lifecycle ───────── */
     public function mount(VpnServer $vpnServer): void
@@ -39,6 +40,7 @@ class ServerShow extends Component
     public function refresh(): void
     {
         $this->vpnServer->refresh();
+        $this->deploymentLog = $this->vpnServer->deployment_log; // <-- Add this
 
         if (blank($this->vpnServer->ip_address)) {
             logger()->warning("Server #{$this->vpnServer->id} has no IP address during refresh!");
