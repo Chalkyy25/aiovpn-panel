@@ -1,6 +1,6 @@
 <x-slot name="header">
     <h2 class="text-xl font-semibold text-gray-800">
-        Server Status: {{ \$server->name }}
+        Server Status: {{ $server->name }}
     </h2>
 </x-slot>
 
@@ -13,29 +13,29 @@
 
         <dl class="grid grid-cols-2 gap-y-1 text-sm">
             <dt class="font-medium text-gray-600">IP:</dt>
-            <dd>{{ \$server->ip_address }}</dd>
+            <dd>{{ $server->ip_address }}</dd>
 
             <dt class="font-medium text-gray-600">Protocol:</dt>
-            <dd class="capitalize">{{ \$server->protocol }}</dd>
+            <dd class="capitalize">{{ $server->protocol }}</dd>
 
             <dt class="font-medium text-gray-600">SSH User:</dt>
-            <dd>{{ \$server->ssh_user }}</dd>
+            <dd>{{ $server->ssh_user }}</dd>
 
             <dt class="font-medium text-gray-600">VPN&nbsp;Port:</dt>
-            <dd>{{ \$server->port }}</dd>
+            <dd>{{ $server->port }}</dd>
 
             <dt class="font-medium text-gray-600">Status:</dt>
             <dd>
                 @php
-                    \$colour = [
+                    $colour = [
                         'queued'    => 'bg-gray-200 text-gray-700',
                         'running'   => 'bg-yellow-200 text-yellow-800',
                         'succeeded' => 'bg-green-200 text-green-800',
                         'failed'    => 'bg-red-200 text-red-800',
-                    ][\$server->deployment_status] ?? 'bg-gray-200 text-gray-700';
+                    ][$server->deployment_status] ?? 'bg-gray-200 text-gray-700';
                 @endphp
-                <span class="px-2 py-0.5 rounded text-xs {{ \$colour }}">
-                    {{ ucfirst(\$server->deployment_status) }}
+                <span class="px-2 py-0.5 rounded text-xs {{ $colour }}">
+                    {{ ucfirst($server->deployment_status) }}
                 </span>
             </dd>
         </dl>
@@ -46,7 +46,7 @@
         <h3 class="text-lg font-bold mb-4">Deployment&nbsp;Logs</h3>
 
         <pre class="bg-black text-green-400 font-mono text-xs rounded p-4 max-h-[300px] overflow-y-auto">
-{{ \$server->deployment_log ?: '⏳ Waiting for logs…' }}
+{{ $server->deployment_log ?: '⏳ Waiting for logs…' }}
         </pre>
     </div>
 
@@ -58,25 +58,25 @@
             <div class="bg-blue-50 rounded p-3">
                 <span class="text-blue-600">🕒</span>
                 <span class="font-medium text-gray-700">Uptime:</span>
-                <span>{{ \$uptime }}</span>
+                <span>{{ $uptime }}</span>
             </div>
 
             <div class="bg-purple-50 rounded p-3">
                 <span class="text-purple-600">🧠</span>
                 <span class="font-medium text-gray-700">CPU:</span>
-                <span>{{ \$cpu }}</span>
+                <span>{{ $cpu }}</span>
             </div>
 
             <div class="bg-indigo-50 rounded p-3">
                 <span class="text-indigo-600">📀</span>
                 <span class="font-medium text-gray-700">Memory:</span>
-                <span>{{ \$memory }}</span>
+                <span>{{ $memory }}</span>
             </div>
 
             <div class="bg-teal-50 rounded p-3">
                 <span class="text-teal-600">🌐</span>
                 <span class="font-medium text-gray-700">Bandwidth:</span>
-                <span>{{ \$bandwidth }}</span>
+                <span>{{ $bandwidth }}</span>
             </div>
         </div>
     </div>
