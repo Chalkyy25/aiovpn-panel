@@ -26,7 +26,8 @@ class TestSshConnection extends Command
         if ($server->ssh_type === 'password') {
             $success = $ssh->login($server->ssh_user, $server->ssh_password);
         } else {
-            $key = PublicKeyLoader::load(file_get_contents($server->ssh_key_path));
+            $keypath = $server->ssh_key_path ?: storage_path('app/ssh_keys/id_rsa');
+            $key = PublicKeyLoader::load(file_get_contents($keypath));
             $success = $ssh->login($server->ssh_user, $key);
         }
 
