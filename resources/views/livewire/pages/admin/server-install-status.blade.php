@@ -4,11 +4,11 @@
     </h2>
 
     {{-- Status box --}}
-    @if ($vpnServer->deployment_status === 'succeeded')
+    @if ($deploymentStatus === 'succeeded')
         <div class="bg-green-100 text-green-800 p-4 rounded mb-4">✅ Server is Online</div>
-    @elseif ($vpnServer->deployment_status === 'running')
+    @elseif ($deploymentStatus === 'running')
         <div class="bg-yellow-100 text-yellow-800 p-4 rounded mb-4">🔄 Installing...</div>
-    @elseif ($vpnServer->deployment_status === 'failed')
+    @elseif ($deploymentStatus === 'failed')
         <div class="bg-red-100 text-red-800 p-4 rounded mb-4">❌ Installation Failed</div>
     @endif
    
@@ -18,7 +18,7 @@
         @php
             use Illuminate\Support\Str;
         @endphp
-        @foreach(explode("\n", $vpnServer->deployment_log) as $line)
+        @foreach(explode("\n", $deploymentLog) as $line)
             @if(Str::contains($line, '❌'))
                 <div class="text-red-400">{{ $line }}</div>
             @elseif(Str::contains($line, 'WARNING'))
@@ -35,7 +35,7 @@
     </div>
 
     {{-- View Server button once it’s done --}}
-    @if ($vpnServer->deployment_status === 'succeeded')
+    @if ($deploymentStatus === 'succeeded')
         <div class="mt-6">
             <a href="{{ route('admin.servers.edit', $vpnServer->id) }}"
                class="inline-block bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
