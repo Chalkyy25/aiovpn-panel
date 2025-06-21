@@ -176,12 +176,20 @@ BASH;
         });
         $log = implode("\n", $filtered);
 
-        $statusText = $exit === 0 ? 'success' : 'failed';
+        $statusText = $exit === 0 ? 'succeeded' : 'failed';
+
+        if ($exit === 0) {
+            Log::info("Deployment succeeded for {$ip}");
+            $log .= "\n✅ Deployment succeeded";
+        } else {
+            Log::error("Deployment failed for {$ip} with exit code {$exit}");
+            $log .= "\n❌ Deployment failed with exit code {$exit}";
+        }
+
         $this->server->update([
             'deployment_status' => $statusText,
             'deployment_log'    => $log,
         ]);
-        Log::info("DeployVpnServer finished for {$ip} (exit {$exit}, status: {$statusText})");
     }
 
     public function failed(\Throwable $e): void

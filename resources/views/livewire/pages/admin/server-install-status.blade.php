@@ -11,7 +11,8 @@
     @elseif ($vpnServer->deployment_status === 'failed')
         <div class="bg-red-100 text-red-800 p-4 rounded mb-4">❌ Installation Failed</div>
     @endif
-
+   
+    <div>Status: {{ $vpnServer->deployment_status }}</div> 
     {{-- Logs --}}
     <div class="bg-black text-green-400 font-mono p-4 rounded mb-4 h-64 overflow-y-auto text-xs">
         @php
