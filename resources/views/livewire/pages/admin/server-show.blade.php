@@ -28,10 +28,12 @@
     <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-2">Monitoring (coming soon)</h3>
         <ul class="text-sm text-gray-600 space-y-1">
-            <li>🧠 CPU Usage: Placeholder</li>
-            <li>💾 Memory: Placeholder</li>
-            <li>🌐 Bandwidth: Placeholder</li>
-            <li>📶 Online Status: Placeholder</li>
+             <li>🕒 Uptime: {{ $uptime }}</li>
+             <li>🧠 CPU Usage: {{ $cpu }}</li>
+             <li>💾 Memory: {{ $memory }}</li>
+             <li>🌐 Bandwidth: {{ $bandwidth }}</li>
+</ul>
+
         </ul>
     </div>
 
