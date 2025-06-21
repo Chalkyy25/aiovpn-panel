@@ -11,29 +11,27 @@ use Illuminate\Support\Facades\Log;
 #[Layout('layouts.app')]
 class ServerCreate extends Component
 {
-    /* ───── Form fields ───── */
     public $name;
     public $ip;
-    public $protocol   = 'OpenVPN';
-    public $sshType    = 'key';
-    public $sshPort    = 22;
-    public $sshUsername = 'root';
+    public $protocol     = 'OpenVPN';
+    public $sshType      = 'key';
+    public $sshPort      = 22;
+    public $sshUsername  = 'root';
     public $sshPassword;
-    
-    public $port       = 1194;
-    public $transport  = 'udp';
-    public $dns        = '1.1.1.1';
 
-    public $enableIPv6    = false;
+    public $port         = 1194;
+    public $transport    = 'udp';
+    public $dns          = '1.1.1.1';
+
+    public $enableIPv6   = false;
     public $enableLogging = false;
-    public $enableProxy   = false;
-    public $header1       = false;
-    public $header2       = false;
+    public $enableProxy  = false;
+    public $header1      = false;
+    public $header2      = false;
 
-    /* Create & deploy */
     public function create()
     {
-        Log::info('ServerCreate@create called');
+        Log::info('🛠️ Server creation triggered', ['ip' => $this->ip]);
 
         $this->validate([
             'name'        => 'required|string|max:100',
@@ -48,34 +46,39 @@ class ServerCreate extends Component
             'dns'         => 'nullable|string',
         ]);
 
+        $sshKeyPath = null;
+        if ($this->sshType === 'key') {
+            $sshKeyPath = storage_path('app/ssh_keys/id_rsa');
+            if (!file_exists($sshKeyPath)) {
+                Log::warning("⚠️ SSH key path missing: $sshKeyPath");
+            }
+        }
+
         $server = VpnServer::create([
-            'name'             => $this->name,
-            'ip_address'       => $this->ip,
-            'protocol'         => strtolower($this->protocol),
-            'ssh_port'         => $this->sshPort,
-            'ssh_user'         => $this->sshUsername,
-            'ssh_type'         => $this->sshType,
-            'ssh_password'     => $this->sshType === 'password' ? $this->sshPassword : null,
-            // Always use the global key path for key auth
-            'ssh_key_path'     => $this->sshType === 'key' ? storage_path('app/ssh_keys/id_rsa') : null,
-            'port'             => $this->port,
-            'transport'        => $this->transport,
-            'dns'              => $this->dns,
-            'enable_ipv6'      => $this->enableIPv6,
-            'enable_logging'   => $this->enableLogging,
-            'enable_proxy'     => $this->enableProxy,
-            'header1'          => $this->header1,
-            'header2'          => $this->header2,
-            'deployment_status'=> 'queued',
-            'deployment_log'   => '',
+            'name'              => $this->name,
+            'ip_address'        => $this->ip,
+            'protocol'          => strtolower($this->protocol),
+            'ssh_port'          => $this->sshPort,
+            'ssh_user'          => $this->sshUsername,
+            'ssh_type'          => $this->sshType,
+            'ssh_password'      => $this->sshType === 'password' ? $this->sshPassword : null,
+            'ssh_key_path'      => $sshKeyPath,
+            'port'              => $this->port,
+            'transport'         => $this->transport,
+            'dns'               => $this->dns,
+            'enable_ipv6'       => $this->enableIPv6,
+            'enable_logging'    => $this->enableLogging,
+            'enable_proxy'      => $this->enableProxy,
+            'header1'           => $this->header1,
+            'header2'           => $this->header2,
+            'deployment_status' => 'queued',
+            'deployment_log'    => '',
         ]);
 
-        Log::info('Dispatching DeployVpnServer job');
-
+        Log::info('🚀 Dispatching server deployment job for server #' . $server->id);
         dispatch(new DeployVpnServer($server));
 
         return redirect()->route('admin.servers.install-status', $server);
-
     }
 
     public function render()
