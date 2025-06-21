@@ -28,6 +28,10 @@ class ServerInstallStatus extends Component
 
     public function render()
     {
-        return view('livewire.pages.admin.server-install-status');
+        return view('livewire.pages.admin.server-install-status', [
+            'vpnServer' => $this->vpnServer,
+            'deploymentLog' => $this->deploymentLog,
+            'deploymentStatus' => $this->deploymentStatus,
+        ]);
     }
 }
