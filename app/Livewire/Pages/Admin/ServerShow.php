@@ -12,7 +12,7 @@ use phpseclib3\Crypt\PublicKeyLoader;
 class ServerShow extends Component
 {
     /* ───────── State ───────── */
-    public VpnServer $server;
+    public VpnServer $vpnServer;
 
     public string $uptime          = '…';
     public string $cpu             = '…';
@@ -21,38 +21,43 @@ class ServerShow extends Component
     public string $deploymentStatus = '…';
 
     /* ───────── Lifecycle ───────── */
-    public function mount(VpnServer $server): void
+    public function mount(VpnServer $vpnServer): void
     {
-        $this->server = $server;
+        $this->vpnServer = $vpnServer;
 
         // quick validation so we don't hammer logs if the row is bad
-        if (blank($server->ip_address)) {
-            logger()->error("Server {$server->id} has no IP address!");
+        if (blank($vpnServer->ip_address)) {
+            logger()->error("Server {$vpnServer->id} has no IP address!");
             $this->uptime = '❌ Missing IP';
             return;
         }
 
-        $this->refresh();       // prime data on first load
+        $this->refresh(); // prime data on first load
     }
 
     /* ───────── Polling action (called by wire:poll) ───────── */
     public function refresh(): void
     {
-        $this->server->refresh();
-        // Always cast to string, fallback to empty string if null
-        $this->deploymentStatus = (string) ($this->server->deployment_status ?? '');
+        $this->vpnServer->refresh();
+
+        if (blank($this->vpnServer->ip_address)) {
+            logger()->warning("Server #{$this->vpnServer->id} has no IP address during refresh!");
+            $this->uptime = '❌ Missing IP';
+            return;
+        }
+
+        $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
         try {
             $ssh = $this->makeSshClient();
 
-            // small helpers so we don’t break on busybox vs full GNU tools
             $this->uptime    = trim($ssh->exec("uptime"));
             $this->cpu       = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
             $this->memory    = trim($ssh->exec("free -h | grep Mem || vm_stat | head -n 5"));
             $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
         } catch (\Throwable $e) {
             $this->uptime = '❌ ' . $e->getMessage();
-            logger()->warning("Live-stats SSH error (#{$this->server->id}): {$e->getMessage()}");
+            logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
         }
     }
 
@@ -70,8 +75,8 @@ class ServerShow extends Component
 
     public function deleteServer(): void
     {
-        $name = $this->server->name;
-        $this->server->delete();
+        $name = $this->vpnServer->name;
+        $this->vpnServer->delete();
         session()->flash('status', "🗑️  Server “{$name}” deleted.");
         $this->redirectRoute('admin.servers.index');
     }
@@ -86,19 +91,19 @@ class ServerShow extends Component
     /* ───────── Helpers ───────── */
     private function makeSshClient(): SSH2
     {
-        logger()->info("SSH → {$this->server->ip_address}:{$this->server->ssh_port}");
+        logger()->info("SSH → {$this->vpnServer->ip_address}:{$this->vpnServer->ssh_port}");
 
-        $ssh = new SSH2($this->server->ip_address, $this->server->ssh_port);
+        $ssh = new SSH2($this->vpnServer->ip_address, $this->vpnServer->ssh_port);
 
         // credential handling
-        if ($this->server->ssh_type === 'key') {
-            if (blank($this->server->ssh_key_path) || !is_file($this->server->ssh_key_path)) {
+        if ($this->vpnServer->ssh_type === 'key') {
+            if (blank($this->vpnServer->ssh_key_path) || !is_file($this->vpnServer->ssh_key_path)) {
                 throw new \RuntimeException('SSH key not found');
             }
-            $key = PublicKeyLoader::load(file_get_contents($this->server->ssh_key_path));
-            $login = $ssh->login($this->server->ssh_user, $key);
+            $key = PublicKeyLoader::load(file_get_contents($this->vpnServer->ssh_key_path));
+            $login = $ssh->login($this->vpnServer->ssh_user, $key);
         } else {
-            $login = $ssh->login($this->server->ssh_user, $this->server->ssh_password);
+            $login = $ssh->login($this->vpnServer->ssh_user, $this->vpnServer->ssh_password);
         }
 
         if (!$login) {
