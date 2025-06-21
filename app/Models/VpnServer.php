@@ -53,7 +53,7 @@ class VpnServer extends Model
 
     public function getDeploymentStatusAttribute($value)
     {
-        return Str::title($value);
+        return $value; // Return as-is, no formatting
     }
 
     public function setDeploymentStatusAttribute($value)
