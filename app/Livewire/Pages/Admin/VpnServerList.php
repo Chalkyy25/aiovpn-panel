@@ -37,7 +37,7 @@ class VpnServerList extends Component
 
         VpnServer::create([
             'name' => $this->name,
-            'ip' => $this->ip,
+            'ip_address' => $this->ip, // use ip_address if that's your DB column
             'protocol' => $this->protocol,
             'status' => $this->status,
         ]);
@@ -49,12 +49,11 @@ class VpnServerList extends Component
     }
 
     public function deleteServer($id)
-    {
-        VpnServer::find($id)?->delete();
-        $this->loadServers();
-        session()->flash('status-message', '🗑️ VPN Server deleted.');
-    }
-
+{
+    VpnServer::destroy($id);
+    $this->loadServers();
+    session()->flash('status-message', '🗑️ VPN Server deleted.');
+}
     public function render()
     {
         return view('livewire.pages.admin.vpn-server-list');
