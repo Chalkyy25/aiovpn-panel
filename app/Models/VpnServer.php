@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class VpnServer extends Model
 {
@@ -36,7 +37,7 @@ class VpnServer extends Model
      */
     public function appendLog(string $line)
     {
-        $this->refresh(); // <--- Add this line
+        Log::info("APPEND_LOG: " . $line);
         $this->update([
             'deployment_log' => trim(($this->deployment_log ?? '') . "\n" . $line),
         ]);
