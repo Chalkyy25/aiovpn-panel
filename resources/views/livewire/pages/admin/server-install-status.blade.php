@@ -54,7 +54,6 @@
             </button>
         </div>
     @endif
-    <pre>RAW: {{ var_dump($deploymentStatus) }}</pre>
     {{-- Debug info --}}
     @if (session()->has('debug'))
         <div class="mt-6 p-4 bg-yellow-100 text-black rounded">
@@ -66,6 +65,4 @@
     <div class="mt-6">
         <p class="text-sm text-gray-500">Polling for updates every 5 seconds...</p>
     </div>
-
-    <div>DEBUG: [{{ $deploymentStatus }}]</div>
 </div>
