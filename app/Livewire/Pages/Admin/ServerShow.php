@@ -39,7 +39,8 @@ class ServerShow extends Component
     public function refresh(): void
     {
         $this->server->refresh();
-        $this->deploymentStatus = $this->server->deployment_status;
+        // Always cast to string, fallback to empty string if null
+        $this->deploymentStatus = (string) ($this->server->deployment_status ?? '');
 
         try {
             $ssh = $this->makeSshClient();
