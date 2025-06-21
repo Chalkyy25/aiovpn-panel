@@ -24,7 +24,7 @@
             </thead>
             <tbody>
                 @foreach ($servers as $server)
-                    <tr class="border-t hover:bg-gray-50">
+                    <tr class="border-t hover:bg-gray-50" wire:key="server-{{ $server->id }}">
                         <td class="px-4 py-2 font-medium text-gray-800">{{ $server->name }}</td>
                         <td class="px-4 py-2 text-gray-600">{{ $server->ip }}</td>
                         <td class="px-4 py-2">
