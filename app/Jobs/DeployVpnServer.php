@@ -50,25 +50,28 @@ class DeployVpnServer implements ShouldQueue
         ]);
 
         $script = <<<'BASH'
+#!/bin/bash
+
 set -e
 trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
 
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="OpenVPN-CA"
 
-echo "[1/8] Clearing old OpenVPN setup (if any)…"
+echo "[1/9] Updating package lists and upgrading system…"
+apt-get update -y
+apt-get upgrade -y
+
+echo "[2/9] Installing OpenVPN, Easy-RSA, and vnStat…"
+DEBIAN_FRONTEND=noninteractive apt-get install -y openvpn easy-rsa vnstat curl wget lsb-release ca-certificates
+
+echo "[3/9] Stopping any running OpenVPN service and cleaning up…"
 systemctl stop openvpn@server || true
 rm -rf /etc/openvpn/*
 mkdir -p /etc/openvpn/auth
 : > /etc/openvpn/ipp.txt
 
-echo "[2/8] Updating packages…"
-apt-get update -y
-
-echo "[3/8] Installing OpenVPN & Easy-RSA…"
-DEBIAN_FRONTEND=noninteractive apt-get install -y openvpn easy-rsa
-
-echo "[4/8] Setting up Easy-RSA PKI & generating certificates…"
+echo "[4/9] Setting up Easy-RSA PKI & generating certificates…"
 EASYRSA_DIR=/etc/openvpn/easy-rsa
 cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
 cd "$EASYRSA_DIR"
@@ -79,10 +82,10 @@ openvpn --genkey --secret ta.key
 ./easyrsa gen-req server nopass
 ./easyrsa sign-req server server
 
-echo "[5/8] Copying certs and keys to /etc/openvpn…"
+echo "[5/9] Copying certs and keys to /etc/openvpn…"
 cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
 
-echo "[6/8] Creating user/pass auth files…"
+echo "[6/9] Creating user/pass auth files…"
 echo "testuser testpass" > /etc/openvpn/auth/psw-file
 chmod 600 /etc/openvpn/auth/psw-file
 cat <<'SH' > /etc/openvpn/auth/checkpsw.sh
@@ -93,7 +96,7 @@ CORRECT=$(grep "^$1 " "$PASSFILE" | cut -d' ' -f2-)
 SH
 chmod 700 /etc/openvpn/auth/checkpsw.sh
 
-echo "[7/8] Writing server.conf…"
+echo "[7/9] Writing server.conf…"
 cat <<'CONF' > /etc/openvpn/server.conf
 port 1194
 proto udp
@@ -119,9 +122,13 @@ auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-env
 script-security 3
 CONF
 
-echo "[8/8] Enabling and starting OpenVPN service…"
+echo "[8/9] Enabling and starting OpenVPN service…"
 systemctl enable openvpn@server
 systemctl restart openvpn@server
+
+echo "[9/9] Enabling and starting vnStat service…"
+systemctl enable vnstat
+systemctl restart vnstat
 
 EXIT_CODE=$?
 echo "✅ Deployment finished with code: $EXIT_CODE"
@@ -135,7 +142,8 @@ BASH;
             [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']],
             $pipes
         );
-        if (! is_resource($proc)) {
+
+        if (!is_resource($proc)) {
             $this->server->update([
                 'deployment_status' => 'failed',
                 'deployment_log'    => "❌ Could not open SSH process\n",
@@ -146,9 +154,22 @@ BASH;
         fwrite($pipes[0], $script);
         fclose($pipes[0]);
 
-        // Remove live log streaming, just collect all output at once
-        $output = stream_get_contents($pipes[1]);
-        $error  = stream_get_contents($pipes[2]);
+        // Stream output as it comes in and collect output/error
+        $output = '';
+        $error = '';
+        while (!feof($pipes[1]) || !feof($pipes[2])) {
+            foreach ([1, 2] as $i) {
+                $line = fgets($pipes[$i]);
+                if ($line !== false) {
+                    $this->server->appendLog(rtrim($line, "\r\n"));
+                    if ($i === 1) {
+                        $output .= $line;
+                    } else {
+                        $error .= $line;
+                    }
+                }
+            }
+        }
 
         fclose($pipes[1]);
         fclose($pipes[2]);
