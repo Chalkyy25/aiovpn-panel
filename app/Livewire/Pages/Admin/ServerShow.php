@@ -22,7 +22,12 @@ class ServerShow extends Component
     public function mount(VpnServer $server)
     {
         $this->server = $server;
-        $this->refresh(); // preload
+
+        if (empty($server->ip_address)) {
+            logger()->error("Missing IP for Server ID {$server->id}");
+        }
+
+        $this->refresh();
     }
 
     public function refresh()
@@ -31,7 +36,11 @@ class ServerShow extends Component
         $this->deploymentStatus = $this->server->deployment_status;
 
         try {
-            $ssh = new SSH2($this->server->ip_address, $this->server->ssh_port);
+            $ip = (string) $this->server->ip_address;
+            $port = $this->server->ssh_port ?? 22;
+
+            $ssh = new SSH2($ip, $port);
+
 
             if ($this->server->ssh_type === 'key') {
                 $key = PublicKeyLoader::load(file_get_contents($this->server->ssh_key_path));
