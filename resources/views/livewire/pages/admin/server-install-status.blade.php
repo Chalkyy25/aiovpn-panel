@@ -11,8 +11,9 @@
     @elseif ($deploymentStatus === 'failed')
         <div class="bg-red-100 text-red-800 p-4 rounded mb-4">❌ Installation Failed</div>
     @endif
-   
-    <div>Status: [{{ $vpnServer->deployment_status }}]</div> 
+
+    <div>Status: [{{ $deploymentStatus }}]</div>
+
     {{-- Logs --}}
     <div class="bg-black text-green-400 font-mono p-4 rounded mb-4 h-64 overflow-y-auto text-xs">
         @php
@@ -45,7 +46,7 @@
     @endif
 
     {{-- Retry if failed --}}
-    @if ($vpnServer->deployment_status === 'failed')
+    @if ($deploymentStatus === 'failed')
         <div class="mt-6">
             <button wire:click="retryInstallation"
                     class="inline-block bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
@@ -65,4 +66,6 @@
     <div class="mt-6">
         <p class="text-sm text-gray-500">Polling for updates every 5 seconds...</p>
     </div>
+
+    <div>DEBUG: [{{ $deploymentStatus }}]</div>
 </div>
