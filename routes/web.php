@@ -42,7 +42,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // ✅ VPN server management
         Route::get('/servers', VpnServerList::class)->name('servers.index');
         Route::get('/servers/create', ServerCreate::class)->name('servers.create');
-        Route::get('/servers/{vpnServer}/edit', VpnServerEdit::class)->name('servers.edit');
+        Route::get('/servers/{vpnServer}/edit', \App\Livewire\Pages\Admin\ServerEdit::class)->name('servers.edit');
 	    Route::get('/servers/{vpnServer}/install-status', ServerInstallStatus::class)->name('servers.install-status');
         Route::get('/servers/{vpnServer}', \App\Livewire\Pages\Admin\ServerShow::class)->name('servers.show');
         Route::delete('/servers/{vpnServer}', [\App\Http\Controllers\VpnServerController::class, 'destroy'])->name('servers.destroy');
