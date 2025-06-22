@@ -42,8 +42,8 @@ class VpnServer extends Model
     $existing = trim($this->deployment_log ?? '');
     $lines = $existing === '' ? [] : explode("\n", $existing);
 
-    // Only append if last line is not the same as current line
-    if (end($lines) !== $line) {
+    // Only add this line if it doesn't already exist in the log (prevents all duplicates)
+    if (!in_array($line, $lines)) {
         $lines[] = $line;
         $this->update([
             'deployment_log' => implode("\n", $lines),
