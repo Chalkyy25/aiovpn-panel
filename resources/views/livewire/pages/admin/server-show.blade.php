@@ -116,4 +116,12 @@
             <p class="mt-4 text-sm text-green-700">{{ session('message') }}</p>
         @endif
     </div>
+
+    {{-- Retry Installation Button --}}
+    <div class="bg-white p-4 sm:p-6 rounded shadow">
+        <h3 class="text-lg font-bold mb-4">Retry Installation</h3>
+        <x-button wire:click="retryInstallation" class="bg-red-600 hover:bg-red-700 text-white">
+            Retry
+        </x-button>
+    </div>
 </div>
