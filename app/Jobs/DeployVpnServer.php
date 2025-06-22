@@ -71,10 +71,10 @@ sudo dpkg --configure -a
 
 echo "[1/9] Updating package lists and upgrading system…"
 sudo apt-get update -y
-sudo apt-get upgrade -y
+sudo apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 
 echo "[2/9] Installing OpenVPN, Easy-RSA, and vnStat…"
-sudo apt-get install -y openvpn easy-rsa vnstat curl wget lsb-release ca-certificates
+sudo apt-get install -y openvpn easy-rsa vnstat curl wget lsb-release ca-certificates -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
 
 echo "[3/9] Stopping any running OpenVPN service and cleaning up…"
 sudo systemctl stop openvpn@server || true
