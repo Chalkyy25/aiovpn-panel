@@ -65,46 +65,50 @@ export DEBIAN_FRONTEND=noninteractive
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="OpenVPN-CA"
 
+# Fix any interrupted package operations before proceeding
+echo "[0/9] Checking for interrupted package operations…"
+sudo dpkg --configure -a
+
 echo "[1/9] Updating package lists and upgrading system…"
-apt-get update -y
-apt-get upgrade -y
+sudo apt-get update -y
+sudo apt-get upgrade -y
 
 echo "[2/9] Installing OpenVPN, Easy-RSA, and vnStat…"
-DEBIAN_FRONTEND=noninteractive apt-get install -y openvpn easy-rsa vnstat curl wget lsb-release ca-certificates
+sudo apt-get install -y openvpn easy-rsa vnstat curl wget lsb-release ca-certificates
 
 echo "[3/9] Stopping any running OpenVPN service and cleaning up…"
-systemctl stop openvpn@server || true
-rm -rf /etc/openvpn/*
-mkdir -p /etc/openvpn/auth
+sudo systemctl stop openvpn@server || true
+sudo rm -rf /etc/openvpn/*
+sudo mkdir -p /etc/openvpn/auth
 : > /etc/openvpn/ipp.txt
 
 echo "[4/9] Setting up Easy-RSA PKI & generating certificates…"
 EASYRSA_DIR=/etc/openvpn/easy-rsa
-cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
+sudo cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
 cd "$EASYRSA_DIR"
-./easyrsa init-pki
-./easyrsa build-ca nopass
-./easyrsa gen-dh
-openvpn --genkey --secret ta.key
-./easyrsa gen-req server nopass
-./easyrsa sign-req server server
+sudo ./easyrsa init-pki
+sudo ./easyrsa build-ca nopass
+sudo ./easyrsa gen-dh
+sudo openvpn --genkey --secret ta.key
+sudo ./easyrsa gen-req server nopass
+sudo ./easyrsa sign-req server server
 
 echo "[5/9] Copying certs and keys to /etc/openvpn…"
-cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
+sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
 
 echo "[6/9] Creating user/pass auth files…"
-echo "testuser testpass" > /etc/openvpn/auth/psw-file
-chmod 600 /etc/openvpn/auth/psw-file
-cat <<'SH' > /etc/openvpn/auth/checkpsw.sh
+echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file
+sudo chmod 600 /etc/openvpn/auth/psw-file
+sudo bash -c 'cat <<SH > /etc/openvpn/auth/checkpsw.sh
 #!/bin/sh
 PASSFILE="/etc/openvpn/auth/psw-file"
-CORRECT=$(grep "^$1 " "$PASSFILE" | cut -d' ' -f2-)
+CORRECT=$(grep "^$1 " "$PASSFILE" | cut -d" " -f2-)
 [ "$2" = "$CORRECT" ] && exit 0 || exit 1
-SH
-chmod 700 /etc/openvpn/auth/checkpsw.sh
+SH'
+sudo chmod 700 /etc/openvpn/auth/checkpsw.sh
 
 echo "[7/9] Writing server.conf…"
-cat <<'CONF' > /etc/openvpn/server.conf
+sudo bash -c 'cat <<CONF > /etc/openvpn/server.conf
 port 1194
 proto udp
 dev tun
@@ -127,15 +131,15 @@ status /etc/openvpn/openvpn-status.log
 verb 3
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-env
 script-security 3
-CONF
+CONF'
 
 echo "[8/9] Enabling and starting OpenVPN service…"
-systemctl enable openvpn@server
-systemctl restart openvpn@server
+sudo systemctl enable openvpn@server
+sudo systemctl restart openvpn@server
 
 echo "[9/9] Enabling and starting vnStat service…"
-systemctl enable vnstat
-systemctl restart vnstat
+sudo systemctl enable vnstat
+sudo systemctl restart vnstat
 
 EXIT_CODE=$?
 echo "✅ Deployment finished with code: $EXIT_CODE"
