@@ -61,6 +61,7 @@ class DeployVpnServer implements ShouldQueue
 set -e
 trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
 
+export DEBIAN_FRONTEND=noninteractive
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="OpenVPN-CA"
 
