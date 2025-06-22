@@ -22,39 +22,40 @@ class DeployVpnServer implements ShouldQueue
 
     public function handle(): void
     {
-        Log::info('🔥 DeployVpnServer started for #' . $this->vpnServer->id);
+        try {
+            Log::info('🔥 DeployVpnServer started for #' . $this->vpnServer->id);
 
-        $ip       = $this->vpnServer->ip_address;
-        $port     = $this->vpnServer->ssh_port;
-        $user     = $this->vpnServer->ssh_user;
-        $sshType  = $this->vpnServer->ssh_type;
-        $password = $this->vpnServer->ssh_password;
-        $keyPath  = $this->vpnServer->ssh_key ?? '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+            $ip       = $this->vpnServer->ip_address;
+            $port     = $this->vpnServer->ssh_port;
+            $user     = $this->vpnServer->ssh_user;
+            $sshType  = $this->vpnServer->ssh_type;
+            $password = $this->vpnServer->ssh_password;
+            $keyPath  = $this->vpnServer->ssh_key ?? '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
 
-        Log::info("DEPLOY_JOB: Key path is $keyPath");
+            Log::info("DEPLOY_JOB: Key path is $keyPath");
 
-        if ($sshType === 'key' && !is_file($keyPath)) {
-            Log::error("DEPLOY_JOB: SSH key missing at $keyPath");
+            if ($sshType === 'key' && !is_file($keyPath)) {
+                Log::error("DEPLOY_JOB: SSH key missing at $keyPath");
+                $this->vpnServer->update([
+                    'deployment_status' => 'failed',
+                    'deployment_log'    => "❌ Missing SSH key: {$keyPath}\n",
+                ]);
+                return;
+            }
+
+            $opts = "-p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
+            $ssh = $sshType === 'key'
+                ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s; echo EXIT_CODE:\$?'"
+                : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s; echo EXIT_CODE:\$?'";
+
+            Log::info("DEPLOY_JOB: SSH command: $ssh");
+
             $this->vpnServer->update([
-                'deployment_status' => 'failed',
-                'deployment_log'    => "❌ Missing SSH key: {$keyPath}\n",
+                'deployment_status' => 'running',
+                'deployment_log'    => "Starting deployment on {$ip} …\n",
             ]);
-            return;
-        }
 
-        $opts = "-p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
-        $ssh = $sshType === 'key'
-            ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s; echo EXIT_CODE:\$?'"
-            : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s; echo EXIT_CODE:\$?'";
-
-        Log::info("DEPLOY_JOB: SSH command: $ssh");
-
-        $this->vpnServer->update([
-            'deployment_status' => 'running',
-            'deployment_log'    => "Starting deployment on {$ip} …\n",
-        ]);
-
-        $script = <<<'BASH'
+            $script = <<<'BASH'
 #!/bin/bash
 
 set -e
@@ -142,79 +143,87 @@ exit $EXIT_CODE
 
 BASH;
 
-        Log::info("DEPLOY_JOB: Before proc_open");
-        $proc = proc_open($ssh, [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']], $pipes);
-        Log::info("DEPLOY_JOB: After proc_open");
+            Log::info("DEPLOY_JOB: Before proc_open");
+            $proc = proc_open($ssh, [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']], $pipes);
+            Log::info("DEPLOY_JOB: After proc_open");
 
-        if (!is_resource($proc)) {
-            Log::error("DEPLOY_JOB: proc_open failed");
-            $this->vpnServer->update([
-                'deployment_status' => 'failed',
-                'deployment_log'    => "❌ Could not open SSH process\n",
-            ]);
-            return;
-        }
+            if (!is_resource($proc)) {
+                Log::error("DEPLOY_JOB: proc_open failed");
+                $this->vpnServer->update([
+                    'deployment_status' => 'failed',
+                    'deployment_log'    => "❌ Could not open SSH process\n",
+                ]);
+                return;
+            }
 
-        fwrite($pipes[0], $script);
-        fclose($pipes[0]);
-        Log::info("DEPLOY_JOB: Script sent to remote");
+            fwrite($pipes[0], $script);
+            fclose($pipes[0]);
+            Log::info("DEPLOY_JOB: Script sent to remote");
 
-        $output = '';
-        $error = '';
-        while (!feof($pipes[1]) || !feof($pipes[2])) {
-            foreach ([1, 2] as $i) {
-                $line = fgets($pipes[$i]);
-                if ($line !== false) {
-                    Log::info("DEPLOY_JOB: Got line from pipe $i: " . $line);
-                    $this->vpnServer->appendLog(rtrim($line, "\r\n"));
-                    if ($i === 1) {
-                        $output .= $line;
-                    } else {
-                        $error .= $line;
+            $output = '';
+            $error = '';
+            while (!feof($pipes[1]) || !feof($pipes[2])) {
+                foreach ([1, 2] as $i) {
+                    $line = fgets($pipes[$i]);
+                    if ($line !== false) {
+                        Log::info("DEPLOY_JOB: Got line from pipe $i: " . $line);
+                        $this->vpnServer->appendLog(rtrim($line, "\r\n"));
+                        if ($i === 1) {
+                            $output .= $line;
+                        } else {
+                            $error .= $line;
+                        }
                     }
                 }
             }
+
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($proc);
+
+            Log::info("DEPLOY_JOB: handle() completed for server #" . $this->vpnServer->id);
+
+            $log = $this->vpnServer->deployment_log . $output . $error;
+
+            $exit = null;
+            if (preg_match('/EXIT_CODE:(\d+)/', $output . $error, $matches)) {
+                $exit = (int)$matches[1];
+                $log = preg_replace('/EXIT_CODE:\d+\s*/', '', $log);
+            } else {
+                $exit = 255;
+                $log .= "\n❌ Could not determine remote exit code\n";
+            }
+
+            $lines = explode("\n", $log);
+            $filtered = array_filter($lines, function ($line) {
+                return !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters/', $line)
+                    && !preg_match('/DEPRECATED OPTION/', $line)
+                    && trim($line) !== '';
+            });
+            $log = implode("\n", $filtered);
+
+            $statusText = $exit === 0 ? 'succeeded' : 'failed';
+
+            if ($exit === 0) {
+                Log::info("Deployment succeeded for {$ip}");
+                $log .= "\n✅ Deployment succeeded";
+            } else {
+                Log::error("Deployment failed for {$ip} with exit code {$exit}");
+                $log .= "\n❌ Deployment failed with exit code {$exit}";
+            }
+
+            $this->vpnServer->update([
+                'deployment_status' => strtolower($statusText),
+                'deployment_log'    => $log,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('DEPLOY_JOB: Exception: ' . $e->getMessage());
+            $this->vpnServer->update([
+                'deployment_status' => 'failed',
+                'deployment_log'    => "❌ Job exception: {$e->getMessage()}\n",
+            ]);
+            throw $e; // Let Laravel mark the job as failed
         }
-
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($proc);
-
-        Log::info("DEPLOY_JOB: handle() completed for server #" . $this->vpnServer->id);
-
-        $log = $this->vpnServer->deployment_log . $output . $error;
-
-        $exit = null;
-        if (preg_match('/EXIT_CODE:(\d+)/', $output . $error, $matches)) {
-            $exit = (int)$matches[1];
-            $log = preg_replace('/EXIT_CODE:\d+\s*/', '', $log);
-        } else {
-            $exit = 255;
-            $log .= "\n❌ Could not determine remote exit code\n";
-        }
-
-        $lines = explode("\n", $log);
-        $filtered = array_filter($lines, function ($line) {
-            return !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters/', $line)
-                && !preg_match('/DEPRECATED OPTION/', $line)
-                && trim($line) !== '';
-        });
-        $log = implode("\n", $filtered);
-
-        $statusText = $exit === 0 ? 'succeeded' : 'failed';
-
-        if ($exit === 0) {
-            Log::info("Deployment succeeded for {$ip}");
-            $log .= "\n✅ Deployment succeeded";
-        } else {
-            Log::error("Deployment failed for {$ip} with exit code {$exit}");
-            $log .= "\n❌ Deployment failed with exit code {$exit}";
-        }
-
-        $this->vpnServer->update([
-            'deployment_status' => strtolower($statusText),
-            'deployment_log'    => $log,
-        ]);
     }
 
     public function failed(\Throwable $e): void
