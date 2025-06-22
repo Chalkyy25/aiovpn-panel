@@ -21,7 +21,7 @@
                         <th class="px-4 py-2">IP Address</th>
                         <th class="px-4 py-2">Protocol</th>
                         <th class="px-4 py-2">Status</th>
-                        <th class="px-4 py-2 text-right">Actions</th>
+                        <th class="px-4 py-2 text-right min-w-[220px]">Actions</th>
                     </tr>
                 </thead>
                 @php
@@ -44,16 +44,18 @@
                                     {{ $server->status === 'online' ? '✅ Online' : '❌ Offline' }}
                                 </span>
                             </td>
-                            <td class="px-4 py-2 text-right space-x-2">
-                                <a href="{{ route('admin.servers.show', $server->id) }}">
-                                    <x-button class="bg-blue-600 hover:bg-blue-700 text-white">🔍 View</x-button>
-                                </a>
-                                <a href="{{ route('admin.servers.edit', $server->id) }}">
-                                    <x-button class="bg-yellow-500 hover:bg-yellow-600 text-white">✏️ Edit</x-button>
-                                </a>
-                                <x-button wire:click="deleteServer({{ $server->id }})" class="bg-red-600 hover:bg-red-700 text-white">
-                                    Delete
-                                </x-button>
+                            <td class="px-4 py-2 text-right min-w-[220px]">
+                                <div class="flex flex-row gap-2 justify-end">
+                                    <a href="{{ route('admin.servers.show', $server->id) }}">
+                                        <x-button class="bg-blue-600 hover:bg-blue-700 text-white w-full">🔍 View</x-button>
+                                    </a>
+                                    <a href="{{ route('admin.servers.edit', $server->id) }}">
+                                        <x-button class="bg-yellow-500 hover:bg-yellow-600 text-white w-full">✏️ Edit</x-button>
+                                    </a>
+                                    <x-button wire:click="deleteServer({{ $server->id }})" class="bg-red-600 hover:bg-red-700 text-white w-full">
+                                        Delete
+                                    </x-button>
+                                </div>
                             </td>
                         </tr>
                     @endforeach
