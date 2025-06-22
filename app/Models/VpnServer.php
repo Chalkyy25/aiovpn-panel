@@ -30,6 +30,7 @@ class VpnServer extends Model
         'header2',
         'deployment_status',
         'deployment_log',
+        'status', // <-- Add this line!
     ];
 
     /**
