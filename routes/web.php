@@ -11,7 +11,7 @@ use App\Livewire\Pages\Admin\VpnServerList;
 use App\Livewire\Pages\Admin\ServerCreate;
 use App\Livewire\Pages\Admin\VpnServerEdit; 
 use App\Livewire\Pages\Admin\ServerInstallStatus;
-
+use App\Http\Controllers\VpnUserController;
 
 // 🌐 Landing page
 Route::get('/', fn () => view('welcome'));
@@ -47,6 +47,13 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/servers/{vpnServer}', \App\Livewire\Pages\Admin\ServerShow::class)->name('servers.show');
         Route::delete('/servers/{vpnServer}', [\App\Http\Controllers\VpnServerController::class, 'destroy'])->name('servers.destroy');
 
+	// ✅ VPN User Management per server
+        Route::prefix('/servers/{vpnServer}/users')->group(function () {
+        Route::get('/', [\App\Http\Controllers\VpnUserController::class, 'index'])->name('servers.users.index');
+        Route::get('/create', [\App\Http\Controllers\VpnUserController::class, 'create'])->name('servers.users.create');
+        Route::post('/', [\App\Http\Controllers\VpnUserController::class, 'store'])->name('servers.users.store');
+        Route::post('/sync', [\App\Http\Controllers\VpnUserController::class, 'sync'])->name('servers.users.sync');
+	 });
         // ✅ Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
     });

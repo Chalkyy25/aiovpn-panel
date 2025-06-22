@@ -59,6 +59,11 @@ class VpnServer extends Model
         return $this->belongsToMany(User::class, 'client_vpn_server');
     }
 
+    public function vpnUsers()
+    {
+    return $this->hasMany(VpnUser::class);
+    }
+
     // ---- Status accessors/mutators ----
 
     public function getDeploymentStatusAttribute($value)
