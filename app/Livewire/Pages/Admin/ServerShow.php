@@ -100,6 +100,12 @@ class ServerShow extends Component
         // TODO: generate & return a signed .ovpn file
         session()->flash('status', '📥 .ovpn generation stub triggered (not yet implemented).');
     }
+    public function retryInstallation()
+    {
+        // Your logic to retry the installation, e.g.:
+        dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
+        session()->flash('status-message', 'Deployment retried.');
+    }
 
     /* ───────── Helpers ───────── */
     private function makeSshClient(): SSH2
