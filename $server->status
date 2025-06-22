@@ -1,0 +1,242 @@
+[90m= [39m[34;4mApp\Models\VpnServer[39;24m {#5775
+    [34mid[39m: [35m74[39m,
+    [34mname[39m: "[32m85.9.205.205[39m",
+    [34mip_address[39m: "[32m85.9.205.205[39m",
+    [34mssh_port[39m: [35m22[39m,
+    [34mssh_user[39m: "[32mroot[39m",
+    [34mprotocol[39m: "[32mopenvpn[39m",
+    [34mlocation[39m: [36mnull[39m,
+    [34mgroup[39m: [36mnull[39m,
+    [34mstatus[39m: "[32mpending[39m",
+    [34mcreated_at[39m: "[32m2025-06-22 11:59:15[39m",
+    [34mupdated_at[39m: "[32m2025-06-22 12:01:59[39m",
+    [34mdeployment_status[39m: "[32msucceeded[39m",
+    [34mdeployment_log[39m: """
+      [32mStarting deployment on 85.9.205.205 …[39m\n
+      [32m[1/9] Updating package lists and upgrading system…[39m\n
+      [32mWarning: Permanently added '85.9.205.205' (ED25519) to the list of known hosts.[39m\n
+      [32mIgn:1 http://security.ubuntu.com/ubuntu noble-security InRelease[39m\n
+      [32mIgn:2 http://archive.ubuntu.com/ubuntu noble InRelease[39m\n
+      [32mRunning kernel seems to be up-to-date.[39m\n
+      [32mIgn:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease[39m\n
+      [32mIgn:1 http://security.ubuntu.com/ubuntu noble-security InRelease[39m\n
+      [32mRestarting services...[39m\n
+      [32mIgn:2 http://archive.ubuntu.com/ubuntu noble InRelease[39m\n
+      [32mIgn:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease[39m\n
+      [32mService restarts being deferred:[39m\n
+      [32mHit:1 http://security.ubuntu.com/ubuntu noble-security InRelease[39m\n
+      [32m /etc/needrestart/restart.d/dbus.service[39m\n
+      [32mHit:2 http://archive.ubuntu.com/ubuntu noble InRelease[39m\n
+      [32m systemctl restart getty@tty1.service[39m\n
+      [32mHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease[39m\n
+      [32m systemctl restart openvpn@server.service[39m\n
+      [32mReading package lists...[39m\n
+      [32m systemctl restart systemd-logind.service[39m\n
+      [32mReading package lists...[39m\n
+      [32m systemctl restart unattended-upgrades.service[39m\n
+      [32mBuilding dependency tree...[39m\n
+      [32mReading state information...[39m\n
+      [32mNo containers need to be restarted.[39m\n
+      [32mCalculating upgrade...[39m\n
+      [32mThe following upgrades have been deferred due to phasing:[39m\n
+      [32mUser sessions running outdated binaries:[39m\n
+      [32m  ubuntu-drivers-common[39m\n
+      [32m root @ user manager service: systemd[14854][39m\n
+      [32mThe following packages have been kept back:[39m\n
+      [32m  sosreport ubuntu-server-minimal[39m\n
+      [32mNo VM guests are running outdated hypervisor (qemu) binaries on this host.[39m\n
+      [32m0 upgraded, 0 newly installed, 0 to remove and 3 not upgraded.[39m\n
+      [32m[2/9] Installing OpenVPN, Easy-RSA, and vnStat…[39m\n
+      [32mReading package lists...[39m\n
+      [32m-----[39m\n
+      [32mBuilding dependency tree...[39m\n
+      [32mReading state information...[39m\n
+      [32mopenvpn is already the newest version (2.6.12-0ubuntu0.24.04.3).[39m\n
+      [32measy-rsa is already the newest version (3.1.7-2).[39m\n
+      [32mcurl is already the newest version (8.5.0-2ubuntu10.6).[39m\n
+      [32mwget is already the newest version (1.21.4-1ubuntu4.1).[39m\n
+      [32m-----[39m\n
+      [32mlsb-release is already the newest version (12.0-2).[39m\n
+      [32mUsing configuration from /etc/openvpn/easy-rsa/pki/openssl-easyrsa.cnf[39m\n
+      [32mca-certificates is already the newest version (20240203).[39m\n
+      [32mCheck that the request matches the signature[39m\n
+      [32mSuggested packages:[39m\n
+      [32mSignature ok[39m\n
+      [32m  vnstati[39m\n
+      [32mThe Subject's Distinguished Name is as follows[39m\n
+      [32mThe following NEW packages will be installed:[39m\n
+      [32mcommonName            :ASN.1 12:'OpenVPN-CA'[39m\n
+      [32m  vnstat[39m\n
+      [32mCertificate is to be certified until Sep 25 12:01:57 2027 GMT (825 days)[39m\n
+      [32m0 upgraded, 1 newly installed, 0 to remove and 3 not upgraded.[39m\n
+      [32mNeed to get 112 kB of archives.[39m\n
+      [32mWrite out database with 1 new entries[39m\n
+      [32mAfter this operation, 336 kB of additional disk space will be used.[39m\n
+      [32mDatabase updated[39m\n
+      [32mGet:1 http://archive.ubuntu.com/ubuntu noble/universe amd64 vnstat amd64 2.12-1 [112 kB][39m\n
+      [32mSynchronizing state of vnstat.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.[39m\n
+      [32mFetched 112 kB in 0s (348 kB/s)[39m\n
+      [32mExecuting: /usr/lib/systemd/systemd-sysv-install enable vnstat[39m\n
+      [32mSelecting previously unselected package vnstat.[39m\n
+      [32m(Reading database ... [39m\r[32m(Reading database ... 5%[39m\r[32m(Reading database ... 10%[39m\r[32m(Reading database ... 15%[39m\r[32m(Reading database ... 20%[39m\r[32m(Reading database ... 25%[39m\r[32m(Reading database ... 30%[39m\r[32m(Reading database ... 35%[39m\r[32m(Reading database ... 40%[39m\r[32m(Reading database ... 45%[39m\r[32m(Reading database ... 50%[39m\r[32m(Reading database ... 55%[39m\r[32m(Reading database ... 60%[39m\r[32m(Reading database ... 65%[39m\r[32m(Reading database ... 70%[39m\r[32m(Reading database ... 75%[39m\r[32m(Reading database ... 80%[39m\r[32m(Reading database ... 85%[39m\r[32m(Reading database ... 90%[39m\r[32m(Reading database ... 95%[39m\r[32m(Reading database ... 100%[39m\r[32m(Reading database ... 122519 files and directories currently installed.)[39m\n
+      [32mPreparing to unpack .../vnstat_2.12-1_amd64.deb ...[39m\n
+      [32mUnpacking vnstat (2.12-1) ...[39m\n
+      [32mSetting up vnstat (2.12-1) ...[39m\n
+      [32mCreated symlink /etc/systemd/system/multi-user.target.wants/vnstat.service → /usr/lib/systemd/system/vnstat.service.[39m\n
+      [32mProcessing triggers for man-db (2.12.0-4build2) ...[39m\n
+      [32m[3/9] Stopping any running OpenVPN service and cleaning up…[39m\n
+      [32m[4/9] Setting up Easy-RSA PKI & generating certificates…[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32m'init-pki' complete; you may now create a CA or requests.[39m\n
+      [32mYour newly created PKI dir is:[39m\n
+      [32mUsing Easy-RSA configuration:[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mCA creation complete. Your new CA certificate is at:[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mDH parameters of size 2048 created at:[39m\n
+      [32m2025-06-22 12:01:57 WARNING: Using --genkey --secret filename is DEPRECATED.  Use --genkey secret filename instead.[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mPrivate-Key and Public-Certificate-Request files created.[39m\n
+      [32mYour files are:[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mCertificate created at:[39m\n
+      [32m[5/9] Copying certs and keys to /etc/openvpn…[39m\n
+      [32m[6/9] Creating user/pass auth files…[39m\n
+      [32m[7/9] Writing server.conf…[39m\n
+      [32m[8/9] Enabling and starting OpenVPN service…[39m\n
+      [32m[9/9] Enabling and starting vnStat service…[39m\n
+      [32m✅ Deployment finished with code: 0[39m\n
+      [32m[1/9] Updating package lists and upgrading system…[39m\n
+      [32mIgn:1 http://security.ubuntu.com/ubuntu noble-security InRelease[39m\n
+      [32mIgn:2 http://archive.ubuntu.com/ubuntu noble InRelease[39m\n
+      [32mIgn:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease[39m\n
+      [32mIgn:1 http://security.ubuntu.com/ubuntu noble-security InRelease[39m\n
+      [32mIgn:2 http://archive.ubuntu.com/ubuntu noble InRelease[39m\n
+      [32mIgn:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease[39m\n
+      [32mHit:1 http://security.ubuntu.com/ubuntu noble-security InRelease[39m\n
+      [32mHit:2 http://archive.ubuntu.com/ubuntu noble InRelease[39m\n
+      [32mHit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease[39m\n
+      [32mReading package lists...[39m\n
+      [32mReading package lists...[39m\n
+      [32mBuilding dependency tree...[39m\n
+      [32mReading state information...[39m\n
+      [32mCalculating upgrade...[39m\n
+      [32mThe following upgrades have been deferred due to phasing:[39m\n
+      [32m  ubuntu-drivers-common[39m\n
+      [32mThe following packages have been kept back:[39m\n
+      [32m  sosreport ubuntu-server-minimal[39m\n
+      [32m0 upgraded, 0 newly installed, 0 to remove and 3 not upgraded.[39m\n
+      [32m[2/9] Installing OpenVPN, Easy-RSA, and vnStat…[39m\n
+      [32mReading package lists...[39m\n
+      [32mBuilding dependency tree...[39m\n
+      [32mReading state information...[39m\n
+      [32mopenvpn is already the newest version (2.6.12-0ubuntu0.24.04.3).[39m\n
+      [32measy-rsa is already the newest version (3.1.7-2).[39m\n
+      [32mcurl is already the newest version (8.5.0-2ubuntu10.6).[39m\n
+      [32mwget is already the newest version (1.21.4-1ubuntu4.1).[39m\n
+      [32mlsb-release is already the newest version (12.0-2).[39m\n
+      [32mca-certificates is already the newest version (20240203).[39m\n
+      [32mSuggested packages:[39m\n
+      [32m  vnstati[39m\n
+      [32mThe following NEW packages will be installed:[39m\n
+      [32m  vnstat[39m\n
+      [32m0 upgraded, 1 newly installed, 0 to remove and 3 not upgraded.[39m\n
+      [32mNeed to get 112 kB of archives.[39m\n
+      [32mAfter this operation, 336 kB of additional disk space will be used.[39m\n
+      [32mGet:1 http://archive.ubuntu.com/ubuntu noble/universe amd64 vnstat amd64 2.12-1 [112 kB][39m\n
+      [32mFetched 112 kB in 0s (348 kB/s)[39m\n
+      [32mSelecting previously unselected package vnstat.[39m\r\n
+      [32m(Reading database ... [39m\r[32m(Reading database ... 5%[39m\r[32m(Reading database ... 10%[39m\r[32m(Reading database ... 15%[39m\r[32m(Reading database ... 20%[39m\r[32m(Reading database ... 25%[39m\r[32m(Reading database ... 30%[39m\r[32m(Reading database ... 35%[39m\r[32m(Reading database ... 40%[39m\r[32m(Reading database ... 45%[39m\r[32m(Reading database ... 50%[39m\r[32m(Reading database ... 55%[39m\r[32m(Reading database ... 60%[39m\r[32m(Reading database ... 65%[39m\r[32m(Reading database ... 70%[39m\r[32m(Reading database ... 75%[39m\r[32m(Reading database ... 80%[39m\r[32m(Reading database ... 85%[39m\r[32m(Reading database ... 90%[39m\r[32m(Reading database ... 95%[39m\r[32m(Reading database ... 100%[39m\r[32m(Reading database ... 122519 files and directories currently installed.)[39m\r\n
+      [32mPreparing to unpack .../vnstat_2.12-1_amd64.deb ...[39m\r\n
+      [32mUnpacking vnstat (2.12-1) ...[39m\r\n
+      [32mSetting up vnstat (2.12-1) ...[39m\r\n
+      [32mCreated symlink /etc/systemd/system/multi-user.target.wants/vnstat.service → /usr/lib/systemd/system/vnstat.service.[39m\r\r\n
+      [32mProcessing triggers for man-db (2.12.0-4build2) ...[39m\r\n
+      [32m[3/9] Stopping any running OpenVPN service and cleaning up…[39m\n
+      [32m[4/9] Setting up Easy-RSA PKI & generating certificates…[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32m'init-pki' complete; you may now create a CA or requests.[39m\n
+      [32mYour newly created PKI dir is:[39m\n
+      [32mUsing Easy-RSA configuration:[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mCA creation complete. Your new CA certificate is at:[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mDH parameters of size 2048 created at:[39m\n
+      [32m2025-06-22 12:01:57 WARNING: Using --genkey --secret filename is DEPRECATED.  Use --genkey secret filename instead.[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mPrivate-Key and Public-Certificate-Request files created.[39m\n
+      [32mYour files are:[39m\n
+      [32mNo Easy-RSA 'vars' configuration file exists![39m\n
+      [32mUsing SSL:[39m\n
+      [32mNotice[39m\n
+      [32m------[39m\n
+      [32mCertificate created at:[39m\n
+      [32m[5/9] Copying certs and keys to /etc/openvpn…[39m\n
+      [32m[6/9] Creating user/pass auth files…[39m\n
+      [32m[7/9] Writing server.conf…[39m\n
+      [32m[8/9] Enabling and starting OpenVPN service…[39m\n
+      [32m[9/9] Enabling and starting vnStat service…[39m\n
+      [32m✅ Deployment finished with code: 0[39m\n
+      [32mWarning: Permanently added '85.9.205.205' (ED25519) to the list of known hosts.[39m\r\n
+      [32mRunning kernel seems to be up-to-date.[39m\n
+      [32mRestarting services...[39m\n
+      [32mService restarts being deferred:[39m\n
+      [32m /etc/needrestart/restart.d/dbus.service[39m\n
+      [32m systemctl restart getty@tty1.service[39m\n
+      [32m systemctl restart openvpn@server.service[39m\n
+      [32m systemctl restart systemd-logind.service[39m\n
+      [32m systemctl restart unattended-upgrades.service[39m\n
+      [32mNo containers need to be restarted.[39m\n
+      [32mUser sessions running outdated binaries:[39m\n
+      [32m root @ user manager service: systemd[14854][39m\n
+      [32mNo VM guests are running outdated hypervisor (qemu) binaries on this host.[39m\n
+      [32m-----[39m\n
+      [32m-----[39m\n
+      [32mUsing configuration from /etc/openvpn/easy-rsa/pki/openssl-easyrsa.cnf[39m\n
+      [32mCheck that the request matches the signature[39m\n
+      [32mSignature ok[39m\n
+      [32mThe Subject's Distinguished Name is as follows[39m\n
+      [32mcommonName            :ASN.1 12:'OpenVPN-CA'[39m\n
+      [32mCertificate is to be certified until Sep 25 12:01:57 2027 GMT (825 days)[39m\n
+      [32mWrite out database with 1 new entries[39m\n
+      [32mDatabase updated[39m\n
+      [32mSynchronizing state of vnstat.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.[39m\n
+      [32mExecuting: /usr/lib/systemd/systemd-sysv-install enable vnstat[39m\n
+      [32m✅ Deployment succeeded[39m
+      """,
+    [34mssh_type[39m: "[32mkey[39m",
+    [34mssh_password[39m: [36mnull[39m,
+    [34mssh_key[39m: "[32m/var/www/aiovpn/storage/app/ssh_keys/id_rsa[39m",
+    [34mport[39m: [35m1194[39m,
+    [34mtransport[39m: "[32mudp[39m",
+    [34mdns[39m: "[32m1.1.1.1[39m",
+    [34menable_ipv6[39m: [35m0[39m,
+    [34menable_logging[39m: [35m0[39m,
+    [34menable_proxy[39m: [35m0[39m,
+    [34mheader1[39m: [35m0[39m,
+    [34mheader2[39m: [35m0[39m,
+  }
+

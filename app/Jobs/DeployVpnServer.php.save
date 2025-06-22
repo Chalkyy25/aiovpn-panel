@@ -54,7 +54,7 @@ class DeployVpnServer implements ShouldQueue
                 'deployment_status' => 'running',
                 'deployment_log'    => "Starting deployment on {$ip} …\n",
             ]);
-
+}
             $script = <<<'BASH'
 #!/bin/bash
 
@@ -65,13 +65,7 @@ export DEBIAN_FRONTEND=noninteractive
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="OpenVPN-CA"
 
-# 🛑 Wait if another package manager is running
-while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 || sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-  echo "⏳ Waiting for other package managers to finish..."
-  sleep 3
-done
-
-# Fix interrupted package operations
+# Fix any interrupted package operations before proceeding
 echo "[0/9] Checking for interrupted package operations…"
 sudo dpkg --force-confdef --force-confold --configure -a
 
@@ -106,14 +100,12 @@ sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta
 echo "[6/9] Creating user/pass auth files…"
 echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file
 sudo chmod 600 /etc/openvpn/auth/psw-file
-
-sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
+sudo bash -c 'cat <<SH > /etc/openvpn/auth/checkpsw.sh
 #!/bin/sh
 PASSFILE="/etc/openvpn/auth/psw-file"
-CORRECT=\$(grep "^\\\$1 " "\$PASSFILE" | cut -d" " -f2-)
-[ "\$2" = "\$CORRECT" ] && exit 0 || exit 1
-EOF'
-
+CORRECT=$(grep "^$1 " "$PASSFILE" | cut -d" " -f2-)
+[ "$2" = "$CORRECT" ] && exit 0 || exit 1
+SH'
 sudo chmod 700 /etc/openvpn/auth/checkpsw.sh
 
 echo "[7/9] Writing server.conf…"
@@ -150,10 +142,13 @@ echo "[9/9] Enabling and starting vnStat service…"
 sudo systemctl enable vnstat
 sudo systemctl restart vnstat
 
-echo "✅ Deployment finished successfully."
-exit 0
+EXIT_CODE=$?
+echo "✅ Deployment finished with code: $EXIT_CODE"
+echo "EXIT_CODE:$EXIT_CODE"
+exit $EXIT_CODE
 
 BASH;
+
             Log::info("DEPLOY_JOB: Before proc_open");
             $proc = proc_open($ssh, [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']], $pipes);
             Log::info("DEPLOY_JOB: After proc_open");
