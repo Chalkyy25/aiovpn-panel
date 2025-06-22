@@ -67,7 +67,7 @@ export EASYRSA_REQ_CN="OpenVPN-CA"
 
 # Fix any interrupted package operations before proceeding
 echo "[0/9] Checking for interrupted package operations…"
-sudo dpkg --configure -a
+sudo dpkg --force-confdef --force-confold --configure -a
 
 echo "[1/9] Updating package lists and upgrading system…"
 sudo apt-get update -y
