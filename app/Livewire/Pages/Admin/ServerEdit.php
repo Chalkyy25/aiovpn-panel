@@ -11,13 +11,13 @@ class ServerEdit extends Component
 {
     public VpnServer $server;
 
-    public $name, $ip, $protocol, $status;
+    public $name, $ip_address, $protocol, $status;
 
     public function mount(VpnServer $server)
     {
         $this->server = $server;
         $this->name = $server->name;
-        $this->ip = $server->ip;
+        $this->ip_address = $server->ip_address;
         $this->protocol = $server->protocol;
         $this->status = $server->status;
     }
@@ -26,14 +26,14 @@ class ServerEdit extends Component
     {
         $this->validate([
             'name' => 'required|string|max:255',
-            'ip' => 'required|ip',
-            'protocol' => 'required|in:OpenVPN,WireGuard',
-            'status' => 'required|in:online,offline'
+            'ip_address' => 'required|ip',
+            'protocol' => 'required|in:openvpn,wireguard',
+            'status' => 'required|in:online,offline,pending'
         ]);
 
         $this->server->update([
             'name' => $this->name,
-            'ip' => $this->ip,
+            'ip_address' => $this->ip_address,
             'protocol' => $this->protocol,
             'status' => $this->status
         ]);

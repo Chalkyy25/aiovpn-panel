@@ -6,9 +6,19 @@
     <div class="max-w-3xl mx-auto py-6">
         <div class="bg-white p-6 rounded shadow">
             <x-input label="Name" wire:model.live="name" class="mb-4" />
-            <x-input label="IP Address" wire:model.live="ip" class="mb-4" />
-            <x-select label="Protocol" wire:model.live="protocol" :options="['OpenVPN' => 'OpenVPN', 'WireGuard' => 'WireGuard']" class="mb-4" />
-            <x-select label="Status" wire:model.live="status" :options="['online' => 'Online', 'offline' => 'Offline']" class="mb-4" />
+            <x-input label="IP Address" wire:model.live="ip_address" class="mb-4" />
+            <x-select 
+                label="Protocol" 
+                wire:model.live="protocol" 
+                :options="['openvpn' => 'OpenVPN', 'wireguard' => 'WireGuard']" 
+                class="mb-4" 
+            />
+            <x-select 
+                label="Status" 
+                wire:model.live="status" 
+                :options="['online' => 'Online', 'offline' => 'Offline', 'pending' => 'Pending']" 
+                class="mb-4" 
+            />
 
             <div class="text-right">
                 <x-button wire:click="save">💾 Save Changes</x-button>
