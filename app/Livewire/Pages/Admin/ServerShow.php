@@ -62,6 +62,17 @@ class ServerShow extends Component
             logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
         }
     }
+    public function getFilteredLogProperty()
+    {
+        $lines = explode("\n", $this->deploymentLog ?? '');
+
+        $filtered = array_filter($lines, function ($line) {
+            return !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)
+                && trim($line) !== '';
+        });
+
+        return $filtered;
+    }
 
     /* ───────── Actions ───────── */
     public function rebootServer(): void
@@ -120,4 +131,5 @@ class ServerShow extends Component
     {
         return view('livewire.pages.admin.server-show');
     }
+
 }

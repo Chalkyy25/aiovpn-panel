@@ -44,11 +44,30 @@
     {{-- 📦 Deployment log --}}
     <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-4">Deployment&nbsp;Logs</h3>
-
-        <pre class="bg-black text-green-400 font-mono text-xs rounded p-4 max-h-[300px] overflow-y-auto">
-{{ $deploymentLog }}
-        </pre>
+        <div id="deploy-log"
+             style="max-height: 300px; overflow-y: auto; background: #181818; color: #eee; font-family: monospace; padding: 1em; border-radius: 8px;"
+             wire:poll.10s="refresh">
+            @foreach($this->filteredLog as $line)
+                @php
+                    $class = '';
+                    if (str_contains($line, '❌') || str_contains(strtolower($line), 'failed')) $class = 'text-red-400';
+                    elseif (str_contains($line, '✅') || str_contains(strtolower($line), 'succeeded')) $class = 'text-green-400';
+                    elseif (str_contains(strtolower($line), 'warning')) $class = 'text-yellow-400';
+                    elseif (str_contains(strtolower($line), 'notice')) $class = 'text-blue-400';
+                @endphp
+                <div class="{{ $class }}">{{ $line }}</div>
+            @endforeach
+        </div>
     </div>
+
+    <script>
+        document.addEventListener('livewire:load', function () {
+            Livewire.hook('message.processed', (message, component) => {
+                let logDiv = document.getElementById('deploy-log');
+                if (logDiv) logDiv.scrollTop = logDiv.scrollHeight;
+            });
+        });
+    </script>
 
     {{-- 📊 Live monitoring --}}
     <div class="bg-white p-6 rounded shadow">
