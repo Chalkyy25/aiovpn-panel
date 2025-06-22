@@ -94,17 +94,21 @@
     {{-- 🛠️  Actions --}}
     <div class="bg-white p-4 sm:p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-4">Actions</h3>
-        <div class="flex flex-col sm:flex-row flex-wrap gap-3">
-            <x-button wire:click="deployServer" wire:loading.attr="disabled" class="bg-blue-600 hover:bg-blue-700 text-white">
+        <div class="flex flex-col sm:flex-row gap-3">
+            <x-button wire:click="deployServer" wire:loading.attr="disabled"
+                class="bg-blue-600 hover:bg-blue-700 text-white flex-1">
                 🚀 Deploy
             </x-button>
-            <x-button wire:click="rebootServer" wire:loading.attr="disabled" class="bg-yellow-500 hover:bg-yellow-600 text-white">
+            <x-button wire:click="rebootServer" wire:loading.attr="disabled"
+                class="bg-yellow-500 hover:bg-yellow-600 text-white flex-1">
                 🔄 Reboot
             </x-button>
-            <x-button wire:click="deleteServer" wire:loading.attr="disabled" class="bg-red-600 hover:bg-red-700 text-white">
+            <x-button wire:click="deleteServer" wire:loading.attr="disabled"
+                class="bg-red-600 hover:bg-red-700 text-white flex-1">
                 🗑️ Delete
             </x-button>
-            <x-button wire:click="generateConfig" wire:loading.attr="disabled" class="bg-green-600 hover:bg-green-700 text-white">
+            <x-button wire:click="generateConfig" wire:loading.attr="disabled"
+                class="bg-black hover:bg-gray-800 text-white flex-1">
                 📅 Client Config
             </x-button>
         </div>
