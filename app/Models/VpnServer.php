@@ -37,12 +37,19 @@ class VpnServer extends Model
      * Append a line to the deployment log.
      */
     public function appendLog(string $line)
-    {
-        Log::info("APPEND_LOG: " . $line);
+{
+    Log::info("APPEND_LOG: " . $line);
+    $existing = trim($this->deployment_log ?? '');
+    $lines = $existing === '' ? [] : explode("\n", $existing);
+
+    // Only append if last line is not the same as current line
+    if (end($lines) !== $line) {
+        $lines[] = $line;
         $this->update([
-            'deployment_log' => trim(($this->deployment_log ?? '') . "\n" . $line),
+            'deployment_log' => implode("\n", $lines),
         ]);
     }
+}
 
     /**
      * Relationship: many clients can be assigned to a VPN server.
