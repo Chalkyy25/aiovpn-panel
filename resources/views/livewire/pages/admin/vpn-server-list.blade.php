@@ -22,9 +22,13 @@
                     <th class="px-4 py-2 text-right">Actions</th>
                 </tr>
             </thead>
+            @php
+                $highlightId = request('highlight');
+            @endphp
+
             <tbody>
                 @foreach ($servers as $server)
-                    <tr class="border-t hover:bg-gray-50" wire:key="server-{{ $server->id }}">
+                    <tr class="border-t hover:bg-gray-50 {{ $highlightId == $server->id ? 'bg-yellow-100 animate-pulse' : '' }}" wire:key="server-{{ $server->id }}">
                         <td class="px-4 py-2 font-medium text-gray-800">{{ $server->name }}</td>
                         <td class="px-4 py-2 text-gray-600">{{ $server->ip }}</td>
                         <td class="px-4 py-2">
@@ -38,6 +42,9 @@
                             </span>
                         </td>
                         <td class="px-4 py-2 text-right space-x-2">
+                            <a href="{{ route('admin.servers.show', $server->id) }}">
+                                <x-button class="bg-blue-600 hover:bg-blue-700 text-white">🔍 View</x-button>
+                            </a>
                             <a href="{{ route('admin.servers.edit', $server->id) }}">
                                 <x-button class="bg-yellow-500 hover:bg-yellow-600 text-white">✏️ Edit</x-button>
                             </a>
