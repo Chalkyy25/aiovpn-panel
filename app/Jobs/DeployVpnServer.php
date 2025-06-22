@@ -215,12 +215,14 @@ BASH;
             $this->vpnServer->update([
                 'deployment_status' => strtolower($statusText),
                 'deployment_log'    => $log,
+                'status'            => $exit === 0 ? 'online' : 'offline',
             ]);
         } catch (\Throwable $e) {
             Log::error('DEPLOY_JOB: Exception: ' . $e->getMessage());
             $this->vpnServer->update([
                 'deployment_status' => 'failed',
                 'deployment_log'    => "❌ Job exception: {$e->getMessage()}\n",
+                'status'            => 'offline',
             ]);
             throw $e; // Let Laravel mark the job as failed
         }
@@ -231,6 +233,7 @@ BASH;
         $this->vpnServer->update([
             'deployment_status' => 'failed',
             'deployment_log'    => "❌ Job exception: {$e->getMessage()}\n",
+            'status'            => 'offline',
         ]);
     }
 }

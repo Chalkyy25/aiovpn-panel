@@ -1,4 +1,4 @@
-<div wire:poll.5s="refreshStatus" class="max-w-4xl mx-auto p-6 bg-white rounded shadow">
+<div wire:poll.5s="refreshStatus" class="max-w-4xl mx-auto p-2 sm:p-6 bg-white rounded shadow">
     <h2 class="text-2xl font-semibold mb-4">
         Server Install Status: {{ $vpnServer->name }}
     </h2>
@@ -15,23 +15,10 @@
     <div>Status: [{{ $deploymentStatus }}]</div>
 
     {{-- Logs --}}
-    <div class="bg-black text-green-400 font-mono p-4 rounded mb-4 h-64 overflow-y-auto text-xs">
-        @php
-            use Illuminate\Support\Str;
-        @endphp
-        @foreach(explode("\n", $deploymentLog) as $line)
-            @if(Str::contains($line, '❌'))
-                <div class="text-red-400">{{ $line }}</div>
-            @elseif(Str::contains($line, 'WARNING'))
-                <div class="text-yellow-400">{{ $line }}</div>
-            @elseif(
-                preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION/', $line)
-                || trim($line) === ''
-            )
-                {{-- skip noisy lines --}}
-            @else
-                <div>{{ $line }}</div>
-            @endif
+    {{-- logs section --}}
+    <div class="bg-black text-green-400 font-mono p-2 sm:p-4 rounded mb-4 h-64 overflow-y-auto overflow-x-auto text-xs">
+        @foreach($this->filteredLog as $log)
+            <div class="{{ $log['color'] }}">{{ $log['text'] }}</div>
         @endforeach
     </div>
 
@@ -54,6 +41,7 @@
             </button>
         </div>
     @endif
+
     {{-- Debug info --}}
     @if (session()->has('debug'))
         <div class="mt-6 p-4 bg-yellow-100 text-black rounded">

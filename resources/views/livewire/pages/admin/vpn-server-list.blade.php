@@ -33,7 +33,7 @@
                         <tr class="border-t hover:bg-gray-50 {{ $highlightId == $server->id ? 'bg-yellow-100 animate-pulse' : '' }}" wire:key="server-{{ $server->id }}">
                             <td class="px-4 py-2 text-gray-500">{{ $server->id }}</td>
                             <td class="px-4 py-2 font-medium text-gray-800">{{ $server->name }}</td>
-                            <td class="px-4 py-2 text-gray-600">{{ $server->ip }}</td>
+                            <td class="px-4 py-2 text-gray-600">{{ $server->ip_address }}</td>
                             <td class="px-4 py-2">
                                 <span class="inline-block px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded">
                                     {{ $server->protocol }}
