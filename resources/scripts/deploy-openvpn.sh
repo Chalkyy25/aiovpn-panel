@@ -100,6 +100,7 @@ sudo systemctl enable openvpn@server
 sudo systemctl restart openvpn@server
 
 echo "[9/9] Enabling and starting vnStat service…"
+echo "== DEPLOYMENT END $(date) =="
 sudo systemctl enable vnstat
 sudo systemctl restart vnstat
 
