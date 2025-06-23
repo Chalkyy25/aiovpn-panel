@@ -26,11 +26,16 @@ class SyncOpenVPNCredentials implements ShouldQueue
         $vpnServer = $this->vpnServer->fresh();
 
         if (!$vpnServer) {
-            Log::error('SyncOpenVPNCredentials: $vpnServer is null. ID: ' . ($this->vpnServer->id ?? 'unknown'));
+             Log::error('SyncOpenVPNCredentials: $vpnServer is null. ID: ' . ($this->vpnServer->id ?? 'unknown'));
             return;
         }
 
         $users = $vpnServer->vpnUsers()->get();
+
+        if (!$users) {
+             Log::error('SyncOpenVPNCredentials: $users is null for vpnServer ID: ' . $vpnServer->id);
+            $users = collect();
+        }
 
         $lines = [];
         foreach ($users as $vpnUser) {
