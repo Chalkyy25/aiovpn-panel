@@ -9,12 +9,12 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-    {
-        Schema::table('vpn_servers', function (Blueprint $table) {
-            //
-        });
-    }
+    public function up()
+{
+    Schema::table('vpn_servers', function (Blueprint $table) {
+        $table->boolean('is_deploying')->default(false);
+    });
+}
 
     /**
      * Reverse the migrations.
