@@ -19,7 +19,7 @@ class VpnUser extends Model
     // Relations
     public function vpnServer()
     {
-	return $this->belongsTo(\App\Models\VpnServer::class, 'vpn_server_id');
+        return $this->belongsTo(\App\Models\VpnServer::class, 'vpn_server_id');
     }
 
     public function client()
