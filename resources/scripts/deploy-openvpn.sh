@@ -8,9 +8,16 @@ export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
 
 # 🛑 Wait if another package manager is running
+MAX_WAIT=120  # seconds
+WAITED=0
 while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 || sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+  if [ $WAITED -ge $MAX_WAIT ]; then
+    echo "❌ Timed out waiting for package manager lock."
+    exit 1
+  fi
   echo "⏳ Waiting for other package managers to finish..."
   sleep 3
+  WAITED=$((WAITED+3))
 done
 
 # Fix interrupted package operations
