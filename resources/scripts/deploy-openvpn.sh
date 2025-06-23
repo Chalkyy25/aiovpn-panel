@@ -9,6 +9,8 @@ export DEBIAN_FRONTEND=noninteractive
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
 
+echo "=== DEPLOYMENT RUN $(date) ==="
+
 # 🛑 Wait if another package manager is running
 MAX_WAIT=120  # seconds
 WAITED=0
