@@ -9,7 +9,7 @@ export DEBIAN_FRONTEND=noninteractive
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
 
-echo "=== DEPLOYMENT RUN $(date) ==="
+echo "=== DEPLOYMENT START $(date) ==="
 
 # 🛑 Wait if another package manager is running
 MAX_WAIT=120  # seconds
@@ -101,6 +101,8 @@ sudo systemctl restart openvpn@server
 
 echo "[9/9] Enabling and starting vnStat service…"
 echo "== DEPLOYMENT END $(date) =="
+
+
 sudo systemctl enable vnstat
 sudo systemctl restart vnstat
 

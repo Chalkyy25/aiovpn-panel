@@ -78,6 +78,7 @@ class DeployVpnServer implements ShouldQueue
             fwrite($pipes[0], $script);
             fclose($pipes[0]);
             Log::info("DEPLOY_JOB: Script sent to remote");
+            Log::info("DEPLOY_JOB: Script length sent: " . strlen($script));
 
             $output = '';
             $error = '';
