@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "SCRIPT RUN START: $(date)"
+echo "SCRIPT RUN START: $(date) $random"
 set -e
 trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
 
