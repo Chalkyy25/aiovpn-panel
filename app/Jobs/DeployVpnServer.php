@@ -77,27 +77,45 @@ class DeployVpnServer implements ShouldQueue
 
             fwrite($pipes[0], $script);
             fclose($pipes[0]);
+
             Log::info("DEPLOY_JOB: Script sent to remote");
             Log::info("DEPLOY_JOB: Script length sent: " . strlen($script));
 
             $output = '';
             $error = '';
-            while (!feof($pipes[1]) || !feof($pipes[2])) {
-                foreach ([1, 2] as $i) {
-                    $line = fgets($pipes[$i]);
-                    if ($line !== false) {
-                        $this->vpnServer->appendLog(rtrim($line, "\r\n"));
-                        if ($i === 1) {
-                            $output .= $line;
-                        } else {
-                            $error .= $line;
+            $streams = [$pipes[1], $pipes[2]];
+            $streamMap = [
+                (int)$pipes[1] => 1,
+                (int)$pipes[2] => 2,
+            ];
+
+            while (count($streams)) {
+                $read = $streams;
+                $write = $except = [];
+                if (stream_select($read, $write, $except, 5) === false) {
+                    break;
+                }
+                foreach ($read as $r) {
+                    $line = fgets($r);
+                    if ($line === false) {
+                        // Remove closed streams
+                        $key = array_search($r, $streams, true);
+                        if ($key !== false) {
+                            fclose($streams[$key]);
+                            unset($streams[$key]);
                         }
+                        continue;
+                    }
+                    $i = $streamMap[(int)$r];
+                    $this->vpnServer->appendLog(rtrim($line, "\r\n"));
+                    if ($i === 1) {
+                        $output .= $line;
+                    } else {
+                        $error .= $line;
                     }
                 }
             }
 
-            fclose($pipes[1]);
-            fclose($pipes[2]);
             proc_close($proc);
 
             Log::info("DEPLOY_JOB: handle() completed for server #" . $this->vpnServer->id);
