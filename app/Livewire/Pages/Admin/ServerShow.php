@@ -62,17 +62,33 @@ class ServerShow extends Component
             logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
         }
     }
-    public function getFilteredLogProperty()
-    {
-        $lines = explode("\n", $this->deploymentLog ?? '');
+	public function getFilteredLogProperty()
+{
+    $lines = explode("\n", $this->deploymentLog ?? '');
 
-        $filtered = array_filter($lines, function ($line) {
-            return !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)
-                && trim($line) !== '';
-        });
+    $filtered = [];
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if (
+            $line === '' ||
+            preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)
+        ) {
+            continue;
+        }
 
-        return $filtered;
+        $color = '';
+        if (str_contains($line, '❌')) $color = 'text-red-400';
+        elseif (str_contains($line, 'WARNING')) $color = 'text-yellow-400';
+        elseif (str_contains($line, '✅')) $color = 'text-green-400';
+
+        $filtered[] = [
+            'text' => $line,
+            'color' => $color,
+        ];
     }
+
+    return $filtered;
+}
 
     /* ───────── Actions ───────── */
     public function rebootServer(): void
@@ -100,13 +116,21 @@ class ServerShow extends Component
         // TODO: generate & return a signed .ovpn file
         session()->flash('status', '📥 .ovpn generation stub triggered (not yet implemented).');
     }
-    public function retryInstallation()
-    {
-        // Your logic to retry the installation, e.g.:
-        dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
-        session()->flash('status-message', 'Deployment retried.');
+public function retryInstallation()
+{
+    if ($this->vpnServer->is_deploying) {
+        session()->flash('status-message', '⚠️ Already deploying.');
+        return;
     }
 
+    $this->vpnServer->update([
+        'deployment_status' => 'queued',
+        'deployment_log' => '',
+    ]);
+
+    dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
+    session()->flash('status-message', '✅ Deployment retried.');
+}
     /* ───────── Helpers ───────── */
     private function makeSshClient(): SSH2
     {

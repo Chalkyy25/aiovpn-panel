@@ -17,9 +17,10 @@
     {{-- Logs --}}
     {{-- logs section --}}
     <div class="bg-black text-green-400 font-mono p-2 sm:p-4 rounded mb-4 h-64 overflow-y-auto overflow-x-auto text-xs">
-        @foreach($this->filteredLog as $log)
-            <div class="{{ $log['color'] }}">{{ $log['text'] }}</div>
-        @endforeach
+      @foreach ($this->filteredLog as $line)
+          <div class="text-sm {{ $line['color'] ?? '' }}">{{ $line['text'] }}</div>
+      @endforeach
+
     </div>
 
     {{-- View Server button once it’s done --}}

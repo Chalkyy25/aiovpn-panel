@@ -4,10 +4,10 @@ namespace App\Jobs;
 
 use App\Models\VpnServer;
 use Illuminate\Bus\Queueable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 
 class DeployVpnServer implements ShouldQueue
 {
@@ -22,18 +22,20 @@ class DeployVpnServer implements ShouldQueue
 
     public function handle(): void
     {
+        // 🔒 Prevent duplicate deployment
+        if ($this->vpnServer->is_deploying) {
+            Log::warning("🚫 Already deploying: Server #{$this->vpnServer->id}");
+            return;
+        }
+
+        $this->vpnServer->update([
+            'is_deploying' => true,
+            'deployment_status' => 'running',
+            'deployment_log' => "🚀 Starting deployment on {$this->vpnServer->ip_address}…\n",
+        ]);
+
         try {
-            if ($this->vpnServer->is_deploying) {
-                Log::warning("DEPLOY_JOB: Server #{$this->vpnServer->id} is already deploying.");
-                return;
-            }
-
-            $this->vpnServer->update([
-                'is_deploying' => true,
-                'deployment_status' => 'running',
-                'deployment_log' => "Starting deployment on {$this->vpnServer->ip_address} …\n",
-            ]);
-
+            // 📦 Prepare connection
             $ip       = $this->vpnServer->ip_address;
             $port     = $this->vpnServer->ssh_port ?? 22;
             $user     = $this->vpnServer->ssh_user;
@@ -42,38 +44,28 @@ class DeployVpnServer implements ShouldQueue
             $keyPath  = $this->vpnServer->ssh_key ?? '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
 
             if ($sshType === 'key' && !is_file($keyPath)) {
-                Log::error("DEPLOY_JOB: SSH key missing at $keyPath");
-                $this->vpnServer->update([
-                    'is_deploying' => false,
-                    'deployment_status' => 'failed',
-                    'deployment_log' => "❌ Missing SSH key: {$keyPath}\n",
-                ]);
+                $this->failWith("❌ SSH key not found at $keyPath");
                 return;
             }
 
-            $opts = "-p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
-            $ssh = $sshType === 'key'
-                ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'"
-                : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
+            $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
+            $sshCmd = $sshType === 'key'
+                ? "ssh -i $keyPath $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'"
+                : "sshpass -p '$password' ssh $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
 
+            // 📜 Load deployment script
             $scriptPath = base_path('resources/scripts/deploy-openvpn.sh');
             if (!is_file($scriptPath)) {
-                $this->vpnServer->update([
-                    'is_deploying' => false,
-                    'deployment_status' => 'failed',
-                    'deployment_log' => "❌ Missing script: {$scriptPath}\n",
-                ]);
+                $this->failWith("❌ Missing deployment script at $scriptPath");
                 return;
             }
             $script = file_get_contents($scriptPath);
 
-            $proc = proc_open($ssh, [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']], $pipes);
+            // 🖥️ Execute via SSH
+            $pipes = [];
+            $proc = proc_open($sshCmd, [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']], $pipes);
             if (!is_resource($proc)) {
-                $this->vpnServer->update([
-                    'is_deploying' => false,
-                    'deployment_status' => 'failed',
-                    'deployment_log' => "❌ Could not open SSH process\n",
-                ]);
+                $this->failWith("❌ Failed to open SSH process");
                 return;
             }
 
@@ -83,75 +75,71 @@ class DeployVpnServer implements ShouldQueue
             $output = '';
             $error = '';
             $streams = [$pipes[1], $pipes[2]];
-            $streamMap = [
-                (int)$pipes[1] => 1,
-                (int)$pipes[2] => 2,
-            ];
+            $map = [(int)$pipes[1] => 'out', (int)$pipes[2] => 'err'];
 
-            while (count($streams)) {
+            while ($streams) {
                 $read = $streams;
-                $write = $except = [];
-                if (stream_select($read, $write, $except, 5) === false) break;
+                if (stream_select($read, $w = null, $e = null, 5) === false) break;
+
                 foreach ($read as $r) {
                     $line = fgets($r);
                     if ($line === false) {
-                        $key = array_search($r, $streams, true);
-                        if ($key !== false) {
-                            fclose($streams[$key]);
-                            unset($streams[$key]);
-                        }
+                        fclose($r);
+                        unset($streams[array_search($r, $streams, true)]);
                         continue;
                     }
-                    $i = $streamMap[(int)$r];
-                    $this->vpnServer->appendLog(rtrim($line, "\r\n"));
-                    if ($i === 1) $output .= $line;
+
+                    $clean = rtrim($line, "\r\n");
+                    $this->vpnServer->appendLog($clean);
+
+                    if ($map[(int)$r] === 'out') $output .= $line;
                     else $error .= $line;
                 }
             }
 
             proc_close($proc);
-            $log = $this->vpnServer->deployment_log . $output . $error;
+            $combined = $this->vpnServer->deployment_log . $output . $error;
+            $exit = preg_match('/EXIT_CODE:(\d+)/', $combined, $m) ? (int)$m[1] : 255;
+            $combined = preg_replace('/EXIT_CODE:\d+/', '', $combined);
 
-            $exit = preg_match('/EXIT_CODE:(\d+)/', $log, $matches) ? (int)$matches[1] : 255;
-            $log = preg_replace('/EXIT_CODE:\d+\s*/', '', $log);
-
-            $lines = explode("\n", $log);
-            $filtered = array_filter($lines, fn($line) =>
-                !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters/', $line) &&
-                !preg_match('/DEPRECATED OPTION/', $line) &&
-                trim($line) !== ''
+            // 🧹 Filter
+            $lines = explode("\n", $combined);
+            $filtered = array_filter($lines, fn($l) =>
+                !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION/', $l)
+                && trim($l) !== ''
             );
-            $log = implode("\n", $filtered);
 
-            $statusText = $exit === 0 ? 'succeeded' : 'failed';
-            $log .= $exit === 0
+            $finalLog = implode("\n", $filtered);
+            $status = $exit === 0 ? 'succeeded' : 'failed';
+
+            $finalLog .= $exit === 0
                 ? "\n✅ Deployment succeeded"
-                : "\n❌ Deployment failed with exit code {$exit}";
+                : "\n❌ Deployment failed (exit code: $exit)";
 
             $this->vpnServer->update([
                 'is_deploying' => false,
-                'deployment_status' => strtolower($statusText),
-                'deployment_log' => $log,
+                'deployment_status' => $status,
+                'deployment_log' => $finalLog,
                 'status' => $exit === 0 ? 'online' : 'offline',
             ]);
         } catch (\Throwable $e) {
-            Log::error('DEPLOY_JOB: Exception: ' . $e->getMessage());
-            $this->vpnServer->update([
-                'is_deploying' => false,
-                'deployment_status' => 'failed',
-                'deployment_log' => "❌ Job exception: {$e->getMessage()}\n",
-                'status' => 'offline',
-            ]);
-            throw $e;
+            $this->failWith("❌ Exception: " . $e->getMessage(), $e);
         }
     }
 
     public function failed(\Throwable $e): void
     {
+        $this->failWith("❌ Job exception: " . $e->getMessage(), $e);
+    }
+
+    private function failWith(string $message, \Throwable $e = null): void
+    {
+        Log::error('DEPLOY_JOB: ' . $message);
+        if ($e) Log::error($e);
         $this->vpnServer->update([
             'is_deploying' => false,
             'deployment_status' => 'failed',
-            'deployment_log' => "❌ Job exception: {$e->getMessage()}\n",
+            'deployment_log' => $message,
             'status' => 'offline',
         ]);
     }
