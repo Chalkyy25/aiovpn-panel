@@ -62,34 +62,35 @@ class ServerShow extends Component
             logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
         }
     }
-	public function getFilteredLogProperty()
+public function getFilteredLogProperty()
 {
     $lines = explode("\n", $this->deploymentLog ?? '');
 
     $filtered = [];
+    $seen = [];
+
     foreach ($lines as $line) {
         $line = trim($line);
+
         if (
             $line === '' ||
             preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)
-        ) {
-            continue;
-        }
+        ) continue;
+
+        // Avoid exact duplicates
+        if (in_array($line, $seen)) continue;
+        $seen[] = $line;
 
         $color = '';
         if (str_contains($line, '❌')) $color = 'text-red-400';
-        elseif (str_contains($line, 'WARNING')) $color = 'text-yellow-400';
         elseif (str_contains($line, '✅')) $color = 'text-green-400';
+        elseif (str_contains($line, 'WARNING')) $color = 'text-yellow-400';
 
-        $filtered[] = [
-            'text' => $line,
-            'color' => $color,
-        ];
+        $filtered[] = ['text' => $line, 'color' => $color];
     }
 
     return $filtered;
 }
-
     /* ───────── Actions ───────── */
     public function rebootServer(): void
     {

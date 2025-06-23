@@ -42,17 +42,8 @@
              style="max-height: 300px; overflow-y: auto; background: #181818; color: #eee; font-family: monospace; padding: 1em; border-radius: 8px;"
              class="overflow-x-auto text-xs"
              wire:poll.10s="refresh">
-            @foreach($this->filteredLog as $line)
-             @php
-                $class = '';
-                if (str_contains($line, '❌') || str_contains(strtolower($line), 'failed')) $class = 'text-red-400';
-                elseif (str_contains($line, '✅') || str_contains(strtolower($line), 'succeeded')) $class = 'text-green-400';
-                elseif (str_contains(strtolower($line), 'warning')) $class = 'text-yellow-400';
-                elseif (str_contains(strtolower($line), 'notice')) $class = 'text-blue-400';
-            @endphp
-            <div class="{{ $class }}">{{ $line }}</div>
-            @endforeach
-                <div class="{{ $class }}">{{ $line }}</div>
+            @foreach($this->filteredLog as $entry)
+                <div class="{{ $entry['color'] }}">{{ $entry['text'] }}</div>
             @endforeach
         </div>
     </div>
