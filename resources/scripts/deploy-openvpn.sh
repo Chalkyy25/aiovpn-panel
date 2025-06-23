@@ -1,105 +1,68 @@
 #!/bin/bash
 
+log_step() {
+  echo "[${1}/9] ${2}..."
+}
+
 echo "SCRIPT RUN START: $(date)"
-set -e
-trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
-
-export DEBIAN_FRONTEND=noninteractive
-export EASYRSA_BATCH=1
-export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
-
 echo "=== DEPLOYMENT START $(date) ==="
 
-# Safe dpkg lock wait loop
+# Ensure no apt/dpkg locks
 echo "Checking for package manager locks..."
-MAX_WAIT=120
-WAITED=0
-while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
-      sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-  if [ "$WAITED" -ge "$MAX_WAIT" ]; then
-    echo "Timed out waiting for package manager lock."
-    exit 1
-  fi
-  echo "🔒 Waiting for other package managers... ($WAITED seconds)"
-  sleep 3
-  WAITED=$((WAITED + 3))
-done
+sleep 1
+lsof /var/lib/dpkg/lock-frontend && killall apt apt-get dpkg
 
-echo "[0/9] Fixing any broken dpkg state..."
-sudo dpkg --configure -a --force-confdef --force-confold
+log_step 0 "Fixing any broken dpkg state"
+dpkg --configure -a
 
-echo "[1/9] Updating packages..."
-sudo apt-get update -y
-sudo apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+log_step 1 "Updating packages"
+apt update -y
 
-echo "[2/9] Installing dependencies..."
-sudo apt-get install -y openvpn easy-rsa vnstat curl wget lsb-release ca-certificates -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+log_step 2 "Installing dependencies"
+apt install -y openvpn easy-rsa ca-certificates curl wget lsb-release vnstat
 
-echo "[3/9] Cleaning OpenVPN config and stopping any service..."
-sudo systemctl stop openvpn@server || true
-sudo rm -rf /etc/openvpn/*
-sudo mkdir -p /etc/openvpn/auth
-: > /etc/openvpn/ipp.txt
+log_step 3 "Cleaning OpenVPN config and stopping any service"
+systemctl stop openvpn@server || true
+rm -rf /etc/openvpn/easy-rsa /etc/openvpn/server.conf
+mkdir -p /etc/openvpn/easy-rsa
+cp -r /usr/share/easy-rsa/* /etc/openvpn/easy-rsa
+cd /etc/openvpn/easy-rsa
+chmod +x *
 
-echo "[4/9] Generating PKI and certificates..."
-EASYRSA_DIR=/etc/openvpn/easy-rsa
-sudo cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
-cd "$EASYRSA_DIR"
-sudo ./easyrsa init-pki
-sudo EASYRSA_REQ_CN="OpenVPN-CA" sudo -E ./easyrsa build-ca nopass
-sudo ./easyrsa gen-dh
-sudo openvpn --genkey --secret ta.key
-sudo EASYRSA_REQ_CN="server" sudo -E ./easyrsa gen-req server nopass
-sudo EASYRSA_BATCH=1 ./easyrsa sign-req server server
+log_step 4 "Generating PKI and certificates"
+./easyrsa init-pki
+echo | ./easyrsa build-ca nopass
 
-echo "[5/9] Copying keys and certs to OpenVPN folder..."
-sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
+log_step 5 "Generating server certificate and key"
+EASYRSA_BATCH=1 ./easyrsa gen-req server nopass
+echo | EASYRSA_BATCH=1 ./easyrsa sign-req server server
 
-echo "[6/9] Creating user/pass authentication files..."
-echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file
-sudo chmod 600 /etc/openvpn/auth/psw-file
+log_step 6 "Generating Diffie-Hellman parameters"
+./easyrsa gen-dh
 
-sudo tee /etc/openvpn/auth/checkpsw.sh > /dev/null <<'EOF'
-#!/bin/sh
-PASSFILE="/etc/openvpn/auth/psw-file"
-CORRECT=$(grep "^$1 " "$PASSFILE" | cut -d" " -f2-)
-[ "$2" = "$CORRECT" ] && exit 0 || exit 1
-EOF
-sudo chmod 700 /etc/openvpn/auth/checkpsw.sh
-
-echo "[7/9] Writing server.conf..."
-sudo tee /etc/openvpn/server.conf > /dev/null <<'CONF'
+log_step 7 "Creating server.conf"
+cat > /etc/openvpn/server.conf <<EOF
 port 1194
 proto udp
 dev tun
-ca ca.crt
-cert server.crt
-key server.key
-dh dh.pem
+ca /etc/openvpn/easy-rsa/pki/ca.crt
+cert /etc/openvpn/easy-rsa/pki/issued/server.crt
+key /etc/openvpn/easy-rsa/pki/private/server.key
+dh /etc/openvpn/easy-rsa/pki/dh.pem
 auth SHA256
-tls-auth ta.key 0
 topology subnet
 server 10.8.0.0 255.255.255.0
-ifconfig-pool-persist /etc/openvpn/ipp.txt
+ifconfig-pool-persist ipp.txt
 keepalive 10 120
-cipher AES-256-CBC
-user nobody
-group nogroup
 persist-key
 persist-tun
-status /etc/openvpn/openvpn-status.log
+status openvpn-status.log
 verb 3
-auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-env
-script-security 3
-CONF
+EOF
 
-echo "[8/9] Starting OpenVPN service..."
-sudo systemctl enable openvpn@server
-sudo systemctl restart openvpn@server
+log_step 8 "Enabling and starting OpenVPN service"
+systemctl enable openvpn@server
+systemctl start openvpn@server
 
-echo "[9/9] Starting vnStat service..."
-sudo systemctl enable vnstat
-sudo systemctl restart vnstat
-
-echo "Deployment finished successfully."
-exit 0
+log_step 9 "Done"
+echo "✅ Deployment completed successfully!"
