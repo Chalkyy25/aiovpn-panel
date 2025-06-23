@@ -45,13 +45,11 @@ EASYRSA_DIR=/etc/openvpn/easy-rsa
 sudo cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
 cd "$EASYRSA_DIR"
 sudo ./easyrsa init-pki
-sudo EASYRSA_REQ_CN="$EASYRSA_REQ_CN" ./easyrsa build-ca nopass
+sudo EASYRSA_BATCH=1 EASYRSA_REQ_CN="OpenVPN-CA" ./easyrsa build-ca nopass
 sudo ./easyrsa gen-dh
 sudo openvpn --genkey --secret ta.key
-sudo EASYRSA_REQ_CN="server" ./easyrsa gen-req server nopass
-sudo ./easyrsa sign-req server server <<EOF
-yes
-EOF
+sudo EASYRSA_BATCH=1 EASYRSA_REQ_CN="server" ./easyrsa gen-req server nopass
+echo yes | sudo ./easyrsa sign-req server server
 
 echo "[5/9] Copying certs and keys to /etc/openvpn…"
 sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
