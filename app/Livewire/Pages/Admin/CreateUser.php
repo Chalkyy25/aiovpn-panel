@@ -52,7 +52,7 @@ if ($user->role === 'client') {
     $vpnServer = \App\Models\VpnServer::find($serverId);
 
     $vpnUsername = strtolower(str_replace(' ', '', $user->name)) . rand(1000, 9999);
-    $vpnPassword = \Str::random(10);
+    $vpnPassword = Str::random(10);
 
     $vpnUser = \App\Models\VpnUser::create([
         'vpn_server_id' => $vpnServer->id,
