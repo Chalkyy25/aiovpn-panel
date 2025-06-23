@@ -3,6 +3,8 @@
 set -e
 trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
 
+set -x  # Debug: print each command
+
 export DEBIAN_FRONTEND=noninteractive
 export EASYRSA_BATCH=1
 export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
@@ -43,11 +45,13 @@ EASYRSA_DIR=/etc/openvpn/easy-rsa
 sudo cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
 cd "$EASYRSA_DIR"
 sudo ./easyrsa init-pki
-sudo ./easyrsa build-ca nopass
+sudo EASYRSA_REQ_CN="$EASYRSA_REQ_CN" ./easyrsa build-ca nopass
 sudo ./easyrsa gen-dh
 sudo openvpn --genkey --secret ta.key
-sudo ./easyrsa gen-req server nopass
-sudo ./easyrsa sign-req server server
+sudo EASYRSA_REQ_CN="server" ./easyrsa gen-req server nopass
+sudo ./easyrsa sign-req server server <<EOF
+yes
+EOF
 
 echo "[5/9] Copying certs and keys to /etc/openvpn…"
 sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
