@@ -24,7 +24,12 @@ class SyncOpenVPNCredentials implements ShouldQueue
     public function handle(): void
     {
         $vpnServer = $this->vpnServer->fresh();
+
+        // Ensure $users is always iterable
         $users = $vpnServer->vpnUsers ?? collect();
+        if (!is_iterable($users)) {
+            $users = collect();
+        }
 
         $lines = [];
         foreach ($users as $vpnUser) {
