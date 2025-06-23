@@ -2,50 +2,54 @@
 
 namespace App\Jobs;
 
-use App\Models\Client;
+use App\Models\VpnServer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class SyncOpenVPNCredentials implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $client;
+    protected $vpnServer;
 
-    public function __construct(Client $client)
+    public function __construct(VpnServer $vpnServer)
     {
-        $this->client = $client;
+        $this->vpnServer = $vpnServer;
     }
 
     public function handle(): void
     {
-$client = $this->client->load('vpnServer');
-$server = $client->vpnServer;
-        $ip = $server->ip;
+        $vpnServer = $this->vpnServer->fresh();
+        $users = $vpnServer->vpnUsers ?? collect();
+
+        $lines = [];
+        foreach ($users as $vpnUser) {
+            $lines[] = "{$vpnUser->username} {$vpnUser->password}";
+        }
+
+        $fileContents = implode("\n", $lines) . "\n";
+        $ip = $vpnServer->ip_address;
         $sshUser = 'root';
-        $sshKey = storage_path('ssh/id_rsa');
+        $sshKey = storage_path('app/ssh_keys/id_rsa');
 
-        $username = $this->client->username;
-        $password = $this->client->password;
+        $remoteFile = "/etc/openvpn/auth/psw-file";
+        $tmpFile = storage_path("app/psw-file-{$vpnServer->id}.txt");
+        file_put_contents($tmpFile, $fileContents);
 
-        $line = "$username $password\n";
-        $remoteFile = "/etc/openvpn/psw-file";
-
-        // Prepare echo command to safely append credentials
-        $escapedLine = escapeshellarg($line);
-
-        $cmd = <<<EOD
-ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip "echo $escapedLine >> $remoteFile && sort -u $remoteFile -o $remoteFile"
-EOD;
-
+        $cmd = "scp -i {$sshKey} -o StrictHostKeyChecking=no {$tmpFile} {$sshUser}@{$ip}:{$remoteFile}";
         exec($cmd, $output, $status);
 
         if ($status !== 0) {
-            \Log::error("Failed to sync credentials for client {$username} to VPN server {$ip}");
+            Log::error("Failed to sync VPN credentials for server {$ip}. Output: " . implode("\n", $output));
+        } else {
+            Log::info("✅ Synced " . count($lines) . " VPN credentials to {$ip}");
         }
+
+        // Optionally, clean up temp file
+        @unlink($tmpFile);
     }
 }

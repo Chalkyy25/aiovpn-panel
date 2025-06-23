@@ -11,24 +11,21 @@
         <!-- Name -->
         <div>
             <x-label for="name" value="Name" />
-            <x-input id="name" type="text" wire:model.defer="name" class="w-full"
-                placeholder="Enter name" />
+            <x-input id="name" type="text" wire:model.defer="name" class="w-full" placeholder="Enter name" />
             @error('name') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
         <!-- Email -->
         <div>
             <x-label for="email" value="Email" />
-            <x-input id="email" type="email" wire:model.defer="email" class="w-full"
-                placeholder="Enter email" />
+            <x-input id="email" type="email" wire:model.defer="email" class="w-full" placeholder="Enter email" />
             @error('email') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
         <!-- Password -->
         <div>
             <x-label for="password" value="Password" />
-            <x-input id="password" type="password" wire:model.defer="password" class="w-full"
-                placeholder="Enter password" />
+            <x-input id="password" type="password" wire:model.defer="password" class="w-full" placeholder="Enter password" />
             @error('password') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
@@ -43,6 +40,20 @@
             </select>
             @error('role') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
+
+        <!-- Show VPN Server selector ONLY if client -->
+        @if($role === 'client')
+        <div>
+            <x-label for="vpn_server_id" value="Assign VPN Server" />
+            <select id="vpn_server_id" wire:model.defer="vpn_server_id" class="w-full">
+                <option value="">-- Select Server --</option>
+                @foreach($vpnServers as $server)
+                    <option value="{{ $server->id }}">{{ $server->name }} ({{ $server->ip_address }})</option>
+                @endforeach
+            </select>
+            @error('vpn_server_id') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
+        </div>
+        @endif
 
         <!-- Submit -->
         <div class="flex justify-end">
