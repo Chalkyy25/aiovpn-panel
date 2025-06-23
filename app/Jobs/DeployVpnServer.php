@@ -43,8 +43,8 @@ class DeployVpnServer implements ShouldQueue
 
             $opts = "-p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
             $ssh = $sshType === 'key'
-                ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s && echo EXIT_CODE:\$?'"
-                : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'stdbuf -oL -eL bash -s && echo EXIT_CODE:\$?'";
+                ? "ssh -i {$keyPath} {$opts} {$user}@{$ip} 'bash -se && echo EXIT_CODE:\$?'"
+                : "sshpass -p '{$password}' ssh {$opts} {$user}@{$ip} 'bash -se && echo EXIT_CODE:\$?'";
 
             $this->vpnServer->update([
                 'deployment_status' => 'running',
