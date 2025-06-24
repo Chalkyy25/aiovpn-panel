@@ -1,7 +1,9 @@
 #!/bin/bash
 
+set -e
+
 log_step() {
-  echo "[${1}/9] ${2}..."
+  echo "[${1}/11] ${2}..."
 }
 
 echo "SCRIPT RUN START: $(date)"
@@ -10,7 +12,7 @@ echo "=== DEPLOYMENT START $(date) ==="
 # Ensure no apt/dpkg locks
 echo "Checking for package manager locks..."
 sleep 1
-lsof /var/lib/dpkg/lock-frontend && killall apt apt-get dpkg
+lsof /var/lib/dpkg/lock-frontend && killall apt apt-get dpkg || true
 
 log_step 0 "Fixing any broken dpkg state"
 dpkg --configure -a
@@ -40,7 +42,11 @@ echo | EASYRSA_BATCH=1 ./easyrsa sign-req server server
 log_step 6 "Generating Diffie-Hellman parameters"
 ./easyrsa gen-dh
 
-log_step 7 "Creating server.conf"
+log_step 7 "Creating password file for user authentication"
+echo "vpnuser:vpnpassword" > /etc/openvpn/psw-file
+chmod 600 /etc/openvpn/psw-file
+
+log_step 8 "Creating server.conf"
 cat > /etc/openvpn/server.conf <<EOF
 port 1194
 proto udp
@@ -58,11 +64,17 @@ persist-key
 persist-tun
 status openvpn-status.log
 verb 3
+plugin /usr/lib/openvpn/openvpn-auth-pam.so login
+# Or for password file auth (uncomment if using):
+# auth-user-pass-verify /etc/openvpn/checkpsw.sh via-file
+# script-security 3
+# client-cert-not-required
+# username-as-common-name
 EOF
 
-log_step 8 "Enabling and starting OpenVPN service"
+log_step 9 "Enabling and starting OpenVPN service"
 systemctl enable openvpn@server
-systemctl start openvpn@server
+systemctl restart openvpn@server
 
-log_step 9 "Done"
+log_step 10 "Done"
 echo "✅ Deployment completed successfully!"
