@@ -1,3 +1,4 @@
+@php use Illuminate\Support\Str; @endphp
 <div>
     {{-- Header with action buttons --}}
     <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -70,27 +71,58 @@
 
     {{-- 📊 Live monitoring --}}
     <div class="bg-white p-4 sm:p-6 rounded shadow">
-        <h3 class="text-lg font-bold mb-4">Live&nbsp;Monitoring</h3>
+        <h3 class="text-lg font-bold mb-4">Live Monitoring</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {{-- Uptime --}}
             <div class="bg-blue-50 rounded p-3">
                 <span class="text-blue-600">🕒</span>
                 <span class="font-medium text-gray-700">Uptime:</span>
-                <span>{{ $uptime }}</span>
+                <div class="mt-1 text-gray-800">
+                    {{ trim(Str::before($uptime, 'load average')) ?: 'No data' }}
+                </div>
+                <div class="text-xs text-gray-500">
+                    Load: {{ trim(Str::after($uptime, 'load average:')) ?: 'No data' }}
+                </div>
             </div>
+            {{-- CPU --}}
             <div class="bg-purple-50 rounded p-3">
                 <span class="text-purple-600">🧠</span>
                 <span class="font-medium text-gray-700">CPU:</span>
-                <span>{{ $cpu }}</span>
+                <div class="mt-1 text-gray-800">
+                    @php
+                        preg_match('/([\d\.]+) us, ([\d\.]+) sy, [\d\.]+ ni, ([\d\.]+) id/', $cpu, $matches);
+                    @endphp
+                    Usage:
+                    <span class="font-semibold">{{ $matches[1] ?? '?' }}%</span> user,
+                    <span class="font-semibold">{{ $matches[2] ?? '?' }}%</span> system,
+                    <span class="font-semibold">{{ $matches[3] ?? '?' }}%</span> idle
+                </div>
             </div>
+            {{-- Memory --}}
             <div class="bg-indigo-50 rounded p-3">
                 <span class="text-indigo-600">📀</span>
                 <span class="font-medium text-gray-700">Memory:</span>
-                <span>{{ $memory }}</span>
+                <div class="mt-1 text-gray-800">
+                    @php
+                        preg_match('/Mem:\s*([\d\.]+\w*)\s*([\d\.]+\w*)\s*([\d\.]+\w*)/', $memory, $mem);
+                    @endphp
+                    Total: <span class="font-semibold">{{ $mem[1] ?? '?' }}</span>,
+                    Used: <span class="font-semibold">{{ $mem[2] ?? '?' }}</span>,
+                    Free: <span class="font-semibold">{{ $mem[3] ?? '?' }}</span>
+                </div>
             </div>
+            {{-- Bandwidth --}}
             <div class="bg-teal-50 rounded p-3">
                 <span class="text-teal-600">🌐</span>
                 <span class="font-medium text-gray-700">Bandwidth:</span>
-                <span>{{ $bandwidth }}</span>
+                <div class="mt-1 text-gray-800">
+                    @php
+                        $bw = explode(';', str_replace([',', "\n"], ['.', ''], $bandwidth));
+                    @endphp
+                    Interface: <span class="font-semibold">{{ $bw[0] ?? '?' }}</span><br>
+                    Today: <span class="font-semibold">{{ $bw[2] ?? '?' }}</span> transferred<br>
+                    Rate: <span class="font-semibold">{{ $bw[5] ?? '?' }}</span>
+                </div>
             </div>
         </div>
     </div>                 
