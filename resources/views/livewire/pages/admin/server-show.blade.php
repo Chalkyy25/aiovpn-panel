@@ -20,7 +20,7 @@
                 wire:click="deleteServer"
                 onclick="return confirm('Are you sure you want to DELETE this server? This cannot be undone.')"
                 class="bg-red-600 text-white"
-            >🗑️ Delete</x-button>
+            >🗑️ Delete</button>
             <x-button
                 wire:click="generateConfig"
                 class="bg-black text-white"
