@@ -131,6 +131,9 @@ class ServerShow extends Component
 
         dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
         session()->flash('status', '✅ Deployment retried.');
+
+        // Immediately refresh state so logs update in UI
+        $this->refresh();
     }
 
     public function restartVpn(): void
