@@ -81,7 +81,9 @@
             });
         });
     </script>
-
+<button wire:click="deployServer" class="bg-green-600 text-white px-4 py-2 rounded">
+    Test Deploy (No Confirm)
+</button>
     {{-- 📊 Live monitoring --}}
     <div class="bg-white p-4 sm:p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-4">Live Monitoring</h3>
@@ -141,6 +143,4 @@
     </div>                 
 </div>
 
-<button wire:click="deployServer" class="bg-green-600 text-white px-4 py-2 rounded">
-    Test Deploy (No Confirm)
-</button>
+
