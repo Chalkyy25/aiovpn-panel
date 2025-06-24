@@ -14,7 +14,7 @@
             </div>
         </div>
         <!-- Redeploy Confirmation Modal -->
-        <div x-show="confirmRedeploy" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div x-show="confirmRedeploy" x-cloak class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
             <div class="bg-white p-6 rounded shadow">
                 <p class="mb-4">Are you sure you want to redeploy this server?</p>
                 <div class="flex gap-2">
@@ -24,7 +24,7 @@
             </div>
         </div>
         <!-- Restart Confirmation Modal -->
-        <div x-show="confirmRestart" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div x-show="confirmRestart" x-cloak class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
             <div class="bg-white p-6 rounded shadow">
                 <p class="mb-4">Are you sure you want to restart the VPN?</p>
                 <div class="flex gap-2">
@@ -34,7 +34,7 @@
             </div>
         </div>
         <!-- Delete Confirmation Modal -->
-        <div x-show="confirmDelete" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div x-show="confirmDelete" x-cloak class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
             <div class="bg-white p-6 rounded shadow">
                 <p class="mb-4">Are you sure you want to <b>delete</b> this server? This cannot be undone.</p>
                 <div class="flex gap-2">
