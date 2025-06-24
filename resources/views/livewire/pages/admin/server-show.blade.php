@@ -6,21 +6,21 @@
             Server Status: {{ $vpnServer->name }}
         </h2>
         <div class="flex flex-wrap gap-2">
-            <button
+            <x-button
                 wire:click="deployServer"
                 onclick="return confirm('Are you sure you want to redeploy this server?')"
                 class="bg-blue-600 text-white"
-            >🚀 Install / Re-Deploy</button>
-            <button
+            >🚀 Install / Re-Deploy</x-button>
+            <x-button
                 wire:click="restartVpn"
                 onclick="return confirm('Are you sure you want to restart the VPN?')"
                 class="bg-yellow-500 text-white"
-            >🔁 Restart VPN</button>
-            <button
+            >🔁 Restart VPN</x-button>
+            <x-button
                 wire:click="deleteServer"
                 onclick="return confirm('Are you sure you want to DELETE this server? This cannot be undone.')"
                 class="bg-red-600 text-white"
-            >🗑️ Delete</button>
+            >🗑️ Delete</x-button>
             <x-button
                 wire:click="generateConfig"
                 class="bg-black text-white"
@@ -140,3 +140,7 @@
         </div>
     </div>                 
 </div>
+
+<button wire:click="deployServer" class="bg-green-600 text-white px-4 py-2 rounded">
+    Test Deploy (No Confirm)
+</button>
