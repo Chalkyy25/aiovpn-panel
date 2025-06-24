@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
+use Symfony\Component\Process\Process;
 
 class DeployVpnServer implements ShouldQueue
 {
