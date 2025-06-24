@@ -14,41 +14,39 @@ class ServerShow extends Component
     /* ───────── State ───────── */
     public VpnServer $vpnServer;
 
-    public string $uptime          = '…';
-    public string $cpu             = '…';
-    public string $memory          = '…';
-    public string $bandwidth       = '…';
+    public string $uptime           = '…';
+    public string $cpu              = '…';
+    public string $memory           = '…';
+    public string $bandwidth        = '…';
     public string $deploymentStatus = '…';
-    public string $deploymentLog   = '';
+    public string $deploymentLog    = '';
 
     /* ───────── Lifecycle ───────── */
     public function mount(VpnServer $vpnServer): void
     {
         $this->vpnServer = $vpnServer;
 
-        // quick validation so we don't hammer logs if the row is bad
         if (blank($vpnServer->ip_address)) {
             logger()->error("Server {$vpnServer->id} has no IP address!");
             $this->uptime = '❌ Missing IP';
             return;
         }
 
-        $this->refresh(); // prime data on first load
+        $this->refresh();
     }
 
     /* ───────── Polling action (called by wire:poll) ───────── */
     public function refresh(): void
     {
         $this->vpnServer->refresh();
-        $this->deploymentLog = $this->vpnServer->deployment_log; // <-- Add this
+        $this->deploymentLog    = $this->vpnServer->deployment_log;
+        $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
         if (blank($this->vpnServer->ip_address)) {
             logger()->warning("Server #{$this->vpnServer->id} has no IP address during refresh!");
             $this->uptime = '❌ Missing IP';
             return;
         }
-
-        $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
         try {
             $ssh = $this->makeSshClient();
@@ -62,35 +60,37 @@ class ServerShow extends Component
             logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
         }
     }
-public function getFilteredLogProperty()
-{
-    $lines = explode("\n", $this->deploymentLog ?? '');
 
-    $filtered = [];
-    $seen = [];
+    public function getFilteredLogProperty()
+    {
+        $lines    = explode("\n", $this->deploymentLog ?? '');
+        $filtered = [];
+        $seen     = [];
 
-    foreach ($lines as $line) {
-        $line = trim($line);
+        foreach ($lines as $line) {
+            $line = trim($line);
 
-        if (
-            $line === '' ||
-            preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)
-        ) continue;
+            if (
+                $line === '' ||
+                preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)
+            ) continue;
 
-        // Avoid exact duplicates
-        if (in_array($line, $seen)) continue;
-        $seen[] = $line;
+            if (in_array($line, $seen)) continue;
+            $seen[] = $line;
 
-        $color = '';
-        if (str_contains($line, '❌')) $color = 'text-red-400';
-        elseif (str_contains($line, '✅')) $color = 'text-green-400';
-        elseif (str_contains($line, 'WARNING')) $color = 'text-yellow-400';
+            $color = match (true) {
+                str_contains($line, '❌')     => 'text-red-400',
+                str_contains($line, '✅')     => 'text-green-400',
+                str_contains($line, 'WARNING') => 'text-yellow-400',
+                default                       => '',
+            };
 
-        $filtered[] = ['text' => $line, 'color' => $color];
+            $filtered[] = ['text' => $line, 'color' => $color];
+        }
+
+        return $filtered;
     }
 
-    return $filtered;
-}
     /* ───────── Actions ───────── */
     public function rebootServer(): void
     {
@@ -112,26 +112,38 @@ public function getFilteredLogProperty()
     }
 
     /** Placeholder – swap in real config generator later */
-    public function generateOvpn(): void
+    public function generateConfig(): void
     {
-        // TODO: generate & return a signed .ovpn file
-        session()->flash('status', '📥 .ovpn generation stub triggered (not yet implemented).');
-    }
-public function retryInstallation()
-{
-    if ($this->vpnServer->is_deploying) {
-        session()->flash('status-message', '⚠️ Already deploying.');
-        return;
+        session()->flash('message', '📥 Client config generation triggered.');
     }
 
-    $this->vpnServer->update([
-        'deployment_status' => 'queued',
-        'deployment_log' => '',
-    ]);
+    public function deployServer(): void
+    {
+        if ($this->vpnServer->is_deploying) {
+            session()->flash('status', '⚠️ Already deploying.');
+            return;
+        }
 
-    dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
-    session()->flash('status-message', '✅ Deployment retried.');
-}
+        $this->vpnServer->update([
+            'deployment_status' => 'queued',
+            'deployment_log'    => '',
+        ]);
+
+        dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
+        session()->flash('status', '✅ Deployment retried.');
+    }
+
+    public function restartVpn(): void
+    {
+        try {
+            $ssh = $this->makeSshClient();
+            $ssh->exec('systemctl restart openvpn@server');
+            session()->flash('message', '✅ OpenVPN service restarted.');
+        } catch (\Throwable $e) {
+            session()->flash('message', '❌ Restart failed: ' . $e->getMessage());
+        }
+    }
+
     /* ───────── Helpers ───────── */
     private function makeSshClient(): SSH2
     {
@@ -139,12 +151,11 @@ public function retryInstallation()
 
         $ssh = new SSH2($this->vpnServer->ip_address, $this->vpnServer->ssh_port);
 
-        // credential handling
         if ($this->vpnServer->ssh_type === 'key') {
             if (blank($this->vpnServer->ssh_key) || !is_file($this->vpnServer->ssh_key)) {
                 throw new \RuntimeException('SSH key not found');
             }
-            $key = PublicKeyLoader::load(file_get_contents($this->vpnServer->ssh_key));
+            $key   = PublicKeyLoader::load(file_get_contents($this->vpnServer->ssh_key));
             $login = $ssh->login($this->vpnServer->ssh_user, $key);
         } else {
             $login = $ssh->login($this->vpnServer->ssh_user, $this->vpnServer->ssh_password);
@@ -162,5 +173,4 @@ public function retryInstallation()
     {
         return view('livewire.pages.admin.server-show');
     }
-
 }

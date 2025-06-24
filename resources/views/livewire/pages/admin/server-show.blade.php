@@ -1,7 +1,23 @@
 <x-slot name="header">
-    <h2 class="text-xl font-semibold text-gray-800">
-        Server Status: {{ $vpnServer->name }}
-    </h2>
+    <div class="flex flex-wrap items-center justify-between gap-4">
+        <h2 class="text-xl font-semibold text-gray-800">
+            Server Status: {{ $vpnServer->name }}
+        </h2>
+        <div class="flex flex-wrap gap-2">
+            <x-button wire:click="deployServer" class="bg-blue-600 text-white">
+                🚀 Install / Re-Deploy
+            </x-button>
+            <x-button wire:click="restartVpn" class="bg-yellow-500 text-white">
+                🔁 Restart VPN
+            </x-button>
+            <x-button wire:click="deleteServer" class="bg-red-600 text-white">
+                🗑️ Delete
+            </x-button>
+            <x-button wire:click="generateConfig" class="bg-black text-white">
+                📅 Client Config
+            </x-button>
+        </div>
+    </div>
 </x-slot>
 
 <div wire:poll.10s="refresh" class="max-w-4xl mx-auto p-2 sm:p-6 space-y-6">
@@ -82,39 +98,5 @@
                 <span>{{ $bandwidth }}</span>
             </div>
         </div>
-    </div>
-
-    {{-- 🛠️  Actions --}}
-    <div class="bg-white p-4 sm:p-6 rounded shadow">
-        <h3 class="text-lg font-bold mb-4">Actions</h3>
-        <div class="flex flex-col sm:flex-row gap-3">
-            <x-button wire:click="deployServer" wire:loading.attr="disabled"
-                class="bg-blue-600 hover:bg-blue-700 text-white flex-1">
-                🚀 Deploy
-            </x-button>
-            <x-button wire:click="rebootServer" wire:loading.attr="disabled"
-                class="bg-yellow-500 hover:bg-yellow-600 text-white flex-1">
-                🔄 Reboot
-            </x-button>
-            <x-button wire:click="deleteServer" wire:loading.attr="disabled"
-                class="bg-red-600 hover:bg-red-700 text-white flex-1">
-                🗑️ Delete
-            </x-button>
-            <x-button wire:click="generateConfig" wire:loading.attr="disabled"
-                class="bg-black hover:bg-gray-800 text-white flex-1">
-                📅 Client Config
-            </x-button>
-        </div>
-        @if (session()->has('message'))
-            <p class="mt-4 text-sm text-green-700">{{ session('message') }}</p>
-        @endif
-    </div>
-
-    {{-- Retry Installation Button --}}
-    <div class="bg-white p-4 sm:p-6 rounded shadow">
-        <h3 class="text-lg font-bold mb-4">Retry Installation</h3>
-        <x-button wire:click="retryInstallation" class="bg-red-600 hover:bg-red-700 text-white">
-            Retry
-        </x-button>
-    </div>
+    </div>                 
 </div>
