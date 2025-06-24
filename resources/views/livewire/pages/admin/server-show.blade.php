@@ -1,33 +1,31 @@
 @php use Illuminate\Support\Str; @endphp
 
-<x-slot name="header">
-    <div class="flex flex-wrap items-center justify-between gap-4">
-        <h2 class="text-xl font-semibold text-gray-800">
-            Server Status: {{ $vpnServer->name }}
-        </h2>
-        <div class="flex flex-wrap gap-2">
-            <x-button
-                wire:click="deployServer"
-                onclick="return confirm('Are you sure you want to redeploy this server?')"
-                class="bg-blue-600 text-white"
-            >🚀 Install / Re-Deploy</x-button>
-            <x-button
-                wire:click="restartVpn"
-                onclick="return confirm('Are you sure you want to restart the VPN?')"
-                class="bg-yellow-500 text-white"
-            >🔁 Restart VPN</x-button>
-            <x-button
-                wire:click="deleteServer"
-                onclick="return confirm('Are you sure you want to DELETE this server? This cannot be undone.')"
-                class="bg-red-600 text-white"
-            >🗑️ Delete</x-button>
-            <x-button
-                wire:click="generateConfig"
-                class="bg-black text-white"
-            >📅 Client Config</x-button>
-        </div>
+<div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <h2 class="text-xl font-semibold text-gray-800">
+        Server Status: {{ $vpnServer->name }}
+    </h2>
+    <div class="flex flex-wrap gap-2">
+        <x-button
+            wire:click="deployServer"
+            onclick="return confirm('Are you sure you want to redeploy this server?')"
+            class="bg-blue-600 text-white"
+        >🚀 Install / Re-Deploy</x-button>
+        <x-button
+            wire:click="restartVpn"
+            onclick="return confirm('Are you sure you want to restart the VPN?')"
+            class="bg-yellow-500 text-white"
+        >🔁 Restart VPN</x-button>
+        <x-button
+            wire:click="deleteServer"
+            onclick="return confirm('Are you sure you want to DELETE this server? This cannot be undone.')"
+            class="bg-red-600 text-white"
+        >🗑️ Delete</x-button>
+        <x-button
+            wire:click="generateConfig"
+            class="bg-black text-white"
+        >📅 Client Config</x-button>
     </div>
-</x-slot>
+</div>
 
 <div wire:poll.10s="refresh" class="max-w-4xl mx-auto p-2 sm:p-6 space-y-6">
 
@@ -81,9 +79,7 @@
             });
         });
     </script>
-<button wire:click="deployServer" class="bg-green-600 text-white px-4 py-2 rounded">
-    Test Deploy (No Confirm)
-</button>
+
     {{-- 📊 Live monitoring --}}
     <div class="bg-white p-4 sm:p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-4">Live Monitoring</h3>
