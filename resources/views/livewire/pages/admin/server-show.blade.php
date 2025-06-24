@@ -1,5 +1,5 @@
 @php use Illuminate\Support\Str; @endphp
-<div x-data="{ confirmRedeploy: false, confirmRestart: false }">
+<div x-data="{ confirmRedeploy: false, confirmRestart: false, confirmDelete: false }">
     {{-- Header with action buttons --}}
     <x-slot name="header">
         <div class="flex flex-wrap items-center justify-between gap-4">
@@ -9,7 +9,7 @@
             <div class="flex flex-wrap gap-2">
                 <x-button @click="confirmRedeploy = true" class="bg-blue-600 text-white">🚀 Install / Re-Deploy</x-button>
                 <x-button @click="confirmRestart = true" class="bg-yellow-500 text-white">🔁 Restart VPN</x-button>
-                <x-button wire:click="deleteServer" class="bg-red-600 text-white">🗑️ Delete</x-button>
+                <x-button @click="confirmDelete = true" class="bg-red-600 text-white">🗑️ Delete</x-button>
                 <x-button wire:click="generateConfig" class="bg-black text-white">📅 Client Config</x-button>
             </div>
         </div>
@@ -30,6 +30,16 @@
                 <div class="flex gap-2">
                     <button @click="$wire.restartVpn(); confirmRestart = false" class="bg-yellow-500 text-white px-4 py-2 rounded">Yes</button>
                     <button @click="confirmRestart = false" class="bg-gray-300 px-4 py-2 rounded">Cancel</button>
+                </div>
+            </div>
+        </div>
+        <!-- Delete Confirmation Modal -->
+        <div x-show="confirmDelete" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+            <div class="bg-white p-6 rounded shadow">
+                <p class="mb-4">Are you sure you want to <b>delete</b> this server? This cannot be undone.</p>
+                <div class="flex gap-2">
+                    <button @click="$wire.deleteServer(); confirmDelete = false" class="bg-red-600 text-white px-4 py-2 rounded">Yes, Delete</button>
+                    <button @click="confirmDelete = false" class="bg-gray-300 px-4 py-2 rounded">Cancel</button>
                 </div>
             </div>
         </div>
