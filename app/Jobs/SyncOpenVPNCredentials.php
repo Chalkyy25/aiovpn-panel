@@ -29,7 +29,11 @@ class SyncOpenVPNCredentials implements ShouldQueue
             return;
         }
 
-        $users = collect($users ?? []);
+        $users = $vpnServer->vpnUsers()->get();
+        if ($users->isEmpty()) {
+            Log::info("No VPN users found for server #{$vpnServer->id}. Skipping sync.");
+            return;
+        }
         $lines = $users->map(fn ($u) => "{$u->username} {$u->password}")->toArray();
 
 
