@@ -113,16 +113,21 @@ class DeployVpnServer implements ShouldQueue
             $finalLog = implode("\n", $filtered);
             $status = $exit === 0 ? 'succeeded' : 'failed';
 
-            $finalLog .= $exit === 0
-                ? "\n✅ Deployment succeeded"
-                : "\n❌ Deployment failed (exit code: $exit)";
+$finalLog .= $exit === 0
+    ? "\n✅ Deployment succeeded"
+    : "\n❌ Deployment failed (exit code: $exit)";
 
-            $this->vpnServer->update([
-                'is_deploying' => false,
-                'deployment_status' => $status,
-                'deployment_log' => $finalLog,
-                'status' => $exit === 0 ? 'online' : 'offline',
-            ]);
+if ($exit === 0) {
+    \App\Jobs\SyncOpenVPNCredentials::dispatch($this->vpnServer);
+}
+
+$this->vpnServer->update([
+    'is_deploying' => false,
+    'deployment_status' => $status,
+    'deployment_log' => $finalLog,
+    'status' => $exit === 0 ? 'online' : 'offline',
+]);
+
         } catch (\Throwable $e) {
             $this->failWith("❌ Exception: " . $e->getMessage(), $e);
         }
