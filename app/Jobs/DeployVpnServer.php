@@ -134,14 +134,19 @@ class DeployVpnServer implements ShouldQueue
     }
 
     private function failWith(string $message, \Throwable $e = null): void
-    {
-        Log::error('DEPLOY_JOB: ' . $message);
-        if ($e) Log::error($e);
-        $this->vpnServer->update([
-            'is_deploying' => false,
-            'deployment_status' => 'failed',
-            'deployment_log' => $message,
-            'status' => 'offline',
-        ]);
+{
+    Log::error('DEPLOY_JOB: ' . $message);
+    
+    if ($e) {
+        Log::error($e);
     }
+
+    $this->vpnServer->update([
+        'is_deploying' => false,
+        'deployment_status' => 'failed',
+        'deployment_log' => $message,
+        'status' => 'offline',
+    ]);
+}
+
 }
