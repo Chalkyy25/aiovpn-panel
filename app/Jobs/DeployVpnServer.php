@@ -122,7 +122,6 @@ if ($exit === 0) {
 
     if (!is_dir($localCertPath)) {
         mkdir($localCertPath, 0755, true);
-        Log::info("📁 Created cert directory: {$localCertPath}");
     }
 
     $scpBase = $sshType === 'key'
@@ -130,28 +129,21 @@ if ($exit === 0) {
         : "sshpass -p '{$password}' scp -P {$port} -o StrictHostKeyChecking=no";
 
     $remotePath = "{$user}@{$ip}:/etc/openvpn";
-    $commands = [
-        "{$scpBase} {$remotePath}/ca.crt {$localCertPath}/ca.crt",
-        "{$scpBase} {$remotePath}/ta.key {$localCertPath}/ta.key",
-    ];
+    $files = ['ca.crt', 'ta.key'];
+    $allSuccess = true;
 
-    foreach ($commands as $cmd) {
-        $output = [];
-        $code = 0;
-
-        exec($cmd . ' 2>&1', $output, $code);
-
+    foreach ($files as $file) {
+        $cmd = "{$scpBase} {$remotePath}/{$file} {$localCertPath}/{$file}";
+        exec($cmd, $out, $code);
         if ($code !== 0) {
-            Log::warning("⚠️ Failed to fetch cert with: $cmd");
-            Log::warning("⚠️ Output: " . implode("\n", $output));
+            Log::warning("⚠️ Failed to fetch: {$file} using: $cmd");
+            $allSuccess = false;
         } else {
-            Log::info("✅ Successfully fetched: $cmd");
+            Log::info("✅ Successfully fetched: {$file} to {$localCertPath}/{$file}");
         }
     }
 
-    if (!file_exists("{$localCertPath}/ca.crt") || !file_exists("{$localCertPath}/ta.key")) {
-        Log::error("❌ One or both cert files are missing in {$localCertPath}");
-    } else {
+    if ($allSuccess) {
         Log::info("📦 Cert files confirmed present in {$localCertPath}");
     }
 
