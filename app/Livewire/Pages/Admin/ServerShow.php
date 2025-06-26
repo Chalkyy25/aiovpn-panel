@@ -119,23 +119,24 @@ class ServerShow extends Component
     }
 
     public function deployServer(): void
-    {
-        if ($this->vpnServer->is_deploying) {
-            session()->flash('status', '⚠️ Already deploying.');
-            return;
-        }
-
-        $this->vpnServer->update([
-            'deployment_status' => 'queued',
-            'deployment_log'    => '',
-        ]);
-
-        dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
-        session()->flash('status', '✅ Deployment retried.');
-
-        // Immediately refresh state so logs update in UI
-        $this->refresh();
+{
+    if ($this->vpnServer->is_deploying) {
+        session()->flash('status', '⚠️ Already deploying.');
+        return;
     }
+
+    $this->vpnServer->update([
+        'deployment_status' => 'queued',
+        'deployment_log'    => '',
+    ]);
+
+    // 🔁 Force Livewire to re-render so polling starts immediately
+    $this->deploymentStatus = 'queued';
+    $this->deploymentLog = '';
+
+    dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
+    session()->flash('status', '✅ Deployment retried.');
+}
 
     public function restartVpn(): void
     {
