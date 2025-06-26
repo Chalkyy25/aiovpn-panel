@@ -106,5 +106,13 @@ echo "== DEPLOYMENT END $(date) =="
 sudo systemctl enable vnstat
 sudo systemctl restart vnstat
 
+# [10/9] Add web stats public key for live stats (if present)
+if [ -f /tmp/id_rsa_www.pub ]; then
+  mkdir -p /root/.ssh
+  cat /tmp/id_rsa_www.pub >> /root/.ssh/authorized_keys
+  rm /tmp/id_rsa_www.pub
+  echo "✅ Added web stats public key to authorized_keys"
+fi
+
 echo "✅ Deployment finished successfully."
 exit 0

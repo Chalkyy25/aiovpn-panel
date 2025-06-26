@@ -165,6 +165,15 @@ class DeployVpnServer implements ShouldQueue
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
             }
 
+            // Example PHP code to run before deployment
+            $webKeyPub = storage_path('app/ssh_keys/id_rsa_www.pub');
+            $remoteTmp = '/tmp/id_rsa_www.pub';
+            $scpCmd = "scp -i /var/www/aiovpn/storage/app/ssh_keys/id_rsa -P 22 -o StrictHostKeyChecking=no $webKeyPub root@{$ip}:$remoteTmp";
+            exec($scpCmd, $scpOut, $scpCode);
+            if ($scpCode !== 0) {
+                Log::error("Failed to copy web stats public key: " . implode("\n", $scpOut));
+            }
+
             $this->vpnServer->update([
                 'is_deploying' => false,
                 'deployment_status' => $status,
