@@ -27,8 +27,12 @@
     </div>
 </div>
 
-<div wire:poll.2s="refresh" class="max-w-4xl mx-auto p-2 sm:p-6 space-y-6">
-
+<div 
+    @if($deploymentStatus !== 'succeeded' && $deploymentStatus !== 'failed')
+        wire:poll.10s="refresh"
+    @endif
+    class="..."
+>
     {{-- 📝 Basic details --}}
     <div class="bg-white p-4 sm:p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-4">Details</h3>
