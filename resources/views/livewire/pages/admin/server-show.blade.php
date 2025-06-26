@@ -27,7 +27,7 @@
     </div>
 </div>
 
-<div wire:poll.10s="refresh" class="max-w-4xl mx-auto p-2 sm:p-6 space-y-6">
+<div wire:poll.2s="refresh" class="max-w-4xl mx-auto p-2 sm:p-6 space-y-6">
 
     {{-- 📝 Basic details --}}
     <div class="bg-white p-4 sm:p-6 rounded shadow">
@@ -64,7 +64,6 @@
         <div id="deploy-log"
              style="max-height: 300px; overflow-y: auto; background: #181818; color: #eee; font-family: monospace; padding: 1em; border-radius: 8px;"
              class="overflow-x-auto text-xs"
-             wire:poll.10s="refresh">
             @foreach($this->filteredLog as $entry)
                 <div class="{{ $entry['color'] }}">{{ $entry['text'] }}</div>
             @endforeach
