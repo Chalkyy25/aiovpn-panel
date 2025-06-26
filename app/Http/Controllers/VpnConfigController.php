@@ -3,29 +3,21 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\VpnServer;
-use Illuminate\Support\Facades\Auth;
+use App\Models\VpnUser;
+use Illuminate\Support\Facades\Response;
 
 class VpnConfigController extends Controller
 {
-    public function download(VpnServer $server)
+    public function download(VpnUser $vpnUser)
     {
-        $user = Auth::user();
+        $path = storage_path("app/configs/{$vpnUser->id}.ovpn");
 
-        // Check if the user is assigned to this VPN server
-        if (!$user->vpnServers()->where('vpn_server_id', $server->id)->exists()) {
-            abort(403, 'Unauthorized to download this VPN config.');
+        if (!file_exists($path)) {
+            abort(404, 'Config not found.');
         }
 
-        // Adjust this path to where your .ovpn files are stored per server
-        $configPath = storage_path("vpn_configs/{$server->id}/client.ovpn");
-
-        if (!file_exists($configPath)) {
-            abort(404, 'VPN config file not found.');
-        }
-
-        return response()->download($configPath, "{$server->name}.ovpn", [
-            'Content-Type' => 'application/octet-stream',
+        return Response::download($path, "{$vpnUser->username}.ovpn", [
+            'Content-Type' => 'application/x-openvpn-profile',
         ]);
     }
 }

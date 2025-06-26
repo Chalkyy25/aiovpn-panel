@@ -39,6 +39,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/users', UserList::class)->name('users.index');
         Route::get('/create-user', CreateUser::class)->name('create-user');
 
+	// ✅ VPN config download
+        Route::get('/clients/{vpnUser}/config', [\App\Http\Controllers\VpnConfigController::class, 'download'])
+        ->name('clients.config.download');
+
         // ✅ VPN server management
         Route::get('/servers', VpnServerList::class)->name('servers.index');
         Route::get('/servers/create', ServerCreate::class)->name('servers.create');

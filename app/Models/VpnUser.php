@@ -26,4 +26,20 @@ class VpnUser extends Model
     {
         return $this->belongsTo(User::class, 'client_id');
     }
+
+    // 👇 Add this just before the final closing brace
+    protected static function booted(): void
+    {
+        static::saved(function ($user) {
+            if ($user->vpnServer) {
+                \App\Jobs\SyncOpenVPNCredentials::dispatch($user->vpnServer);
+            }
+        });
+
+        static::deleted(function ($user) {
+            if ($user->vpnServer) {
+                \App\Jobs\SyncOpenVPNCredentials::dispatch($user->vpnServer);
+            }
+        });
+    }
 }
