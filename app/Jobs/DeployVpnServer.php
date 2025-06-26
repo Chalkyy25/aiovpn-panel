@@ -135,7 +135,7 @@ if ($exit === 0) {
     foreach ($files as $file) {
     $cmd = "{$scpBase} {$remotePath}/{$file} {$localCertPath}/{$file}";
     Log::info("📤 Running SCP command: $cmd");
-    exec($cmd, $out, $code);
+    exec($cmd . ' 2>&1', $out, $code);
     Log::info("📥 Output: " . implode("\n", $out));
     Log::info("📥 Exit code: {$code}");
 
