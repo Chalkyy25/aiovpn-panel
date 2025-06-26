@@ -97,4 +97,19 @@ class VpnServer extends Model
             return "sshpass -p '{$this->ssh_password}' ssh -o StrictHostKeyChecking=no -p {$port} {$sshUser}@{$ip}";
         }
     }
+
+    protected static function booted()
+    {
+        static::creating(function ($vpnServer) {
+            if ($vpnServer->ssh_type === 'key' && blank($vpnServer->ssh_key)) {
+                $vpnServer->ssh_key = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa_www';
+            }
+        });
+
+        static::updating(function ($vpnServer) {
+            if ($vpnServer->ssh_type === 'key' && blank($vpnServer->ssh_key)) {
+                $vpnServer->ssh_key = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa_www';
+            }
+        });
+    }
 }
