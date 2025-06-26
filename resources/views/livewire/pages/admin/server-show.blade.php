@@ -27,10 +27,14 @@
     </div>
 </div>
 
-<div 
-    {{ $deploymentStatus !== 'succeeded' && $deploymentStatus !== 'failed' ? 'wire:poll.2s=refresh' : '' }} 
-    class="..."
+<div
+    @if($deploymentStatus !== 'succeeded' && $deploymentStatus !== 'failed')
+        wire:poll.3s="refresh"
+    @endif
 >
+    {{-- stats + log content --}}
+</div>
+
     {{-- 📝 Basic details --}}
     <div class="bg-white p-4 sm:p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-4">Details</h3>
