@@ -115,34 +115,48 @@ class DeployVpnServer implements ShouldQueue
                 ? "\n✅ Deployment succeeded"
                 : "\n❌ Deployment failed (exit code: $exit)";
 
-            // ✅ Fetch certs from remote server
-            if ($exit === 0) {
-                $certDir = "certs/{$this->vpnServer->id}";
-                $localCertPath = storage_path("app/{$certDir}");
+           // ✅ Fetch certs from remote server
+if ($exit === 0) {
+    $certDir = "certs/{$this->vpnServer->id}";
+    $localCertPath = storage_path("app/{$certDir}");
 
-                if (!is_dir($localCertPath)) {
-                    mkdir($localCertPath, 0755, true);
-                }
+    if (!is_dir($localCertPath)) {
+        mkdir($localCertPath, 0755, true);
+        Log::info("📁 Created cert directory: {$localCertPath}");
+    }
 
-                $scpBase = $sshType === 'key'
-                    ? "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no"
-                    : "sshpass -p '{$password}' scp -P {$port} -o StrictHostKeyChecking=no";
+    $scpBase = $sshType === 'key'
+        ? "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no"
+        : "sshpass -p '{$password}' scp -P {$port} -o StrictHostKeyChecking=no";
 
-                $remotePath = "{$user}@{$ip}:/etc/openvpn";
-                $commands = [
-                    "{$scpBase} {$remotePath}/ca.crt {$localCertPath}/ca.crt",
-                    "{$scpBase} {$remotePath}/ta.key {$localCertPath}/ta.key",
-                ];
+    $remotePath = "{$user}@{$ip}:/etc/openvpn";
+    $commands = [
+        "{$scpBase} {$remotePath}/ca.crt {$localCertPath}/ca.crt",
+        "{$scpBase} {$remotePath}/ta.key {$localCertPath}/ta.key",
+    ];
 
-                foreach ($commands as $cmd) {
-                    exec($cmd, $out, $code);
-                    if ($code !== 0) {
-                        Log::warning("⚠️ Failed to fetch cert with: $cmd");
-                    }
-                }
+    foreach ($commands as $cmd) {
+        $output = [];
+        $code = 0;
 
-                SyncOpenVPNCredentials::dispatch($this->vpnServer);
-            }
+        exec($cmd . ' 2>&1', $output, $code);
+
+        if ($code !== 0) {
+            Log::warning("⚠️ Failed to fetch cert with: $cmd");
+            Log::warning("⚠️ Output: " . implode("\n", $output));
+        } else {
+            Log::info("✅ Successfully fetched: $cmd");
+        }
+    }
+
+    if (!file_exists("{$localCertPath}/ca.crt") || !file_exists("{$localCertPath}/ta.key")) {
+        Log::error("❌ One or both cert files are missing in {$localCertPath}");
+    } else {
+        Log::info("📦 Cert files confirmed present in {$localCertPath}");
+    }
+
+    SyncOpenVPNCredentials::dispatch($this->vpnServer);
+}
 
             $this->vpnServer->update([
                 'is_deploying' => false,
