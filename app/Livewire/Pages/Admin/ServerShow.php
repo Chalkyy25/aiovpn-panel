@@ -43,10 +43,8 @@ class ServerShow extends Component
         $this->deploymentLog    = $this->vpnServer->deployment_log;
         $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
-        if (blank($this->vpnServer->ip_address)) {
-            logger()->warning("Server #{$this->vpnServer->id} has no IP address during refresh!");
-            $this->uptime = '❌ Missing IP';
-            return;
+        if ($this->vpnServer->is_deploying || $this->vpnServer->deployment_status === 'running') {
+        return;
         }
 
         try {
