@@ -116,7 +116,9 @@ class DeployVpnServer implements ShouldQueue
                 : "\n❌ Deployment failed (exit code: $exit)";
 Log::info("🔍 Exit code after VPN deploy: $exit");
            // ✅ Fetch certs from remote server
+Log::info("➡️ Checking if we should fetch certs: exit code is $exit");
 if ($exit === 0) {
+    Log::info("➡️ Entered SCP fetch block");
     $certDir = "certs/{$this->vpnServer->id}";
     $localCertPath = storage_path("app/{$certDir}");
 
