@@ -125,7 +125,12 @@ class DeployVpnServer implements ShouldQueue
                 $localCertPath = storage_path("app/{$certDir}");
 
                 if (!is_dir($localCertPath)) {
-                    mkdir($localCertPath, 0755, true);
+                    if (!mkdir($localCertPath, 0755, true)) {
+                        Log::error("❌ Failed to create directory: $localCertPath");
+                        $this->failWith("❌ Failed to create directory: $localCertPath");
+                        return;
+                    }
+                    Log::info("✅ Created directory: $localCertPath");
                 }
 
                 $scpBase = $sshType === 'key'
