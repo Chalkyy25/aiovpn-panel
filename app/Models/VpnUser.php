@@ -30,6 +30,11 @@ class VpnUser extends Model
     // 👇 Add this just before the final closing brace
     protected static function booted(): void
     {
+	static::created(function ($user) {
+        \App\Services\VpnConfigBuilder::generate($user);
+    });
+
+
         static::saved(function ($user) {
             if ($user->vpnServer) {
                 \App\Jobs\SyncOpenVPNCredentials::dispatch($user->vpnServer);

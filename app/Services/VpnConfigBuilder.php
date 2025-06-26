@@ -36,8 +36,8 @@ key-direction 1
 EOL;
 
         // Read cert files from server (replace with SCP later if remote)
-        $ca = Storage::disk('local')->get("certs/{$server->id}/ca.crt");
-        $ta = Storage::disk('local')->get("certs/{$server->id}/ta.key");
+	$ca = trim(Storage::disk('local')->get("certs/{$server->id}/ca.crt"));
+        $ta = trim(Storage::disk('local')->get("certs/{$server->id}/ta.key"));
 
         // Replace placeholders
         $config = str_replace('{CA_CERT}', trim($ca), $config);
