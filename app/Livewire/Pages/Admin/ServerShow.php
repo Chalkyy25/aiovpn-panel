@@ -38,27 +38,28 @@ class ServerShow extends Component
 
     /* ───────── Polling action (called by wire:poll) ───────── */
     public function refresh(): void
-    {
-        $this->vpnServer->refresh();
-        $this->deploymentLog    = $this->vpnServer->deployment_log;
-        $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
+{
+    $this->vpnServer->refresh();
+    $this->deploymentLog    = $this->vpnServer->deployment_log;
+    $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
-        if ($this->vpnServer->is_deploying || $this->vpnServer->deployment_status === 'running') {
+    // Don't fetch stats if server hasn't started deploying yet
+    if (in_array($this->deploymentStatus, ['queued'])) {
         return;
-        }
-
-        try {
-            $ssh = $this->makeSshClient();
-
-            $this->uptime    = trim($ssh->exec("uptime"));
-            $this->cpu       = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
-            $this->memory    = trim($ssh->exec("free -h | grep Mem || vm_stat | head -n 5"));
-            $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
-        } catch (\Throwable $e) {
-            $this->uptime = '❌ ' . $e->getMessage();
-            logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
-        }
     }
+
+    try {
+        $ssh = $this->makeSshClient();
+
+        $this->uptime    = trim($ssh->exec("uptime"));
+        $this->cpu       = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
+        $this->memory    = trim($ssh->exec("free -h | grep Mem || vm_stat | head -n 5"));
+        $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
+    } catch (\Throwable $e) {
+        $this->uptime = '❌ ' . $e->getMessage();
+        logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
+    }
+}
 
     public function getFilteredLogProperty()
     {
