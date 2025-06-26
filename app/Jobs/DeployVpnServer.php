@@ -114,7 +114,7 @@ class DeployVpnServer implements ShouldQueue
             $finalLog .= $exit === 0
                 ? "\n✅ Deployment succeeded"
                 : "\n❌ Deployment failed (exit code: $exit)";
-
+Log::info("🔍 Exit code after VPN deploy: $exit");
            // ✅ Fetch certs from remote server
 if ($exit === 0) {
     $certDir = "certs/{$this->vpnServer->id}";
