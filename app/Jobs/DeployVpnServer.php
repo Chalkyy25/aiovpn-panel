@@ -5,7 +5,6 @@ namespace App\Jobs;
 use App\Models\VpnServer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -41,7 +40,7 @@ class DeployVpnServer implements ShouldQueue
             $user     = $this->vpnServer->ssh_user;
             $sshType  = $this->vpnServer->ssh_type;
             $password = $this->vpnServer->ssh_password;
-            $keyPath  = $this->vpnServer->ssh_key ?? '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+            $keyPath  = $this->vpnServer->ssh_key ?? storage_path('app/ssh_keys/id_rsa');
 
             if ($sshType === 'key' && !is_file($keyPath)) {
                 $this->failWith("❌ SSH key not found at $keyPath");
@@ -114,47 +113,50 @@ class DeployVpnServer implements ShouldQueue
             $finalLog .= $exit === 0
                 ? "\n✅ Deployment succeeded"
                 : "\n❌ Deployment failed (exit code: $exit)";
-Log::info("🔍 Exit code after VPN deploy: $exit");
-           // ✅ Fetch certs from remote server
-Log::info("➡️ Checking if we should fetch certs: exit code is $exit");
-if ($exit === 0) {
-    Log::info("➡️ Entered SCP fetch block");
-    $certDir = "certs/{$this->vpnServer->id}";
-    $localCertPath = storage_path("app/{$certDir}");
+            Log::info("🔍 Exit code after VPN deploy: $exit");
 
-    if (!is_dir($localCertPath)) {
-        mkdir($localCertPath, 0755, true);
-    }
+            // --- SCP fetch block ---
+            Log::info("➡️ Checking if we should fetch certs: exit code is $exit");
+            if ($exit === 0) {
+                Log::info("➡️ Entered SCP fetch block");
+                $certDir = "certs/{$this->vpnServer->id}";
+                $localCertPath = storage_path("app/{$certDir}");
 
-    $scpBase = $sshType === 'key'
-        ? "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no"
-        : "sshpass -p '{$password}' scp -P {$port} -o StrictHostKeyChecking=no";
+                if (!is_dir($localCertPath)) {
+                    mkdir($localCertPath, 0755, true);
+                }
 
-    $remotePath = "{$user}@{$ip}:/etc/openvpn";
-    $files = ['ca.crt', 'ta.key'];
-    $allSuccess = true;
+                $scpBase = $sshType === 'key'
+                    ? "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no"
+                    : "sshpass -p '{$password}' scp -P {$port} -o StrictHostKeyChecking=no";
 
-    foreach ($files as $file) {
-    $cmd = "{$scpBase} {$remotePath}/{$file} {$localCertPath}/{$file}";
-    Log::info("📤 Running SCP command: $cmd");
-    exec($cmd . ' 2>&1', $out, $code);
-    Log::info("📥 Output: " . implode("\n", $out));
-    Log::info("📥 Exit code: {$code}");
+                $remotePath = "{$user}@{$ip}:/etc/openvpn";
+                $files = ['ca.crt', 'ta.key'];
+                $allSuccess = true;
 
-    if ($code !== 0) {
-        Log::warning("⚠️ Failed to fetch: {$file} using: $cmd");
-        $allSuccess = false;
-    } else {
-        Log::info("✅ Successfully fetched: {$file} to {$localCertPath}/{$file}");
-    }
-}
+                foreach ($files as $file) {
+                    $cmd = "{$scpBase} {$remotePath}/{$file} {$localCertPath}/{$file}";
+                    Log::info("📤 Running SCP command: $cmd");
+                    $out = [];
+                    $code = 0;
+                    exec($cmd . ' 2>&1', $out, $code);
+                    Log::info("📥 Output: " . implode("\n", $out));
+                    Log::info("📥 Exit code: {$code}");
 
-    if ($allSuccess) {
-        Log::info("📦 Cert files confirmed present in {$localCertPath}");
-    }
+                    if ($code !== 0) {
+                        Log::warning("⚠️ Failed to fetch: {$file} using: $cmd");
+                        $allSuccess = false;
+                    } else {
+                        Log::info("✅ Successfully fetched: {$file} to {$localCertPath}/{$file}");
+                    }
+                }
 
-    SyncOpenVPNCredentials::dispatch($this->vpnServer);
-}
+                if ($allSuccess) {
+                    Log::info("📦 Cert files confirmed present in {$localCertPath}");
+                }
+
+                SyncOpenVPNCredentials::dispatch($this->vpnServer);
+            }
 
             $this->vpnServer->update([
                 'is_deploying' => false,
