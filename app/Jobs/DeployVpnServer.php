@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\VpnServer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -114,7 +115,32 @@ class DeployVpnServer implements ShouldQueue
                 ? "\n✅ Deployment succeeded"
                 : "\n❌ Deployment failed (exit code: $exit)";
 
+            // ✅ Fetch certs from remote server
             if ($exit === 0) {
+                $certDir = "certs/{$this->vpnServer->id}";
+                $localCertPath = storage_path("app/{$certDir}");
+
+                if (!is_dir($localCertPath)) {
+                    mkdir($localCertPath, 0755, true);
+                }
+
+                $scpBase = $sshType === 'key'
+                    ? "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no"
+                    : "sshpass -p '{$password}' scp -P {$port} -o StrictHostKeyChecking=no";
+
+                $remotePath = "{$user}@{$ip}:/etc/openvpn";
+                $commands = [
+                    "{$scpBase} {$remotePath}/ca.crt {$localCertPath}/ca.crt",
+                    "{$scpBase} {$remotePath}/ta.key {$localCertPath}/ta.key",
+                ];
+
+                foreach ($commands as $cmd) {
+                    exec($cmd, $out, $code);
+                    if ($code !== 0) {
+                        Log::warning("⚠️ Failed to fetch cert with: $cmd");
+                    }
+                }
+
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
             }
 
