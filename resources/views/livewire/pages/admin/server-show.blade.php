@@ -28,9 +28,7 @@
 </div>
 
 <div 
-    @if($deploymentStatus !== 'succeeded' && $deploymentStatus !== 'failed')
-        wire:poll.10s="refresh"
-    @endif
+    {{ $deploymentStatus !== 'succeeded' && $deploymentStatus !== 'failed' ? 'wire:poll.2s=refresh' : '' }} 
     class="..."
 >
     {{-- 📝 Basic details --}}
