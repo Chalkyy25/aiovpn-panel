@@ -23,6 +23,8 @@ class DeployVpnServer implements ShouldQueue
 
     public function handle(): void
     {
+        Log::info("DEBUG: DeployVpnServer handle() started");
+
         if ($this->vpnServer->is_deploying) {
             Log::warning("🚫 Already deploying: Server #{$this->vpnServer->id}");
             return;
@@ -167,6 +169,8 @@ class DeployVpnServer implements ShouldQueue
         } catch (\Throwable $e) {
             $this->failWith("❌ Exception: " . $e->getMessage(), $e);
         }
+
+        Log::info("DEBUG: DeployVpnServer handle() finished");
     }
 
     public function failed(\Throwable $e): void
