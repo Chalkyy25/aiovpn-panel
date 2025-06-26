@@ -156,10 +156,12 @@ class ServerShow extends Component
         $ssh = new SSH2($this->vpnServer->ip_address, $this->vpnServer->ssh_port);
 
         if ($this->vpnServer->ssh_type === 'key') {
-            if (blank($this->vpnServer->ssh_key) || !is_file($this->vpnServer->ssh_key)) {
+            // Always use the correct key path
+            $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa_www';
+            if (!is_file($keyPath)) {
                 throw new \RuntimeException('SSH key not found');
             }
-            $key   = PublicKeyLoader::load(file_get_contents($this->vpnServer->ssh_key));
+            $key   = PublicKeyLoader::load(file_get_contents($keyPath));
             $login = $ssh->login($this->vpnServer->ssh_user, $key);
         } else {
             $login = $ssh->login($this->vpnServer->ssh_user, $this->vpnServer->ssh_password);
