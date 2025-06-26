@@ -39,12 +39,13 @@ class ServerShow extends Component
     /* ───────── Polling action (called by wire:poll) ───────── */
     public function refresh(): void
 {
-    $this->vpnServer->refresh();
+    $this->vpnServer = $this->vpnServer->fresh();
+
     $this->deploymentLog    = $this->vpnServer->deployment_log;
     $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
-    // Don't fetch stats if server hasn't started deploying yet
-    if (in_array($this->deploymentStatus, ['queued'])) {
+    // Stop live stats if deployment not finished
+    if (!in_array($this->deploymentStatus, ['succeeded', 'failed'])) {
         return;
     }
 
