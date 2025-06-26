@@ -133,15 +133,19 @@ if ($exit === 0) {
     $allSuccess = true;
 
     foreach ($files as $file) {
-        $cmd = "{$scpBase} {$remotePath}/{$file} {$localCertPath}/{$file}";
-        exec($cmd, $out, $code);
-        if ($code !== 0) {
-            Log::warning("⚠️ Failed to fetch: {$file} using: $cmd");
-            $allSuccess = false;
-        } else {
-            Log::info("✅ Successfully fetched: {$file} to {$localCertPath}/{$file}");
-        }
+    $cmd = "{$scpBase} {$remotePath}/{$file} {$localCertPath}/{$file}";
+    Log::info("📤 Running SCP command: $cmd");
+    exec($cmd, $out, $code);
+    Log::info("📥 Output: " . implode("\n", $out));
+    Log::info("📥 Exit code: {$code}");
+
+    if ($code !== 0) {
+        Log::warning("⚠️ Failed to fetch: {$file} using: $cmd");
+        $allSuccess = false;
+    } else {
+        Log::info("✅ Successfully fetched: {$file} to {$localCertPath}/{$file}");
     }
+}
 
     if ($allSuccess) {
         Log::info("📦 Cert files confirmed present in {$localCertPath}");
