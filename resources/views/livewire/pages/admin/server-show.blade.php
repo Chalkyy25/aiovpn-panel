@@ -1,5 +1,15 @@
 @php use Illuminate\Support\Str; @endphp
 
+{{-- 🛰️ Global polling wrapper --}}
+<div
+    wire:poll.3s="refresh"
+    wire:key="poll-{{ $vpnServer->id }}"
+    @if($deploymentStatus === 'succeeded' || $deploymentStatus === 'failed')
+        wire:poll.remove
+    @endif
+    class="hidden"
+></div>
+
 <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
     <h2 class="text-xl font-semibold text-gray-800">
         Server Status: {{ $vpnServer->name }}
@@ -25,14 +35,6 @@
             class="bg-black text-white"
         >📅 Client Config</x-button>
     </div>
-</div>
-
-<div
-    @if($deploymentStatus !== 'succeeded' && $deploymentStatus !== 'failed')
-        wire:poll.3s="refresh"
-    @endif
->
-    {{-- stats + log content --}}
 </div>
 
     {{-- 📝 Basic details --}}
