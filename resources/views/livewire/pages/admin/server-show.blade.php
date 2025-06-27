@@ -57,7 +57,7 @@
 </div>
 
 {{-- 📦 Deployment log with live polling --}}
-<div wire:poll.1000ms="refreshLogs" class="bg-white p-4 sm:p-6 rounded shadow">
+<div wire:poll.3s="refresh" class="bg-white p-4 sm:p-6 rounded shadow">
     <h3 class="text-lg font-bold mb-4">Deployment Logs</h3>
     <div id="deploy-log"
          style="max-height: 300px; overflow-y: auto; background: #181818; color: #eee; font-family: monospace; padding: 1em; border-radius: 8px;"
