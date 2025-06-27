@@ -76,10 +76,10 @@ class GenerateOvpnFile implements ShouldQueue
             $template
         );
 
-        // 🔹 Append all blocks
+        // 🔹 Append all blocks to final config
         $config .= "\n\n" . $userpassBlock . "\n\n" . $caBlock . "\n\n" . $tlsBlock;
 
-        // 🔹 Save final config using server name
+        // 🔹 Save config file named after the server
         $fileName = "ovpn_configs/{$server->name}.ovpn";
         Storage::put($fileName, $config);
 
