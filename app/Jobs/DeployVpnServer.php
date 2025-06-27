@@ -8,11 +8,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
 use App\Jobs\SyncOpenVPNCredentials;
 
 class DeployVpnServer implements ShouldQueue
 {
-    use InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public VpnServer $vpnServer;
 
@@ -37,7 +38,6 @@ class DeployVpnServer implements ShouldQueue
         ]);
 
         try {
-            /* ───────── SSH variables ───────── */
             $ip      = $this->vpnServer->ip_address;
             $port    = $this->vpnServer->ssh_port ?? 22;
             $user    = $this->vpnServer->ssh_user;
@@ -48,7 +48,6 @@ class DeployVpnServer implements ShouldQueue
                 return;
             }
 
-            /* ───────── SSH command ───────── */
             $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
             $sshCmd  = "ssh -i $keyPath $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
 
@@ -60,7 +59,7 @@ class DeployVpnServer implements ShouldQueue
 
             $script = file_get_contents($scriptPath);
 
-            /* ───────── Execute deployment ───────── */
+            // 🔧 Execute deployment via SSH
             $pipes = [];
             $proc  = proc_open($sshCmd, [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']], $pipes);
             if (!is_resource($proc)) {
@@ -77,30 +76,30 @@ class DeployVpnServer implements ShouldQueue
             $map = [(int)$pipes[1] => 'out', (int)$pipes[2] => 'err'];
 
             while ($streams) {
-    $read = $streams;
-    $write = null; // fix: define as variable
-    $except = null; // fix: define as variable
-    if (stream_select($read, $write, $except, 5) === false) break;
+                $read = $streams;
+                $write = null;
+                $except = null;
+                if (stream_select($read, $write, $except, 5) === false) break;
 
-    foreach ($read as $r) {
-        $line = fgets($r);
-        if ($line === false) {
-            fclose($r);
-            unset($streams[array_search($r, $streams, true)]);
-            continue;
-        }
+                foreach ($read as $r) {
+                    $line = fgets($r);
+                    if ($line === false) {
+                        fclose($r);
+                        unset($streams[array_search($r, $streams, true)]);
+                        continue;
+                    }
 
-        $clean = rtrim($line, "\r\n");
-        $this->vpnServer->appendLog($clean);
+                    $clean = rtrim($line, "\r\n");
+                    $this->vpnServer->appendLog($clean);
 
-        if ($map[(int)$r] === 'out') $output .= $line;
-        else $error .= $line;
-    }
-}
+                    if ($map[(int)$r] === 'out') $output .= $line;
+                    else $error .= $line;
+                }
+            }
 
             proc_close($proc);
 
-            /* ───────── Process deployment output ───────── */
+            // 🔧 Process output and exit code
             $combined = $this->vpnServer->deployment_log . $output . $error;
             $exit = preg_match('/EXIT_CODE:(\d+)/', $combined, $m) ? (int)$m[1] : 255;
             $combined = preg_replace('/EXIT_CODE:\d+/', '', $combined);
@@ -120,7 +119,7 @@ class DeployVpnServer implements ShouldQueue
 
             Log::info("🔍 Exit code after VPN deploy: $exit");
 
-            /* ───────── Upload id_rsa public key for live polling ───────── */
+            // 🔧 Upload id_rsa.pub for live polling if deployment succeeded
             if ($exit === 0) {
                 $webKeyPub = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa.pub';
                 $remoteTmp = '/tmp/id_rsa.pub';
@@ -150,10 +149,11 @@ class DeployVpnServer implements ShouldQueue
                     }
                 }
 
+                // 🔧 Dispatch sync credentials job
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
             }
 
-            /* ───────── Update deployment status ───────── */
+            // 🔧 Update deployment status in DB
             $this->vpnServer->update([
                 'is_deploying' => false,
                 'deployment_status' => $status,
