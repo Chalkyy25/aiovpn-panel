@@ -118,27 +118,31 @@ class DeployVpnServer implements ShouldQueue
             $webKeyPub = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa.pub';
             $remoteTmp = '/tmp/id_rsa.pub';
 
-            // Copy public key to server
-            $scpCmd = "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {$webKeyPub} {$user}@{$ip}:{$remoteTmp}";
-            exec($scpCmd, $scpOut, $scpCode);
+           // Copy public key to server
+$scpCmd = "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {$webKeyPub} {$user}@{$ip}:{$remoteTmp}";
+exec($scpCmd, $scpOut, $scpCode);
 
-            Log::info("📤 SCP copy exit code: {$scpCode}");
-            if ($scpCode !== 0) {
-                Log::error("❌ Failed to copy polling public key: " . implode("\n", $scpOut));
-            } else {
-                Log::info("✅ Copied polling public key to {$remoteTmp}");
+Log::info("📤 SCP copy exit code: {$scpCode}");
+Log::info("📤 SCP copy output: " . implode("\n", $scpOut));
 
-                // Append it to authorized_keys
-                $sshAddKeyCmd = "ssh -i {$keyPath} -p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {$user}@{$ip} 'cat {$remoteTmp} >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && rm {$remoteTmp}'";
-                exec($sshAddKeyCmd, $addOut, $addCode);
+if ($scpCode !== 0) {
+    Log::error("❌ Failed to copy polling public key (exit code {$scpCode}): " . implode("\n", $scpOut));
+} else {
+    Log::info("✅ Copied polling public key to {$remoteTmp}");
 
-                Log::info("🔧 SSH add key exit code: {$addCode}");
-                if ($addCode !== 0) {
-                    Log::error("❌ Failed to add polling public key to authorized_keys: " . implode("\n", $addOut));
-                } else {
-                    Log::info("✅ Added polling public key to authorized_keys successfully");
-                }
-            }
+    // Append it to authorized_keys
+    $sshAddKeyCmd = "ssh -i {$keyPath} -p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {$user}@{$ip} 'cat {$remoteTmp} >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && rm {$remoteTmp}'";
+    exec($sshAddKeyCmd, $addOut, $addCode);
+
+    Log::info("🔧 SSH add key exit code: {$addCode}");
+    Log::info("🔧 SSH add key output: " . implode("\n", $addOut));
+
+    if ($addCode !== 0) {
+        Log::error("❌ Failed to add polling public key to authorized_keys (exit code {$addCode}): " . implode("\n", $addOut));
+    } else {
+        Log::info("✅ Added polling public key to authorized_keys successfully");
+    }
+}
 
             // Dispatch SyncOpenVPNCredentials job
             SyncOpenVPNCredentials::dispatch($this->vpnServer);
