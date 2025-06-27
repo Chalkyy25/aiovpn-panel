@@ -18,9 +18,15 @@ class GenerateOvpnFile implements ShouldQueue
     protected Client $client;
 
     public function __construct(Client $client)
-    {
-        $this->client = $client;
-    }
+{
+    $this->client = $client->load('vpnServer');
+}
+    /**
+     * Execute the job to generate an OVPN file for the client.
+     */
+    // This job will be dispatched when a new VPN user is created or updated.
+    // It will generate the OVPN file using the server's CA cert and the user's credentials
+    // and save it in the storage/ovpn_configs directory.   
 
     public function handle(): void
     {
