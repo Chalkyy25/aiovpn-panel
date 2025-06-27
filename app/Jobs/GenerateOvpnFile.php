@@ -33,9 +33,9 @@ class GenerateOvpnFile implements ShouldQueue
 
         $sshUser = 'root';
         $sshKey = storage_path('ssh/id_rsa');
-        $ip = $server->ip;
+        $ip = $server->ip_address; // ✅ fixed from $server->ip
 
-        Log::info("🔑 Generating .ovpn for client {$this->client->username} on server {$server->name}");
+        Log::info("🔑 Generating .ovpn for client {$this->client->username} on server {$server->name} ({$ip})");
 
         // 1. Grab the CA cert from the VPN server
         $caOutput = [];
@@ -60,7 +60,7 @@ class GenerateOvpnFile implements ShouldQueue
 
         $config = str_replace(
             ['{{SERVER_IP}}', '{{USERNAME}}', '{{PASSWORD}}'],
-            [$server->ip, $this->client->username, $this->client->password],
+            [$ip, $this->client->username, $this->client->password],
             $template
         );
 
