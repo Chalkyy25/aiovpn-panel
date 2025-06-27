@@ -118,26 +118,18 @@ class ServerShow extends Component
         session()->flash('message', '📥 Client config generation triggered.');
     }
 
-    public function deployServer(): void
+public function deployServer(): void
 {
-    if ($this->vpnServer->is_deploying) {
-        session()->flash('status', '⚠️ Already deploying.');
-        return;
-    }
-
     $this->vpnServer->update([
         'deployment_status' => 'queued',
         'deployment_log'    => '',
     ]);
 
-    // 🔁 Force Livewire to re-render so polling starts immediately
-    $this->deploymentStatus = 'queued';
-    $this->deploymentLog = '';
+    $this->deploymentStatus = 'queued'; // update local state
 
     dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
     session()->flash('status', '✅ Deployment retried.');
 }
-
     public function restartVpn(): void
     {
         try {

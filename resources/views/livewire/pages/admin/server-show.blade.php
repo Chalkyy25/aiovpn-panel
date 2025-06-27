@@ -2,10 +2,9 @@
 
 {{-- 🛰️ Global polling wrapper --}}
 <div
-    wire:poll.3s="refresh"
     wire:key="poll-{{ $vpnServer->id }}"
-    @if($deploymentStatus === 'succeeded' || $deploymentStatus === 'failed')
-        wire:poll.remove
+    @if(!in_array($deploymentStatus, ['succeeded', 'failed']))
+        wire:poll.3s="refresh"
     @endif
     class="hidden"
 ></div>
