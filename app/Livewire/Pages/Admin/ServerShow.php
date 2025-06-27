@@ -120,16 +120,23 @@ class ServerShow extends Component
 
 public function deployServer(): void
 {
+    if ($this->vpnServer->is_deploying) {
+        session()->flash('status', '⚠️ Already deploying.');
+        return;
+    }
+
     $this->vpnServer->update([
         'deployment_status' => 'queued',
         'deployment_log'    => '',
     ]);
 
-    $this->deploymentStatus = 'queued'; // update local state
-
     dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
     session()->flash('status', '✅ Deployment retried.');
+
+    // Remove forced refresh here for now
+    // $this->refresh();
 }
+
     public function restartVpn(): void
     {
         try {

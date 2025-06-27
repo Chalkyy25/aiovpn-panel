@@ -1,14 +1,5 @@
 @php use Illuminate\Support\Str; @endphp
 
-{{-- 🛰️ Global polling wrapper --}}
-<div
-    wire:key="poll-{{ $vpnServer->id }}"
-    @if(!in_array($deploymentStatus, ['succeeded', 'failed']))
-        wire:poll.3s="refresh"
-    @endif
-    class="hidden"
-></div>
-
 <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
     <h2 class="text-xl font-semibold text-gray-800">
         Server Status: {{ $vpnServer->name }}
@@ -66,6 +57,10 @@
     </div>
 
     {{-- 📦 Deployment log --}}
+    <div wire:poll.10s="refresh">
+    {{-- stats + logs --}}
+</div>
+
     <div class="bg-white p-4 sm:p-6 rounded shadow">
         <h3 class="text-lg font-bold mb-4">Deployment&nbsp;Logs</h3>
         <div id="deploy-log"
