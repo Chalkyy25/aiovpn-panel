@@ -38,28 +38,28 @@ class ServerShow extends Component
 
     /* ───────── Polling action (called by wire:poll) ───────── */
     public function refresh(): void
-    {
-        $this->vpnServer = $this->vpnServer->fresh();
+{
+    $this->vpnServer = $this->vpnServer->fresh();
 
-        $this->deploymentLog = $this->vpnServer->deployment_log;
-        $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
+    $this->deploymentLog = $this->vpnServer->deployment_log;
+    $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
-        // Always fetch deployment logs
-        // Only fetch live stats if deployment is finished
-        if (in_array($this->deploymentStatus, ['succeeded', 'failed'])) {
-            try {
-                $ssh = $this->makeSshClient();
+    // Always fetch deployment logs and status
+    // Only fetch live stats if deployment is finished
+    if (in_array($this->deploymentStatus, ['succeeded', 'failed'])) {
+        try {
+            $ssh = $this->makeSshClient();
 
-                $this->uptime = trim($ssh->exec("uptime"));
-                $this->cpu = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
-                $this->memory = trim($ssh->exec("free -h | grep Mem || vm_stat | head -n 5"));
-                $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
-            } catch (\Throwable $e) {
-                $this->uptime = '❌ ' . $e->getMessage();
-                logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
-            }
+            $this->uptime = trim($ssh->exec("uptime"));
+            $this->cpu = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
+            $this->memory = trim($ssh->exec("free -h | grep Mem || vm_stat | head -n 5"));
+            $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
+        } catch (\Throwable $e) {
+            $this->uptime = '❌ ' . $e->getMessage();
+            logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
         }
     }
+}
 
     /* ───────── Computed ───────── */
     public function getFilteredLogProperty()
