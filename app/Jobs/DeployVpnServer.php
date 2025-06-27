@@ -77,24 +77,26 @@ class DeployVpnServer implements ShouldQueue
             $map = [(int)$pipes[1] => 'out', (int)$pipes[2] => 'err'];
 
             while ($streams) {
-                $read = $streams;
-                if (stream_select($read, $w = null, $e = null, 5) === false) break;
+    $read = $streams;
+    $write = null; // fix: define as variable
+    $except = null; // fix: define as variable
+    if (stream_select($read, $write, $except, 5) === false) break;
 
-                foreach ($read as $r) {
-                    $line = fgets($r);
-                    if ($line === false) {
-                        fclose($r);
-                        unset($streams[array_search($r, $streams, true)]);
-                        continue;
-                    }
+    foreach ($read as $r) {
+        $line = fgets($r);
+        if ($line === false) {
+            fclose($r);
+            unset($streams[array_search($r, $streams, true)]);
+            continue;
+        }
 
-                    $clean = rtrim($line, "\r\n");
-                    $this->vpnServer->appendLog($clean);
+        $clean = rtrim($line, "\r\n");
+        $this->vpnServer->appendLog($clean);
 
-                    if ($map[(int)$r] === 'out') $output .= $line;
-                    else $error .= $line;
-                }
-            }
+        if ($map[(int)$r] === 'out') $output .= $line;
+        else $error .= $line;
+    }
+}
 
             proc_close($proc);
 
