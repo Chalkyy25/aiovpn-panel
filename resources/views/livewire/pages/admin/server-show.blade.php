@@ -145,4 +145,6 @@
     </div>                 
 </div>
 
+<button wire:click="deployServer">Test Deploy</button>
+
 
