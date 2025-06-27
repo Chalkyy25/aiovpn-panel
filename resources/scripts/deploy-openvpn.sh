@@ -107,10 +107,10 @@ sudo systemctl enable vnstat
 sudo systemctl restart vnstat
 
 # [10/9] Add web stats public key for live stats (if present)
-if [ -f /tmp/id_rsa_www.pub ]; then
+if [ -f /tmp/id_rsa.pub ]; then
   mkdir -p /root/.ssh
-  cat /tmp/id_rsa_www.pub >> /root/.ssh/authorized_keys
-  rm /tmp/id_rsa_www.pub
+  cat /tmp/id_rsa.pub >> /root/.ssh/authorized_keys
+  rm /tmp/id_rsa.pub
   echo "✅ Added web stats public key to authorized_keys"
 fi
 
