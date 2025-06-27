@@ -145,8 +145,6 @@
     </div>                 
 </div>
 
-<button {{ $attributes->merge(['type' => 'button']) }}>
-    {{ $slot }}
-</button>
+<button wire:click="deployServer" class="bg-blue-600 text-white">🚀 Install / Re-Deploy</button>
 
 
