@@ -23,10 +23,10 @@ class DeployVpnServer implements ShouldQueue
 
     public function handle(): void
     {
-        Log::info("DEBUG: DeployVpnServer handle() started");
+        Log::info("🚀 Starting DeployVpnServer job");
 
         if ($this->vpnServer->is_deploying) {
-            Log::warning("🚫 Already deploying: Server #{$this->vpnServer->id}");
+            Log::warning("⚠️ Already deploying: Server #{$this->vpnServer->id}");
             return;
         }
 
@@ -40,25 +40,23 @@ class DeployVpnServer implements ShouldQueue
             $ip       = $this->vpnServer->ip_address;
             $port     = $this->vpnServer->ssh_port ?? 22;
             $user     = $this->vpnServer->ssh_user;
-            $sshType  = $this->vpnServer->ssh_type;
             $password = $this->vpnServer->ssh_password;
-            $keyPath  = $this->vpnServer->ssh_key ?? storage_path('app/ssh_keys/id_rsa');
+            $keyPath  = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
 
-            if ($sshType === 'key' && !is_file($keyPath)) {
+            if (!is_file($keyPath)) {
                 $this->failWith("❌ SSH key not found at $keyPath");
                 return;
             }
 
             $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
-            $sshCmd = $sshType === 'key'
-                ? "ssh -i $keyPath $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'"
-                : "sshpass -p '$password' ssh $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
+            $sshCmd = "ssh -i $keyPath $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
 
             $scriptPath = base_path('resources/scripts/deploy-openvpn.sh');
             if (!is_file($scriptPath)) {
                 $this->failWith("❌ Missing deployment script at $scriptPath");
                 return;
             }
+
             $script = file_get_contents($scriptPath);
 
             $pipes = [];
@@ -99,6 +97,7 @@ class DeployVpnServer implements ShouldQueue
             }
 
             proc_close($proc);
+
             $combined = $this->vpnServer->deployment_log . $output . $error;
             $exit = preg_match('/EXIT_CODE:(\d+)/', $combined, $m) ? (int)$m[1] : 255;
             $combined = preg_replace('/EXIT_CODE:\d+/', '', $combined);
@@ -117,61 +116,31 @@ class DeployVpnServer implements ShouldQueue
                 : "\n❌ Deployment failed (exit code: $exit)";
             Log::info("🔍 Exit code after VPN deploy: $exit");
 
-            // --- SCP fetch block ---
-            Log::info("➡️ Checking if we should fetch certs: exit code is $exit");
+            // --- Upload id_rsa public key for live polling automation ---
             if ($exit === 0) {
-                Log::info("➡️ Entered SCP fetch block");
-                $certDir = "certs/{$this->vpnServer->id}";
-                $localCertPath = storage_path("app/{$certDir}");
+                $webKeyPub = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa.pub';
+                $remoteTmp = '/tmp/id_rsa.pub';
 
-                if (!is_dir($localCertPath)) {
-                    if (!mkdir($localCertPath, 0755, true)) {
-                        Log::error("❌ Failed to create directory: $localCertPath");
-                        $this->failWith("❌ Failed to create directory: $localCertPath");
-                        return;
-                    }
-                    Log::info("✅ Created directory: $localCertPath");
-                }
+                // Copy public key to server
+                $scpCmd = "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no {$webKeyPub} {$user}@{$ip}:{$remoteTmp}";
+                exec($scpCmd, $scpOut, $scpCode);
+                if ($scpCode !== 0) {
+                    Log::error("❌ Failed to copy polling public key: " . implode("\n", $scpOut));
+                } else {
+                    Log::info("✅ Copied polling public key to {$remoteTmp}");
 
-                $scpBase = $sshType === 'key'
-                    ? "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no"
-                    : "sshpass -p '{$password}' scp -P {$port} -o StrictHostKeyChecking=no";
-
-                $remotePath = "{$user}@{$ip}:/etc/openvpn";
-                $files = ['ca.crt', 'ta.key'];
-                $allSuccess = true;
-
-                foreach ($files as $file) {
-                    $cmd = "{$scpBase} {$remotePath}/{$file} {$localCertPath}/{$file}";
-                    Log::info("📤 Running SCP command: $cmd");
-                    $out = [];
-                    $code = 0;
-                    exec($cmd . ' 2>&1', $out, $code);
-                    Log::info("📥 Output: " . implode("\n", $out));
-                    Log::info("📥 Exit code: {$code}");
-
-                    if ($code !== 0) {
-                        Log::warning("⚠️ Failed to fetch: {$file} using: $cmd");
-                        $allSuccess = false;
+                    // Append it to authorized_keys
+                    $sshAddKeyCmd = "ssh -i {$keyPath} -p {$port} -o StrictHostKeyChecking=no {$user}@{$ip} 'cat {$remoteTmp} >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && rm {$remoteTmp}'";
+                    exec($sshAddKeyCmd, $addOut, $addCode);
+                    if ($addCode !== 0) {
+                        Log::error("❌ Failed to add polling public key to authorized_keys: " . implode("\n", $addOut));
                     } else {
-                        Log::info("✅ Successfully fetched: {$file} to {$localCertPath}/{$file}");
+                        Log::info("✅ Added polling public key to authorized_keys successfully");
                     }
                 }
 
-                if ($allSuccess) {
-                    Log::info("📦 Cert files confirmed present in {$localCertPath}");
-                }
-
+                // Dispatch SyncOpenVPNCredentials job
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
-            }
-
-            // Example PHP code to run before deployment
-            $webKeyPub = storage_path('app/ssh_keys/id_rsa_www.pub');
-            $remoteTmp = '/tmp/id_rsa_www.pub';
-            $scpCmd = "scp -i /var/www/aiovpn/storage/app/ssh_keys/id_rsa -P 22 -o StrictHostKeyChecking=no $webKeyPub root@{$ip}:$remoteTmp";
-            exec($scpCmd, $scpOut, $scpCode);
-            if ($scpCode !== 0) {
-                Log::error("Failed to copy web stats public key: " . implode("\n", $scpOut));
             }
 
             $this->vpnServer->update([
@@ -184,7 +153,7 @@ class DeployVpnServer implements ShouldQueue
             $this->failWith("❌ Exception: " . $e->getMessage(), $e);
         }
 
-        Log::info("DEBUG: DeployVpnServer handle() finished");
+        Log::info("✅ DeployVpnServer job finished");
     }
 
     public function failed(\Throwable $e): void
