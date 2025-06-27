@@ -145,6 +145,8 @@
     </div>                 
 </div>
 
-<button wire:click="deployServer">Test Deploy</button>
+<button {{ $attributes->merge(['type' => 'button']) }}>
+    {{ $slot }}
+</button>
 
 
