@@ -35,64 +35,58 @@ class GenerateOvpnFile implements ShouldQueue
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         $ip = $server->ip_address;
 
-        Log::info("🔑 Generating .ovpn for client {$this->client->username} on server {$server->name} ({$ip})");
+        Log::info("🔑 Generating embedded .ovpn for {$this->client->username} on {$server->name}");
 
-        $blocks = [
-            'CA' => '/etc/openvpn/ca.crt',
-            'TLS' => '/etc/openvpn/ta.key',
-            'Client Cert' => "/etc/openvpn/easy-rsa/pki/issued/{$this->client->username}.crt",
-            'Client Key' => "/etc/openvpn/easy-rsa/pki/private/{$this->client->username}.key",
-        ];
+        // 🔹 Fetch CA cert
+        $ca = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ca.crt', 'CA cert');
+        if (!$ca) return;
 
-        $embedded = [];
+        // 🔹 Fetch TLS auth key
+        $ta = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ta.key', 'TLS auth key');
+        if (!$ta) return;
 
-        foreach ($blocks as $label => $path) {
-            $output = [];
-            $cmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat {$path}'";
-            exec($cmd, $output, $status);
-            $content = implode("\n", $output);
+        // 🔹 Fetch client cert
+        $cert = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/issued/{$this->client->username}.crt", 'Client cert');
+        if (!$cert) return;
 
-            Log::info("🔧 {$label} fetch status: {$status}");
-            Log::info("{$label} Content (first 100 chars): " . substr($content, 0, 100));
+        // 🔹 Fetch client key
+        $key = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/private/{$this->client->username}.key", 'Client key');
+        if (!$key) return;
 
-            if ($status !== 0 || empty($content)) {
-                Log::error("❌ Failed to retrieve {$label} from {$ip} (status {$status})");
-                return;
-            }
-
-            $tag = match ($label) {
-                'CA' => 'ca',
-                'TLS' => 'tls-auth',
-                'Client Cert' => 'cert',
-                'Client Key' => 'key',
-            };
-
-            $block = "<{$tag}>\n{$content}\n</{$tag}>";
-
-            if ($label === 'TLS') {
-                $block .= "\nkey-direction 1";
-            }
-
-            $embedded[$label] = $block;
-        }
-
-        // 🔹 Load .ovpn template
+        // 🔹 Load template
         $templatePath = 'ovpn_templates/client.ovpn';
         if (!Storage::exists($templatePath)) {
             Log::error("❌ Missing OVPN template at {$templatePath}");
             return;
         }
-
         $template = Storage::get($templatePath);
 
-        // 🔹 Replace placeholders and append embedded blocks
-        $config = str_replace(['{{SERVER_IP}}'], [$ip], $template);
-        $config .= "\n\n" . implode("\n\n", $embedded);
+        // 🔹 Replace {{SERVER_IP}}
+        $config = str_replace('{{SERVER_IP}}', $ip, $template);
 
-        // 🔹 Save .ovpn config
-        $fileName = "ovpn_configs/{$server->name}.ovpn";
+        // 🔹 Embed all certificates and keys
+$config = str_replace(
+    ['{{CA_CERT}}', '{{CLIENT_CERT}}', '{{CLIENT_KEY}}', '{{TLS_AUTH}}'],
+    [$caBlock, $certBlock, $keyBlock, $tlsBlock],
+    $template
+);
+        // 🔹 Save final .ovpn file
+        $fileName = "ovpn_configs/{$server->name}_{$this->client->username}.ovpn";
         Storage::put($fileName, $config);
 
-        Log::info("✅ OVPN file generated at storage/app/{$fileName}");
+        Log::info("✅ Embedded .ovpn generated at storage/app/{$fileName}");
+    }
+
+    private function fetchRemoteFile(string $sshKey, string $sshUser, string $ip, string $remotePath, string $label): ?string
+    {
+        $output = [];
+        exec("ssh -i {$sshKey} -o StrictHostKeyChecking=no {$sshUser}@{$ip} 'cat {$remotePath}'", $output, $status);
+
+        if ($status !== 0 || empty($output)) {
+            Log::error("❌ Failed to fetch {$label} from {$ip} (status {$status})");
+            return null;
+        }
+
+        return implode("\n", $output);
     }
 }
