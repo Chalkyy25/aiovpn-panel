@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Admin;
 use Livewire\Component;
 use Livewire\Attributes\Layout;
 use App\Models\VpnServer;
+use App\Jobs\DeployVpnServer; // ✅ Import your job
 use phpseclib3\Net\SSH2;
 use phpseclib3\Crypt\PublicKeyLoader;
 use Illuminate\Support\Str;
@@ -12,7 +13,6 @@ use Illuminate\Support\Str;
 #[Layout('layouts.app')]
 class ServerShow extends Component
 {
-    /* ───────── State ───────── */
     public VpnServer $vpnServer;
 
     public string $uptime = '…';
@@ -22,7 +22,6 @@ class ServerShow extends Component
     public string $deploymentStatus = '…';
     public string $deploymentLog = '';
 
-    /* ───────── Lifecycle ───────── */
     public function mount(VpnServer $vpnServer): void
     {
         $this->vpnServer = $vpnServer;
@@ -36,32 +35,26 @@ class ServerShow extends Component
         $this->refresh();
     }
 
-    /* ───────── Polling action (called by wire:poll) ───────── */
     public function refresh(): void
-{
-    $this->vpnServer = $this->vpnServer->fresh();
+    {
+        $this->vpnServer = $this->vpnServer->fresh();
+        $this->deploymentLog = $this->vpnServer->deployment_log;
+        $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
 
-    $this->deploymentLog = $this->vpnServer->deployment_log;
-    $this->deploymentStatus = (string) ($this->vpnServer->deployment_status ?? '');
-
-    // Always fetch deployment logs and status
-    // Only fetch live stats if deployment is finished
-    if (in_array($this->deploymentStatus, ['succeeded', 'failed'])) {
-        try {
-            $ssh = $this->makeSshClient();
-
-            $this->uptime = trim($ssh->exec("uptime"));
-            $this->cpu = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
-            $this->memory = trim($ssh->exec("free -h | grep Mem || vm_stat | head -n 5"));
-            $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
-        } catch (\Throwable $e) {
-            $this->uptime = '❌ ' . $e->getMessage();
-            logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
+        if (in_array($this->deploymentStatus, ['succeeded', 'failed'])) {
+            try {
+                $ssh = $this->makeSshClient();
+                $this->uptime = trim($ssh->exec("uptime"));
+                $this->cpu = trim($ssh->exec("top -bn1 | grep 'Cpu(s)' || top -l 1 | grep 'CPU usage'"));
+                $this->memory = trim($ssh->exec("free -h | grep Mem || vm_stat | head -n 5"));
+                $this->bandwidth = trim($ssh->exec("vnstat --oneline || echo 'vnstat not installed'"));
+            } catch (\Throwable $e) {
+                $this->uptime = '❌ ' . $e->getMessage();
+                logger()->warning("Live-stats SSH error (#{$this->vpnServer->id}): {$e->getMessage()}");
+            }
         }
     }
-}
 
-    /* ───────── Computed ───────── */
     public function getFilteredLogProperty()
     {
         $lines = explode("\n", $this->deploymentLog ?? '');
@@ -70,12 +63,7 @@ class ServerShow extends Component
 
         foreach ($lines as $line) {
             $line = trim($line);
-
-            if (
-                $line === '' ||
-                preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)
-            ) continue;
-
+            if ($line === '' || preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION|Reading database|^-----$/', $line)) continue;
             if (in_array($line, $seen)) continue;
             $seen[] = $line;
 
@@ -92,7 +80,6 @@ class ServerShow extends Component
         return $filtered;
     }
 
-    /* ───────── Actions ───────── */
     public function rebootServer(): void
     {
         try {
@@ -129,8 +116,8 @@ class ServerShow extends Component
             'deployment_log' => '',
         ]);
 
-        dispatch(new \App\Jobs\DeployVpnServer($this->vpnServer));
-        session()->flash('status', '✅ Deployment retried.');
+        DeployVpnServer::dispatch($this->vpnServer); // ✅ Uses imported class
+        session()->flash('status', '✅ Deployment triggered successfully.');
     }
 
     public function restartVpn(): void
@@ -144,17 +131,15 @@ class ServerShow extends Component
         }
     }
 
-    /* ───────── Helpers ───────── */
     private function makeSshClient(): SSH2
     {
         logger()->info("SSH → {$this->vpnServer->ip_address}:{$this->vpnServer->ssh_port}");
-
         $ssh = new SSH2($this->vpnServer->ip_address, $this->vpnServer->ssh_port);
 
         if ($this->vpnServer->ssh_type === 'key') {
             $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
             if (!is_file($keyPath)) {
-                throw new \RuntimeException('SSH key not found at '.$keyPath);
+                throw new \RuntimeException('SSH key not found at ' . $keyPath);
             }
             $key = PublicKeyLoader::load(file_get_contents($keyPath));
             $login = $ssh->login($this->vpnServer->ssh_user, $key);
@@ -169,7 +154,6 @@ class ServerShow extends Component
         return $ssh;
     }
 
-    /* ───────── View ───────── */
     public function render()
     {
         return view('livewire.pages.admin.server-show');

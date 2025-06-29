@@ -12,7 +12,7 @@ export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
 echo "=== DEPLOYMENT START $(date) ==="
 
 # 🛑 Wait if another package manager is running
-MAX_WAIT=120  # seconds
+MAX_WAIT=120
 WAITED=0
 while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1 || sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
   if [ $WAITED -ge $MAX_WAIT ]; then
@@ -56,9 +56,9 @@ echo yes | sudo ./easyrsa sign-req server server
 echo "[5/9] Copying certs and keys to /etc/openvpn…"
 sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
 
-echo "[6/9] Creating user/pass auth files…"
+echo "[6/9] Creating user/pass auth files and fixing permissions…"
 echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file
-sudo chmod 600 /etc/openvpn/auth/psw-file
+sudo chmod 644 /etc/openvpn/auth/psw-file
 
 sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
 #!/bin/sh
@@ -67,7 +67,9 @@ CORRECT=\$(grep "^\\\$1 " "\$PASSFILE" | cut -d" " -f2-)
 [ "\$2" = "\$CORRECT" ] && exit 0 || exit 1
 EOF'
 
-sudo chmod 700 /etc/openvpn/auth/checkpsw.sh
+# ✅ Set correct permissions so OpenVPN (running as nobody) can execute/read
+sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
+sudo chmod 755 /etc/openvpn/auth
 
 echo "[7/9] Writing server.conf…"
 sudo bash -c 'cat <<CONF > /etc/openvpn/server.conf
@@ -100,9 +102,6 @@ sudo systemctl enable openvpn@server
 sudo systemctl restart openvpn@server
 
 echo "[9/9] Enabling and starting vnStat service…"
-echo "== DEPLOYMENT END $(date) =="
-
-
 sudo systemctl enable vnstat
 sudo systemctl restart vnstat
 
@@ -115,4 +114,6 @@ if [ -f /tmp/id_rsa.pub ]; then
 fi
 
 echo "✅ Deployment finished successfully."
+echo "=== DEPLOYMENT END $(date) ==="
+
 exit 0
