@@ -37,41 +37,44 @@ class GenerateOvpnFile implements ShouldQueue
 
         Log::info("🔑 Generating .ovpn for client {$this->client->username} on server {$server->name} ({$ip})");
 
-        // 🔹 Fetch CA cert
-        $caOutput = [];
-        exec("ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/ca.crt'", $caOutput, $caStatus);
-        if ($caStatus !== 0 || empty($caOutput)) {
-            Log::error("❌ Failed to retrieve CA cert from $ip (status $caStatus)");
-            return;
-        }
-        $caBlock = "<ca>\n" . implode("\n", $caOutput) . "\n</ca>";
+        $blocks = [
+            'CA' => '/etc/openvpn/ca.crt',
+            'TLS' => '/etc/openvpn/ta.key',
+            'Client Cert' => "/etc/openvpn/easy-rsa/pki/issued/{$this->client->username}.crt",
+            'Client Key' => "/etc/openvpn/easy-rsa/pki/private/{$this->client->username}.key",
+        ];
 
-        // 🔹 Fetch TLS auth key
-        $taOutput = [];
-        exec("ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/ta.key'", $taOutput, $taStatus);
-        if ($taStatus !== 0 || empty($taOutput)) {
-            Log::error("❌ Failed to retrieve TLS auth key from $ip (status $taStatus)");
-            return;
-        }
-        $tlsBlock = "<tls-auth>\n" . implode("\n", $taOutput) . "\n</tls-auth>\nkey-direction 1";
+        $embedded = [];
 
-        // 🔹 Fetch client cert
-        $certOutput = [];
-        exec("ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/easy-rsa/pki/issued/{$this->client->username}.crt'", $certOutput, $certStatus);
-        if ($certStatus !== 0 || empty($certOutput)) {
-            Log::error("❌ Failed to retrieve client cert for {$this->client->username} (status $certStatus)");
-            return;
-        }
-        $certBlock = "<cert>\n" . implode("\n", $certOutput) . "\n</cert>";
+        foreach ($blocks as $label => $path) {
+            $output = [];
+            $cmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat {$path}'";
+            exec($cmd, $output, $status);
+            $content = implode("\n", $output);
 
-        // 🔹 Fetch client key
-        $keyOutput = [];
-        exec("ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/easy-rsa/pki/private/{$this->client->username}.key'", $keyOutput, $keyStatus);
-        if ($keyStatus !== 0 || empty($keyOutput)) {
-            Log::error("❌ Failed to retrieve client key for {$this->client->username} (status $keyStatus)");
-            return;
+            Log::info("🔧 {$label} fetch status: {$status}");
+            Log::info("{$label} Content (first 100 chars): " . substr($content, 0, 100));
+
+            if ($status !== 0 || empty($content)) {
+                Log::error("❌ Failed to retrieve {$label} from {$ip} (status {$status})");
+                return;
+            }
+
+            $tag = match ($label) {
+                'CA' => 'ca',
+                'TLS' => 'tls-auth',
+                'Client Cert' => 'cert',
+                'Client Key' => 'key',
+            };
+
+            $block = "<{$tag}>\n{$content}\n</{$tag}>";
+
+            if ($label === 'TLS') {
+                $block .= "\nkey-direction 1";
+            }
+
+            $embedded[$label] = $block;
         }
-        $keyBlock = "<key>\n" . implode("\n", $keyOutput) . "\n</key>";
 
         // 🔹 Load .ovpn template
         $templatePath = 'ovpn_templates/client.ovpn';
@@ -79,19 +82,14 @@ class GenerateOvpnFile implements ShouldQueue
             Log::error("❌ Missing OVPN template at {$templatePath}");
             return;
         }
+
         $template = Storage::get($templatePath);
 
-        // 🔹 Replace placeholders
-        $config = str_replace(
-            ['{{SERVER_IP}}'],
-            [$ip],
-            $template
-        );
+        // 🔹 Replace placeholders and append embedded blocks
+        $config = str_replace(['{{SERVER_IP}}'], [$ip], $template);
+        $config .= "\n\n" . implode("\n\n", $embedded);
 
-        // 🔹 Append embedded blocks
-        $config .= "\n\n" . $caBlock . "\n\n" . $certBlock . "\n\n" . $keyBlock . "\n\n" . $tlsBlock;
-
-        // 🔹 Save final .ovpn config
+        // 🔹 Save .ovpn config
         $fileName = "ovpn_configs/{$server->name}.ovpn";
         Storage::put($fileName, $config);
 
