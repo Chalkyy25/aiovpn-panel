@@ -43,44 +43,6 @@ class DeployVpnServer implements ShouldQueue
             $user    = $this->vpnServer->ssh_user;
             $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
 
-<<<<<<< HEAD
-        // 🔹 Fetch CA cert
-        $caContent = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ca.crt', 'CA');
-        if (!$caContent) return;
-
-        // 🔹 Fetch TLS auth key
-        $taContent = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ta.key', 'TLS');
-        if (!$taContent) return;
-
-        // 🔹 Fetch client cert
-        $certContent = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/issued/{$this->client->username}.crt", 'Client Cert');
-        if (!$certContent) return;
-
-        // 🔹 Fetch client key
-        $keyContent = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/private/{$this->client->username}.key", 'Client Key');
-        if (!$keyContent) return;
-
-        // 🔹 Load template
-        $templatePath = 'ovpn_templates/client.ovpn';
-        if (!Storage::exists($templatePath)) {
-            Log::error("❌ Missing OVPN template at {$templatePath}");
-            return;
-        }
-        $template = Storage::get($templatePath);
-
-        // 🔹 Replace placeholders
-        $config = str_replace(
-            ['{{SERVER_IP}}', '{{CA_CERT}}', '{{CLIENT_CERT}}', '{{CLIENT_KEY}}', '{{TLS_AUTH}}'],
-            [$ip, $caContent, $certContent, $keyContent, $taContent],
-            $template
-        );
-
-        // 🔹 Save config file
-        $fileName = "ovpn_configs/{$server->name}.ovpn";
-        Storage::put($fileName, $config);
-
-        Log::info("✅ OVPN file generated at storage/app/{$fileName}");
-=======
             if (!is_file($keyPath)) {
                 $this->failWith("❌ SSH key not found at $keyPath");
                 return;
@@ -157,41 +119,11 @@ class DeployVpnServer implements ShouldQueue
 
             Log::info("🔍 Exit code after VPN deploy: $exit");
 
-            // 🔧 Upload id_rsa.pub for live polling if deployment succeeded
+            // 🔧 Dispatch sync credentials job if deployment succeeded
             if ($exit === 0) {
-                $webKeyPub = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa.pub';
-                $remoteTmp = '/tmp/id_rsa.pub';
-
-                $scpCmd = "scp -i {$keyPath} -P {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {$webKeyPub} {$user}@{$ip}:{$remoteTmp}";
-                exec($scpCmd, $scpOut, $scpCode);
-
-                Log::info("📤 SCP copy command: {$scpCmd}");
-                Log::info("📤 SCP copy exit code: {$scpCode}");
-                Log::info("📤 SCP copy output: " . implode("\n", $scpOut));
-
-                if ($scpCode !== 0) {
-                    Log::error("❌ Failed to copy polling public key (exit code {$scpCode}): " . implode("\n", $scpOut));
-                } else {
-                    Log::info("✅ Copied polling public key to {$remoteTmp}");
-
-                    $sshAddKeyCmd = "ssh -i {$keyPath} -p {$port} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {$user}@{$ip} 'cat {$remoteTmp} >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && rm {$remoteTmp}'";
-                    exec($sshAddKeyCmd, $addOut, $addCode);
-
-                    Log::info("🔧 SSH add key exit code: {$addCode}");
-                    Log::info("🔧 SSH add key output: " . implode("\n", $addOut));
-
-                    if ($addCode !== 0) {
-                        Log::error("❌ Failed to add polling public key to authorized_keys (exit code {$addCode}): " . implode("\n", $addOut));
-                    } else {
-                        Log::info("✅ Added polling public key to authorized_keys successfully");
-                    }
-                }
-
-                // 🔧 Dispatch sync credentials job
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
             }
 
-            // 🔧 Update deployment status in DB
             $this->vpnServer->update([
                 'is_deploying' => false,
                 'deployment_status' => $status,
@@ -222,24 +154,5 @@ class DeployVpnServer implements ShouldQueue
             'deployment_log' => $message,
             'status' => 'offline',
         ]);
->>>>>>> parent of ff55af6 (Update DeployVpnServer.php)
-    }
-
-    private function fetchRemoteFile(string $sshKey, string $sshUser, string $ip, string $remotePath, string $label): ?string
-    {
-        $output = [];
-        $cmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat {$remotePath}'";
-        exec($cmd, $output, $status);
-        $content = implode("\n", $output);
-
-        Log::info("🔧 {$label} fetch status: {$status}");
-        Log::info("{$label} Content (first 100 chars): " . substr($content, 0, 100));
-
-        if ($status !== 0 || empty($content)) {
-            Log::error("❌ Failed to retrieve {$label} from {$ip} (status {$status})");
-            return null;
-        }
-
-        return $content;
     }
 }
