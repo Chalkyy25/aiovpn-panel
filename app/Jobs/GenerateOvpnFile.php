@@ -22,7 +22,7 @@ class GenerateOvpnFile implements ShouldQueue
         $this->client = $client->load('vpnServer');
     }
 
-    public function handle(): void
+public function handle(): void
 {
     $server = $this->client->vpnServer;
 
@@ -41,41 +41,25 @@ class GenerateOvpnFile implements ShouldQueue
     $caOutput = [];
     $caCmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/ca.crt'";
     exec($caCmd, $caOutput, $caStatus);
-    if ($caStatus !== 0 || empty($caOutput)) {
-        Log::error("❌ Failed to retrieve CA cert from $ip (status $caStatus)");
-        return;
-    }
-    $caBlock = "<ca>\n" . implode("\n", $caOutput) . "\n</ca>";
+    $caContent = implode("\n", $caOutput);
 
     // 🔹 Fetch TLS auth key
     $taOutput = [];
     $taCmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/ta.key'";
     exec($taCmd, $taOutput, $taStatus);
-    if ($taStatus !== 0 || empty($taOutput)) {
-        Log::error("❌ Failed to retrieve TLS auth key from $ip (status $taStatus)");
-        return;
-    }
-    $tlsBlock = "<tls-auth>\n" . implode("\n", $taOutput) . "\n</tls-auth>\nkey-direction 1";
+    $taContent = implode("\n", $taOutput);
 
     // 🔹 Fetch client cert
     $certOutput = [];
     $certCmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/easy-rsa/pki/issued/{$this->client->username}.crt'";
     exec($certCmd, $certOutput, $certStatus);
-    if ($certStatus !== 0 || empty($certOutput)) {
-        Log::error("❌ Failed to retrieve client cert for {$this->client->username} from $ip (status $certStatus)");
-        return;
-    }
-    $certBlock = "<cert>\n" . implode("\n", $certOutput) . "\n</cert>";
+    $certContent = implode("\n", $certOutput);
 
     // 🔹 Fetch client key
     $keyOutput = [];
     $keyCmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat /etc/openvpn/easy-rsa/pki/private/{$this->client->username}.key'";
     exec($keyCmd, $keyOutput, $keyStatus);
-    if ($keyStatus !== 0 || empty($keyOutput)) {
-        Log::error("❌ Failed to retrieve client key for {$this->client->username} from $ip (status $keyStatus)");
-        return;
-    }
-    $keyBlock = "<key>\n" . implode("\n", $keyOutput) . "\n</key>";
+    $keyContent = implode("\n", $keyOutput);
 
     // 🔹 Load template
     $templatePath = 'ovpn_templates/client.ovpn';
@@ -85,14 +69,12 @@ class GenerateOvpnFile implements ShouldQueue
     }
     $template = Storage::get($templatePath);
 
-    // 🔹 Insert user/pass block inline
-    $userpassBlock = "<auth-user-pass>\n{$this->client->username}\n{$this->client->password}\n</auth-user-pass>";
-
-    // 🔹 Replace server IP
-    $config = str_replace(['{{SERVER_IP}}'], [$ip], $template);
-
-    // 🔹 Append all blocks to final config
-    $config .= "\n\n" . $userpassBlock . "\n\n" . $caBlock . "\n\n" . $certBlock . "\n\n" . $keyBlock . "\n\n" . $tlsBlock;
+    // 🔹 Replace all placeholders in one go
+    $config = str_replace(
+        ['{{SERVER_IP}}', '{{CA_CERT}}', '{{CLIENT_CERT}}', '{{CLIENT_KEY}}', '{{TLS_AUTH}}'],
+        [$ip, $caContent, $certContent, $keyContent, $taContent],
+        $template
+    );
 
     // 🔹 Save config file
     $fileName = "ovpn_configs/{$server->name}.ovpn";
@@ -100,4 +82,5 @@ class GenerateOvpnFile implements ShouldQueue
 
     Log::info("✅ OVPN file generated at storage/app/{$fileName}");
 }
+
 }
