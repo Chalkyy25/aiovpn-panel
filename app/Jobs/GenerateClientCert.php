@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
@@ -26,28 +27,47 @@ class GenerateClientCert implements ShouldQueue
 
     public function handle()
     {
-        $ssh = new \phpseclib3\Net\SSH2($this->vpnServer->ip_address);
-        $key = \phpseclib3\Crypt\PublicKeyLoader::loadPrivateKey(file_get_contents('/path/to/your/private/key'));
+        Log::info("🔧 Starting GenerateClientCert for user {$this->vpnUser->username} on server {$this->vpnServer->name}");
 
-        if (!$ssh->login('root', $key)) {
-            throw new \Exception('SSH login failed');
+        $sshKeyPath = storage_path('app/ssh_keys/id_rsa');
+        if (!file_exists($sshKeyPath)) {
+            Log::error("❌ SSH private key not found at {$sshKeyPath}");
+            return;
         }
 
-        // 🔧 Generate client cert + key
+        $ssh = new \phpseclib3\Net\SSH2($this->vpnServer->ip_address);
+        $key = \phpseclib3\Crypt\PublicKeyLoader::load(file_get_contents($sshKeyPath));
+
+        if (!$ssh->login($this->vpnServer->ssh_user, $key)) {
+            Log::error("❌ SSH login failed for {$this->vpnServer->ip_address}");
+            return;
+        }
+
         $username = $this->vpnUser->username;
 
+        Log::info("🔧 Generating cert + key for {$username}");
+
         $ssh->exec("cd /etc/openvpn/easy-rsa && ./easyrsa gen-req {$username} nopass");
-        $ssh->exec("cd /etc/openvpn/easy-rsa && ./easyrsa sign-req client {$username}");
+        $ssh->exec("cd /etc/openvpn/easy-rsa && echo yes | ./easyrsa sign-req client {$username}");
 
         // 🔧 Fetch generated files
         $cert = $ssh->exec("cat /etc/openvpn/easy-rsa/pki/issued/{$username}.crt");
         $key = $ssh->exec("cat /etc/openvpn/easy-rsa/pki/private/{$username}.key");
 
+        if (empty($cert) || empty($key)) {
+            Log::error("❌ Failed to fetch generated cert or key for {$username}");
+            return;
+        }
+
         // 🔧 Save locally for embedding
         Storage::put("client_certs/{$username}.crt", $cert);
         Storage::put("client_certs/{$username}.key", $key);
 
-        // 🔧 Trigger your GenerateOvpnFile job next
-        \App\Jobs\GenerateOvpnFile::dispatch($this->vpnUser, $this->vpnServer);
+        Log::info("✅ Generated and saved cert + key for {$username}");
+
+        // 🔧 Trigger GenerateOvpnFile job
+        \App\Jobs\GenerateOvpnFile::dispatch($this->vpnUser);
+
+        Log::info("🚀 Dispatched GenerateOvpnFile job for {$username}");
     }
 }
