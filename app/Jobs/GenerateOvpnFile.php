@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\Client;
+use App\Models\VpnUser;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -15,19 +15,19 @@ class GenerateOvpnFile implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected Client $client;
+    protected VpnUser $vpnUser;
 
-    public function __construct(Client $client)
+    public function __construct(VpnUser $vpnUser)
     {
-        $this->client = $client->load('vpnServer');
+        $this->vpnUser = $vpnUser->load('vpnServer');
     }
 
     public function handle(): void
     {
-        $server = $this->client->vpnServer;
+        $server = $this->vpnUser->vpnServer;
 
         if (!$server) {
-            Log::error("❌ No VPN server assigned for client {$this->client->username}");
+            Log::error("❌ No VPN server assigned for user {$this->vpnUser->username}");
             return;
         }
 
@@ -35,23 +35,18 @@ class GenerateOvpnFile implements ShouldQueue
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         $ip = $server->ip_address;
 
-        Log::info("🔑 Generating embedded .ovpn for {$this->client->username} on {$server->name}");
+        Log::info("🔑 Generating embedded .ovpn for {$this->vpnUser->username} on {$server->name}");
 
-        // 🔹 Fetch CA cert
+        // 🔹 Fetch files
         $ca = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ca.crt', 'CA cert');
-        if (!$ca) return;
-
-        // 🔹 Fetch TLS auth key
         $ta = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ta.key', 'TLS auth key');
-        if (!$ta) return;
+        $cert = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/issued/{$this->vpnUser->username}.crt", 'Client cert');
+        $key = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/private/{$this->vpnUser->username}.key", 'Client key');
 
-        // 🔹 Fetch client cert
-        $cert = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/issued/{$this->client->username}.crt", 'Client cert');
-        if (!$cert) return;
-
-        // 🔹 Fetch client key
-        $key = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/private/{$this->client->username}.key", 'Client key');
-        if (!$key) return;
+        if (!$ca || !$ta || !$cert || !$key) {
+            Log::error("❌ Missing one or more required cert/key files.");
+            return;
+        }
 
         // 🔹 Load template
         $templatePath = 'ovpn_templates/client.ovpn';
@@ -65,16 +60,13 @@ class GenerateOvpnFile implements ShouldQueue
         $config = str_replace('{{SERVER_IP}}', $ip, $template);
 
         // 🔹 Embed all certificates and keys
-		Log::info("🔍 CA Content preview: " . substr($caContent, 0, 100));
-		Log::info("🔍 CERT Content preview: " . substr($certContent, 0, 100));
-		Log::info("🔍 KEY Content preview: " . substr($keyContent, 0, 100));
-		Log::info("🔍 TLS Content preview: " . substr($taContent, 0, 100));
-		$config = str_replace(
-		    ['{{CA_CERT}}', '{{CLIENT_CERT}}', '{{CLIENT_KEY}}', '{{TLS_AUTH}}'],
-		    [$caBlock, $certBlock, $keyBlock, $tlsBlock],
-		    $template
-		);
-		        // 🔹 Save final .ovpn file        $fileName = "ovpn_configs/{$server->name}_{$this->client->username}.ovpn";
+        $config .= "\n\n<ca>\n{$ca}\n</ca>";
+        $config .= "\n\n<cert>\n{$cert}\n</cert>";
+        $config .= "\n\n<key>\n{$key}\n</key>";
+        $config .= "\n\n<tls-auth>\n{$ta}\n</tls-auth>\nkey-direction 1";
+
+        // 🔹 Save final .ovpn file
+        $fileName = "ovpn_configs/{$server->name}_{$this->vpnUser->username}.ovpn";
         Storage::put($fileName, $config);
 
         Log::info("✅ Embedded .ovpn generated at storage/app/{$fileName}");
