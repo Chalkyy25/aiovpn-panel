@@ -58,6 +58,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('/', [\App\Http\Controllers\VpnUserController::class, 'store'])->name('servers.users.store');
         Route::post('/sync', [\App\Http\Controllers\VpnUserController::class, 'sync'])->name('servers.users.sync');
 	 });
+
+	// ✅ VPN Users page
+	Route::get('/vpn-users', \App\Livewire\Pages\Admin\VpnUsers::class)->name('admin.vpn-users');
+
         // ✅ Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
     });

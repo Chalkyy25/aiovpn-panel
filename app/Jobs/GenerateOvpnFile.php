@@ -65,13 +65,16 @@ class GenerateOvpnFile implements ShouldQueue
         $config = str_replace('{{SERVER_IP}}', $ip, $template);
 
         // 🔹 Embed all certificates and keys
-$config = str_replace(
-    ['{{CA_CERT}}', '{{CLIENT_CERT}}', '{{CLIENT_KEY}}', '{{TLS_AUTH}}'],
-    [$caBlock, $certBlock, $keyBlock, $tlsBlock],
-    $template
-);
-        // 🔹 Save final .ovpn file
-        $fileName = "ovpn_configs/{$server->name}_{$this->client->username}.ovpn";
+		Log::info("🔍 CA Content preview: " . substr($caContent, 0, 100));
+		Log::info("🔍 CERT Content preview: " . substr($certContent, 0, 100));
+		Log::info("🔍 KEY Content preview: " . substr($keyContent, 0, 100));
+		Log::info("🔍 TLS Content preview: " . substr($taContent, 0, 100));
+		$config = str_replace(
+		    ['{{CA_CERT}}', '{{CLIENT_CERT}}', '{{CLIENT_KEY}}', '{{TLS_AUTH}}'],
+		    [$caBlock, $certBlock, $keyBlock, $tlsBlock],
+		    $template
+		);
+		        // 🔹 Save final .ovpn file        $fileName = "ovpn_configs/{$server->name}_{$this->client->username}.ovpn";
         Storage::put($fileName, $config);
 
         Log::info("✅ Embedded .ovpn generated at storage/app/{$fileName}");
