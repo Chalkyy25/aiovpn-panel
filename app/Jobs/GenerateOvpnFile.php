@@ -67,11 +67,12 @@ class GenerateOvpnFile implements ShouldQueue
 
         // 🔹 Save final .ovpn file to public folder
         $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
-        $fileName = "public/ovpn_configs/{$safeServerName}_{$this->vpnUser->username}.ovpn";
 
-        Storage::put($fileName, $config);
+$fileName = "public/ovpn_configs/{$server->name}_{$this->vpnUser->username}.ovpn";
+Log::info("💾 Saving .ovpn to: {$fileName}");
+Storage::put($fileName, $config);
+Log::info("✅ Embedded .ovpn generated at storage/app/{$fileName}");
 
-        Log::info("✅ Embedded .ovpn generated at storage/app/{$fileName}");
     }
 
     private function fetchRemoteFile(string $sshKey, string $sshUser, string $ip, string $remotePath, string $label): ?string
