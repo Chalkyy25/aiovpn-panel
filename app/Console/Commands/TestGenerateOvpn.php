@@ -28,12 +28,14 @@ class TestGenerateOvpn extends Command
 public function handle()
 {
     $userId = $this->argument('userId');
+    $vpnUser = VpnUser::find($userId);
 
-    $client = \App\Models\Client::findOrFail($userId);
+    if (!$vpnUser) {
+        $this->error("User ID {$userId} not found.");
+        return;
+    }
 
-    \App\Jobs\GenerateOvpnFile::dispatch($client);
-
-    $this->info("✅ GenerateOvpnFile job dispatched for client ID {$userId}");
+    \App\Jobs\GenerateOvpnFile::dispatch($vpnUser);
+    $this->info("✅ GenerateOvpnFile job dispatched for user ID {$userId} ({$vpnUser->username}).");
 }
-
 }
