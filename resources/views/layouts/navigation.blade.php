@@ -28,7 +28,7 @@
                         <x-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
                             {{ __('Settings') }}
                         </x-nav-link>
-                         <x-nav-link :href="route('admin.vpn-user')" :active="request()->routeIs('admin.vpn-users')">
+                         <x-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
                             {{ __('VPN Users') }}
                         </x-nav-link>
                     @elseif(auth()->user()?->role === 'reseller')
@@ -111,9 +111,11 @@
                 <x-responsive-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
                     {{ __('Settings') }}
                 </x-responsive-nav-link>
-                 <x-responsive-nav-link :href="route('admin.vpn-user')" :active="request()->routeIs('admin.vpn-users')">
+                
+                 <x-responsive-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
                             {{ __('VPN Users') }}
                         </x-nav-link>
+                        
             @elseif(auth()->user()?->role === 'reseller')
                 <x-responsive-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
                     {{ __('Dashboard') }}
