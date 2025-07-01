@@ -60,7 +60,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 	 });
 
 	// ✅ VPN Users page
-	Route::get('/vpn-users', \App\Livewire\Pages\Admin\VpnUsers::class)->name('admin.vpn-users');
+	Route::get('/vpn-users', \App\Livewire\Pages\Admin\VpnUsers::class)->name('vpn-users');
 
         // ✅ Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
