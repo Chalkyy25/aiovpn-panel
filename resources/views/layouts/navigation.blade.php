@@ -38,6 +38,9 @@
                             {{ __('Dashboard') }}
                         </x-nav-link>
                         {{-- Add more client links here --}}
+                        <-nav-link :href="route('admin.vpn-user')" :active="request()->routeIs('admin.vpn-users')">
+                            {{ __('VPN Users') }}
+                        </x-nav-link>
                     @endif
                 </div>
             </div>
