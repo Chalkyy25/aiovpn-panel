@@ -28,6 +28,9 @@
                         <x-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
                             {{ __('Settings') }}
                         </x-nav-link>
+                         <-nav-link :href="route('admin.vpn-user')" :active="request()->routeIs('admin.vpn-users')">
+                            {{ __('VPN Users') }}
+                        </x-nav-link>
                     @elseif(auth()->user()?->role === 'reseller')
                         <x-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
                             {{ __('Dashboard') }}
@@ -38,9 +41,7 @@
                             {{ __('Dashboard') }}
                         </x-nav-link>
                         {{-- Add more client links here --}}
-                        <-nav-link :href="route('admin.vpn-user')" :active="request()->routeIs('admin.vpn-users')">
-                            {{ __('VPN Users') }}
-                        </x-nav-link>
+                       
                     @endif
                 </div>
             </div>
