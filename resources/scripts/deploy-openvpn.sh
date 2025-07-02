@@ -2,6 +2,7 @@
 echo "SCRIPT RUN START: $(date)"
 set -e
 trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; exit $CODE' ERR
+
 set -x  # Debug: print each command
 
 # 🛑 PRE-CLEANUP: Kill stale processes, remove locks, reconfigure dpkg
@@ -39,30 +40,42 @@ export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
 
 echo "=== DEPLOYMENT START $(date) ==="
 
-# 🔧 Update and upgrade system
-echo "[1/11] Updating and upgrading system…"
-sudo apt-get update -y
-sudo apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+# 🔧 Function to wait for apt locks
+wait_for_apt() {
+  echo "[APT] Waiting for other apt processes to finish…"
+  while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
+        fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
+        fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+    echo "[APT] Another process is holding apt lock. Waiting 3s..."
+    sleep 3
+  done
+}
 
-# 🔧 Install core packages with preseeding for iptables-persistent
+# 🔧 Update and upgrade system with lock wait
+echo "[1/11] Updating and upgrading system…"
+wait_for_apt
+sudo apt-get update -y
+wait_for_apt
+sudo apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+wait_for_apt
+
+# 🔧 Install core packages
 echo "[2/11] Installing OpenVPN, Easy-RSA, vnStat, iptables-persistent with preseeding…"
 sudo debconf-set-selections <<< "iptables-persistent iptables-persistent/autosave_v4 boolean true"
 sudo debconf-set-selections <<< "iptables-persistent iptables-persistent/autosave_v6 boolean true"
 
+wait_for_apt
 sudo apt-get install -y openvpn easy-rsa vnstat iptables-persistent curl wget lsb-release ca-certificates \
   -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
+wait_for_apt
 
-# 🔧 Dynamic detection of default network interface for NAT
-echo "[3/11] Detecting default network interface…"
-DEFAULT_IF=$(ip route | grep '^default' | awk '{print $5}')
-if [ -z "$DEFAULT_IF" ]; then
-  echo "❌ Could not detect default network interface."
-  exit 1
+# Ensure iptables-persistent is configured
+if [ ! -f /etc/iptables/rules.v4 ]; then
+  sudo iptables-save | sudo tee /etc/iptables/rules.v4
 fi
-echo "✅ Detected interface: $DEFAULT_IF"
 
 # 🔧 Clean existing OpenVPN setup
-echo "[4/11] Cleaning existing OpenVPN setup…"
+echo "[3/11] Cleaning existing OpenVPN setup…"
 sudo systemctl stop openvpn@server || true
 sudo killall openvpn || true
 sudo rm -rf /etc/openvpn/*
@@ -70,7 +83,7 @@ sudo mkdir -p /etc/openvpn/auth
 : > /etc/openvpn/ipp.txt
 
 # 🔧 Setup Easy-RSA PKI
-echo "[5/11] Setting up Easy-RSA PKI…"
+echo "[4/11] Setting up Easy-RSA PKI…"
 EASYRSA_DIR=/etc/openvpn/easy-rsa
 sudo cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
 cd "$EASYRSA_DIR"
@@ -82,29 +95,30 @@ sudo EASYRSA_BATCH=1 EASYRSA_REQ_CN="server" ./easyrsa gen-req server nopass
 echo yes | sudo ./easyrsa sign-req server server
 
 # 🔧 Copy certs & keys to /etc/openvpn
-echo "[6/11] Copying certs and keys…"
+echo "[5/11] Copying certs and keys…"
 sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
 
 # 🔧 Create psw-file for user authentication
-echo "[7/11] Creating psw-file for user authentication…"
+echo "[6/11] Creating psw-file for user authentication…"
 if [ ! -f /etc/openvpn/auth/psw-file ]; then
   echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file
   sudo chmod 600 /etc/openvpn/auth/psw-file
 fi
 
 # 🔧 Create checkpsw.sh script
-echo "[8/11] Creating checkpsw.sh script…"
+echo "[7/11] Creating checkpsw.sh script…"
 sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
 #!/bin/sh
 PASSFILE="/etc/openvpn/auth/psw-file"
 CORRECT=\$(grep "^\$1 " "\$PASSFILE" | cut -d" " -f2-)
 [ "\$2" = "\$CORRECT" ] && exit 0 || exit 1
 EOF'
+
 sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
 sudo chmod 755 /etc/openvpn/auth
 
 # 🔧 Write server.conf
-echo "[9/11] Writing server.conf…"
+echo "[8/11] Writing server.conf…"
 sudo bash -c 'cat <<CONF > /etc/openvpn/server.conf
 port 1194
 proto udp
@@ -134,19 +148,18 @@ push "dhcp-option DNS 1.1.1.1"
 CONF'
 
 # 🔧 Enable IP forwarding
-echo "[10/11] Enabling IP forwarding…"
+echo "[9/11] Enabling IP forwarding…"
 sudo sysctl -w net.ipv4.ip_forward=1
 sudo sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
 sudo sysctl -p
 
-# 🔧 Set up NAT dynamically
-echo "[11/11] Setting up NAT with iptables…"
-sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o "$DEFAULT_IF" -j MASQUERADE
+# 🔧 Set up NAT (replace eth0 if needed)
+echo "[10/11] Setting up NAT with iptables…"
+sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
 sudo iptables-save | sudo tee /etc/iptables/rules.v4
-sudo systemctl restart netfilter-persistent
 
 # 🔧 Enable & restart OpenVPN
-echo "[FINAL] Enabling and restarting OpenVPN service…"
+echo "[11/11] Enabling and restarting OpenVPN service…"
 sudo systemctl enable openvpn@server
 sudo systemctl restart openvpn@server
 
