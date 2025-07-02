@@ -40,14 +40,21 @@ export EASYRSA_REQ_CN="${EASYRSA_REQ_CN:-OpenVPN-CA}"
 
 echo "=== DEPLOYMENT START $(date) ==="
 
-# 🔧 Function to wait for apt locks
+# 🔧 Function to wait for apt locks with timeout
 wait_for_apt() {
   echo "[APT] Waiting for other apt processes to finish…"
+  MAX_WAIT=120
+  WAITED=0
   while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
         fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
         fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+    if [ $WAITED -ge $MAX_WAIT ]; then
+      echo "❌ Timed out waiting for apt locks to clear."
+      exit 1
+    fi
     echo "[APT] Another process is holding apt lock. Waiting 3s..."
     sleep 3
+    WAITED=$((WAITED+3))
   done
 }
 
