@@ -6,11 +6,35 @@ trap 'CODE=$?; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$C
 set -x  # Debug: print each command
 
 # 🛑 PRE-CLEANUP: Kill stale processes, remove locks, reconfigure dpkg
-echo "[PRE] Killing stale OpenVPN processes and cleaning up…"
+echo "[PRE] Killing stale processes and cleaning up…"
 sudo killall openvpn || true
+sudo killall debconf-communicate || true
+
+# Remove known lock files
 sudo rm -f /var/lib/dpkg/lock
 sudo rm -f /var/lib/dpkg/lock-frontend
+sudo rm -f /var/cache/debconf/config.dat
+sudo rm -f /var/cache/debconf/passwords.dat
+sudo rm -f /var/cache/debconf/templates.dat
+
+# Reconfigure dpkg
 sudo dpkg --configure -a
+
+# Wait for any debconf locks to clear
+MAX_WAIT=120
+WAITED=0
+while fuser /var/cache/debconf/config.dat >/dev/null 2>&1 || \
+      fuser /var/cache/debconf/passwords.dat >/dev/null 2>&1 || \
+      fuser /var/cache/debconf/templates.dat >/dev/null 2>&1; do
+  if [ $WAITED -ge $MAX_WAIT ]; then
+    echo "❌ Timed out waiting for debconf locks to clear."
+    exit 1
+  fi
+  echo "⏳ Waiting for debconf locks to clear..."
+  sleep 3
+  WAITED=$((WAITED+3))
+done
+
 echo "[PRE] Cleanup complete. Proceeding with deployment..."
 
 export DEBIAN_FRONTEND=noninteractive
