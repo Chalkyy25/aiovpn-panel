@@ -4,38 +4,30 @@
 exec > >(tee -i /var/log/openvpn-deploy.log)
 exec 2>&1
 
-echo "======================================="
-echo " SCRIPT RUN START: $(date)"
-echo "======================================="
+echo -e "\n=======================================\n SCRIPT RUN START: $(date)\n======================================="
+
 set -e
-trap 'CODE=$?; echo "======================================="; echo "❌ Deployment failed with code: $CODE"; echo "EXIT_CODE:$CODE"; echo "======================================="; exit $CODE' ERR
+trap 'CODE=$?; echo -e "\n=======================================\n❌ Deployment failed with code: $CODE\nEXIT_CODE:$CODE\n======================================="; exit $CODE' ERR
 
 # Debug toggle
 DEBUG=false
-
-if [ "$DEBUG" = true ]; then
-  set -x  # Enable debug mode
-fi
+[ "$DEBUG" = true ] && set -x
 
 # ───────── Functions ───────── #
 
 function pre_cleanup() {
-  echo "======================================="
-  echo "[PRE] Killing stale processes and cleaning up…"
-  echo "======================================="
+  echo -e "\n=======================================\n[PRE] Killing stale processes and cleaning up…\n======================================="
   
   sudo killall openvpn || true
   sudo killall debconf-communicate || true
-  sudo rm -f /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
-  sudo rm -f /var/cache/debconf/*.dat
-
+  sudo rm -f /var/lib/dpkg/lock* /var/cache/debconf/*.dat
   sudo dpkg --configure -a
 
-  MAX_WAIT=120
-  WAITED=0
+  local MAX_WAIT=120
+  local WAITED=0
   while fuser /var/cache/debconf/*.dat >/dev/null 2>&1; do
     if [ $WAITED -ge $MAX_WAIT ]; then
-      echo "❌ Timed out waiting for debconf locks to clear."
+      echo -e "\n❌ Timed out waiting for debconf locks to clear.\n"
       exit 1
     fi
     echo "⏳ Waiting for debconf locks to clear..."
@@ -43,36 +35,28 @@ function pre_cleanup() {
     WAITED=$((WAITED+3))
   done
 
-  echo "[PRE] Cleanup complete."
-  echo "======================================="
+  echo -e "[PRE] Cleanup complete.\n======================================="
 }
 
 function wait_for_apt() {
-  echo "======================================="
-  echo "[APT] Checking apt locks…"
-  echo "======================================="
-
-  MAX_WAIT=120
-  WAITED=0
+  echo -e "\n=======================================\n[APT] Checking apt locks…\n======================================="
+  local MAX_WAIT=120
+  local WAITED=0
   while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
         fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
         fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
     if [ $WAITED -ge $MAX_WAIT ]; then
-      echo "❌ Timed out waiting for apt locks to clear."
+      echo -e "\n❌ Timed out waiting for apt locks to clear.\n"
       exit 1
     fi
     echo "[APT] Another process is holding apt lock. Waiting 3s..."
     sleep 3
     WAITED=$((WAITED+3))
   done
-
-  echo "======================================="
 }
 
 function update_and_upgrade() {
-  echo "======================================="
-  echo "[1/11] Updating and upgrading system…"
-  echo "======================================="
+  echo -e "\n=======================================\n[1/11] Updating and upgrading system…\n======================================="
 
   wait_for_apt
   sudo apt-get update -y
@@ -80,14 +64,11 @@ function update_and_upgrade() {
   sudo apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
   wait_for_apt
 
-  echo "[1/11] Update and upgrade complete."
-  echo "======================================="
+  echo -e "[1/11] Update and upgrade complete.\n======================================="
 }
 
 function install_packages() {
-  echo "======================================="
-  echo "[2/11] Installing required packages…"
-  echo "======================================="
+  echo -e "\n=======================================\n[2/11] Installing required packages…\n======================================="
 
   sudo debconf-set-selections <<< "iptables-persistent iptables-persistent/autosave_v4 boolean true"
   sudo debconf-set-selections <<< "iptables-persistent iptables-persistent/autosave_v6 boolean true"
@@ -97,18 +78,13 @@ function install_packages() {
     -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
   wait_for_apt
 
-  if [ ! -f /etc/iptables/rules.v4 ]; then
-    sudo iptables-save | sudo tee /etc/iptables/rules.v4
-  fi
+  [ ! -f /etc/iptables/rules.v4 ] && sudo iptables-save | sudo tee /etc/iptables/rules.v4
 
-  echo "[2/11] Package installation complete."
-  echo "======================================="
+  echo -e "[2/11] Package installation complete.\n======================================="
 }
 
 function clean_openvpn_setup() {
-  echo "======================================="
-  echo "[3/11] Cleaning existing OpenVPN setup…"
-  echo "======================================="
+  echo -e "\n=======================================\n[3/11] Cleaning existing OpenVPN setup…\n======================================="
 
   sudo systemctl stop openvpn@server || true
   sudo killall openvpn || true
@@ -119,7 +95,6 @@ function clean_openvpn_setup() {
   sudo mv /etc/openvpn/auth/checkpsw.sh /tmp/checkpsw.sh.bak || true
   [ -d /etc/openvpn/pki ] && sudo mv /etc/openvpn/pki /tmp/pki.bak || true
 
-  # Remove everything except preserved files
   sudo rm -rf /etc/openvpn/*
   sudo mkdir -p /etc/openvpn/auth
 
@@ -130,16 +105,13 @@ function clean_openvpn_setup() {
 
   : > /etc/openvpn/ipp.txt
 
-  echo "[3/11] Cleanup complete."
-  echo "======================================="
+  echo -e "[3/11] Cleanup complete.\n======================================="
 }
 
 function setup_easy_rsa() {
-  echo "======================================="
-  echo "[4/11] Setting up Easy-RSA PKI…"
-  echo "======================================="
+  echo -e "\n=======================================\n[4/11] Setting up Easy-RSA PKI…\n======================================="
 
-  EASYRSA_DIR=/etc/openvpn/easy-rsa
+  local EASYRSA_DIR=/etc/openvpn/easy-rsa
   sudo cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
   cd "$EASYRSA_DIR"
   sudo ./easyrsa init-pki
@@ -151,19 +123,13 @@ function setup_easy_rsa() {
 
   sudo cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
 
-  echo "[4/11] Easy-RSA setup complete."
-  echo "======================================="
+  echo -e "[4/11] Easy-RSA setup complete.\n======================================="
 }
 
 function create_auth_files() {
-  echo "======================================="
-  echo "[6/11] Creating authentication files…"
-  echo "======================================="
+  echo -e "\n=======================================\n[6/11] Creating authentication files…\n======================================="
 
-  if [ ! -f /etc/openvpn/auth/psw-file ]; then
-    echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file
-    sudo chmod 600 /etc/openvpn/auth/psw-file
-  fi
+  [ ! -f /etc/openvpn/auth/psw-file ] && echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file && sudo chmod 600 /etc/openvpn/auth/psw-file
 
   echo "[7/11] Creating checkpsw.sh script…"
   sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
@@ -172,18 +138,14 @@ PASSFILE="/etc/openvpn/auth/psw-file"
 CORRECT=\$(grep "^\$1 " "\$PASSFILE" | cut -d" " -f2-)
 [ "\$2" = "\$CORRECT" ] && exit 0 || exit 1
 EOF'
-
   sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
   sudo chmod 755 /etc/openvpn/auth
 
-  echo "[6/11] Authentication files created."
-  echo "======================================="
+  echo -e "[6/11] Authentication files created.\n======================================="
 }
 
 function write_server_conf() {
-  echo "======================================="
-  echo "[8/11] Writing server.conf…"
-  echo "======================================="
+  echo -e "\n=======================================\n[8/11] Writing server.conf…\n======================================="
 
   sudo bash -c 'cat <<CONF > /etc/openvpn/server.conf
 port 1194
@@ -213,52 +175,41 @@ push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
 CONF'
 
-  echo "[8/11] server.conf written."
-  echo "======================================="
+  echo -e "[8/11] server.conf written.\n======================================="
 }
 
 function enable_ip_forwarding() {
-  echo "======================================="
-  echo "[9/11] Enabling IP forwarding…"
-  echo "======================================="
+  echo -e "\n=======================================\n[9/11] Enabling IP forwarding…\n======================================="
 
   sudo sysctl -w net.ipv4.ip_forward=1
   sudo sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
   sudo sysctl -p
 
-  echo "[9/11] IP forwarding enabled."
-  echo "======================================="
+  echo -e "[9/11] IP forwarding enabled.\n======================================="
 }
 
 function setup_nat() {
-  echo "======================================="
-  echo "[10/11] Setting up NAT with iptables…"
-  echo "======================================="
+  echo -e "\n=======================================\n[10/11] Setting up NAT with iptables…\n======================================="
 
+  local PUB_IF
   PUB_IF=$(ip route | grep default | awk '{print $5}')
   sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $PUB_IF -j MASQUERADE
   sudo iptables-save | sudo tee /etc/iptables/rules.v4
 
-  echo "[10/11] NAT setup complete."
-  echo "======================================="
+  echo -e "[10/11] NAT setup complete.\n======================================="
 }
 
 function restart_openvpn() {
-  echo "======================================="
-  echo "[11/11] Enabling and restarting OpenVPN service…"
-  echo "======================================="
+  echo -e "\n=======================================\n[11/11] Enabling and restarting OpenVPN service…\n======================================="
 
   sudo systemctl enable openvpn@server
   sudo systemctl restart openvpn@server
 
-  echo "[11/11] OpenVPN service restarted."
-  echo "======================================="
+  echo -e "[11/11] OpenVPN service restarted.\n======================================="
 }
 
 function deploy_ssh_key() {
-  echo "======================================="
-  echo "[FINAL] Deploying panel SSH public key (optional)…"
-  echo "======================================="
+  echo -e "\n=======================================\n[FINAL] Deploying panel SSH public key (optional)…\n======================================="
 
   if [ -f /tmp/id_rsa.pub ]; then
     mkdir -p /root/.ssh
@@ -267,14 +218,11 @@ function deploy_ssh_key() {
     echo "✅ Added panel SSH public key to authorized_keys"
   fi
 
-  echo "[FINAL] SSH key deployment complete."
-  echo "======================================="
+  echo -e "[FINAL] SSH key deployment complete.\n======================================="
 }
 
 function check_openvpn_status() {
-  echo "======================================="
-  echo "[FINAL] Checking OpenVPN service status…"
-  echo "======================================="
+  echo -e "\n=======================================\n[FINAL] Checking OpenVPN service status…\n======================================="
 
   if systemctl is-active --quiet openvpn@server; then
     echo "✅ OpenVPN service is running."
@@ -284,27 +232,22 @@ function check_openvpn_status() {
     exit 1
   fi
 
-  echo "[FINAL] OpenVPN status check complete."
-  echo "======================================="
+  echo -e "[FINAL] OpenVPN status check complete.\n======================================="
 }
 
 function deployment_summary() {
-  echo "======================================="
-  echo " DEPLOYMENT SUMMARY"
-  echo "======================================="
+  echo -e "\n=======================================\n DEPLOYMENT SUMMARY\n======================================="
 
   echo "OpenVPN service: $(systemctl is-active openvpn@server)"
   echo "IP forwarding: $(sysctl net.ipv4.ip_forward | awk '{print $3}')"
   echo "NAT rules:"
   iptables -t nat -L POSTROUTING | grep MASQUERADE
 
-  echo "======================================="
+  echo -e "=======================================\n"
 }
 
 function cleanup_temp_files() {
-  echo "======================================="
-  echo "[CLEANUP] Removing temporary files…"
-  echo "======================================="
+  echo -e "\n=======================================\n[CLEANUP] Removing temporary files…\n======================================="
   sudo rm -rf /tmp/*
   echo "[CLEANUP] Temp files cleaned."
   echo "======================================="
@@ -327,9 +270,6 @@ deploy_ssh_key
 deployment_summary
 cleanup_temp_files
 
-echo "======================================="
-echo "✅ Deployment finished successfully."
-echo "======================================="
-echo "=== DEPLOYMENT END $(date) ==="
+echo -e "\n=======================================\n✅ Deployment finished successfully.\n=======================================\n=== DEPLOYMENT END $(date) ==="
 
 exit 0
