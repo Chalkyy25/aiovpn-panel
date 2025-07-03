@@ -100,7 +100,9 @@ function clean_openvpn_setup() {
   sudo mkdir -p /etc/openvpn/auth
   sudo mv /etc/openvpn/auth/psw-file /tmp/psw-file.bak || true
   sudo mv /etc/openvpn/auth/checkpsw.sh /tmp/checkpsw.sh.bak || true
-  sudo mv /etc/openvpn/pki /tmp/pki.bak || true
+  if [ -d /etc/openvpn/pki ]; then
+    sudo mv /etc/openvpn/pki /tmp/pki.bak
+  fi
 
   # Remove everything except preserved files
   sudo rm -rf /etc/openvpn/*
@@ -124,7 +126,7 @@ function setup_easy_rsa() {
   sudo ./easyrsa init-pki
   sudo EASYRSA_BATCH=1 EASYRSA_REQ_CN="OpenVPN-CA" ./easyrsa build-ca nopass
   sudo ./easyrsa gen-dh
-  sudo openvpn --genkey --secret ta.key
+  sudo openvpn --genkey secret ta.key
   sudo EASYRSA_BATCH=1 EASYRSA_REQ_CN="server" ./easyrsa gen-req server nopass
   echo yes | sudo ./easyrsa sign-req server server
 
@@ -231,6 +233,7 @@ function check_openvpn_status() {
     echo "✅ OpenVPN service is running."
   else
     echo "❌ OpenVPN service failed to start."
+    sudo journalctl -u openvpn@server
     exit 1
   fi
 }
