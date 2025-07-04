@@ -1,5 +1,6 @@
 @php
     $user = Auth::user() ?? Auth::guard('client')->user();
+    $guard = Auth::check() ? 'web' : (Auth::guard('client')->check() ? 'client' : 'none');
 @endphp
 
 <nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
@@ -124,5 +125,10 @@
                 </form>
             </div>
         </div>
+    </div>
+
+    <div>
+        <p>Current Guard: {{ $guard }}</p>
+        <p>User: {{ $user ? $user->name ?? $user->username : 'No user authenticated' }}</p>
     </div>
 </nav>
