@@ -24,49 +24,59 @@ class CreateUser extends Component
 
     public function mount()
     {
-	$this->vpnServers = \App\Models\VpnServer::all();
+        $this->vpnServers = VpnServer::all();
     }
 
-public function save()
-{
-    $this->validate([
-        'name'     => 'required',
-        'email'    => 'required|email|unique:users,email',
-        'password' => 'required|min:6',
-        'role'     => 'required|in:admin,reseller,client',
-	'vpn_server_id' => 'required_if:role,client|exists:vpn_servers,id',
-    ]);
+    public function save()
+    {
+        // ✅ Validation adjusted based on role
+        $rules = [
+            'name' => 'required',
+            'role' => 'required|in:admin,reseller,client',
+        ];
 
-    // Create the user
-    $user = User::create([
-        'name'     => $this->name,
-        'email'    => $this->email,
-        'password' => bcrypt($this->password),
-        'role'     => $this->role,
-    ]);
+        if (in_array($this->role, ['admin', 'reseller'])) {
+            $rules['email'] = 'required|email|unique:users,email';
+            $rules['password'] = 'required|min:6';
+        }
 
-    // ---- VPN User + Bulk Sync: only if it's a client ----
-if ($user->role === 'client') {
-    // Use the selected server from the dropdown
-    $serverId = $this->vpn_server_id;
-    $vpnServer = \App\Models\VpnServer::find($serverId);
+        if ($this->role === 'client') {
+            $rules['vpn_server_id'] = 'required|exists:vpn_servers,id';
+        }
 
-    $vpnUsername = strtolower(str_replace(' ', '', $user->name)) . rand(1000, 9999);
-    $vpnPassword = Str::random(10);
+        $this->validate($rules);
 
-    $vpnUser = \App\Models\VpnUser::create([
-        'vpn_server_id' => $vpnServer->id,
-        'username'      => $vpnUsername,
-        'password'      => $vpnPassword,
-        'client_id'     => $user->id,
-    ]);
+        // 🔑 Generate random password for clients
+        $randomPassword = $this->role === 'client' ? Str::random(12) : $this->password;
 
-    // Bulk sync
-    \App\Jobs\SyncOpenVPNCredentials::dispatch($vpnServer);
-}
-    // Redirect to user management page
-    return redirect()->route('admin.users.index');
-}
+        // ✨ Create the user
+        $user = User::create([
+            'name' => $this->name,
+            'email' => $this->role === 'client' ? null : $this->email,
+            'password' => bcrypt($randomPassword),
+            'role' => $this->role,
+        ]);
+
+        // 🛠️ Create VPN User for clients
+        if ($this->role === 'client') {
+            $vpnServer = VpnServer::find($this->vpn_server_id);
+
+            VpnUser::create([
+                'vpn_server_id' => $vpnServer->id,
+                'username' => $this->name, // Client chosen username
+                'password' => $randomPassword,
+                'client_id' => $user->id,
+            ]);
+
+            // 🚀 Dispatch VPN credentials sync
+            SyncOpenVPNCredentials::dispatch($vpnServer);
+        }
+
+        // ✅ Redirect back with success message showing generated password
+        return redirect()->route('admin.users.index')
+            ->with('success', 'User created. Password: ' . $randomPassword);
+    }
+
     public function render()
     {
         return view('livewire.pages.admin.create-user', [
