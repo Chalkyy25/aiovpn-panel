@@ -13,6 +13,7 @@ use App\Livewire\Pages\Admin\VpnServerEdit;
 use App\Livewire\Pages\Admin\ServerInstallStatus;
 use App\Livewire\Pages\Admin\VpnUserConfigs;
 use App\Http\Controllers\VpnUserController;
+use App\Http\Controllers\ClientAuthController;
 
 // 🌐 Landing page
 Route::get('/', fn () => view('welcome'));
@@ -85,13 +86,18 @@ Route::middleware(['auth', 'verified', 'role:reseller'])
     });
 
 // ✅ Client routes
-Route::middleware(['auth', 'verified', 'role:client'])
-    ->prefix('client')
-    ->name('client.')
-    ->group(function () {
+Route::prefix('client')->name('client.')->group(function () {
+    // 🚀 Client Login Routes
+    Route::get('/login', [ClientAuthController::class, 'showLoginForm'])->name('login');
+    Route::post('/login', [ClientAuthController::class, 'login']);
+    Route::post('/logout', [ClientAuthController::class, 'logout'])->name('logout');
+
+    // ✅ Authenticated Client Routes
+    Route::middleware('auth:client')->group(function () {
         Route::get('/dashboard', \App\Livewire\Pages\Client\Dashboard::class)->name('dashboard');
         Route::get('/vpn/{server}/download', [\App\Http\Controllers\VpnConfigController::class, 'download'])->name('vpn.download');
     });
+});
 
 
 // ✅ Profile settings
