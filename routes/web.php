@@ -9,8 +9,9 @@ use App\Livewire\Pages\Admin\CreateUser;
 use App\Livewire\Pages\Admin\UserList;
 use App\Livewire\Pages\Admin\VpnServerList;
 use App\Livewire\Pages\Admin\ServerCreate;
-use App\Livewire\Pages\Admin\VpnServerEdit; 
+use App\Livewire\Pages\Admin\VpnServerEdit;
 use App\Livewire\Pages\Admin\ServerInstallStatus;
+use App\Livewire\Pages\Admin\VpnUserConfigs;
 use App\Http\Controllers\VpnUserController;
 
 // 🌐 Landing page
@@ -40,8 +41,17 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/create-user', CreateUser::class)->name('create-user');
 
 	// ✅ VPN config download
-        Route::get('/clients/{vpnUser}/config', [\App\Http\Controllers\VpnConfigController::class, 'download'])
-        ->name('clients.config.download');
+	Route::get('/clients/{vpnUser}/config', [\App\Http\Controllers\VpnConfigController::class, 'download'])
+	    ->name('clients.config.download');
+
+	Route::get('/clients/{vpnUser}/config/{vpnServer}', [\App\Http\Controllers\VpnConfigController::class, 'downloadForServer'])
+	    ->name('clients.config.downloadForServer');
+
+	Route::get('/clients/{vpnUser}/configs/download-all', [\App\Http\Controllers\VpnConfigController::class, 'downloadAll'])
+	    ->name('clients.configs.downloadAll');
+
+	Route::get('/vpn-users/{vpnUser}/configs', VpnUserConfigs::class)
+	    ->name('clients.configs.index');
 
         // ✅ VPN server management
         Route::get('/servers', VpnServerList::class)->name('servers.index');

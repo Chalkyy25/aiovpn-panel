@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Foundation\Auth\User as Authenticatable; // For client login
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 
-class VpnUser extends Model
+class VpnUser extends Authenticatable
 {
     use HasFactory;
 
@@ -16,10 +16,24 @@ class VpnUser extends Model
         'client_id',
     ];
 
-    // Relations
-    public function vpnServer()
+    protected $hidden = [
+        'password',
+    ];
+
+    /**
+     * Use password for authentication
+     */
+    public function getAuthPassword()
     {
-        return $this->belongsTo(\App\Models\VpnServer::class, 'vpn_server_id');
+        return $this->password;
+    }
+
+    /**
+     * Relations
+     */
+    public function vpnServers()
+    {
+        return $this->belongsToMany(VpnServer::class, 'vpn_user_server');
     }
 
     public function client()
@@ -27,13 +41,14 @@ class VpnUser extends Model
         return $this->belongsTo(User::class, 'client_id');
     }
 
-    // 👇 Add this just before the final closing brace
+    /**
+     * Model events to automate config generation and sync on create/save/delete
+     */
     protected static function booted(): void
     {
-	static::created(function ($user) {
-        \App\Services\VpnConfigBuilder::generate($user);
-    });
-
+        static::created(function ($user) {
+            \App\Services\VpnConfigBuilder::generate($user);
+        });
 
         static::saved(function ($user) {
             if ($user->vpnServer) {

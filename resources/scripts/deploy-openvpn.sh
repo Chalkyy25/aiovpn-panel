@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Redirect all output to a log file
-exec > >(tee -i /var/log/openvpn-deploy.log)
+exec > >(tee -i /root/openvpn-deploy.log)
 exec 2>&1
 
 echo -e "\n=======================================\n SCRIPT RUN START: $(date)\n======================================="
