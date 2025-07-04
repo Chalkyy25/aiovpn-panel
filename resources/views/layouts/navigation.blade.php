@@ -1,3 +1,7 @@
+@php
+    $user = Auth::user() ?? Auth::guard('client')->user();
+@endphp
+
 <nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -12,36 +16,37 @@
 
                 <!-- Navigation Links -->
                 <div class="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex">
-                    @if(auth()->user()?->role === 'admin')
+                    @if($user?->role === 'admin')
                         <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
                             {{ __('Dashboard') }}
                         </x-nav-link>
                         <x-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
                             {{ __('Create User') }}
                         </x-nav-link>
-                    <x-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
+                        <x-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
                             {{ __('Manage Users') }}
                         </x-nav-link>
                         <x-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
                             {{ __('VPN Servers') }}
                         </x-nav-link>
+                        <x-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
+                            {{ __('VPN Users') }}
+                        </x-nav-link>
                         <x-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
                             {{ __('Settings') }}
                         </x-nav-link>
-                         <x-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
-                            {{ __('VPN Users') }}
-                        </x-nav-link>
-                    @elseif(auth()->user()?->role === 'reseller')
+
+                    @elseif($user?->role === 'reseller')
                         <x-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
                             {{ __('Dashboard') }}
                         </x-nav-link>
                         {{-- Add more reseller links here --}}
-                    @elseif(auth()->user()?->role === 'client')
+
+                    @elseif(Auth::guard('client')->check())
                         <x-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
                             {{ __('Dashboard') }}
                         </x-nav-link>
                         {{-- Add more client links here --}}
-                       
                     @endif
                 </div>
             </div>
@@ -51,7 +56,7 @@
                 <x-dropdown align="right" width="48">
                     <x-slot name="trigger">
                         <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none">
-                            {{ Auth::user()->name }}
+                            {{ $user->name ?? $user->username ?? 'Guest' }}
                             <div class="ml-1">
                                 <svg class="fill-current h-4 w-4" viewBox="0 0 20 20">
                                     <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
@@ -61,9 +66,11 @@
                     </x-slot>
 
                     <x-slot name="content">
-                        <x-dropdown-link :href="route('profile.edit')">
-                            {{ __('Profile') }}
-                        </x-dropdown-link>
+                        @if($user?->role !== 'client')
+                            <x-dropdown-link :href="route('profile.edit')">
+                                {{ __('Profile') }}
+                            </x-dropdown-link>
+                        @endif
 
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf
@@ -91,55 +98,22 @@
     <!-- Responsive Navigation Menu -->
     <div :class="{ 'block': open, 'hidden': ! open }" class="hidden sm:hidden">
         <div class="pt-2 pb-3 space-y-1">
-            <x-responsive-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
-                {{ __('Dashboard') }}
-            </x-responsive-nav-link>
-
-            @if(auth()->user()?->role === 'admin')
-                <x-responsive-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
-                    {{ __('Create User') }}
-                </x-responsive-nav-link>
-
-                <x-responsive-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
-                    {{ __('Manage Users') }}
-                </x-responsive-nav-link>
-
-                <x-responsive-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
-                    {{ __('VPN Servers') }}
-                </x-responsive-nav-link>
-                
-                <x-responsive-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
-                            {{ __('VPN Users') }}
-                        </x-nav-link>
-
-                <x-responsive-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
-                    {{ __('Settings') }}
-                </x-responsive-nav-link>
-
-
-            @elseif(auth()->user()?->role === 'reseller')
-                <x-responsive-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
-                    {{ __('Dashboard') }}
-                </x-responsive-nav-link>
-                {{-- Add more reseller links here --}}
-            @elseif(auth()->user()?->role === 'client')
-                <x-responsive-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
-                    {{ __('Dashboard') }}
-                </x-responsive-nav-link>
-                {{-- Add more client links here --}}
-            @endif
-
+            {{-- Similar links for responsive if needed --}}
         </div>
 
         <!-- Responsive Settings Options -->
         <div class="pt-4 pb-1 border-t border-gray-200">
-            <div class="px-4 font-medium text-base text-gray-800">{{ Auth::user()->name }}</div>
-            <div class="px-4 font-medium text-sm text-gray-500">{{ Auth::user()->email }}</div>
+            <div class="px-4 font-medium text-base text-gray-800">{{ $user->name ?? $user->username ?? 'Guest' }}</div>
+            @if($user?->email)
+                <div class="px-4 font-medium text-sm text-gray-500">{{ $user->email }}</div>
+            @endif
 
             <div class="mt-3 space-y-1">
-                <x-responsive-nav-link :href="route('profile.edit')">
-                    {{ __('Profile') }}
-                </x-responsive-nav-link>
+                @if($user?->role !== 'client')
+                    <x-responsive-nav-link :href="route('profile.edit')">
+                        {{ __('Profile') }}
+                    </x-responsive-nav-link>
+                @endif
 
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf

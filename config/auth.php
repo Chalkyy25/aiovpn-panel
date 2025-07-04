@@ -25,7 +25,7 @@ return [
             'provider' => 'users',
         ],
 
-        'vpnusers' => [
+        'client' => [
             'driver' => 'session',
             'provider' => 'vpn_users',
         ],
