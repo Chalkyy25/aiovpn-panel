@@ -12,7 +12,6 @@
     $user = $webUser ?? $clientUser;
 @endphp
 
-
 <nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
     <!-- Primary Navigation Menu -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -20,7 +19,15 @@
             <div class="flex">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}">
+                    @if($user?->role === 'admin')
+                        <a href="{{ route('admin.dashboard') }}">
+                    @elseif($user?->role === 'reseller')
+                        <a href="{{ route('reseller.dashboard') }}">
+                    @elseif($user?->role === 'client')
+                        <a href="{{ route('client.dashboard') }}">
+                    @else
+                        <a href="/">
+                    @endif
                         <x-application-logo class="block h-9 w-auto fill-current text-gray-800" />
                     </a>
                 </div>
@@ -53,7 +60,7 @@
                         </x-nav-link>
                         {{-- Add more reseller links here --}}
 
-                    @elseif(Auth::guard('client')->check())
+                    @elseif($user?->role === 'client')
                         <x-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
                             {{ __('Dashboard') }}
                         </x-nav-link>
@@ -109,7 +116,7 @@
     <!-- Responsive Navigation Menu -->
     <div :class="{ 'block': open, 'hidden': ! open }" class="hidden sm:hidden">
         <div class="pt-2 pb-3 space-y-1">
-            {{-- Similar links for responsive if needed --}}
+            {{-- Add mobile nav links here if needed --}}
         </div>
 
         <!-- Responsive Settings Options -->
@@ -136,3 +143,4 @@
             </div>
         </div>
     </div>
+</nav>

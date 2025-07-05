@@ -31,11 +31,11 @@
             </header>
         @endif
 
-        <!-- Page Content -->
-        <main>
-            {{ $slot }}
-        </main>
-    </div>
+	<!-- Page Content -->
+<main>
+    {{ $slot ?? '' }}
+    @yield('content')
+</main>
 
     @livewireScripts
     <script src="//unpkg.com/alpinejs" defer></script>
