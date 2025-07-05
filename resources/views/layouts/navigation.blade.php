@@ -116,8 +116,40 @@
     <!-- Responsive Navigation Menu -->
     <div :class="{ 'block': open, 'hidden': ! open }" class="hidden sm:hidden">
         <div class="pt-2 pb-3 space-y-1">
-            {{-- Add mobile nav links here if needed --}}
-        </div>
+    @if($user?->role === 'admin')
+        <x-responsive-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
+            {{ __('Dashboard') }}
+        </x-responsive-nav-link>
+        <x-responsive-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
+            {{ __('Create User') }}
+        </x-responsive-nav-link>
+        <x-responsive-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
+            {{ __('Manage Users') }}
+        </x-responsive-nav-link>
+        <x-responsive-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
+            {{ __('VPN Servers') }}
+        </x-responsive-nav-link>
+        <x-responsive-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
+            {{ __('VPN Users') }}
+        </x-responsive-nav-link>
+        <x-responsive-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
+            {{ __('Settings') }}
+        </x-responsive-nav-link>
+
+    @elseif($user?->role === 'reseller')
+        <x-responsive-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
+            {{ __('Dashboard') }}
+        </x-responsive-nav-link>
+        {{-- Add more reseller links here --}}
+
+    @elseif(Auth::guard('client')->check())
+        <x-responsive-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
+            {{ __('Dashboard') }}
+        </x-responsive-nav-link>
+        {{-- Add more client links here --}}
+    @endif
+</div>
+
 
         <!-- Responsive Settings Options -->
         <div class="pt-4 pb-1 border-t border-gray-200">
