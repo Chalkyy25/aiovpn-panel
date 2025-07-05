@@ -30,7 +30,8 @@
         {{ $slot }}
     </a>
 @else
-    <button {{ $attributes->merge(['type' => 'button']) }}>
-        {{ $slot }}
-    </button>
+    <button type="{{ $type }}" {{ $attributes->merge(['class' => $finalClass]) }}>
+    {{ $slot }}
+</button>
+
 @endif
