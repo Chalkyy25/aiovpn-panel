@@ -23,6 +23,7 @@ class VpnUser extends Authenticatable
 
     protected $hidden = [
         'password',
+        'wireguard_private_key', // ✅ Hide private key from array/json outputs
     ];
 
     /**
@@ -38,7 +39,7 @@ class VpnUser extends Authenticatable
      */
     public function vpnServer()
     {
-        return $this->belongsToMany(VpnServer::class, 'vpn_server_id');
+        return $this->belongsTo(VpnServer::class, 'vpn_server_id');
     }
 
     public function client()
@@ -52,13 +53,19 @@ class VpnUser extends Authenticatable
     protected static function booted(): void
     {
         static::creating(function ($vpnUser) {
-            // 🔑 Generate WireGuard keys and assign unique IP
+            // 🔑 Generate WireGuard keys
             $keys = self::generateWireGuardKeys();
             $vpnUser->wireguard_private_key = $keys['private'];
             $vpnUser->wireguard_public_key = $keys['public'];
-            $vpnUser->wireguard_address = '10.66.66.' . rand(2, 254) . '/32';
 
-            // Generate random username if not set
+            // ✅ Allocate unique WireGuard IP address within subnet
+            do {
+                $lastOctet = rand(2, 254);
+                $ip = "10.66.66.$lastOctet/32";
+            } while (self::where('wireguard_address', $ip)->exists());
+            $vpnUser->wireguard_address = $ip;
+
+            // ✅ Generate random username if not set
             if (empty($vpnUser->username)) {
                 $vpnUser->username = 'wg-' . Str::random(6);
             }
@@ -93,7 +100,8 @@ class VpnUser extends Authenticatable
         $private = trim(shell_exec('wg genkey'));
         $public = trim(shell_exec("echo '$private' | wg pubkey"));
 
-        Log::info("🔑 WireGuard keys generated | Private: {$private}, Public: {$public}");
+        // ✅ Do NOT log private key in production
+        Log::info("🔑 WireGuard public key generated: {$public}");
 
         return [
             'private' => $private,
