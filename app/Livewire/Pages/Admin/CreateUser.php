@@ -23,27 +23,32 @@ class CreateUser extends Component
     }
 
     public function save()
-    {
-Log::info('🔥 Save method triggered');
-        $this->validate([
-            'username' => 'nullable|string|min:3',
-            'vpn_server_id' => 'required|exists:vpn_servers,id',
-        ]);
+{
+    $this->validate([
+        'username' => 'nullable|string|min:3',
+        'vpn_server_id' => 'required|exists:vpn_servers,id',
+    ]);
 
-        // Generate random username if blank
-        $finalUsername = $this->username ?: 'user-' . Str::random(6);
-
-        // Dispatch CreateVpnUser job for this client
-        CreateVpnUser::dispatch(
-            $finalUsername,
-            $this->vpn_server_id,
-            null, // no client_id needed for pure VPN user accounts
-            Str::random(12) // random password
-        );
-
-        session()->flash('success', '✅ VPN Client created successfully!');
-        return redirect()->route('admin.users.index');
+    // Check if username already exists
+    if ($this->username && \App\Models\VpnUser::where('username', $this->username)->exists()) {
+        $this->addError('username', 'This username is already taken. Please choose another.');
+        return;
     }
+
+    // Generate random username if blank
+    $finalUsername = $this->username ?: 'user-' . Str::random(6);
+
+    // Dispatch job
+    CreateVpnUser::dispatch(
+        $finalUsername,
+        $this->vpn_server_id,
+        null,
+        Str::random(12)
+    );
+
+    session()->flash('success', '✅ VPN Client created successfully!');
+    return redirect()->route('admin.users.index');
+}
 
     public function render()
     {
