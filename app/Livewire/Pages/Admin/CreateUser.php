@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\VpnServer;
 use App\Jobs\CreateVpnUser;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\log;
 
 #[Layout('layouts.app')]
 class CreateUser extends Component
