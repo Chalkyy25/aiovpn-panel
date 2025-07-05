@@ -74,10 +74,24 @@ function install_packages() {
   sudo debconf-set-selections <<< "iptables-persistent iptables-persistent/autosave_v6 boolean true"
 
   wait_for_apt
-  sudo apt-get install -y openvpn easy-rsa wireguard wireguard-tools wg-quick vnstat iptables-persistent curl wget lsb-release ca-certificates \
+  sudo apt-get install -y software-properties-common
+  wait_for_apt
+
+  # Add WireGuard PPA if not available (for older Ubuntu)
+  if ! apt-cache show wireguard >/dev/null 2>&1; then
+    echo "[2/11] Adding WireGuard PPA…"
+    sudo add-apt-repository ppa:wireguard/wireguard -y
+    wait_for_apt
+  fi
+
+  sudo apt-get update
+  wait_for_apt
+
+  sudo apt-get install -y openvpn easy-rsa wireguard wireguard-tools vnstat iptables-persistent curl wget lsb-release ca-certificates \
     -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
   wait_for_apt
-echo "✅ WireGuard version: $(wg --version)"
+
+  echo "✅ WireGuard version: $(wg --version || echo 'wg not found')"
 
   [ ! -f /etc/iptables/rules.v4 ] && sudo iptables-save | sudo tee /etc/iptables/rules.v4
 
