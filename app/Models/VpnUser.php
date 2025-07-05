@@ -36,7 +36,7 @@ class VpnUser extends Authenticatable
     /**
      * Relationships.
      */
-    public function vpnServers()
+    public function vpnServer()
     {
         return $this->belongsToMany(VpnServer::class, 'vpn_server_id');
     }
