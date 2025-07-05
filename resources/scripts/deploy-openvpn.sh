@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Redirect all output to a log file
-exec > >(tee -i /root/openvpn-deploy.log)
+exec > >(tee -i /root/vpn-deploy.log)
 exec 2>&1
 
 echo -e "\n=======================================\n SCRIPT RUN START: $(date)\n======================================="
@@ -9,7 +9,6 @@ echo -e "\n=======================================\n SCRIPT RUN START: $(date)\n
 set -e
 trap 'CODE=$?; echo -e "\n=======================================\n❌ Deployment failed with code: $CODE\nEXIT_CODE:$CODE\n======================================="; exit $CODE' ERR
 
-# Debug toggle
 DEBUG=false
 [ "$DEBUG" = true ] && set -x
 
@@ -77,7 +76,7 @@ function install_packages() {
   sudo apt-get install -y software-properties-common
   wait_for_apt
 
-  # Add WireGuard PPA if not available (for older Ubuntu)
+  # Add WireGuard PPA if not available (older Ubuntu)
   if ! apt-cache show wireguard >/dev/null 2>&1; then
     echo "[2/11] Adding WireGuard PPA…"
     sudo add-apt-repository ppa:wireguard/wireguard -y
@@ -222,6 +221,54 @@ function restart_openvpn() {
 
   echo -e "[11/11] OpenVPN service restarted.\n======================================="
 }
+# ───────── WireGuard Setup ───────── #
+
+function setup_wireguard() {
+  echo -e "\n=======================================\n[WG] Setting up WireGuard…\n======================================="
+
+  sudo mkdir -p /etc/wireguard
+
+  if [ ! -f /etc/wireguard/server_private_key ]; then
+    umask 077
+    sudo wg genkey | sudo tee /etc/wireguard/server_private_key | sudo wg pubkey | sudo tee /etc/wireguard/server_public_key
+    echo "[WG] WireGuard server keys generated."
+  else
+    echo "[WG] Server keys already exist, skipping generation."
+  fi
+
+  local PRIVATE_KEY=$(cat /etc/wireguard/server_private_key)
+  local PUBLIC_IP=$(curl -s https://api.ipify.org)
+  local WG_PORT=51820
+
+  sudo bash -c "cat <<EOF > /etc/wireguard/wg0.conf
+[Interface]
+PrivateKey = $PRIVATE_KEY
+Address = 10.66.66.1/24
+ListenPort = $WG_PORT
+SaveConfig = true
+
+# Example client config (uncomment per client)
+#[Peer]
+#PublicKey = CLIENT_PUBLIC_KEY
+#AllowedIPs = 10.66.66.2/32
+
+EOF"
+
+  sudo sysctl -w net.ipv4.ip_forward=1
+  sudo sysctl -w net.ipv6.conf.all.forwarding=1
+  sudo sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
+
+  local PUB_IF=$(ip route | grep default | awk '{print $5}')
+  sudo iptables -A FORWARD -i wg0 -j ACCEPT
+  sudo iptables -A FORWARD -o wg0 -j ACCEPT
+  sudo iptables -t nat -A POSTROUTING -o $PUB_IF -j MASQUERADE
+  sudo iptables-save | sudo tee /etc/iptables/rules.v4
+
+  sudo systemctl enable wg-quick@wg0
+  sudo systemctl start wg-quick@wg0
+
+  echo -e "[WG] WireGuard setup complete.\n======================================="
+}
 
 function deploy_ssh_key() {
   echo -e "\n=======================================\n[FINAL] Deploying panel SSH public key (optional)…\n======================================="
@@ -250,10 +297,25 @@ function check_openvpn_status() {
   echo -e "[FINAL] OpenVPN status check complete.\n======================================="
 }
 
+function check_wireguard_status() {
+  echo -e "\n=======================================\n[FINAL] Checking WireGuard service status…\n======================================="
+
+  if systemctl is-active --quiet wg-quick@wg0; then
+    echo "✅ WireGuard service is running."
+  else
+    echo "❌ WireGuard service failed to start."
+    sudo journalctl -u wg-quick@wg0
+    exit 1
+  fi
+
+  echo -e "[FINAL] WireGuard status check complete.\n======================================="
+}
+
 function deployment_summary() {
   echo -e "\n=======================================\n DEPLOYMENT SUMMARY\n======================================="
 
   echo "OpenVPN service: $(systemctl is-active openvpn@server)"
+  echo "WireGuard service: $(systemctl is-active wg-quick@wg0)"
   echo "IP forwarding: $(sysctl net.ipv4.ip_forward | awk '{print $3}')"
   echo "NAT rules:"
   iptables -t nat -L POSTROUTING | grep MASQUERADE
@@ -280,7 +342,9 @@ write_server_conf
 enable_ip_forwarding
 setup_nat
 restart_openvpn
+setup_wireguard
 check_openvpn_status
+check_wireguard_status
 deploy_ssh_key
 deployment_summary
 cleanup_temp_files
