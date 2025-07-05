@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Foundation\Auth\User as Authenticatable; // For client login
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class VpnUser extends Authenticatable
 {
@@ -25,7 +26,7 @@ class VpnUser extends Authenticatable
     ];
 
     /**
-     * Use password for authentication
+     * Return password for authentication
      */
     public function getAuthPassword()
     {
@@ -46,41 +47,50 @@ class VpnUser extends Authenticatable
     }
 
     /**
-     * Model events to automate config generation, WireGuard keys, and sync
+     * Model events for auto WireGuard key generation, config build, and credential sync
      */
     protected static function booted(): void
     {
         static::creating(function ($vpnUser) {
-            // 🔑 Generate WireGuard keys + address on create
-            $keyPair = self::generateWireGuardKeys();
-            $vpnUser->wireguard_private_key = $keyPair['private'];
-            $vpnUser->wireguard_public_key = $keyPair['public'];
-            $vpnUser->wireguard_address = '10.66.66.' . rand(2, 254) . '/32'; // example IP
-        });
+            // 🔑 Generate WireGuard keys + unique IP on user creation
+            $keys = self::generateWireGuardKeys();
+            $vpnUser->wireguard_private_key = $keys['private'];
+            $vpnUser->wireguard_public_key = $keys['public'];
+            $vpnUser->wireguard_address = '10.66.66.' . rand(2, 254) . '/32';
 
-        static::created(function ($user) {
-            \App\Services\VpnConfigBuilder::generate($user);
-        });
-
-        static::saved(function ($user) {
-            if ($user->vpnServer) {
-                \App\Jobs\SyncOpenVPNCredentials::dispatch($user->vpnServer);
+            // Generate random username if empty
+            if (empty($vpnUser->username)) {
+                $vpnUser->username = 'wg-' . Str::random(6);
             }
         });
 
-        static::deleted(function ($user) {
-            if ($user->vpnServer) {
-                \App\Jobs\SyncOpenVPNCredentials::dispatch($user->vpnServer);
+        static::created(function ($vpnUser) {
+            // 🔧 Generate config after creation
+            \App\Services\VpnConfigBuilder::generate($vpnUser);
+        });
+
+        static::saved(function ($vpnUser) {
+            if ($vpnUser->vpnServer) {
+                \App\Jobs\SyncOpenVPNCredentials::dispatch($vpnUser->vpnServer);
+            }
+        });
+
+        static::deleted(function ($vpnUser) {
+            if ($vpnUser->vpnServer) {
+                \App\Jobs\SyncOpenVPNCredentials::dispatch($vpnUser->vpnServer);
             }
         });
     }
 
+    /**
+     * Generate WireGuard private/public keypair
+     */
     public static function generateWireGuardKeys(): array
     {
         $private = trim(shell_exec('wg genkey'));
-        $public = trim(shell_exec("echo '{$private}' | wg pubkey"));
+        $public = trim(shell_exec("echo '$private' | wg pubkey"));
 
-        Log::info("🔑 Generated WireGuard keys for user: private={$private}, public={$public}");
+        Log::info("🔑 WireGuard keys generated | Private: {$private}, Public: {$public}");
 
         return [
             'private' => $private,
