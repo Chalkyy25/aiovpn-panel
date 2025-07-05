@@ -25,6 +25,7 @@ class CreateUser extends Component
 
     public function save()
     {
+Log::info('🔥 Save method triggered');
         $this->validate([
             'username' => 'nullable|string|min:3',
             'vpn_server_id' => 'required|exists:vpn_servers,id',
