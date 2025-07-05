@@ -26,7 +26,7 @@ class VpnUser extends Authenticatable
     ];
 
     /**
-     * Return password for authentication
+     * Get password for authentication.
      */
     public function getAuthPassword()
     {
@@ -34,7 +34,7 @@ class VpnUser extends Authenticatable
     }
 
     /**
-     * Relations
+     * Relationships.
      */
     public function vpnServers()
     {
@@ -47,26 +47,29 @@ class VpnUser extends Authenticatable
     }
 
     /**
-     * Model events for auto WireGuard key generation, config build, and credential sync
+     * Booted: auto WireGuard key generation, config build, credential sync.
      */
     protected static function booted(): void
     {
         static::creating(function ($vpnUser) {
-            // 🔑 Generate WireGuard keys + unique IP on user creation
+            // 🔑 Generate WireGuard keys and assign unique IP
             $keys = self::generateWireGuardKeys();
             $vpnUser->wireguard_private_key = $keys['private'];
             $vpnUser->wireguard_public_key = $keys['public'];
             $vpnUser->wireguard_address = '10.66.66.' . rand(2, 254) . '/32';
 
-            // Generate random username if empty
+            // Generate random username if not set
             if (empty($vpnUser->username)) {
                 $vpnUser->username = 'wg-' . Str::random(6);
             }
         });
 
         static::created(function ($vpnUser) {
-            // 🔧 Generate config after creation
             \App\Services\VpnConfigBuilder::generate($vpnUser);
+
+            if ($vpnUser->vpnServer) {
+                dispatch(new \App\Jobs\AddWireGuardPeer($vpnUser, $vpnUser->vpnServer));
+            }
         });
 
         static::saved(function ($vpnUser) {
@@ -83,7 +86,7 @@ class VpnUser extends Authenticatable
     }
 
     /**
-     * Generate WireGuard private/public keypair
+     * Generate WireGuard private/public keypair.
      */
     public static function generateWireGuardKeys(): array
     {

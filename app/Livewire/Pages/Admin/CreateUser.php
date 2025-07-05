@@ -5,20 +5,15 @@ namespace App\Livewire\Pages\Admin;
 use Livewire\Component;
 use Livewire\Attributes\Layout;
 use App\Models\User;
-use App\Models\VpnUser;
 use App\Models\VpnServer;
-use App\Jobs\SyncOpenVPNCredentials;
-use Illuminate\Support\Facades\Hash;
+use App\Jobs\CreateVpnUser;
 use Illuminate\Support\Str;
 
 #[Layout('layouts.app')]
 class CreateUser extends Component
 {
-    public $name = '';
-    public $email = '';
-    public $password = '';
-    public $role = '';
-    public $vpn_server_id = ''; // For client assignment
+    public $username = '';
+    public $vpn_server_id = '';
 
     public $vpnServers = [];
 
@@ -29,52 +24,24 @@ class CreateUser extends Component
 
     public function save()
     {
-        // ✅ Validation adjusted based on role
-        $rules = [
-            'name' => 'required',
-            'role' => 'required|in:admin,reseller,client',
-        ];
-
-        if (in_array($this->role, ['admin', 'reseller'])) {
-            $rules['email'] = 'required|email|unique:users,email';
-            $rules['password'] = 'required|min:6';
-        }
-
-        if ($this->role === 'client') {
-            $rules['vpn_server_id'] = 'required|exists:vpn_servers,id';
-        }
-
-        $this->validate($rules);
-
-        // 🔑 Generate random password for clients
-        $randomPassword = $this->role === 'client' ? Str::random(12) : $this->password;
-
-        // ✨ Create the user
-        $user = User::create([
-            'name' => $this->name,
-            'email' => $this->role === 'client' ? null : $this->email,
-            'password' => bcrypt($randomPassword),
-            'role' => $this->role,
+        $this->validate([
+            'username' => 'nullable|string|min:3',
+            'vpn_server_id' => 'required|exists:vpn_servers,id',
         ]);
 
-        // 🛠️ Create VPN User for clients
-        if ($this->role === 'client') {
-            $vpnServer = VpnServer::find($this->vpn_server_id);
+        // Generate random username if blank
+        $finalUsername = $this->username ?: 'user-' . Str::random(6);
 
-            VpnUser::create([
-                'vpn_server_id' => $vpnServer->id,
-                'username' => $this->name, // Client chosen username
-                'password' => $randomPassword,
-                'client_id' => $user->id,
-            ]);
+        // Dispatch CreateVpnUser job for this client
+        CreateVpnUser::dispatch(
+            $finalUsername,
+            $this->vpn_server_id,
+            null, // no client_id needed for pure VPN user accounts
+            Str::random(12) // random password
+        );
 
-            // 🚀 Dispatch VPN credentials sync
-            SyncOpenVPNCredentials::dispatch($vpnServer);
-        }
-
-        // ✅ Redirect back with success message showing generated password
-        return redirect()->route('admin.users.index')
-            ->with('success', 'User created. Password: ' . $randomPassword);
+        session()->flash('success', '✅ VPN Client created successfully!');
+        return redirect()->route('admin.users.index');
     }
 
     public function render()

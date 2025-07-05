@@ -1,48 +1,21 @@
 <div class="max-w-xl mx-auto p-6 bg-white shadow rounded space-y-5">
-    <h2 class="text-xl font-semibold">Create New User</h2>
+    <h2 class="text-xl font-semibold">Create New VPN Client</h2>
 
-    @if (session()->has('message'))
+    @if (session()->has('success'))
         <div class="p-3 bg-green-100 text-green-700 rounded border border-green-300">
-            {{ session('message') }}
+            {{ session('success') }}
         </div>
     @endif
 
     <form wire:submit.prevent="save" class="space-y-4">
-        <!-- Name -->
+        <!-- Username (optional) -->
         <div>
-            <x-label for="name" value="Name" />
-            <x-input id="name" type="text" wire:model.defer="name" class="w-full" placeholder="Enter name" />
-            @error('name') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
+            <x-label for="username" value="Username (optional)" />
+            <x-input id="username" type="text" wire:model.defer="username" class="w-full" placeholder="Leave blank for random" />
+            @error('username') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
-        <!-- Email -->
-        <div>
-            <x-label for="email" value="Email" />
-            <x-input id="email" type="email" wire:model.defer="email" class="w-full" placeholder="Enter email" />
-            @error('email') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
-        </div>
-
-        <!-- Password -->
-        <div>
-            <x-label for="password" value="Password" />
-            <x-input id="password" type="password" wire:model.defer="password" class="w-full" placeholder="Enter password" />
-            @error('password') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
-        </div>
-
-        <!-- Role -->
-        <div>
-            <x-label for="role" value="Role" />
-            <select id="role" wire:model.defer="role" class="w-full">
-                <option value="">-- Select Role --</option>
-                <option value="admin">Admin</option>
-                <option value="reseller">Reseller</option>
-                <option value="client">Client</option>
-            </select>
-            @error('role') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
-        </div>
-
-        <!-- Show VPN Server selector ONLY if client -->
-        @if($role === 'client')
+        <!-- VPN Server -->
         <div>
             <x-label for="vpn_server_id" value="Assign VPN Server" />
             <select id="vpn_server_id" wire:model.defer="vpn_server_id" class="w-full">
@@ -53,11 +26,10 @@
             </select>
             @error('vpn_server_id') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
-        @endif
 
         <!-- Submit -->
         <div class="flex justify-end">
-            <x-button type="submit" class="px-5">Create User</x-button>
+            <x-button type="submit" class="px-5">Create VPN Client</x-button>
         </div>
     </form>
 </div>

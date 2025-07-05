@@ -7,11 +7,16 @@ use Illuminate\Support\Facades\Storage;
 
 class VpnConfigBuilder
 {
+    /**
+     * Generate OpenVPN config with embedded credentials.
+     */
     public static function generate(VpnUser $vpnUser): string
     {
         $server = $vpnUser->vpnServer;
 
-        // Define config structure
+        $caCert = trim(Storage::disk('local')->get("certs/{$server->id}/ca.crt"));
+        $tlsKey = trim(Storage::disk('local')->get("certs/{$server->id}/ta.key"));
+
         $config = <<<EOL
 client
 dev tun
@@ -27,27 +32,49 @@ auth SHA256
 cipher AES-256-CBC
 verb 3
 <ca>
-{CA_CERT}
+$caCert
 </ca>
 <tls-auth>
-{TLS_KEY}
+$tlsKey
 </tls-auth>
 key-direction 1
+
+# Embedded user-pass
+<auth-user-pass>
+{$vpnUser->username}
+{$vpnUser->password}
+</auth-user-pass>
 EOL;
 
-        // Read cert files from server (replace with SCP later if remote)
-	$ca = trim(Storage::disk('local')->get("certs/{$server->id}/ca.crt"));
-        $ta = trim(Storage::disk('local')->get("certs/{$server->id}/ta.key"));
-
-        // Replace placeholders
-        $config = str_replace('{CA_CERT}', trim($ca), $config);
-        $config = str_replace('{TLS_KEY}', trim($ta), $config);
-
-        // Add embedded credentials
-        $config .= "\n\n# Embedded user-pass\n<auth-user-pass>\n{$vpnUser->username}\n{$vpnUser->password}\n</auth-user-pass>";
-
-        // Save to file
         $path = "configs/{$vpnUser->id}.ovpn";
+        Storage::disk('local')->put($path, $config);
+
+        return storage_path("app/{$path}");
+    }
+
+    /**
+     * Generate WireGuard config for the user.
+     */
+    public static function generateWireGuard(VpnUser $vpnUser): string
+    {
+        $server = $vpnUser->vpnServer;
+        $serverPublicKey = trim(Storage::disk('local')->get("wireguard/{$server->id}/server_public_key"));
+        $serverEndpoint = "{$server->ip_address}:51820";
+
+        $config = <<<EOL
+[Interface]
+PrivateKey = {$vpnUser->wireguard_private_key}
+Address = {$vpnUser->wireguard_address}
+DNS = 1.1.1.1
+
+[Peer]
+PublicKey = {$serverPublicKey}
+Endpoint = {$serverEndpoint}
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25
+EOL;
+
+        $path = "configs/{$vpnUser->id}.conf";
         Storage::disk('local')->put($path, $config);
 
         return storage_path("app/{$path}");
