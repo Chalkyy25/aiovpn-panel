@@ -129,7 +129,7 @@
         <x-responsive-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
             {{ __('VPN Servers') }}
         </x-responsive-nav-link>
-        <x-responsive-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
+        <x-responsive-nav-link :href="route('admin.vpn-user-list')" :active="request()->routeIs('admin.vpn-user-list')">
             {{ __('VPN Users') }}
         </x-responsive-nav-link>
         <x-responsive-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
