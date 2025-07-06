@@ -13,7 +13,7 @@
                 <a href="{{ route('admin.dashboard') }}" class="text-gray-700 hover:text-indigo-600 font-medium">
                     Dashboard
                 </a>
-                <a href="{{ route('admin.vpn-users') }}" class="text-gray-700 hover:text-indigo-600 font-medium">
+                <a href="{{ route('admin.vpn-user-list') }}" class="text-gray-700 hover:text-indigo-600 font-medium">
                     VPN Users
                 </a>
                 <a href="{{ route('admin.servers.index') }}" class="text-gray-700 hover:text-indigo-600 font-medium">
@@ -43,7 +43,7 @@
             <a href="{{ route('admin.dashboard') }}" class="block pl-3 pr-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-100">
                 Dashboard
             </a>
-            <a href="{{ route('admin.vpn-users') }}" class="block pl-3 pr-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-100">
+            <a href="{{ route('admin.vpn-user-list') }}" class="block pl-3 pr-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-100">
                 VPN Users
             </a>
             <a href="{{ route('admin.servers.index') }}" class="block pl-3 pr-4 py-2 text-base font-medium text-gray-700 hover:bg-gray-100">
