@@ -19,7 +19,7 @@ class VpnUserList extends Component
 
     public function render()
     {
-        $users = VpnUser::with('vpnServer')
+        $users = VpnUser::with('vpnServers')
             ->when($this->search, fn($q) =>
                 $q->where('username', 'like', '%'.$this->search.'%')
             )

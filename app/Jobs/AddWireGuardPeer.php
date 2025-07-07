@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\VpnUser;
-use App\Models\VpnServer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -15,31 +14,37 @@ class AddWireGuardPeer implements ShouldQueue
     use InteractsWithQueue, Queueable, SerializesModels;
 
     public VpnUser $vpnUser;
-    public VpnServer $vpnServer;
 
-    public function __construct(VpnUser $vpnUser, VpnServer $vpnServer)
+    public function __construct(VpnUser $vpnUser)
     {
         $this->vpnUser = $vpnUser;
-        $this->vpnServer = $vpnServer;
     }
 
     public function handle(): void
     {
-        Log::info("🔧 Adding WireGuard peer for user {$this->vpnUser->username}");
+        Log::info("🚀 Adding WireGuard peers for user {$this->vpnUser->username}");
 
-        $ip = $this->vpnServer->ip_address;
-        $port = $this->vpnServer->ssh_port ?? 22;
-        $user = $this->vpnServer->ssh_user;
-        $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+        foreach ($this->vpnUser->vpnServers as $server) {
+            Log::info("🔧 Adding peer on server: {$server->name} ({$server->ip_address})");
 
-        $wgConfigCommand = "
-sudo wg set wg0 peer {$this->vpnUser->wireguard_public_key} allowed-ips {$this->vpnUser->wireguard_address}
-";
+            $ip = $server->ip_address;
+            $port = $server->ssh_port ?? 22;
+            $user = $server->ssh_user;
+            $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
 
-        $sshCmd = "ssh -i $keyPath -p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $user@$ip \"$wgConfigCommand\"";
+            $wgConfigCommand = sprintf(
+                "sudo wg set wg0 peer %s allowed-ips %s",
+                escapeshellarg($this->vpnUser->wireguard_public_key),
+                escapeshellarg($this->vpnUser->wireguard_address)
+            );
 
-        $output = shell_exec($sshCmd);
+            $sshCmd = "ssh -i $keyPath -p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $user@$ip \"$wgConfigCommand\"";
 
-        Log::info("✅ WireGuard peer added for {$this->vpnUser->username}: {$output}");
+            $output = shell_exec($sshCmd);
+
+            Log::info("✅ WireGuard peer added on {$server->name}: {$output}");
+        }
+
+        Log::info("🎉 Finished adding WireGuard peers for user {$this->vpnUser->username}");
     }
 }

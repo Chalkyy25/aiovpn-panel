@@ -12,7 +12,8 @@ class VpnConfigController extends Controller
 {
     public function download(VpnUser $vpnUser)
     {
-        $server = $vpnUser->vpnServer; // Adjust if using single server per user now
+        // ✅ Get first assigned server
+        $server = $vpnUser->vpnServers->first();
 
         if (!$server) {
             abort(404, 'No server assigned to this user.');
