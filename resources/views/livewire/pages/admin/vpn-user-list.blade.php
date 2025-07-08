@@ -14,7 +14,7 @@
                 <tr>
                     <th class="px-4 py-2 text-left">Username</th>
                     <th class="px-4 py-2 text-left">Password</th>
-                    <th class="px-4 py-2 text-left">Server</th>
+                    <th class="px-4 py-2 text-left">Servers Assigned</th>
                     <th class="px-4 py-2 text-left">Created</th>
                     <th class="px-4 py-2 text-left">Actions</th>
                 </tr>
@@ -25,7 +25,15 @@
                         <td class="px-4 py-2">{{ $user->username }}</td>
                         <td class="px-4 py-2">********</td>
                         <td class="px-4 py-2">
-                            {{ optional($user->vpnServer)->location ?? 'N/A' }}
+                            @if ($user->vpnServers->isNotEmpty())
+                                <ul class="list-disc ml-4">
+                                    @foreach ($user->vpnServers as $server)
+                                        <li>{{ $server->name }} ({{ $server->ip_address }})</li>
+                                    @endforeach
+                                </ul>
+                            @else
+                                <span class="text-gray-500">No servers assigned</span>
+                            @endif
                         </td>
                         <td class="px-4 py-2">
                             {{ $user->created_at->diffForHumans() }}
