@@ -5,24 +5,24 @@ namespace App\Http\Controllers;
 use App\Models\VpnUser;
 use App\Models\VpnServer;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Response;
 use ZipArchive;
 
 class VpnConfigController extends Controller
 {
     public function download(VpnUser $vpnUser)
     {
-        // ✅ Get first assigned server
+        // ✅ Default to first assigned server if only one
         $server = $vpnUser->vpnServers->first();
 
         if (!$server) {
             abort(404, 'No server assigned to this user.');
         }
 
-        $path = "public/ovpn_configs/{$server->name}_{$vpnUser->username}.ovpn";
+        $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
+        $path = "public/ovpn_configs/{$safeServerName}_{$vpnUser->username}.ovpn";
 
         if (!Storage::exists($path)) {
-            abort(404, 'OVPN config not found.');
+            abort(404, 'OVPN config not found for this server.');
         }
 
         return Storage::download($path);
@@ -30,7 +30,8 @@ class VpnConfigController extends Controller
 
     public function downloadForServer(VpnUser $vpnUser, VpnServer $vpnServer)
     {
-        $path = "public/ovpn_configs/{$vpnServer->name}_{$vpnUser->username}.ovpn";
+        $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name);
+        $path = "public/ovpn_configs/{$safeServerName}_{$vpnUser->username}.ovpn";
 
         if (!Storage::exists($path)) {
             abort(404, 'OVPN config for this server not found.');
@@ -41,7 +42,7 @@ class VpnConfigController extends Controller
 
     public function downloadAll(VpnUser $vpnUser)
     {
-        $servers = $vpnUser->vpnServers; // Use relation for many-to-many
+        $servers = $vpnUser->vpnServers;
 
         if ($servers->isEmpty()) {
             return back()->with('error', 'No servers assigned to this user.');

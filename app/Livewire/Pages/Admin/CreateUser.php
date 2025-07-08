@@ -4,18 +4,16 @@ namespace App\Livewire\Pages\Admin;
 
 use Livewire\Component;
 use Livewire\Attributes\Layout;
-use App\Models\User;
+use App\Models\VpnUser;
 use App\Models\VpnServer;
-use App\Jobs\CreateVpnUser;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\log;
+use Illuminate\Support\Facades\Log;
 
 #[Layout('layouts.app')]
 class CreateUser extends Component
 {
     public $username = '';
-    public $vpn_server_id = '';
-
+    public $selectedServers = []; // Changed from single ID to array for multi-select
     public $vpnServers = [];
 
     public function mount()
@@ -23,15 +21,15 @@ class CreateUser extends Component
         $this->vpnServers = VpnServer::all();
     }
 
-    public function save()
+public function save()
 {
     $this->validate([
         'username' => 'nullable|string|min:3',
-        'vpn_server_id' => 'required|exists:vpn_servers,id',
+        'selectedServers' => 'required|array|min:1',
     ]);
 
-    // Check if username already exists
-    if ($this->username && \App\Models\VpnUser::where('username', $this->username)->exists()) {
+    // Check for duplicate username if entered manually
+    if ($this->username && VpnUser::where('username', $this->username)->exists()) {
         $this->addError('username', 'This username is already taken. Please choose another.');
         return;
     }
@@ -39,15 +37,21 @@ class CreateUser extends Component
     // Generate random username if blank
     $finalUsername = $this->username ?: 'user-' . Str::random(6);
 
-    // Dispatch job
-    CreateVpnUser::dispatch(
-        $finalUsername,
-        $this->vpn_server_id,
-        null,
-        Str::random(12)
-    );
+    // Create the VPN user
+    $vpnUser = VpnUser::create([
+        'username' => $finalUsername,
+        'password' => bcrypt(Str::random(12)),
+    ]);
 
-    session()->flash('success', '✅ VPN Client created successfully!');
+    // Attach to selected servers (many-to-many)
+    $vpnUser->vpnServers()->attach($this->selectedServers);
+
+    // Optional: dispatch jobs to generate configs, peers, etc.
+    // Example:
+    // GenerateWireGuardConfig::dispatch($vpnUser);
+    // SyncOpenVPNCredentials::dispatch($vpnUser);
+
+    session()->flash('success', '✅ VPN Client created and assigned to servers successfully!');
     return redirect()->route('admin.users.index');
 }
 

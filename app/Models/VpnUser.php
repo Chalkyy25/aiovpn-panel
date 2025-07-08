@@ -36,11 +36,15 @@ class VpnUser extends Authenticatable
     /**
      * ✅ Many-to-Many: user can belong to multiple VPN servers.
      */
-    public function vpnServers()
-    {
-        return $this->belongsToMany(VpnServer::class, 'vpn_user_server');
-    }
-
+public function vpnServers()
+{
+    return $this->belongsToMany(
+        VpnServer::class,
+        'vpn_server_user', // pivot table
+        'vpn_user_id',     // this model's key on pivot
+        'vpn_server_id'    // related model's key on pivot
+    );
+}
     /**
      * ✅ Relationship: linked client record.
      */

@@ -15,17 +15,16 @@
             @error('username') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
-        <!-- VPN Server -->
-        <div>
-            <x-label for="vpn_server_id" value="Assign VPN Server" />
-            <select id="vpn_server_id" wire:model.defer="vpn_server_id" class="w-full">
-                <option value="">-- Select Server --</option>
-                @foreach($vpnServers as $server)
-                    <option value="{{ $server->id }}">{{ $server->name }} ({{ $server->ip_address }})</option>
-                @endforeach
-            </select>
-            @error('vpn_server_id') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
-        </div>
+        <!-- VPN Servers Multi-select -->
+<div>
+    <x-label for="selectedServers" value="Assign VPN Servers" />
+    <select id="selectedServers" wire:model.defer="selectedServers" multiple class="w-full">
+        @foreach($vpnServers as $server)
+            <option value="{{ $server->id }}">{{ $server->name }} ({{ $server->ip_address }})</option>
+        @endforeach
+    </select>
+    @error('selectedServers') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
+</div>
 
         <!-- Submit -->
         <div class="flex justify-end">

@@ -12,6 +12,7 @@
             <!-- Desktop menu -->
             <div class="hidden sm:flex sm:items-center sm:space-x-8">
                 <x-nav-link href="{{ route('admin.dashboard') }}" :active="request()->routeIs('admin.dashboard')">Dashboard</x-nav-link>
+		<x-nav-link href="{{ route('admin.create-user') }}" :active="request()->routeIs('admin.create-user')">Create VPN User</x-nav-link>
                 <x-nav-link href="{{ route('admin.vpn-user-list') }}" :active="request()->routeIs('admin.vpn-user-list')">VPN Users</x-nav-link>
                 <x-nav-link href="{{ route('admin.servers.index') }}" :active="request()->routeIs('admin.servers.index')">VPN Servers</x-nav-link>
                 <x-nav-link href="{{ route('admin.settings') }}" :active="request()->routeIs('admin.settings')">Settings</x-nav-link>
@@ -37,6 +38,7 @@
     <div class="pt-4 pb-4 bg-gray-50 rounded shadow space-y-1">
         @foreach ([
             ['route' => 'admin.dashboard', 'label' => '🏠 Dashboard'],
+	    ['route' => 'admin.create-user', 'label' => '➕ Create VPN Users'],
             ['route' => 'admin.vpn-user-list', 'label' => '🔑 VPN Users'],
             ['route' => 'admin.servers.index', 'label' => '🌐 VPN Servers'],
             ['route' => 'admin.settings', 'label' => '⚙️ Settings'],
