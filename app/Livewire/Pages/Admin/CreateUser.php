@@ -52,7 +52,7 @@ public function save()
     // SyncOpenVPNCredentials::dispatch($vpnUser);
 
     session()->flash('success', '✅ VPN Client created and assigned to servers successfully!');
-    return redirect()->route('admin.users.index');
+    return redirect()->route('admin.vpn-user-list');
 }
 
     public function render()
