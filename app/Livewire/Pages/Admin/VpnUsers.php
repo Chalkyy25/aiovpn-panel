@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Admin;
 use Livewire\Component;
 use App\Models\VpnUser;
 use Livewire\Attributes\Layout;
+use App\Jobs\RemoveWireGuardPeer;
 
 #[Layout('layouts.app')]
 class VpnUsers extends Component
@@ -14,7 +15,7 @@ class VpnUsers extends Component
     public function mount()
     {
         // 🔧 Load all VPN users with their assigned servers
-        $this->users = VpnUser::with('vpnServer')->get();
+        $this->users = VpnUser::with('vpnServers')->get();
     }
 
     public function render()
@@ -25,18 +26,23 @@ class VpnUsers extends Component
                 'title' => 'VPN Test Users'
             ]);
     }
+
     public function deleteUser(VpnUser $user)
     {
-        // 🔥 Delete the user and their associated files
+        // 🔥 Remove WireGuard peer before deleting the user
+        RemoveWireGuardPeer::dispatch($user);
+
+        // 💾 Delete the user from DB
         $user->delete();
+
         session()->flash('message', "User {$user->username} deleted successfully.");
-        $this->users = VpnUser::with('vpnServer')->get(); // Refresh the list
+        $this->users = VpnUser::with('vpnServers')->get(); // Refresh the list
     }
+
     public function generateOvpn(VpnUser $user)
     {
         // 🔄 Dispatch job to generate OVPN file
         \App\Jobs\GenerateOvpnFile::dispatch($user);
         session()->flash('message', "OVPN file generation for {$user->username} has been queued.");
     }
-
 }

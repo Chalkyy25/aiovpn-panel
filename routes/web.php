@@ -73,6 +73,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 	// ✅ VPN Users page
 	Route::get('/vpn-user-list', \App\Livewire\Pages\Admin\VpnUserList::class)->name('vpn-user-list');
 
+	// ✅ WireGuard config download
+	Route::get('/wireguard/configs/{filename}', function ($filename) {
+	    $path = storage_path('app/configs/' . $filename);
+	    if (!file_exists($path)) {
+	        abort(404);
+	    }
+	    return response()->download($path);
+	})->name('wireguard.configs.download');
+
         // ✅ Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
     });
