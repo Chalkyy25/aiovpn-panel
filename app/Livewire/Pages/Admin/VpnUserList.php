@@ -7,6 +7,8 @@ use Livewire\WithPagination;
 use App\Models\VpnUser;
 use Illuminate\Support\Facades\Log;
 use App\Jobs\RemoveWireGuardPeer;
+use App\Jobs\GenerateOvpnFile;
+use App\Jobs\AddWireGuardPeer;
 
 class VpnUserList extends Component
 {
@@ -36,41 +38,50 @@ class VpnUserList extends Component
             ->layout('layouts.app');
     }
 
+    /**
+     * Delete a VPN user and remove their WireGuard peer.
+     */
     public function deleteUser($id)
     {
         $user = VpnUser::findOrFail($id);
 
-        // 🚨 Dispatch RemoveWireGuardPeer job (if built)
-        \App\Jobs\RemoveWireGuardPeer::dispatch($user);
+        // 🗑️ Remove WireGuard peer from VPN servers before deleting user
+        RemoveWireGuardPeer::dispatch($user);
 
-        // 🚨 Delete user from DB
+        $username = $user->username;
+
+        // 🗑️ Delete user from DB
         $user->delete();
 
-        Log::info("🗑️ Deleted VPN user {$user->username}");
+        Log::info("🗑️ Deleted VPN user {$username}");
 
-        session()->flash('message', "User {$user->username} deleted successfully!");
+        session()->flash('message', "User {$username} deleted successfully!");
 
         $this->emit('refreshUsers');
     }
 
+    /**
+     * Generate an OpenVPN config file for this user.
+     */
     public function generateOvpn($id)
     {
         $user = VpnUser::findOrFail($id);
 
-        // 🚀 Dispatch job to generate OVPN file
-        \App\Jobs\GenerateOvpnFile::dispatch($user);
+        GenerateOvpnFile::dispatch($user);
 
         Log::info("📄 OVPN generation queued for user {$user->username}");
 
         session()->flash('message', "OVPN file generation for {$user->username} has been queued.");
     }
 
+    /**
+     * Generate WireGuard peer setup for this user.
+     */
     public function generateWireGuard($id)
     {
         $user = VpnUser::findOrFail($id);
 
-        // 🚀 Dispatch AddWireGuardPeer job
-        \App\Jobs\AddWireGuardPeer::dispatch($user);
+        AddWireGuardPeer::dispatch($user);
 
         Log::info("🔧 WireGuard peer setup queued for user {$user->username}");
 
