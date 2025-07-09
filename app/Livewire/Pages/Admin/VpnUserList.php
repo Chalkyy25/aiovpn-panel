@@ -6,6 +6,7 @@ use Livewire\Component;
 use Livewire\WithPagination;
 use App\Models\VpnUser;
 use Illuminate\Support\Facades\Log;
+use App\Jobs\RemoveWireGuardPeer;
 
 class VpnUserList extends Component
 {
