@@ -45,10 +45,9 @@
                             </button>
 
                             <button 
-                                wire:click="deleteUser({{ $user->id }})" 
-                                onclick="return confirm('Are you sure you want to delete this user and remove WireGuard peers?')" 
-                                class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
-                                Delete
+                                wire:click="generateWireGuard({{ $user->id }})" 
+                                class="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">
+                                Generate Peer
                             </button>
 
                             <button 
@@ -56,6 +55,13 @@
                                 onclick="return confirm('Remove WireGuard peer from all servers for {{ $user->username }}?')" 
                                 class="bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700">
                                 Remove Peer
+                            </button>
+
+                            <button 
+                                wire:click="deleteUser({{ $user->id }})" 
+                                onclick="return confirm('Are you sure you want to delete this user and remove WireGuard peers?')" 
+                                class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
+                                Delete
                             </button>
                         </td>
                     </tr>
