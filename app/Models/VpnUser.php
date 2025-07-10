@@ -13,6 +13,7 @@ class VpnUser extends Authenticatable
 
     protected $fillable = [
         'username',
+	'plain_password',
         'password',
         'client_id',
         'wireguard_private_key',

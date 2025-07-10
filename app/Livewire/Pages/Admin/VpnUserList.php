@@ -46,7 +46,7 @@ class VpnUserList extends Component
         $user = VpnUser::findOrFail($id);
 
         // 🗑️ Remove WireGuard peer from VPN servers before deleting user
-        RemoveWireGuardPeer::dispatch($user);
+	dispatch(new \App\Jobs\RemoveWireGuardPeer($user));
 
         $username = $user->username;
 
@@ -57,7 +57,7 @@ class VpnUserList extends Component
 
         session()->flash('message', "User {$username} deleted successfully!");
 
-        $this->emit('refreshUsers');
+	$this->dispatch('refreshUsers');
     }
 
     /**

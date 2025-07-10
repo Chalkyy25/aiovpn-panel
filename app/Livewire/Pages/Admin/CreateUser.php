@@ -23,43 +23,53 @@ class CreateUser extends Component
         $this->vpnServers = VpnServer::all();
     }
 
-    public function save()
-    {
-        $this->validate([
-            'username' => 'nullable|string|min:3',
-            'selectedServers' => 'required|array|min:1',
-        ]);
+public function save()
+{
+    $this->validate([
+        'username' => 'nullable|string|min:3',
+        'selectedServers' => 'required|array|min:1',
+    ]);
 
-        // Check for duplicate username if entered manually
-        if ($this->username && VpnUser::where('username', $this->username)->exists()) {
-            $this->addError('username', 'This username is already taken. Please choose another.');
-            return;
-        }
-
-        // Generate random username if blank
-        $finalUsername = $this->username ?: 'user-' . Str::random(6);
-
-        // Create VPN user with random password
-        $vpnUser = VpnUser::create([
-            'username' => $finalUsername,
-            'password' => bcrypt(Str::random(12)),
-        ]);
-
-        // Attach user to selected servers
-        $vpnUser->vpnServers()->attach($this->selectedServers);
-
-        Log::info("✅ Created VPN user {$finalUsername} and assigned to servers.", [
-            'user_id' => $vpnUser->id,
-            'servers' => $this->selectedServers
-        ]);
-
-        // Dispatch jobs to set up WireGuard peers and sync OpenVPN credentials
-	dispatch(new \App\Jobs\AddWireGuardPeer($vpnUser));
-	dispatch(new \App\Jobs\SyncOpenVPNCredentials($vpnUser));
-
-        session()->flash('success', '✅ VPN Client created and assigned to servers successfully!');
-        return redirect()->route('admin.vpn-user-list');
+    // Check for duplicate username if entered manually
+    if ($this->username && VpnUser::where('username', $this->username)->exists()) {
+        $this->addError('username', 'This username is already taken. Please choose another.');
+        return;
     }
+
+    // Generate random username if blank
+    $finalUsername = $this->username ?: 'user-' . Str::random(6);
+
+    // Generate random plain password
+    $plainPassword = Str::random(8);
+
+    // ✅ Create VPN user and save both plain and hashed password
+    $vpnUser = VpnUser::create([
+        'username' => $finalUsername,
+        'plain_password' => $plainPassword,
+        'password' => bcrypt($plainPassword),
+    ]);
+
+    // Attach user to selected servers
+    $vpnUser->vpnServers()->attach($this->selectedServers);
+
+    Log::info("✅ Created VPN user {$finalUsername} and assigned to servers.", [
+        'user_id' => $vpnUser->id,
+        'servers' => $this->selectedServers,
+        'plain_password' => $plainPassword,
+    ]);
+
+    // Dispatch job to set up WireGuard peers
+    dispatch(new \App\Jobs\AddWireGuardPeer($vpnUser));
+
+    // Dispatch SyncOpenVPNCredentials per assigned server
+    foreach ($vpnUser->vpnServers as $server) {
+        dispatch(new \App\Jobs\SyncOpenVPNCredentials($server));
+    }
+
+    session()->flash('success', "✅ VPN Client {$finalUsername} created with password: {$plainPassword}");
+
+    return redirect()->route('admin.vpn-user-list');
+}
 
     public function render()
     {

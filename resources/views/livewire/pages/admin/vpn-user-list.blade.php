@@ -22,7 +22,13 @@
                 @foreach ($users as $user)
                     <tr class="border-b">
                         <td class="px-4 py-2">{{ $user->username }}</td>
-                        <td class="px-4 py-2">********</td>
+<td class="px-4 py-2">
+    @if ($user->plain_password)
+        {{ $user->plain_password }}
+    @else
+        <span class="text-gray-400 italic">N/A</span>
+    @endif
+</td>
                         <td class="px-4 py-2">
                             @if ($user->vpnServers->isNotEmpty())
                                 <ul class="list-disc ml-4">
@@ -37,30 +43,39 @@
                         <td class="px-4 py-2">
                             {{ $user->created_at->diffForHumans() }}
                         </td>
-                        <td class="px-4 py-2 space-x-2">
-                            <button 
-                                wire:click="generateOvpn({{ $user->id }})" 
-                                class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">
-                                Download
-                            </button>
+                        <td class="px-4 py-2 space-y-1">
+                            <!-- WireGuard Download -->
+                            <a href="{{ route('admin.clients.config.download', $user->id) }}" 
+                               class="block bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">
+                                Download WG
+                            </a>
 
+                            <!-- OpenVPN per server download -->
+                            @foreach ($user->vpnServers as $server)
+                                <a href="{{ route('admin.clients.config.downloadForServer', [$user->id, $server->id]) }}" 
+                                   class="block bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700">
+                                    OVPN {{ $server->name }}
+                                </a>
+                            @endforeach
+
+                            <!-- Download All -->
+                            <a href="{{ route('admin.clients.configs.downloadAll', $user->id) }}" 
+                               class="block bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700">
+                                Download All
+                            </a>
+
+                            <!-- Generate WireGuard Peer -->
                             <button 
                                 wire:click="generateWireGuard({{ $user->id }})" 
-                                class="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700">
+                                class="block w-full bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700">
                                 Generate Peer
                             </button>
 
-                            <button 
-                                wire:click="removeWireGuardPeer({{ $user->id }})" 
-                                onclick="return confirm('Remove WireGuard peer from all servers for {{ $user->username }}?')" 
-                                class="bg-yellow-600 text-white px-3 py-1 rounded hover:bg-yellow-700">
-                                Remove Peer
-                            </button>
-
+                            <!-- Delete User -->
                             <button 
                                 wire:click="deleteUser({{ $user->id }})" 
                                 onclick="return confirm('Are you sure you want to delete this user and remove WireGuard peers?')" 
-                                class="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
+                                class="block w-full bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700">
                                 Delete
                             </button>
                         </td>
