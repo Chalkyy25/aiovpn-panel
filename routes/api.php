@@ -17,3 +17,16 @@ use Illuminate\Support\Facades\Route;
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+Route::post('/device/register', function (Request $request) {
+    $request->validate([
+        'username' => 'required|string',
+        'device_name' => 'required|string',
+    ]);
+
+    $vpnUser = \App\Models\VpnUser::where('username', $request->username)->firstOrFail();
+    $vpnUser->device_name = $request->device_name;
+    $vpnUser->save();
+
+    return response()->json(['status' => 'success']);
+});

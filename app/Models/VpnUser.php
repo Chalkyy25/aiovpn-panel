@@ -15,6 +15,7 @@ class VpnUser extends Authenticatable
         'username',
 	'plain_password',
         'password',
+	'device_name',
         'client_id',
         'wireguard_private_key',
         'wireguard_public_key',

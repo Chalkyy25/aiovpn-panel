@@ -10,25 +10,47 @@
     <form wire:submit.prevent="save" class="space-y-4">
         <!-- Username (optional) -->
         <div>
-            <x-label for="username" value="Username (optional)" />
-            <x-input id="username" type="text" wire:model.defer="username" class="w-full" placeholder="Leave blank for random" />
-            @error('username') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
+            <label for="username" class="block text-sm font-medium text-gray-700">Username (optional)</label>
+            <input id="username" type="text" wire:model.defer="username" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="Leave blank for random" />
+            @error('username') 
+                <p class="text-red-500 text-sm mt-1">{{ $message }}</p> 
+            @enderror
+        </div>
+
+        <!-- Device Name -->
+        <div>
+            <label for="deviceName" class="block text-sm font-medium text-gray-700">Device Name</label>
+            <input id="deviceName" type="text" wire:model.defer="deviceName" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" placeholder="e.g. John's iPhone" />
+            @error('deviceName') 
+                <p class="text-red-500 text-sm mt-1">{{ $message }}</p> 
+            @enderror
         </div>
 
         <!-- VPN Servers Multi-select -->
-<div>
-    <x-label for="selectedServers" value="Assign VPN Servers" />
-    <select id="selectedServers" wire:model.defer="selectedServers" multiple class="w-full">
-        @foreach($vpnServers as $server)
-            <option value="{{ $server->id }}">{{ $server->name }} ({{ $server->ip_address }})</option>
-        @endforeach
-    </select>
-    @error('selectedServers') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
-</div>
+        <div>
+            <label for="selectedServers" class="block text-sm font-medium text-gray-700">Assign VPN Servers</label>
+            <select id="selectedServers" wire:model.defer="selectedServers" multiple class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
+                @foreach($vpnServers as $server)
+                    <option value="{{ $server->id }}">{{ $server->name }} ({{ $server->ip_address }})</option>
+                @endforeach
+            </select>
+            @error('selectedServers') 
+                <p class="text-red-500 text-sm mt-1">{{ $message }}</p> 
+            @enderror
+        </div>
 
         <!-- Submit -->
         <div class="flex justify-end">
-            <x-button type="submit" class="px-5">Create VPN Client</x-button>
+            <button type="submit" class="px-5 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                Create VPN Client
+            </button>
         </div>
     </form>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const deviceName = navigator.userAgent;
+        @this.set('deviceName', deviceName);
+    });
+</script>
+
 </div>

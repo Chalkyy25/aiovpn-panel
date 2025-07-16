@@ -13,6 +13,7 @@
                 <tr>
                     <th class="px-4 py-2 text-left">Username</th>
                     <th class="px-4 py-2 text-left">Password</th>
+                    <th class="px-4 py-2 text-left">Device Name</th>
                     <th class="px-4 py-2 text-left">Servers Assigned</th>
                     <th class="px-4 py-2 text-left">Created</th>
                     <th class="px-4 py-2 text-left">Actions</th>
@@ -22,13 +23,14 @@
                 @foreach ($users as $user)
                     <tr class="border-b">
                         <td class="px-4 py-2">{{ $user->username }}</td>
-<td class="px-4 py-2">
-    @if ($user->plain_password)
-        {{ $user->plain_password }}
-    @else
-        <span class="text-gray-400 italic">N/A</span>
-    @endif
-</td>
+                        <td class="px-4 py-2">
+                            @if ($user->plain_password)
+                                {{ $user->plain_password }}
+                            @else
+                                <span class="text-gray-400 italic">N/A</span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-2">{{ $user->device_name ?? 'N/A' }}</td>
                         <td class="px-4 py-2">
                             @if ($user->vpnServers->isNotEmpty())
                                 <ul class="list-disc ml-4">

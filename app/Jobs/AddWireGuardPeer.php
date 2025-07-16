@@ -23,6 +23,12 @@ class AddWireGuardPeer implements ShouldQueue
 
     public function handle(): void
     {
+	// ✅ Auto-fill device name if empty
+    if (empty($this->vpnUser->device_name)) {
+        $this->vpnUser->device_name = 'Unknown Device';
+        $this->vpnUser->save();
+    }
+
         Log::info("🚀 [WireGuard] Starting peer setup for user {$this->vpnUser->username}");
 
         foreach ($this->vpnUser->vpnServers as $server) {
