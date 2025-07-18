@@ -182,7 +182,7 @@ persist-key
 persist-tun
 status /etc/openvpn/openvpn-status.log
 verb 3
-auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-env
+auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 script-security 3
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 8.8.8.8"
