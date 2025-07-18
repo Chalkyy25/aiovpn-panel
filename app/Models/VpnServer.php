@@ -38,10 +38,10 @@ class VpnServer extends Model
         return $this->belongsToMany(User::class, 'client_vpn_server');
     }
 
-	public function vpnUsers()
-	{
-	    return $this->belongsToMany(VpnUser::class, 'vpn_user_server');
-	}
+public function vpnUsers()
+{
+    return $this->belongsToMany(VpnUser::class, 'vpn_server_user');
+}
 
     // Deployment log helper
     public function appendLog(string $line)

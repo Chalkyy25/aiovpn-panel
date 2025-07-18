@@ -1,178 +1,54 @@
-@php
-    $webUser = Auth::guard('web')->user();
-    $clientUser = Auth::guard('client')->user();
-
-    $guard = 'none';
-    if ($webUser) {
-        $guard = 'web';
-    } elseif ($clientUser) {
-        $guard = 'client';
-    }
-
-    $user = $webUser ?? $clientUser;
-@endphp
-
-<nav x-data="{ open: false }" class="bg-white border-b border-gray-100">
-    <!-- Primary Navigation Menu -->
+<nav class="bg-white border-b border-gray-200" x-data="{ open: false }">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
-            <div class="flex">
-                <!-- Logo -->
-                <div class="shrink-0 flex items-center">
-                    @if($user?->role === 'admin')
-                        <a href="{{ route('admin.dashboard') }}">
-                    @elseif($user?->role === 'reseller')
-                        <a href="{{ route('reseller.dashboard') }}">
-                    @elseif($user?->role === 'client')
-                        <a href="{{ route('client.dashboard') }}">
-                    @else
-                        <a href="/">
-                    @endif
-                        <x-application-logo class="block h-9 w-auto fill-current text-gray-800" />
-                    </a>
-                </div>
 
-                <!-- Navigation Links -->
-                <div class="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex">
-                    @if($user?->role === 'admin')
-                        <x-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
-                            {{ __('Dashboard') }}
-                        </x-nav-link>
-                        <x-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
-                            {{ __('Create User') }}
-                        </x-nav-link>
-                        <x-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
-                            {{ __('Manage Users') }}
-                        </x-nav-link>
-                        <x-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
-                            {{ __('VPN Servers') }}
-                        </x-nav-link>
-                        <x-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
-                            {{ __('VPN Users') }}
-                        </x-nav-link>
-                        <x-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
-                            {{ __('Settings') }}
-                        </x-nav-link>
-
-                    @elseif($user?->role === 'reseller')
-                        <x-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
-                            {{ __('Dashboard') }}
-                        </x-nav-link>
-                        {{-- Add more reseller links here --}}
-
-                    @elseif($user?->role === 'client')
-                        <x-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
-                            {{ __('Dashboard') }}
-                        </x-nav-link>
-                        {{-- Add more client links here --}}
-                    @endif
-                </div>
+            <!-- Logo -->
+            <div class="flex-shrink-0 flex items-center">
+                <a href="/">
+                    <x-application-logo class="block h-10 w-auto fill-current text-gray-600" />
+                </a>
             </div>
 
-            <!-- Settings Dropdown -->
-            <div class="hidden sm:flex sm:items-center sm:ml-6">
-                <x-dropdown align="right" width="48">
-                    <x-slot name="trigger">
-                        <button class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 bg-white hover:text-gray-700 focus:outline-none">
-                            {{ $user->name ?? $user->username ?? 'Guest' }}
-                            <div class="ml-1">
-                                <svg class="fill-current h-4 w-4" viewBox="0 0 20 20">
-                                    <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
-                                </svg>
-                            </div>
-                        </button>
-                    </x-slot>
-
-                    <x-slot name="content">
-                        @if($user?->role !== 'client')
-                            <x-dropdown-link :href="route('profile.edit')">
-                                {{ __('Profile') }}
-                            </x-dropdown-link>
-                        @endif
-
-                        <form method="POST" action="{{ route('logout') }}">
-                            @csrf
-                            <x-dropdown-link href="{{ route('logout') }}"
-                                onclick="event.preventDefault(); this.closest('form').submit();">
-                                {{ __('Log Out') }}
-                            </x-dropdown-link>
-                        </form>
-                    </x-slot>
-                </x-dropdown>
+            <!-- Desktop menu -->
+            <div class="hidden sm:flex sm:items-center sm:space-x-8">
+                <x-nav-link href="{{ route('admin.dashboard') }}" :active="request()->routeIs('admin.dashboard')">Dashboard</x-nav-link>
+		<x-nav-link href="{{ route('admin.create-user') }}" :active="request()->routeIs('admin.create-user')">Create VPN User</x-nav-link>
+                <x-nav-link href="{{ route('admin.vpn-user-list') }}" :active="request()->routeIs('admin.vpn-user-list')">VPN Users</x-nav-link>
+                <x-nav-link href="{{ route('admin.servers.index') }}" :active="request()->routeIs('admin.servers.index')">VPN Servers</x-nav-link>
+                <x-nav-link href="{{ route('admin.settings') }}" :active="request()->routeIs('admin.settings')">Settings</x-nav-link>
             </div>
 
-            <!-- Hamburger -->
-            <div class="-mr-2 flex items-center sm:hidden">
-                <button @click="open = ! open" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500">
+            <!-- Mobile menu button -->
+            <div class="sm:hidden flex items-center">
+                <button @click="open = !open" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none">
                     <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                        <path :class="{ 'hidden': open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
-                        <path :class="{ 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        <path :class="{ 'hidden': open, 'inline-flex': !open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4 6h16M4 12h16M4 18h16" />
+                        <path :class="{ 'hidden': !open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
             </div>
+
         </div>
     </div>
 
-    <!-- Responsive Navigation Menu -->
-    <div :class="{ 'block': open, 'hidden': ! open }" class="hidden sm:hidden">
-        <div class="pt-2 pb-3 space-y-1">
-    @if($user?->role === 'admin')
-        <x-responsive-nav-link :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')">
-            {{ __('Dashboard') }}
-        </x-responsive-nav-link>
-        <x-responsive-nav-link :href="route('admin.create-user')" :active="request()->routeIs('admin.create-user')">
-            {{ __('Create User') }}
-        </x-responsive-nav-link>
-        <x-responsive-nav-link :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')">
-            {{ __('Manage Users') }}
-        </x-responsive-nav-link>
-        <x-responsive-nav-link :href="route('admin.servers.index')" :active="request()->routeIs('admin.servers.index')">
-            {{ __('VPN Servers') }}
-        </x-responsive-nav-link>
-        <x-responsive-nav-link :href="route('admin.vpn-users')" :active="request()->routeIs('admin.vpn-users')">
-            {{ __('VPN Users') }}
-        </x-responsive-nav-link>
-        <x-responsive-nav-link :href="route('admin.settings')" :active="request()->routeIs('admin.settings')">
-            {{ __('Settings') }}
-        </x-responsive-nav-link>
-
-    @elseif($user?->role === 'reseller')
-        <x-responsive-nav-link :href="route('reseller.dashboard')" :active="request()->routeIs('reseller.dashboard')">
-            {{ __('Dashboard') }}
-        </x-responsive-nav-link>
-        {{-- Add more reseller links here --}}
-
-    @elseif(Auth::guard('client')->check())
-        <x-responsive-nav-link :href="route('client.dashboard')" :active="request()->routeIs('client.dashboard')">
-            {{ __('Dashboard') }}
-        </x-responsive-nav-link>
-        {{-- Add more client links here --}}
-    @endif
+<!-- Mobile vertical menu -->
+<div class="sm:hidden" x-show="open">
+    <div class="pt-4 pb-4 bg-gray-50 rounded shadow space-y-1">
+        @foreach ([
+            ['route' => 'admin.dashboard', 'label' => '🏠 Dashboard'],
+	    ['route' => 'admin.create-user', 'label' => '➕ Create VPN Users'],
+            ['route' => 'admin.vpn-user-list', 'label' => '🔑 VPN Users'],
+            ['route' => 'admin.servers.index', 'label' => '🌐 VPN Servers'],
+            ['route' => 'admin.settings', 'label' => '⚙️ Settings'],
+        ] as $item)
+            <a href="{{ route($item['route']) }}"
+               class="block px-4 py-2 text-gray-700 hover:bg-gray-200 rounded
+                      {{ request()->routeIs($item['route']) ? 'border-l-4 border-blue-500 bg-blue-50' : '' }}">
+                {{ $item['label'] }}
+            </a>
+        @endforeach
+    </div>
 </div>
-
-
-        <!-- Responsive Settings Options -->
-        <div class="pt-4 pb-1 border-t border-gray-200">
-            <div class="px-4 font-medium text-base text-gray-800">{{ $user->name ?? $user->username ?? 'Guest' }}</div>
-            @if($user?->email)
-                <div class="px-4 font-medium text-sm text-gray-500">{{ $user->email }}</div>
-            @endif
-
-            <div class="mt-3 space-y-1">
-                @if($user?->role !== 'client')
-                    <x-responsive-nav-link :href="route('profile.edit')">
-                        {{ __('Profile') }}
-                    </x-responsive-nav-link>
-                @endif
-
-                <form method="POST" action="{{ route('logout') }}">
-                    @csrf
-                    <x-responsive-nav-link href="{{ route('logout') }}"
-                        onclick="event.preventDefault(); this.closest('form').submit();">
-                        {{ __('Log Out') }}
-                    </x-responsive-nav-link>
-                </form>
-            </div>
-        </div>
-    </div>
 </nav>

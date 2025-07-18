@@ -17,88 +17,132 @@ class GenerateOvpnFile implements ShouldQueue
 
     protected VpnUser $vpnUser;
 
+    /**
+     * Create a new job instance.
+     */
     public function __construct(VpnUser $vpnUser)
     {
-        $this->vpnUser = $vpnUser->load('vpnServers'); // updated relation
+        $this->vpnUser = $vpnUser->load('vpnServers');
     }
 
+    /**
+     * Execute the job.
+     */
     public function handle(): void
     {
-        $sshUser = 'root';
-        $sshKey = storage_path('app/ssh_keys/id_rsa');
+        Log::info("🚀 [OVPN] Starting config generation for user {$this->vpnUser->username}");
 
         foreach ($this->vpnUser->vpnServers as $server) {
-
             $ip = $server->ip_address;
-            Log::info("🔑 Generating embedded .ovpn for {$this->vpnUser->username} on {$server->name}");
+            $username = $this->vpnUser->username;
 
-            // 🔥 Generate client certificate automatically
-            $this->generateClientCert($ip, $sshKey, $this->vpnUser->username);
+            Log::info("🔧 [OVPN] Processing server: {$server->name} ({$ip})");
 
-            // 🔹 Fetch files
-            $ca = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ca.crt', 'CA cert');
-            $ta = $this->fetchRemoteFile($sshKey, $sshUser, $ip, '/etc/openvpn/ta.key', 'TLS auth key');
-            $cert = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/issued/{$this->vpnUser->username}.crt", 'Client cert');
-            $key = $this->fetchRemoteFile($sshKey, $sshUser, $ip, "/etc/openvpn/easy-rsa/pki/private/{$this->vpnUser->username}.key", 'Client key');
-
-            if (!$ca || !$ta || !$cert || !$key) {
-                Log::error("❌ Missing one or more required cert/key files for {$server->name}.");
-                continue; // Skip to next server
+            // Check if client certificate already exists
+            if ($this->checkClientCertExists($ip, $username)) {
+                Log::info("🔎 [OVPN] Client cert for {$username} exists on {$ip}, skipping generation.");
+            } else {
+                if (!$this->generateClientCert($ip, $username)) {
+                    Log::error("❌ [OVPN] Failed to generate cert for {$username} on {$ip}, skipping.");
+                    continue;
+                }
             }
 
-            // 🔹 Load template
+            // Fetch required files for config embedding
+            $files = [
+                'ca'   => '/etc/openvpn/ca.crt',
+                'ta'   => '/etc/openvpn/ta.key',
+                'cert' => "/etc/openvpn/easy-rsa/pki/issued/{$username}.crt",
+                'key'  => "/etc/openvpn/easy-rsa/pki/private/{$username}.key",
+            ];
+
+            $fetched = [];
+            foreach ($files as $label => $path) {
+                $content = $this->fetchRemoteFile($ip, $path, strtoupper($label));
+                if (!$content) {
+                    Log::error("❌ [OVPN] Missing {$label} for {$username} on {$ip}, skipping server.");
+                    continue 2;
+                }
+                $fetched[$label] = $content;
+            }
+
+            // Load and build final config
             $templatePath = 'ovpn_templates/client.ovpn';
             if (!Storage::exists($templatePath)) {
-                Log::error("❌ Missing OVPN template at {$templatePath}");
+                Log::error("❌ [OVPN] Missing template at {$templatePath}");
                 return;
             }
 
             $template = Storage::get($templatePath);
+            $config = str_replace(['{{SERVER_IP}}', '{{USERNAME}}'], [$ip, $username], $template);
 
-            // 🔹 Replace {{SERVER_IP}}
-            $config = str_replace('{{SERVER_IP}}', $ip, $template);
+            // Embed certificates and keys
+            $config .= "\n\n<ca>\n{$fetched['ca']}\n</ca>";
+            $config .= "\n\n<cert>\n{$fetched['cert']}\n</cert>";
+            $config .= "\n\n<key>\n{$fetched['key']}\n</key>";
+            $config .= "\n\n<tls-auth>\n{$fetched['ta']}\n</tls-auth>\nkey-direction 1";
 
-            // 🔹 Embed all certificates and keys
-            $config .= "\n\n<ca>\n{$ca}\n</ca>";
-            $config .= "\n\n<cert>\n{$cert}\n</cert>";
-            $config .= "\n\n<key>\n{$key}\n</key>";
-            $config .= "\n\n<tls-auth>\n{$ta}\n</tls-auth>\nkey-direction 1";
-
-            // 🔹 Save final .ovpn file to public folder
+            // Save final .ovpn file
             $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
-            $fileName = "public/ovpn_configs/{$safeServerName}_{$this->vpnUser->username}.ovpn";
+            $fileName = "public/ovpn_configs/{$safeServerName}_{$username}.ovpn";
 
             Storage::put($fileName, $config);
-            Log::info("✅ Embedded .ovpn generated at storage/app/{$fileName}");
-        }
-    }
+            Storage::setVisibility($fileName, 'public');
 
-    private function fetchRemoteFile(string $sshKey, string $sshUser, string $ip, string $remotePath, string $label): ?string
-    {
-        $output = [];
-        exec("ssh -i {$sshKey} -o StrictHostKeyChecking=no {$sshUser}@{$ip} 'cat {$remotePath}'", $output, $status);
-
-        if ($status !== 0 || empty($output)) {
-            Log::error("❌ Failed to fetch {$label} from {$ip} (status {$status})");
-            return null;
+            Log::info("✅ [OVPN] Generated config for {$username} on {$server->name}: storage/app/{$fileName}");
         }
 
-        return implode("\n", $output);
+        Log::info("🎉 [OVPN] Finished generating configs for {$this->vpnUser->username}");
     }
 
-    private function generateClientCert(string $ip, string $sshKey, string $clientUsername): bool
+    /**
+     * Run a generic SSH command.
+     */
+    private function runSshCommand(string $ip, string $command): array
     {
-        Log::info("🔨 Generating client certificate for {$clientUsername} on {$ip}");
+        $sshKey = storage_path('app/ssh_keys/id_rsa');
+        $sshUser = 'root';
+        $fullCommand = "ssh -i {$sshKey} -o StrictHostKeyChecking=no {$sshUser}@{$ip} '{$command}'";
+        exec($fullCommand, $output, $status);
+        return [$status, $output];
+    }
 
-        $command = "ssh -i {$sshKey} -o StrictHostKeyChecking=no root@{$ip} 'cd /etc/openvpn/easy-rsa && ./easyrsa build-client-full {$clientUsername} nopass'";
-        exec($command, $output, $status);
+    /**
+     * Check if client certificate exists on server.
+     */
+    private function checkClientCertExists(string $ip, string $clientUsername): bool
+    {
+        [$status, ] = $this->runSshCommand($ip, "test -f /etc/openvpn/easy-rsa/pki/issued/{$clientUsername}.crt");
+        return $status === 0;
+    }
+
+    /**
+     * Generate client certificate on server.
+     */
+    private function generateClientCert(string $ip, string $clientUsername): bool
+    {
+        Log::info("🔨 [OVPN] Generating client cert for {$clientUsername} on {$ip}");
+        [$status, ] = $this->runSshCommand($ip, "cd /etc/openvpn/easy-rsa && ./easyrsa build-client-full {$clientUsername} nopass");
 
         if ($status !== 0) {
-            Log::error("❌ Failed to generate client cert for {$clientUsername} on {$ip}");
+            Log::error("❌ [OVPN] Cert generation failed for {$clientUsername} on {$ip}");
             return false;
         }
 
-        Log::info("✅ Generated client cert for {$clientUsername} on {$ip}");
+        Log::info("✅ [OVPN] Generated cert for {$clientUsername} on {$ip}");
         return true;
+    }
+
+    /**
+     * Fetch a remote file's content via SSH.
+     */
+    private function fetchRemoteFile(string $ip, string $remotePath, string $label): ?string
+    {
+        [$status, $output] = $this->runSshCommand($ip, "cat {$remotePath}");
+        if ($status !== 0 || empty($output)) {
+            Log::error("❌ [OVPN] Failed to fetch {$label} from {$ip} (status {$status})");
+            return null;
+        }
+        return implode("\n", $output);
     }
 }

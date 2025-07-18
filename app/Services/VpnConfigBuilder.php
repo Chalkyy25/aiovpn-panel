@@ -4,20 +4,22 @@ namespace App\Services;
 
 use App\Models\VpnUser;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class VpnConfigBuilder
 {
     /**
-     * Generate OpenVPN config with embedded credentials.
+     * Generate OpenVPN configs for all servers assigned to the user.
      */
-    public static function generate(VpnUser $vpnUser): string
+    public static function generate(VpnUser $vpnUser): array
     {
-        $server = $vpnUser->vpnServer;
+        $generatedFiles = [];
 
-        $caCert = trim(Storage::disk('local')->get("certs/{$server->id}/ca.crt"));
-        $tlsKey = trim(Storage::disk('local')->get("certs/{$server->id}/ta.key"));
+        foreach ($vpnUser->vpnServers as $server) {
+            $caCert = trim(Storage::disk('local')->get("certs/{$server->id}/ca.crt"));
+            $tlsKey = trim(Storage::disk('local')->get("certs/{$server->id}/ta.key"));
 
-        $config = <<<EOL
+            $config = <<<EOL
 client
 dev tun
 proto udp
@@ -46,10 +48,17 @@ key-direction 1
 </auth-user-pass>
 EOL;
 
-        $path = "configs/{$vpnUser->id}.ovpn";
-        Storage::disk('local')->put($path, $config);
+            // ✅ Create filename based on server name + username
+            $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
+            $fileName = "{$safeServerName}_{$vpnUser->username}.ovpn";
 
-        return storage_path("app/{$path}");
+            Storage::disk('local')->put("configs/{$fileName}", $config);
+            $generatedFiles[] = storage_path("app/configs/{$fileName}");
+
+            Log::info("✅ OpenVPN config generated: {$fileName}");
+        }
+
+        return $generatedFiles;
     }
 
     /**
@@ -57,7 +66,14 @@ EOL;
      */
     public static function generateWireGuard(VpnUser $vpnUser): string
     {
-        $server = $vpnUser->vpnServer;
+        // Assuming only one server for WireGuard per user
+        $server = $vpnUser->vpnServers->first();
+
+        if (!$server) {
+            Log::warning("⚠️ No server assigned to user {$vpnUser->username} for WireGuard config.");
+            return '';
+        }
+
         $serverPublicKey = trim(Storage::disk('local')->get("wireguard/{$server->id}/server_public_key"));
         $serverEndpoint = "{$server->ip_address}:51820";
 
@@ -74,9 +90,11 @@ AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25
 EOL;
 
-        $path = "configs/{$vpnUser->id}.conf";
-        Storage::disk('local')->put($path, $config);
+        $fileName = "{$vpnUser->username}.conf";
+        Storage::disk('local')->put("configs/{$fileName}", $config);
 
-        return storage_path("app/{$path}");
+        Log::info("✅ WireGuard config generated: {$fileName}");
+
+        return storage_path("app/configs/{$fileName}");
     }
 }
