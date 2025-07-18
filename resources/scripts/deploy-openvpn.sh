@@ -145,13 +145,29 @@ function create_auth_files() {
 
   [ ! -f /etc/openvpn/auth/psw-file ] && echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file && sudo chmod 600 /etc/openvpn/auth/psw-file
 
-  echo "[7/11] Creating checkpsw.sh script…"
-  sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
-#!/bin/sh
+echo "[7/11] Creating checkpsw.sh script…"
+sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
+#!/bin/bash
+
 PASSFILE="/etc/openvpn/auth/psw-file"
-CORRECT=\$(grep "^\$1 " "\$PASSFILE" | cut -d" " -f2-)
-[ "\$2" = "\$CORRECT" ] && exit 0 || exit 1
+LOG_FILE="/etc/openvpn/auth.log"
+
+if [ ! -r "\${PASSFILE}" ]; then
+  echo "\$(date): ❌ psw-file not readable" >> "\${LOG_FILE}"
+  exit 1
+fi
+
+CORRECT_PASSWORD=\$(grep "^\$1 " "\${PASSFILE}" | cut -d " " -f2)
+
+if [ "\${CORRECT_PASSWORD}" = "\$2" ]; then
+  echo "\$(date): ✅ Auth OK: \$1" >> "\${LOG_FILE}"
+  exit 0
+else
+  echo "\$(date): ❌ Auth FAIL: \$1" >> "\${LOG_FILE}"
+  exit 1
+fi
 EOF'
+
   sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
   sudo chmod 755 /etc/openvpn/auth
 
