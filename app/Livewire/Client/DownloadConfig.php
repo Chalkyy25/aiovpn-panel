@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Client;
 
+use App\Models\User;
 use App\Models\VpnUser;
 use Livewire\Component;
 use Illuminate\Support\Facades\Auth;
@@ -10,9 +11,21 @@ use phpseclib3\Crypt\PublicKeyLoader;
 
 class DownloadConfig extends Component
 {
+    public $userId;
+
+    public function mount($userId = null)
+    {
+        $this->userId = $userId ?? Auth::id();
+    }
+
     public function download()
     {
-        $user = Auth::user();
+        $user = User::findOrFail($this->userId);
+
+        // Optional: Only allow access if self or admin
+        if ($user->id !== Auth::id() && Auth::user()->role !== 'admin') {
+            abort(403, 'Access denied.');
+        }
 
         $vpnUser = VpnUser::where('user_id', $user->id)->with('vpnServer')->firstOrFail();
         $server = $vpnUser->vpnServer;
