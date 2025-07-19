@@ -1,60 +1,42 @@
 <?php
 
-namespace App\Livewire\Client;
+namespace App\Livewire\Pages\Client;
 
-use App\Models\User;
 use App\Models\VpnUser;
 use Livewire\Component;
 use Illuminate\Support\Facades\Auth;
-use phpseclib3\Net\SSH2;
-use phpseclib3\Crypt\PublicKeyLoader;
+use Illuminate\Support\Facades\Storage;
 
 class DownloadConfig extends Component
 {
-    public $userId;
+    public VpnUser $vpnUser;
 
-    public function mount($userId = null)
+    public function mount()
     {
-        $this->userId = $userId ?? Auth::id();
+        if (auth()->user()->isAdmin()) {
+            // expect ?user_id=xx
+            $userId = request()->get('user_id');
+            $this->vpnUser = VpnUser::findOrFail($userId);
+        } else {
+            $this->vpnUser = auth()->user()->vpnUser;
+        }
     }
 
     public function download()
     {
-        $user = User::findOrFail($this->userId);
+        $filename = "{$this->vpnUser->username}.ovpn";
+        $path = "ovpn/{$filename}";
 
-        // Optional: Only allow access if self or admin
-        if ($user->id !== Auth::id() && Auth::user()->role !== 'admin') {
-            abort(403, 'Access denied.');
+        if (!Storage::exists($path)) {
+            session()->flash('error', 'Config not found.');
+            return;
         }
 
-        $vpnUser = VpnUser::where('user_id', $user->id)->with('vpnServer')->firstOrFail();
-        $server = $vpnUser->vpnServer;
-
-        $ssh = new SSH2($server->ip_address);
-        $key = PublicKeyLoader::load(file_get_contents(storage_path('ssh/id_rsa')));
-
-        if (!$ssh->login($server->ssh_user, $key)) {
-            abort(500, 'SSH login failed');
-        }
-
-        $ta = $ssh->exec('cat /etc/openvpn/ta.key');
-        $ca = $ssh->exec('cat /etc/openvpn/ca.crt');
-
-        $ovpn = view('vpn.client-config', [
-            'ip' => $server->ip_address,
-            'port' => $server->vpn_port ?? 1194,
-            'username' => $vpnUser->username,
-            'ta' => trim($ta),
-            'ca' => trim($ca),
-        ])->render();
-
-        return response($ovpn)
-            ->header('Content-Type', 'application/x-openvpn-profile')
-            ->header('Content-Disposition', 'attachment; filename="' . $vpnUser->username . '.ovpn"');
+        return response()->download(storage_path("app/{$path}"));
     }
 
     public function render()
     {
-        return view('livewire.client.download-config');
+        return view('livewire.pages.client.download-config');
     }
 }
