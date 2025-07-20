@@ -25,39 +25,23 @@ class VpnUserList extends Component
         $this->resetPage();
     }
 
-    public function render()
-    {
-        $users = VpnUser::with('vpnServers')
-            ->when($this->search, fn($q) =>
-                $q->where('username', 'like', '%' . $this->search . '%')
-            )
-            ->orderBy('id', 'desc')
-            ->paginate(20);
-
-        return view('livewire.pages.admin.vpn-user-list', compact('users'))
-            ->layout('layouts.app');
-    }
-
     /**
      * Delete a VPN user and remove their WireGuard peer.
      */
     public function deleteUser($id)
-{
-    $user = VpnUser::findOrFail($id);
+    {
+        $user = VpnUser::findOrFail($id);
 
-    dispatch(new \App\Jobs\RemoveWireGuardPeer($user));
+        dispatch(new RemoveWireGuardPeer($user));
 
-    $username = $user->username;
-    $user->delete();
+        $username = $user->username;
+        $user->delete();
 
-    Log::info("🗑️ Deleted VPN user {$username}");
-    session()->flash('message', "User {$username} deleted successfully!");
+        Log::info("🗑️ Deleted VPN user {$username}");
+        session()->flash('message', "User {$username} deleted successfully!");
 
-    $this->dispatch('refreshUsers'); // Keep if you're listening for it somewhere
-
-    // Force local refresh
-    $this->vpnUsers = VpnUser::all();
-}
+        $this->dispatch('$refresh');
+    }
 
     /**
      * Generate an OpenVPN config file for this user.
@@ -85,5 +69,21 @@ class VpnUserList extends Component
         Log::info("🔧 WireGuard peer setup queued for user {$user->username}");
 
         session()->flash('message', "WireGuard peer setup for {$user->username} has been queued.");
+    }
+
+    /**
+     * Renders the VPN user list with optional search filtering.
+     */
+    public function render()
+    {
+        $users = VpnUser::with('vpnServers')
+            ->when($this->search, fn($q) =>
+                $q->where('username', 'like', '%' . $this->search . '%')
+            )
+            ->orderBy('id', 'desc')
+            ->paginate(20);
+
+        return view('livewire.pages.admin.vpn-user-list', compact('users'))
+            ->layout('layouts.app');
     }
 }
