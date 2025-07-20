@@ -170,7 +170,8 @@ EOF'
 
   sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
   sudo chmod 755 /etc/openvpn/auth
-
+  sudo chown -R root:nogroup /etc/openvpn/auth
+  
   echo -e "[6/11] Authentication files created.\n======================================="
 }
 
