@@ -29,19 +29,20 @@ class VpnUserList extends Component
      * Delete a VPN user and remove their WireGuard peer.
      */
     public function deleteUser($id)
-    {
-        $user = VpnUser::findOrFail($id);
+{
+    $user = VpnUser::findOrFail($id);
 
-        dispatch(new RemoveWireGuardPeer($user));
+    dispatch(new RemoveWireGuardPeer($user));
 
-        $username = $user->username;
-        $user->delete();
+    $username = $user->username;
+    $user->delete();
 
-        Log::info("🗑️ Deleted VPN user {$username}");
-        session()->flash('message', "User {$username} deleted successfully!");
+    Log::info("🗑️ Deleted VPN user {$username}");
+    session()->flash('message', "User {$username} deleted successfully!");
 
-        $this->dispatch('$refresh');
-    }
+    // ✅ Force re-fetch the paginated results
+    $this->resetPage();
+}
 
     /**
      * Generate an OpenVPN config file for this user.
