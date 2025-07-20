@@ -172,6 +172,9 @@ EOF'
   sudo chmod 755 /etc/openvpn/auth
   sudo chown -R root:nogroup /etc/openvpn/auth
   
+  touch /etc/openvpn/auth.log
+  chmod 666 /etc/openvpn/auth.log
+  
   echo -e "[6/11] Authentication files created.\n======================================="
 }
 
