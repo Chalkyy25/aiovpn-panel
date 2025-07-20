@@ -17,7 +17,7 @@ class VpnUserList extends Component
     public $search = '';
 
     protected $listeners = [
-        'refreshUsers' => '$refresh',
+        'refreshUsers' => '$refresh', // optional, in case something external triggers it
     ];
 
     public function updatingSearch()
@@ -29,20 +29,23 @@ class VpnUserList extends Component
      * Delete a VPN user and remove their WireGuard peer.
      */
     public function deleteUser($id)
-{
-    $user = VpnUser::findOrFail($id);
+    {
+        $user = VpnUser::findOrFail($id);
 
-    dispatch(new RemoveWireGuardPeer($user));
+        // Remove WireGuard peer
+        dispatch(new RemoveWireGuardPeer($user));
 
-    $username = $user->username;
-    $user->delete();
+        $username = $user->username;
 
-    Log::info("🗑️ Deleted VPN user {$username}");
-    session()->flash('message', "User {$username} deleted successfully!");
+        // Delete user
+        $user->delete();
 
-    // ✅ Force re-fetch the paginated results
-    $this->resetPage();
-}
+        Log::info("🗑️ Deleted VPN user {$username}");
+        session()->flash('message', "User {$username} deleted successfully!");
+
+        // Reset pagination to reflect updated list
+        $this->resetPage();
+    }
 
     /**
      * Generate an OpenVPN config file for this user.
