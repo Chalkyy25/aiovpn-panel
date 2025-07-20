@@ -143,10 +143,11 @@ function setup_easy_rsa() {
 function create_auth_files() {
   echo -e "\n=======================================\n[6/11] Creating authentication files…\n======================================="
 
+  # Create psw-file if it doesn't exist
   [ ! -f /etc/openvpn/auth/psw-file ] && echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file && sudo chmod 600 /etc/openvpn/auth/psw-file
 
-echo "[7/11] Creating checkpsw.sh script…"
-sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
+  echo "[6/11] Creating checkpsw.sh script…"
+  sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
 #!/bin/bash
 
 PASSFILE="/etc/openvpn/auth/psw-file"
@@ -168,13 +169,15 @@ else
 fi
 EOF'
 
+  # Critical permissions and ownership
   sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
   sudo chmod 755 /etc/openvpn/auth
   sudo chown -R root:nogroup /etc/openvpn/auth
-  
-  touch /etc/openvpn/auth.log
-  chmod 666 /etc/openvpn/auth.log
-  
+
+  # Log file
+  sudo touch /etc/openvpn/auth.log
+  sudo chmod 666 /etc/openvpn/auth.log
+
   echo -e "[6/11] Authentication files created.\n======================================="
 }
 
