@@ -17,89 +17,81 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
     protected VpnServer $vpnServer;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(VpnServer $vpnServer)
     {
         $this->vpnServer = $vpnServer;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         $server = $this->vpnServer->fresh();
 
         if (!$server) {
-            Log::error("❌ [OpenVPN] Server not found. Aborting sync job.");
+            Log::error("❌ [OpenVPN] Server not found. Aborting.");
             return;
         }
 
-        Log::info("🔄 [OpenVPN] Starting credentials sync for {$server->name} ({$server->ip_address})");
-
-        // Fetch VPN users
-        $users = $server->vpnUsers()->get();
-
-        if ($users->isEmpty()) {
-            Log::warning("⚠️ [OpenVPN] No VPN users found for {$server->name}. Skipping sync.");
-            return;
-        }
-
-        Log::info("👥 [OpenVPN] Found {$users->count()} users for {$server->name}");
-
-        // Build credentials lines
-	$lines = $users->map(fn ($u) => "{$u->username} {$u->plain_password}")->toArray();
-	Log::info("🔑 [OpenVPN] Credentials lines:", $lines);
-        $content = implode("\n", $lines) . "\n";
-
-        // Write to temp file
-        $tmpFile = storage_path("app/psw-file-{$server->id}.txt");
-        file_put_contents($tmpFile, $content);
-        Log::info("📝 [OpenVPN] Credentials file created at {$tmpFile}");
-
-        // Prepare SSH details
+        $ip = $server->ip_address;
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         $sshUser = 'root';
-        $ip = $server->ip_address;
         $remoteDir = '/etc/openvpn/auth';
         $remoteFile = "{$remoteDir}/psw-file";
 
-        // Ensure remote auth directory exists
-        $mkdirCmd = "ssh -i {$sshKey} -o StrictHostKeyChecking=no {$sshUser}@{$ip} 'mkdir -p {$remoteDir} && chmod 700 {$remoteDir}'";
-        exec($mkdirCmd, $mkdirOutput, $mkdirStatus);
+        Log::info("🔄 [OpenVPN] Syncing credentials to {$server->name} ({$ip})");
 
-        if ($mkdirStatus !== 0) {
-            Log::error("❌ [OpenVPN] Failed to create auth directory on {$ip}: " . implode("\n", $mkdirOutput));
-            @unlink($tmpFile);
+        $users = $server->vpnUsers()->get();
+
+        if ($users->isEmpty()) {
+            Log::warning("⚠️ [OpenVPN] No users found for {$server->name}. Skipping.");
             return;
         }
 
-        // SCP upload credentials file
-        $scpCmd = "scp -i {$sshKey} -o StrictHostKeyChecking=no {$tmpFile} {$sshUser}@{$ip}:{$remoteFile}";
-        exec($scpCmd, $scpOutput, $scpStatus);
+        // 🔐 Create credentials content
+        $lines = $users->map(fn($u) => "{$u->username} {$u->plain_password}")->toArray();
+        $content = implode("\n", $lines) . "\n";
 
-        if ($scpStatus !== 0) {
-            Log::error("❌ [OpenVPN] Failed to upload credentials to {$ip}: " . implode("\n", $scpOutput));
-            @unlink($tmpFile);
-            return;
-        }
+        $tmpFile = storage_path("app/psw-{$server->id}.txt");
+        file_put_contents($tmpFile, $content);
+        Log::info("📄 [OpenVPN] Temporary psw-file created: {$tmpFile}");
 
-        Log::info("✅ [OpenVPN] Credentials synced to {$ip} ({$users->count()} users)");
+        // 🔧 Ensure /auth dir exists
+        $this->runSsh("mkdir -p {$remoteDir} && chmod 700 {$remoteDir}", $ip, $sshKey, $sshUser, "Create auth dir");
 
-        // Restart OpenVPN to apply changes (optional)
-        $restartCmd = "ssh -i {$sshKey} -o StrictHostKeyChecking=no {$sshUser}@{$ip} 'systemctl restart openvpn@server'";
-        exec($restartCmd, $restartOutput, $restartStatus);
+        // 🚀 Upload psw-file
+        $this->runScp($tmpFile, $remoteFile, $ip, $sshKey, $sshUser);
 
-        if ($restartStatus !== 0) {
-            Log::error("❌ [OpenVPN] Failed to restart OpenVPN on {$ip}: " . implode("\n", $restartOutput));
-        } else {
-            Log::info("🔁 [OpenVPN] OpenVPN restarted on {$ip} successfully.");
-        }
+        // 🔒 Set remote file permissions
+        $this->runSsh("chmod 600 {$remoteFile}", $ip, $sshKey, $sshUser, "Set file permissions");
 
-        // Cleanup
+        // 🔁 Restart OpenVPN
+        $this->runSsh("systemctl restart openvpn@server", $ip, $sshKey, $sshUser, "Restart OpenVPN");
+
+        // 🧹 Cleanup
         @unlink($tmpFile);
-        Log::info("🧹 [OpenVPN] Temporary credentials file deleted for {$server->name}");
+        Log::info("🧼 [OpenVPN] Temp file deleted. Sync complete for {$server->name}");
+    }
+
+    private function runSsh(string $command, string $ip, string $sshKey, string $sshUser, string $label): void
+    {
+        $fullCmd = "ssh -i {$sshKey} -o StrictHostKeyChecking=no {$sshUser}@{$ip} '{$command}'";
+        exec($fullCmd, $output, $status);
+
+        if ($status !== 0) {
+            Log::error("❌ [OpenVPN] {$label} failed on {$ip}: " . implode("\n", $output));
+        } else {
+            Log::info("✅ [OpenVPN] {$label} success on {$ip}");
+        }
+    }
+
+    private function runScp(string $localPath, string $remotePath, string $ip, string $sshKey, string $sshUser): void
+    {
+        $cmd = "scp -i {$sshKey} -o StrictHostKeyChecking=no {$localPath} {$sshUser}@{$ip}:{$remotePath}";
+        exec($cmd, $output, $status);
+
+        if ($status !== 0) {
+            Log::error("❌ [OpenVPN] SCP failed to {$ip}: " . implode("\n", $output));
+        } else {
+            Log::info("📦 [OpenVPN] psw-file uploaded to {$ip}");
+        }
     }
 }
