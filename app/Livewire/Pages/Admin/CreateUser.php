@@ -43,12 +43,12 @@ class CreateUser extends Component
 
         // Dispatch CreateVpnUser job for each selected server
         foreach ($this->selectedServers as $serverId) {
-            dispatch(new CreateVpnUser(
-                username: $finalUsername,
-                vpnServerId: $serverId,
-                clientId: null, // or auth()->id() if needed
-                password: $plainPassword
-            ));
+        dispatch(new CreateVpnUser(
+            $finalUsername,
+            $serverId,
+            null, // or auth()->id()
+            $plainPassword
+        ));
         }
 
         Log::info("✅ Queued VPN user creation for {$finalUsername} (password: {$plainPassword}) on servers: ", $this->selectedServers);
