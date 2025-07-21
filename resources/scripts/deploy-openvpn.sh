@@ -241,7 +241,16 @@ function restart_openvpn() {
 
   sudo systemctl enable openvpn@server
   sudo systemctl restart openvpn@server
+  sleep 2
 
+  if ! systemctl is-active --quiet openvpn@server; then
+    echo -e "\n❌ OpenVPN failed to restart. Dumping last 20 logs:\n"
+    sudo journalctl -u openvpn@server --no-pager | tail -n 20
+    echo -e "\n❌ Deployment failed due to OpenVPN error.\n"
+    exit 1
+  fi
+
+  echo -e "✅ OpenVPN service is active and running."
   echo -e "[11/11] OpenVPN service restarted.\n======================================="
 }
 # ───────── WireGuard Setup ───────── #
