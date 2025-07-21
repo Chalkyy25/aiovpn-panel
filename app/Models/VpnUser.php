@@ -59,34 +59,37 @@ public function vpnServers()
      * ✅ Boot events for auto WireGuard key generation and IP allocation.
      */
     protected static function booted(): void
-    {
-        static::creating(function ($vpnUser) {
-            // 🔑 Generate WireGuard keys
-            $keys = self::generateWireGuardKeys();
-            $vpnUser->wireguard_private_key = $keys['private'];
-            $vpnUser->wireguard_public_key = $keys['public'];
+{
+    static::creating(function ($vpnUser) {
+        // 🔑 Generate WireGuard keys
+        $keys = self::generateWireGuardKeys();
+        $vpnUser->wireguard_private_key = $keys['private'];
+        $vpnUser->wireguard_public_key = $keys['public'];
 
-            // 🔢 Allocate unique WireGuard IP
-            do {
-                $lastOctet = rand(2, 254);
-                $ip = "10.66.66.$lastOctet/32";
-            } while (self::where('wireguard_address', $ip)->exists());
-            $vpnUser->wireguard_address = $ip;
+        // 🔢 Allocate unique WireGuard IP
+        do {
+            $lastOctet = rand(2, 254);
+            $ip = "10.66.66.$lastOctet/32";
+        } while (self::where('wireguard_address', $ip)->exists());
+        $vpnUser->wireguard_address = $ip;
 
-            // 🔠 Generate random username if not provided
-            if (empty($vpnUser->username)) {
-                $vpnUser->username = 'wg-' . Str::random(6);
-            }
-        });
+        // 🔠 Generate random username if not provided
+        if (empty($vpnUser->username)) {
+            $vpnUser->username = 'wg-' . Str::random(6);
+        }
+    });
 
-        static::created(function ($vpnUser) {
-            \App\Services\VpnConfigBuilder::generate($vpnUser);
-        });
-    }
+    static::created(function ($vpnUser) {
+        // ✅ Generate client config
+        \App\Services\VpnConfigBuilder::generate($vpnUser);
 
-    /**
-     * ✅ Generate WireGuard private/public keypair.
-     */
+        // ✅ Auto-sync OpenVPN credentials to all assigned servers
+        foreach ($vpnUser->vpnServers as $server) {
+            \App\Jobs\SyncOpenVPNCredentials::dispatch($server);
+            Log::info("🚀 Synced OpenVPN credentials to server: {$server->name} ({$server->ip_address})");
+        }
+    });
+}
     public static function generateWireGuardKeys(): array
     {
         $private = trim(shell_exec('wg genkey'));
