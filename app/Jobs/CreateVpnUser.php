@@ -19,62 +19,51 @@ class CreateVpnUser implements ShouldQueue
 
     public string $username;
     public ?string $password;
-    public int $vpnServerId;
+    public array $serverIds;
     public ?int $clientId;
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct(string $username, ?int $vpnServerId = null, ?int $clientId = null, ?string $password = null)
+    public function __construct(string $username, array $serverIds, ?int $clientId = null, ?string $password = null)
     {
         $this->username = $username;
-        $this->vpnServerId = $vpnServerId ?? 1; // Default to first server if not specified
+        $this->serverIds = $serverIds;
         $this->clientId = $clientId;
         $this->password = $password ?? Str::random(10);
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         Log::info("🚀 Creating VPN user: {$this->username}");
 
-        // Check if username already exists
         if (VpnUser::where('username', $this->username)->exists()) {
-            Log::error("❌ Username '{$this->username}' already exists. Aborting user creation.");
-            throw new \Exception("Username '{$this->username}' is already taken.");
+            Log::error("❌ Username '{$this->username}' already exists.");
+            throw new \Exception("Username '{$this->username}' already exists.");
         }
 
-        // Fetch server
-        $server = VpnServer::findOrFail($this->vpnServerId);
-
-        // Create user
+        // ✅ Create user
         $vpnUser = VpnUser::create([
             'username' => $this->username,
-            'password' => bcrypt($this->password), // Store hashed password securely
-            'vpn_server_id' => $server->id,
+            'plain_password' => $this->password,
+            'password' => bcrypt($this->password),
             'client_id' => $this->clientId,
         ]);
 
-        Log::info("🔑 VPN user record created in DB: {$vpnUser->username}");
+        // ✅ Attach to multiple servers
+        $vpnUser->vpnServers()->attach($this->serverIds);
+        $vpnUser->load('vpnServers');
 
-        // Generate WireGuard keys if not already set
-        if (empty($vpnUser->wireguard_private_key) || empty($vpnUser->wireguard_public_key)) {
-            $keys = VpnUser::generateWireGuardKeys();
-            $vpnUser->wireguard_private_key = $keys['private'];
-            $vpnUser->wireguard_public_key = $keys['public'];
-            $vpnUser->wireguard_address = '10.66.66.' . rand(2, 254) . '/32';
-            $vpnUser->save();
+        Log::info("✅ VPN user created with servers: " . implode(', ', $vpnUser->vpnServers->pluck('id')->toArray()));
 
-            Log::info("🔑 WireGuard keys generated and saved for {$vpnUser->username}");
+        // 🔁 Loop servers and generate configs
+        foreach ($vpnUser->vpnServers as $server) {
+            dispatch(new \App\Jobs\AddWireGuardPeer($vpnUser));
+            dispatch(new \App\Jobs\SyncOpenVPNCredentials($server));
+            dispatch(new \App\Jobs\GenerateOvpnFile($vpnUser, $server));
         }
 
-        // Generate OpenVPN and WireGuard configs
+        // 🛠️ Generate configs locally (optional if handled in jobs above)
         VpnConfigBuilder::generate($vpnUser);
         VpnConfigBuilder::generateWireGuard($vpnUser);
 
-        Log::info("✅ VPN user created successfully with configs: {$vpnUser->username}");
+        Log::info("🎉 Finished creating VPN user {$this->username} with config files.");
     }
 }
-// End of file: app/Jobs/CreateVpnUser.php
