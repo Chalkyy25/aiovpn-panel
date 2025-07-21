@@ -148,10 +148,10 @@ function create_auth_files() {
 
   echo "[6/11] Creating checkpsw.sh script…"
   sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
-#!/bin/bash
+#!/bin/sh
 
 PASSFILE="/etc/openvpn/auth/psw-file"
-LOG_FILE="/etc/openvpn/auth.log"
+LOG_FILE="/etc/openvpn/auth/auth.log"
 
 if [ ! -r "\${PASSFILE}" ]; then
   echo "\$(date): ❌ psw-file not readable" >> "\${LOG_FILE}"
@@ -169,14 +169,14 @@ else
 fi
 EOF'
 
-  # Critical permissions and ownership
+  # Permissions and ownership
   sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
   sudo chmod 755 /etc/openvpn/auth
   sudo chown -R root:nogroup /etc/openvpn/auth
 
-  # Log file
-  sudo touch /etc/openvpn/auth.log
-  sudo chmod 666 /etc/openvpn/auth.log
+  # Log file inside auth dir
+  sudo touch /etc/openvpn/auth/auth.log
+  sudo chmod 666 /etc/openvpn/auth/auth.log
 
   echo -e "[6/11] Authentication files created.\n======================================="
 }
