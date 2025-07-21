@@ -41,13 +41,12 @@ class CreateUser extends Component
         $finalUsername = $this->username ?: 'user-' . Str::random(6);
         $plainPassword = Str::random(8);
 
-        // Dispatch CreateVpnUser job for each selected server
-        foreach ($this->selectedServers as $serverId) {
+        // Dispatch CreateVpnUser job with all selected server IDs
         dispatch(new CreateVpnUser(
-            $finalUsername,
-            $serverId,
-            null, // or auth()->id()
-            $plainPassword
+            username: $finalUsername,
+            serverIds: $this->selectedServers,
+            clientId: null, // or auth()->id() if needed
+            password: $plainPassword
         ));
         }
 
