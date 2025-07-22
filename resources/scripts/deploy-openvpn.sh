@@ -173,6 +173,8 @@ status /etc/openvpn/openvpn-status.log
 verb 3
 mute-replay-warnings
 explicit-exit-notify 1
+client-cert-not-required
+username-as-common-name
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 script-security 3
 push "redirect-gateway def1 bypass-dhcp"
