@@ -128,7 +128,7 @@ function create_auth_files() {
   sudo tee /etc/openvpn/auth/checkpsw.sh > /dev/null <<'EOF'
 #!/bin/sh
 PASSFILE="/etc/openvpn/auth/psw-file"
-LOG_FILE="/etc/openvpn/auth.log"
+LOG_FILE="/etc/openvpn/auth/auth.log"
 
 if [ ! -r "$PASSFILE" ]; then
   echo "$(date): ❌ psw-file not readable" >> "$LOG_FILE"
@@ -151,11 +151,12 @@ EOF
   sudo chown -R root:nogroup /etc/openvpn/auth
 
   # Create log file if it doesn’t exist
-  sudo touch /etc/openvpn/auth.log
-  sudo chmod 666 /etc/openvpn/auth.log
+  sudo touch /etc/openvpn/auth/auth.log
+  sudo chmod 666 /etc/openvpn/auth/auth.log
 
   echo -e "[6/11] Authentication files created.\n======================================="
 }
+
 function write_server_conf() {
   echo -e "\n=======================================\n[8/11] Writing improved server.conf…\n======================================="
   sudo bash -c 'cat <<CONF > /etc/openvpn/server.conf
