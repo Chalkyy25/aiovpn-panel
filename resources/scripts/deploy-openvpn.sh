@@ -117,32 +117,45 @@ function setup_easy_rsa() {
 
 function create_auth_files() {
   echo -e "\n=======================================\n[6/11] Creating authentication files…\n======================================="
-  [ ! -f /etc/openvpn/auth/psw-file ] && echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file && sudo chmod 600 /etc/openvpn/auth/psw-file
-  sudo bash -c 'cat <<EOF > /etc/openvpn/auth/checkpsw.sh
+
+  # Create psw-file if it doesn't exist
+  if [ ! -f /etc/openvpn/auth/psw-file ]; then
+    echo "testuser testpass" | sudo tee /etc/openvpn/auth/psw-file > /dev/null
+    sudo chmod 600 /etc/openvpn/auth/psw-file
+  fi
+
+  # Write checkpsw.sh
+  sudo tee /etc/openvpn/auth/checkpsw.sh > /dev/null <<'EOF'
 #!/bin/sh
 PASSFILE="/etc/openvpn/auth/psw-file"
-LOG_FILE="/etc/openvpn/auth/auth.log"
-if [ ! -r "\${PASSFILE}" ]; then
-  echo "\$(date): ❌ psw-file not readable" >> "\${LOG_FILE}"
+LOG_FILE="/etc/openvpn/auth.log"
+
+if [ ! -r "$PASSFILE" ]; then
+  echo "$(date): ❌ psw-file not readable" >> "$LOG_FILE"
   exit 1
 fi
-CORRECT_PASSWORD=\$(grep "^\$1 " "\${PASSFILE}" | cut -d " " -f2)
-if [ "\${CORRECT_PASSWORD}" = "\$2" ]; then
-  echo "\$(date): ✅ Auth OK: \$1" >> "\${LOG_FILE}"
+
+CORRECT_PASSWORD=$(grep "^$1 " "$PASSFILE" | cut -d " " -f2)
+
+if [ "$CORRECT_PASSWORD" = "$2" ]; then
+  echo "$(date): ✅ Auth OK: $1" >> "$LOG_FILE"
   exit 0
 else
-  echo "\$(date): ❌ Auth FAIL: \$1" >> "\${LOG_FILE}"
+  echo "$(date): ❌ Auth FAIL: $1" >> "$LOG_FILE"
   exit 1
 fi
-EOF'
+EOF
+
+  # Set permissions
   sudo chmod 755 /etc/openvpn/auth/checkpsw.sh
-  sudo chmod 755 /etc/openvpn/auth
   sudo chown -R root:nogroup /etc/openvpn/auth
-  sudo touch /etc/openvpn/auth/auth.log
-  sudo chmod 666 /etc/openvpn/auth/auth.log
+
+  # Create log file if it doesn’t exist
+  sudo touch /etc/openvpn/auth.log
+  sudo chmod 666 /etc/openvpn/auth.log
+
   echo -e "[6/11] Authentication files created.\n======================================="
 }
-
 function write_server_conf() {
   echo -e "\n=======================================\n[8/11] Writing improved server.conf…\n======================================="
   sudo bash -c 'cat <<CONF > /etc/openvpn/server.conf
