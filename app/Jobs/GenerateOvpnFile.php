@@ -50,6 +50,7 @@ class GenerateOvpnFile implements ShouldQueue
 
             // Build the stripped-down OpenVPN config
             $config = <<<EOL
+# Minimal OpenVPN config: user/pass only, no client cert/key required
 client
 dev tun
 proto udp
