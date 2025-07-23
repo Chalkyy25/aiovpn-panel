@@ -179,8 +179,6 @@ keepalive 10 120
 cipher AES-256-GCM
 ncp-ciphers AES-256-GCM:AES-128-GCM
 
-user nobody
-group nogroup
 persist-key
 persist-tun
 
