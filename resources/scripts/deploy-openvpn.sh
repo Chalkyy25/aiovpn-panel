@@ -159,7 +159,7 @@ EOF
 
 function write_server_conf() {
   echo -e "\n=======================================\n[8/11] Writing improved server.conf…\n======================================="
-  sudo bash -c 'cat <<CONF > /etc/openvpn/server.conf
+  sudo bash -c 'cat <<EOF > /etc/openvpn/server.conf
 port 1194
 proto udp
 dev tun
@@ -167,35 +167,43 @@ ca ca.crt
 cert server.crt
 key server.key
 dh dh.pem
+
 auth SHA256
 tls-auth ta.key 0
 topology subnet
+
 server 10.8.0.0 255.255.255.0
 ifconfig-pool-persist /etc/openvpn/ipp.txt
 keepalive 10 120
+
 cipher AES-256-GCM
 ncp-ciphers AES-256-GCM:AES-128-GCM
+
 user nobody
 group nogroup
 persist-key
 persist-tun
+
 sndbuf 0
 rcvbuf 0
 push "sndbuf 393216"
 push "rcvbuf 393216"
+
 status /etc/openvpn/openvpn-status.log
 verb 3
 mute-replay-warnings
 explicit-exit-notify 1
+
 verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 script-security 3
+
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
 #push "compress lz4"
-CONF'
+EOF'
   echo -e "[8/11] Improved server.conf written.\n======================================="
 }
 
