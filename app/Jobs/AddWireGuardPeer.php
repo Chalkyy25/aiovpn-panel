@@ -44,6 +44,7 @@ class AddWireGuardPeer implements ShouldQueue
             $this->saveKeysToDb($privateKey, $publicKey);
             $this->addPeerToInterface($server, $publicKey);
             $this->appendPeerConfig($server, $publicKey);
+            $this->enableWireGuardMasquerade($server);
             $this->cleanupTempKeys($server);
             $this->generateClientConfig($server, $privateKey);
         }
@@ -209,5 +210,24 @@ EOL;
         $cmd = "ssh -i $keyPath -p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $sshUser@$ip \"[ -f /etc/wireguard/server_public_key ] && sudo cat /etc/wireguard/server_public_key || sudo wg show wg0 public-key\"";
 
         return trim(shell_exec($cmd));
+    }
+
+    private function enableWireGuardMasquerade($server): void
+    {
+        $ip = $server->ip_address;
+        $port = $server->ssh_port ?? 22;
+        $sshUser = $server->ssh_user;
+        $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+
+        $iptablesCmd = "sudo iptables -t nat -C POSTROUTING -s 10.66.66.0/24 -o eth0 -j MASQUERADE || sudo iptables -t nat -A POSTROUTING -s 10.66.66.0/24 -o eth0 -j MASQUERADE";
+        $sshCmd = "ssh -i $keyPath -p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $sshUser@$ip \"$iptablesCmd\"";
+        shell_exec($sshCmd);
+
+        // Save iptables rules
+        $saveCmd = "sudo netfilter-persistent save";
+        $sshSaveCmd = "ssh -i $keyPath -p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $sshUser@$ip \"$saveCmd\"";
+        shell_exec($sshSaveCmd);
+
+        Log::info("🔐 [WireGuard] NAT rule ensured and saved on {$server->name}");
     }
 }
