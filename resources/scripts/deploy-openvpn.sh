@@ -241,7 +241,7 @@ function enable_ip_forwarding() {
 function setup_nat() {
   echo -e "\n[10/11] Setting up NAT with iptables…"
   local PUB_IF
-  PUB_IF=$(ip route show default | awk '/default/ {print $NF; exit}')
+ PUB_IF=$(ip route show default | awk '/default/ {for(i=1;i<=NF;i++) if ($i=="dev") print $(i+1)}')
 
   # Clean up existing rules
   iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o $PUB_IF -j MASQUERADE 2>/dev/null || true
@@ -313,7 +313,7 @@ EOF
   sysctl -w net.ipv6.conf.all.forwarding=1
 
   local PUB_IF
-  PUB_IF=$(ip route | grep default | awk '{print $5}')
+  PUB_IF=$(ip route show default | awk '/default/ {for(i=1;i<=NF;i++) if ($i=="dev") print $(i+1)}')
 
   if grep -q '^#net.ipv4.ip_forward=1' /etc/sysctl.conf; then
     sed -i 's/^#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
