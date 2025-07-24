@@ -122,18 +122,25 @@ function clean_openvpn_setup() {
   echo "[3/11] Cleanup complete."
 }
 
+# Sets up Easy-RSA PKI for OpenVPN, initializes the PKI, generates CA and server certificates,
+# copies required files to /etc/openvpn, and ensures all necessary keys are present.
 function setup_easy_rsa() {
   echo -e "\n[4/11] Setting up Easy-RSA PKI…"
-  local EASYRSA_DIR=/etc/openvpn/easy-rsa
-  cp -a /usr/share/easy-rsa "$EASYRSA_DIR" 2>/dev/null || true
-  cd "$EASYRSA_DIR"
+  local easyrsa_dir=/etc/openvpn/easy-rsa
+  cp -a /usr/share/easy-rsa "$easyrsa_dir" 2>/dev/null || true
+  cd "$easyrsa_dir"
   ./easyrsa init-pki
   EASYRSA_BATCH=1 EASYRSA_REQ_CN="OpenVPN-CA" ./easyrsa build-ca nopass
   ./easyrsa gen-dh
-  openvpn --genkey secret ta.key
+
+  # Generate ta.key directly in /etc/openvpn
+  openvpn --genkey --secret /etc/openvpn/ta.key
+
   EASYRSA_BATCH=1 EASYRSA_REQ_CN="server" ./easyrsa gen-req server nopass
   echo yes | ./easyrsa sign-req server server
-  cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem ta.key /etc/openvpn/
+
+  # Only copy certs/keys, not ta.key (already in place)
+  cp -f pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
   echo "[4/11] Easy-RSA setup complete."
 }
 
@@ -235,11 +242,18 @@ function setup_nat() {
   echo -e "\n[10/11] Setting up NAT with iptables…"
   local PUB_IF
   PUB_IF=$(ip route show default | awk '/default/ {print $NF; exit}')
-  iptables -t nat -F
+
+  # Clean up existing rules
+  iptables -t nat -D POSTROUTING -s 10.8.0.0/24 -o $PUB_IF -j MASQUERADE 2>/dev/null || true
+  iptables -t nat -D POSTROUTING -o $PUB_IF -j MASQUERADE 2>/dev/null || true
+
+  # Add fresh rule
   iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $PUB_IF -j MASQUERADE
+
   iptables-save > /etc/iptables/rules.v4
   echo "[10/11] NAT setup complete."
 }
+
 
 function setup_firewall() {
   echo -e "\n[FW] Setting up firewall rules…"
