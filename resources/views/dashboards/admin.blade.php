@@ -1,8 +1,8 @@
 <x-app-layout>
     <x-slot name="header">
         <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-            {{ __('Admin Dashboard') }}
-        </h2>
+    {{ __('Admin Dashboard') }}
+</h2>
     </x-slot>
 
     <div class="py-12">
@@ -17,26 +17,8 @@
 
             <!-- Stats Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="bg-white shadow rounded p-4">
-                    <h3 class="text-sm font-semibold text-gray-600">👥 Total VPN Users</h3>
-                    <p class="text-2xl font-bold text-gray-800 mt-2">{{ $totalUsers }}</p>
-                </div>
-
-                <div class="bg-white shadow rounded p-4">
-                    <h3 class="text-sm font-semibold text-gray-600">✅ Active VPN Users</h3>
-                    <p class="text-2xl font-bold text-green-600 mt-2">{{ $activeUsers }}</p>
-                </div>
-
-                <div class="bg-white shadow rounded p-4">
-                    <h3 class="text-sm font-semibold text-gray-600">🌐 VPN Servers</h3>
-                    <p class="text-2xl font-bold text-indigo-600 mt-2">{{ $totalResellers }}</p>
-                </div>
-
-                <div class="bg-white shadow rounded p-4">
-                    <h3 class="text-sm font-semibold text-gray-600">🔗 Active Connections</h3>
-                    <p class="text-2xl font-bold text-blue-600 mt-2">{{ $totalClients }}</p>
-                </div>
-            </div>
+    <!-- Stat cards -->
+</div>
 
             <!-- ✅ User ID Helper Table -->
             <div class="bg-white shadow rounded p-4 mt-6">

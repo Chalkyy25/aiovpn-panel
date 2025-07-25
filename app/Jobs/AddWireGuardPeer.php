@@ -28,7 +28,7 @@ class AddWireGuardPeer implements ShouldQueue
         Log::info("🚀 [WireGuard] Starting peer setup for user {$this->vpnUser->username}");
 
         foreach ($this->vpnUser->vpnServers as $server) {
-            Log::info("🔧 [WireGuard] Processing server: {$server->name} ({$server->ip_address})");
+            Log::info("🔧 [WireGuard] Processing server: {$server->name} ($server->ip_address)");
 
             if (!$this->generateKeysOnServer($server)) {
                 continue;

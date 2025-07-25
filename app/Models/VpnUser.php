@@ -7,6 +7,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
+/**
+ * @property bool $is_online
+ * @property Carbon|null $last_seen_at
+ */
+
 class VpnUser extends Authenticatable
 {
     use HasFactory;
@@ -38,7 +43,7 @@ class VpnUser extends Authenticatable
     /**
      * ✅ Many-to-Many: user can belong to multiple VPN servers.
      */
-public function vpnServers()
+public function vpnServers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
 {
     return $this->belongsToMany(
         VpnServer::class,
