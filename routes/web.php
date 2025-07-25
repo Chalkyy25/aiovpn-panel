@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\VpnUser;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProfileController;
 use App\Models\User;
@@ -32,8 +33,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             return view('dashboards.admin', [
                 'totalUsers' => User::count(),
                 'activeUsers' => User::where('is_active', true)->count(),
+                'totalVpnUsers' => VpnUser::count(),
                 'totalResellers' => User::where('role', 'reseller')->count(),
                 'totalClients' => User::where('role', 'client')->count(),
+                'activeVpnUsers' => VpnUser::has('vpnServers')->count(),
             ]);
         })->name('dashboard');
 
