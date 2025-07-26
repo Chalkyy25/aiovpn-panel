@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Admin;
 use Livewire\Component;
 use Livewire\Attributes\Layout;
 use App\Models\VpnServer;
+use App\Jobs\SyncOpenVPNCredentials;
 
 #[Layout('layouts.app')]
 class VpnServerList extends Component
@@ -17,6 +18,19 @@ class VpnServerList extends Component
     public $deployLog = [];
     public $isDeploying = false;
 
+    public function syncServer($id): void
+    {
+        $server = VpnServer::find($id);
+
+        if (!$server) {
+            session()->flash('status-message', '❌ Server not found.');
+            return;
+        }
+
+        dispatch(new SyncOpenVPNCredentials($server));
+
+        session()->flash('status-message', "🔄 Sync started for {$server->name}");
+    }
     public function mount()
     {
         $this->loadServers();
