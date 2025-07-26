@@ -36,8 +36,14 @@
                         @foreach(\App\Models\VpnUser::all() as $user)
                             <tr class="border-b">
                                 <td class="px-2 py-1">{{ $user->username }}</td>
-                                <td class="px-2 py-1">{{ $user->password }}</td>
-                                <td class="px-2 py-1">{{ $user->servers_assigned }}</td>
+                                 <td class="px-4 py-2">
+                            @if ($user->plain_password)
+                                {{ $user->plain_password }}
+                            @else
+                                <span class="text-gray-400 italic">N/A</span>
+                            @endif
+                        </td>
+                                <td class="px-2 py-1">{{ $user->vpnServers }}</td>
                                 <td class="px-2 py-1">{{ $user->created }}</td>
                             </tr>
                         @endforeach
