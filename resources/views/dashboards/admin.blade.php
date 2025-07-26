@@ -37,7 +37,7 @@
                             <tr class="border-b">
                                 <td class="px-2 py-1">{{ $user->username }}</td>
                                 <td class="px-2 py-1">{{ $user->password }}</td>
-                                <td class="px-2 py-1">{{ $user->servers assigned }}</td>
+                                <td class="px-2 py-1">{{ $user->servers_assigned }}</td>
                                 <td class="px-2 py-1">{{ $user->created }}</td>
                             </tr>
                         @endforeach
