@@ -21,8 +21,8 @@
 </div>
 
             <!-- ✅ User ID Helper Table -->
-            <div class="bg-white shadow rounded p-4 mt-6">
-                <h3 class="text-lg font-semibold mb-2">🆔 User ID Helper</h3>
+            <div class="overflow-x-auto">
+                <h3 class="text-lg font-semibold mb-2">Vpn Users</h3>
                 <table class="min-w-full text-sm text-left">
                     <thead class="border-b">
                         <tr>
