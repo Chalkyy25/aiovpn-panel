@@ -43,8 +43,20 @@
                                 <span class="text-gray-400 italic">N/A</span>
                             @endif
                         </td>
-                                <td class="px-2 py-1">{{ $user->vpnServers }}</td>
-                                <td class="px-2 py-1">{{ $user->created }}</td>
+                                <td class="px-4 py-2">
+                            @if ($user->vpnServers->isNotEmpty())
+                                <ul class="list-disc ml-4">
+                                    @foreach ($user->vpnServers as $server)
+                                        <li>{{ $server->name }} ({{ $server->ip_address }})</li>
+                                    @endforeach
+                                </ul>
+                            @else
+                                <span class="text-gray-500">No servers assigned</span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-2">
+                            {{ $user->created_at->diffForHumans() }}
+                        </td>
                             </tr>
                         @endforeach
                     </tbody>
