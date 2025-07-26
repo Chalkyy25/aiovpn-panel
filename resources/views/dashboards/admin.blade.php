@@ -33,7 +33,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach(\App\Models\User::all() as $user)
+                        @foreach(\App\Models\VpnUser::all() as $user)
                             <tr class="border-b">
                                 <td class="px-2 py-1">{{ $user->id }}</td>
                                 <td class="px-2 py-1">{{ $user->name }}</td>
