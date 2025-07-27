@@ -76,19 +76,16 @@ class VpnServer extends Model
     }
 
     public function getSshCommand(): string
-    {
-        $ip = $this->ip_address;
-        $port = $this->ssh_port ?? 22;
-        $user = $this->ssh_user ?? 'root';
+{
+    $ip   = $this->ip_address;
+    $port = $this->ssh_port ?? 22;
+    $user = $this->ssh_user ?? 'root';
 
-        if ($this->ssh_type === 'key') {
-            $keyPath = storage_path("ssh/$this->ssh_key_path");
-            return "ssh -i $keyPath -o StrictHostKeyChecking=no -p $port $user@$ip";
-        }
+    // Just use root’s key for now
+    $keyPath = '/root/.ssh/id_rsa';
 
-        // Fallback to password-based (insecure unless you're controlling env tightly)
-        return "sshpass -p '$this->ssh_password' ssh -o StrictHostKeyChecking=no -p $port $user@$ip";
-    }
+    return "ssh -i $keyPath -o StrictHostKeyChecking=no -p $port $user@$ip";
+}
 
 
 
