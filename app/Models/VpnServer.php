@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 
 class VpnServer extends Model
@@ -32,19 +34,19 @@ class VpnServer extends Model
         'status',
     ];
 
-    // Relationships
-    public function clients()
+    // ─── Relationships ──────────────────────────────────────────────
+    public function clients(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'client_vpn_server');
     }
 
-public function vpnUsers()
-{
-    return $this->belongsToMany(VpnUser::class, 'vpn_server_user');
-}
+    public function vpnUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(VpnUser::class, 'vpn_server_user');
+    }
 
-    // Deployment log helper
-    public function appendLog(string $line)
+    // ─── Deployment log helper ──────────────────────────────────────
+    public function appendLog(string $line): void
     {
         Log::info("APPEND_LOG: " . $line);
         $existing = trim($this->deployment_log ?? '');
@@ -58,55 +60,97 @@ public function vpnUsers()
         }
     }
 
-    // Deployment status accessors/mutators
-    public function getDeploymentStatusAttribute($value)
+    // ─── Accessors & Mutators ───────────────────────────────────────
+    public function getDeploymentStatusAttribute($value): string
     {
         return $value;
     }
 
-    public function setDeploymentStatusAttribute($value)
+    public function setDeploymentStatusAttribute($value): void
     {
         $this->attributes['deployment_status'] = strtolower($value);
     }
 
-    // Status helpers
-    public function isDeployed()   { return $this->deployment_status === 'deployed'; }
-    public function isPending()    { return $this->deployment_status === 'pending'; }
-    public function isFailed()     { return $this->deployment_status === 'failed'; }
-    public function isActive()     { return $this->deployment_status === 'active'; }
-    public function isInactive()   { return $this->deployment_status === 'inactive'; }
-
-    // Status scopes
-    public function scopeActive($query)    { return $query->where('deployment_status', 'active'); }
-    public function scopeInactive($query)  { return $query->where('deployment_status', 'inactive'); }
-    public function scopeDeployed($query)  { return $query->where('deployment_status', 'deployed'); }
-    public function scopePending($query)   { return $query->where('deployment_status', 'pending'); }
-    public function scopeFailed($query)    { return $query->where('deployment_status', 'failed'); }
-
-    // SSH command helper
-    public function getSshCommand()
+    public function getOnlineUserCount(): int
     {
-        $sshUser = $this->ssh_user;
-        $ip = $this->ip_address;
-        $port = $this->ssh_port ?? 22;
+        $ssh = $this->getSshCommand();
+        $statusPath = '/etc/openvpn/openvpn-status.log';
 
-        if ($this->ssh_type === 'key') {
-            $keyPath = $this->ssh_key;
-            return "ssh -i {$keyPath} -p {$port} {$sshUser}@{$ip}";
-        } else {
-            return "sshpass -p '{$this->ssh_password}' ssh -o StrictHostKeyChecking=no -p {$port} {$sshUser}@{$ip}";
+        $cmd = "$ssh 'cat $statusPath | grep -E \"^CLIENT_LIST\" | wc -l'";
+        exec($cmd, $output, $code);
+
+        if ($code === 0 && isset($output[0])) {
+            return (int) trim($output[0]);
         }
+
+        return 0;
     }
 
-    protected static function booted()
+
+    // ─── Status Helpers ─────────────────────────────────────────────
+    public function isDeployed(): bool
     {
-        static::creating(function ($vpnServer) {
+        return $this->deployment_status === 'deployed';
+    }
+
+    public function isPending(): bool
+    {
+        return $this->deployment_status === 'pending';
+    }
+
+    public function isFailed(): bool
+    {
+        return $this->deployment_status === 'failed';
+    }
+
+    public function isActive(): bool
+    {
+        return $this->deployment_status === 'active';
+    }
+
+    public function isInactive(): bool
+    {
+        return $this->deployment_status === 'inactive';
+    }
+
+    // ─── Status Scopes ──────────────────────────────────────────────
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where('deployment_status', 'active');
+    }
+
+    public function scopeInactive(Builder $query): Builder
+    {
+        return $query->where('deployment_status', 'inactive');
+    }
+
+    public function scopeDeployed(Builder $query): Builder
+    {
+        return $query->where('deployment_status', 'deployed');
+    }
+
+    public function scopePending(Builder $query): Builder
+    {
+        return $query->where('deployment_status', 'pending');
+    }
+
+    public function scopeFailed(Builder $query): Builder
+    {
+        return $query->where('deployment_status', 'failed');
+    }
+
+    // ─── SSH Command Generator ──────────────────────────────────────
+
+    // ─── Boot Hooks ─────────────────────────────────────────────────
+    protected static function booted(): void
+    {
+        static::creating(function (self $vpnServer) {
             if ($vpnServer->ssh_type === 'key' && blank($vpnServer->ssh_key)) {
                 $vpnServer->ssh_key = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa_www';
             }
         });
 
-        static::updating(function ($vpnServer) {
+        static::updating(function (self $vpnServer) {
             if ($vpnServer->ssh_type === 'key' && blank($vpnServer->ssh_key)) {
                 $vpnServer->ssh_key = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa_www';
             }
