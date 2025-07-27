@@ -23,8 +23,14 @@ class VpnServerList extends Component
 
     public function pollOnlineCounts(): void
     {
-        $this->loadServers(); // reload data from DB (and logs)
+        $this->servers = VpnServer::all()->map(function ($server) {
+            $server->online_user_count = $server->getOnlineUserCount();
+            return $server;
+        });
     }
+
+
+
 
     public function syncServer($id): void
     {
@@ -46,8 +52,12 @@ class VpnServerList extends Component
 
     public function loadServers(): void
     {
-        $this->servers = VpnServer::latest()->get();
+        $this->servers = VpnServer::latest()->get()->map(function ($server) {
+            $server->online_user_count = $server->getOnlineUserCount();
+            return $server;
+        });
     }
+
 
     public function createServer(): void
     {

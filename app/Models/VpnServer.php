@@ -35,6 +35,8 @@ class VpnServer extends Model
     ];
 
     // ─── Relationships ──────────────────────────────────────────────
+
+
     public function clients(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'client_vpn_server');
