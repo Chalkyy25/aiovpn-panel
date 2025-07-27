@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 
 class VpnServer extends Model
@@ -42,11 +41,6 @@ class VpnServer extends Model
         return $this->belongsToMany(User::class, 'client_vpn_server');
     }
 
-    public function vpnUsers(): BelongsToMany
-    {
-        return $this->belongsToMany(VpnUser::class, 'vpn_server_user');
-    }
-
     // ─── Deployment log helper ──────────────────────────────────────
     public function appendLog(string $line): void
     {
@@ -63,22 +57,15 @@ class VpnServer extends Model
     }
 
     // ─── Accessors & Mutators ───────────────────────────────────────
-    public function getDeploymentStatusAttribute($value): string
-    {
-        return $value;
-    }
-
-    public function setDeploymentStatusAttribute($value): void
-    {
-        $this->attributes['deployment_status'] = strtolower($value);
-    }
 
     public function getOnlineUserCount(): int
     {
-        $ssh = $this->getSshCommand();
+        $ssh = $this->getSshCommand(); // This must return something like: ssh -i /path/to/key root@ip
         $statusPath = '/etc/openvpn/openvpn-status.log';
 
-        $cmd = "$ssh 'cat $statusPath | grep -E \"^CLIENT_LIST\" | wc -l'";
+        // Count client lines between "Common Name" and "ROUTING TABLE"
+        $cmd = "$ssh \"awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l\"";
+
         exec($cmd, $output, $code);
 
         if ($code === 0 && isset($output[0])) {
@@ -95,67 +82,24 @@ class VpnServer extends Model
         $user = $this->ssh_user ?? 'root';
 
         if ($this->ssh_type === 'key') {
-            $keyPath = storage_path("ssh/{$this->ssh_key_path}");
+            $keyPath = storage_path("ssh/$this->ssh_key_path");
             return "ssh -i $keyPath -o StrictHostKeyChecking=no -p $port $user@$ip";
         }
 
         // Fallback to password-based (insecure unless you're controlling env tightly)
-        return "sshpass -p '{$this->ssh_password}' ssh -o StrictHostKeyChecking=no -p $port $user@$ip";
+        return "sshpass -p '$this->ssh_password' ssh -o StrictHostKeyChecking=no -p $port $user@$ip";
     }
 
 
 
     // ─── Status Helpers ─────────────────────────────────────────────
-    public function isDeployed(): bool
-    {
-        return $this->deployment_status === 'deployed';
-    }
-
-    public function isPending(): bool
-    {
-        return $this->deployment_status === 'pending';
-    }
-
-    public function isFailed(): bool
-    {
-        return $this->deployment_status === 'failed';
-    }
 
     public function isActive(): bool
     {
         return $this->deployment_status === 'active';
     }
 
-    public function isInactive(): bool
-    {
-        return $this->deployment_status === 'inactive';
-    }
-
     // ─── Status Scopes ──────────────────────────────────────────────
-    public function scopeActive(Builder $query): Builder
-    {
-        return $query->where('deployment_status', 'active');
-    }
-
-    public function scopeInactive(Builder $query): Builder
-    {
-        return $query->where('deployment_status', 'inactive');
-    }
-
-    public function scopeDeployed(Builder $query): Builder
-    {
-        return $query->where('deployment_status', 'deployed');
-    }
-
-    public function scopePending(Builder $query): Builder
-    {
-        return $query->where('deployment_status', 'pending');
-    }
-
-    public function scopeFailed(Builder $query): Builder
-    {
-        return $query->where('deployment_status', 'failed');
-    }
 
     // ─── SSH Command Generator ──────────────────────────────────────
 
