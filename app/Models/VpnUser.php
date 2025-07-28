@@ -59,12 +59,7 @@ class VpnUser extends Authenticatable
 
     public function vpnServers(): BelongsToMany
     {
-        return $this->belongsToMany(
-            VpnServer::class,
-            'vpn_server_user',
-            'vpn_user_id',
-            'vpn_server_id'
-        );
+        return $this->belongsToMany(VpnServer::class, 'vpn_user_server', 'user_id', 'server_id');
     }
 
     public function client(): BelongsTo
