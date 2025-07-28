@@ -18,6 +18,61 @@ if [[ -z "$VPN_SERVERS" ]]; then
     exit 1
 fi
 
+# Process each server line-by-line
+if [[ -z "$VPN_SERVERS" ]]; then
+    echo "❌ Error: No VPN servers found!"
+    exit 1
+fi
+
+echo -e "\n🚀 Starting key push to servers from Laravel...\n"
+
+# Debug: Add tracing inside the loop
+while read -r SERVER; do
+    echo "Debug: Processing SERVER='$SERVER'"
+
+    [[ -z "$SERVER" ]] && { echo "❌ Skipping empty server."; continue; }
+
+    # Trim whitespace and validate IP
+    SERVER=$(echo "$SERVER" | tr -d '[:space:],')
+    if ! [[ $SERVER =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "⚠️  Skipping invalid IP: $SERVER"
+        continue
+    fi
+
+    echo "🔐 Pushing key to $SERVER..."
+
+    # Add fingerprint to known_hosts if missing
+    if ! grep -q "$SERVER" ~/.ssh/known_hosts; then
+        ssh-keyscan -H "$SERVER" >> ~/.ssh/known_hosts 2>/dev/null
+        echo "🔑 Added $SERVER to known_hosts"
+    fi
+
+    # Ensure proper permissions for known_hosts
+    chmod 644 ~/.ssh/known_hosts
+
+    # Push the key
+    ssh -n \
+        -o StrictHostKeyChecking=no \
+        -o ConnectTimeout=$CONNECT_TIMEOUT \
+        -o ServerAliveInterval=60 \
+        -o ServerAliveCountMax=3 \
+        $SSH_USER@"$SERVER" bash -s <<EOF
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+grep -qxF "$PUBKEY" ~/.ssh/authorized_keys || echo "$PUBKEY" >> ~/.ssh/authorized_keys
+EOF
+
+    # Check the result
+    STATUS=$?
+    if [[ $STATUS -eq 0 ]]; then
+        echo "✅ Key added/verified on $SERVER"
+    else
+        echo "❌ Failed to access $SERVER with status $STATUS"
+    fi
+
+    echo "" # Blank line for spacing
+done <<< "$VPN_SERVERS"
+
 # SSH configuration
 SSH_USER="${SSH_USER:-root}"
 PUBKEY=$(cat "${PUBKEY_PATH:-/root/.ssh/id_rsa.pub}")
