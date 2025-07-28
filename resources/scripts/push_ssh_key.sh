@@ -18,15 +18,15 @@ if [[ -z "$VPN_SERVERS" ]]; then
     exit 1
 fi
 
+# Set default values for script variables
+SSH_USER="${SSH_USER:-root}"
+PUBKEY=$(cat "${PUBKEY_PATH:-/root/.ssh/id_rsa.pub}")
+CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-10}
+
+# Debug: Log variable values
+echo "Debug: SSH_USER='$SSH_USER', CONNECT_TIMEOUT='$CONNECT_TIMEOUT', PUBKEY_PATH='$PUBKEY_PATH'"
+
 # Process each server line-by-line
-if [[ -z "$VPN_SERVERS" ]]; then
-    echo "❌ Error: No VPN servers found!"
-    exit 1
-fi
-
-echo -e "\n🚀 Starting key push to servers from Laravel...\n"
-
-# Debug: Add tracing inside the loop
 while read -r SERVER; do
     echo "Debug: Processing SERVER='$SERVER'"
 
@@ -72,6 +72,14 @@ EOF
 
     echo "" # Blank line for spacing
 done <<< "$VPN_SERVERS"
+
+# Set default values for SSH options if not already set
+SSH_USER="${SSH_USER:-root}"              # Default to 'root' user
+PUBKEY=$(cat "${PUBKEY_PATH:-/root/.ssh/id_rsa.pub}")  # Default public key
+CONNECT_TIMEOUT=${CONNECT_TIMEOUT:-10}    # Default timeout to 10 seconds
+
+# Debug: Log variable values for tracing
+echo "Debug: SSH_USER='$SSH_USER', CONNECT_TIMEOUT='$CONNECT_TIMEOUT', PUBKEY_PATH='$PUBKEY_PATH'"
 
 # SSH configuration
 SSH_USER="${SSH_USER:-root}"
