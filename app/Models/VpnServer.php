@@ -82,11 +82,7 @@ class VpnServer extends Model
         $user = $this->ssh_user ?? 'root';
 
         if ($this->ssh_type === 'key') {
-            $keyPath = storage_path("ssh/$this->ssh_key_path");
-
-            // 💥 Add this line temporarily:
-            \Log::info("SSH CMD: ssh -i $keyPath -o StrictHostKeyChecking=no -p $port $user@$ip");
-
+            $keyPath = storage_path('app/ssh_keys/' . $this->ssh_key);  // Changed this line
             return "ssh -i $keyPath -o StrictHostKeyChecking=no -p $port $user@$ip";
         }
 
@@ -112,13 +108,13 @@ class VpnServer extends Model
     {
         static::creating(function (self $vpnServer) {
             if ($vpnServer->ssh_type === 'key' && blank($vpnServer->ssh_key)) {
-                $vpnServer->ssh_key = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa_www';
+                $vpnServer->ssh_key = 'id_rsa';  // Changed this line
             }
         });
 
         static::updating(function (self $vpnServer) {
             if ($vpnServer->ssh_type === 'key' && blank($vpnServer->ssh_key)) {
-                $vpnServer->ssh_key = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa_www';
+                $vpnServer->ssh_key = 'id_rsa';  // Changed this line
             }
         });
     }
