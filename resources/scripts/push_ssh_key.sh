@@ -4,7 +4,7 @@
 PHP_BIN=$(command -v php || echo "/usr/bin/php")
 
 # Fetch VPN servers (newline-separated for easier parsing)
-VPN_SERVERS=$($PHP_BIN artisan tinker --execute="echo implode(PHP_EOL, App\Models\VpnServer::pluck('ip_address')->filter(function ($ip) { return filter_var($ip, FILTER_VALIDATE_IP); })->toArray());" || { echo "Error: Could not fetch VPN servers."; exit 1; })
+VPN_SERVERS=$($PHP_BIN artisan tinker --execute="echo implode(' ', App\Models\VpnServer::pluck('ip_address')->toArray());")
 
 # Check if any servers were returned
 if [[ -z "$VPN_SERVERS" ]]; then
@@ -48,15 +48,16 @@ while read -r SERVER; do
     # Push key via SSH
     ssh -n \
         -o StrictHostKeyChecking=no \
-        -o ConnectTimeout=$CONNECT_TIMEOUT \
-        -o MaxSessions=$MAX_CONNECTIONS \
-        $SSH_USER@"$SERVER" bash -s <<EOF
+        -o ConnectTimeout="$CONNECT_TIMEOUT" \
+        -o MaxSessions="$MAX_CONNECTIONS" \
+        "$SSH_USER"@"$SERVER" bash -s <<EOF
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 grep -qxF "$PUBKEY" ~/.ssh/authorized_keys || echo "$PUBKEY" >> ~/.ssh/authorized_keys
 EOF
 
     # Check result
+    # shellcheck disable=SC2181
     if [[ $? -eq 0 ]]; then
         echo "✅ Key added/verified on $SERVER"
     else
