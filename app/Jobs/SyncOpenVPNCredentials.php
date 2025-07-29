@@ -3,12 +3,15 @@
 namespace App\Jobs;
 
 use App\Models\VpnServer;
+use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use RuntimeException;
+use Throwable;
 
 class SyncOpenVPNCredentials implements ShouldQueue
 {
@@ -21,6 +24,9 @@ class SyncOpenVPNCredentials implements ShouldQueue
         $this->vpnServer = $vpnServer;
     }
 
+    /**
+     * @throws Exception
+     */
     public function handle(): void
     {
         try {
@@ -72,7 +78,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
             @unlink($tmpFile);
             Log::info("🧼 [OpenVPN] Temp file deleted. Sync complete for $server->name");
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error("❌ [OpenVPN] Error in sync job: " . $e->getMessage());
             Log::error("Stack trace: " . $e->getTraceAsString());
             throw $e;
@@ -86,7 +92,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
         if ($status !== 0) {
             Log::error("❌ [OpenVPN] $label failed on $ip: " . implode("\n", $output));
-            throw new \RuntimeException("SSH command failed: $label");
+            throw new RuntimeException("SSH command failed: $label");
         } else {
             Log::info("✅ [OpenVPN] $label success on $ip");
         }
@@ -99,13 +105,13 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
         if ($status !== 0) {
             Log::error("❌ [OpenVPN] SCP failed to $ip: " . implode("\n", $output));
-            throw new \RuntimeException("SCP command failed");
+            throw new RuntimeException("SCP command failed");
         } else {
             Log::info("📦 [OpenVPN] psw-file uploaded to $ip");
         }
     }
 
-    public function failed(\Throwable $exception): void
+    public function failed(Throwable $exception): void
     {
         Log::error("💥 [OpenVPN] Job failed for server {$this->vpnServer->name}: " . $exception->getMessage());
     }
