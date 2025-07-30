@@ -7,6 +7,7 @@ use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class RegenerateVpnUsers extends Command
 {
@@ -31,8 +32,11 @@ class RegenerateVpnUsers extends Command
         $this->info("🔄 Regenerating $count VPN users...");
         $bar = $this->output->createProgressBar($count);
 
-        // Delete existing users
-        VpnUser::truncate();
+        // First, delete all relationships
+        DB::table('vpn_user_server')->truncate();
+
+        // Then delete users
+        VpnUser::query()->delete(); // Using delete() instead of truncate()
         $this->info("\n🗑️ Cleared existing VPN users");
 
         // Create new users
