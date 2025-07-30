@@ -11,13 +11,14 @@ use Illuminate\Support\Facades\DB;
 
 class RegenerateVpnUsers extends Command
 {
-    protected $signature = 'vpn:regenerate-users {count=10} {--server=*}';
-    protected $description = 'Regenerate VPN users and assign them to servers';
+    protected $signature = 'vpn:regenerate-users {count=10} {--server=*} {--preserve=*}';
+    protected $description = 'Regenerate VPN users and assign them to servers. Use --preserve option to keep specific usernames.';
 
     public function handle(): int
     {
         $count = $this->argument('count');
         $serverIds = $this->option('server');
+        $preserveUsernames = $this->option('preserve');
 
         // Get servers
         $servers = empty($serverIds)
@@ -29,18 +30,40 @@ class RegenerateVpnUsers extends Command
             return 1;
         }
 
-        $this->info("🔄 Regenerating $count VPN users...");
-        $bar = $this->output->createProgressBar($count);
+        $this->info("🔄 Regenerating VPN users...");
 
-        // First, delete all relationships
-        DB::table('vpn_user_server')->truncate();
+        // First, delete all relationships except preserved users
+        if (!empty($preserveUsernames)) {
+            $this->info("🛡️ Preserving users: " . implode(', ', $preserveUsernames));
+            $preservedUsers = VpnUser::whereIn('username', $preserveUsernames)->get();
 
-        // Then delete users
-        VpnUser::query()->delete(); // Using delete() instead of truncate()
-        $this->info("\n🗑️ Cleared existing VPN users");
+            // Delete relationships only for non-preserved users
+            DB::table('vpn_user_server')
+                ->whereNotIn('user_id', $preservedUsers->pluck('id'))
+                ->delete();
+
+            // Delete non-preserved users
+            VpnUser::whereNotIn('username', $preserveUsernames)->delete();
+        } else {
+            DB::table('vpn_user_server')->truncate();
+            VpnUser::query()->delete();
+        }
+
+        $this->info("🗑️ Cleared existing non-preserved VPN users");
+
+        // Calculate how many new users to create
+        $existingCount = VpnUser::count();
+        $toCreate = $count - $existingCount;
+
+        if ($toCreate <= 0) {
+            $this->info("ℹ️ No new users needed, already have $existingCount users");
+            return 0;
+        }
+
+        $bar = $this->output->createProgressBar($toCreate);
 
         // Create new users
-        for ($i = 0; $i < $count; $i++) {
+        for ($i = 0; $i < $toCreate; $i++) {
             $username = 'vpn-' . Str::random(6);
             $password = Str::random(12);
 
@@ -68,13 +91,7 @@ class RegenerateVpnUsers extends Command
             $this->info("✅ Queued sync for $server->name");
         }
 
-        $this->info("\n🎉 Done! Created $count users and assigned them to " . $servers->count() . " servers.");
-
-        // Show example usage
-        $this->info("\nExample usage:");
-        $user = VpnUser::first();
-        $this->info("Username: $user->username");
-        $this->info("Password: $user->plain_password");
+        $this->info("\n🎉 Done! Now have " . VpnUser::count() . " total users assigned to " . $servers->count() . " servers.");
 
         return 0;
     }
