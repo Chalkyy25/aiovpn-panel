@@ -53,10 +53,10 @@ while read -r SERVER; do
     # Push the key
     ssh -n \
         -o StrictHostKeyChecking=no \
-        -o ConnectTimeout=$CONNECT_TIMEOUT \
+        -o ConnectTimeout="$CONNECT_TIMEOUT" \
         -o ServerAliveInterval=60 \
         -o ServerAliveCountMax=3 \
-        $SSH_USER@"$SERVER" bash -s <<EOF
+        "$SSH_USER"@"$SERVER" bash -s <<EOF
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 grep -qxF "$PUBKEY" ~/.ssh/authorized_keys || echo "$PUBKEY" >> ~/.ssh/authorized_keys

@@ -13,7 +13,8 @@
         "laravel/tinker": "^2.8",
         "livewire/livewire": "^3.6",
         "phpseclib/phpseclib": "^3.0",
-        "spatie/ssh": "^1.13"
+        "spatie/ssh": "^1.13",
+        "ext-zip": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",

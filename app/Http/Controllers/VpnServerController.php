@@ -21,15 +21,12 @@ class VpnServerController extends Controller
             'protocol' => 'required|in:openvpn,wireguard',
         ]);
 
-        $server = VpnServer::create([
-            'name' => $validated['name'],
-            'ip' => $validated['ip'],
-            'protocol' => $validated['protocol'],
-        ]);
+        $server = VpnServer::create($validated);
 
-        dispatch(new DeployVpnServer($server));
+        DeployVpnServer::dispatch($server);
 
-        return redirect()->route('vpn_servers.show', $server->id);
+        return redirect()->route('vpn_servers.show', $server->id)
+            ->with('success', 'Server created and deployment started.');
     }
 
     public function show($id)
@@ -43,6 +40,7 @@ class VpnServerController extends Controller
         $vpnServer = VpnServer::findOrFail($id);
         $vpnServer->delete();
 
-        return redirect()->route('admin.servers.index')->with('success', 'Server deleted successfully.');
+        return redirect()->route('admin.servers.index')
+            ->with('success', 'Server deleted successfully.');
     }
 }

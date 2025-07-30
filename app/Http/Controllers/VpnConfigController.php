@@ -9,10 +9,7 @@ use ZipArchive;
 
 class VpnConfigController extends Controller
 {
-    /**
-     * 🔥 Download WireGuard config for a user (default).
-     */
-    public function download(VpnUser $vpnUser)
+    public function download(VpnUser $vpnUser) // Matches: admin/clients/{vpnUser}/config
     {
         $path = "configs/{$vpnUser->username}_wg.conf";
 
@@ -23,25 +20,19 @@ class VpnConfigController extends Controller
         return Storage::disk('local')->download($path);
     }
 
-    /**
-     * 🔥 Download OpenVPN config for a user assigned to a specific server.
-     */
-    public function downloadForServer(VpnUser $vpnUser, VpnServer $vpnServer)
+    public function downloadForServer(VpnUser $vpnUser, VpnServer $vpnServer) // Matches: admin/clients/{vpnUser}/config/{vpnServer}
     {
-        $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name);
-        $path = "public/ovpn_configs/{$safeServerName}_{$vpnUser->username}.ovpn";
+        $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
+        $path = "public/ovpn_configs/$fileName";
 
         if (!Storage::exists($path)) {
-            abort(404, "OpenVPN config not found for {$vpnServer->name}.");
+            abort(404, "OpenVPN config not found for $vpnServer->name.");
         }
 
         return Storage::download($path);
     }
 
-    /**
-     * 🔥 Download all configs (WireGuard + OpenVPN per server) zipped.
-     */
-    public function downloadAll(VpnUser $vpnUser)
+    public function downloadAll(VpnUser $vpnUser) // Matches: admin/clients/{vpnUser}/configs/download-all
     {
         $servers = $vpnUser->vpnServers;
 
@@ -50,31 +41,30 @@ class VpnConfigController extends Controller
         }
 
         $zipFileName = "{$vpnUser->username}_all_configs.zip";
-        $zipFilePath = storage_path("app/configs/{$zipFileName}");
+        $zipFilePath = storage_path("app/configs/$zipFileName");
 
-        $zip = new ZipArchive;
+        $zip = new ZipArchive();
 
-        if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
-
-            // 🔑 Add WireGuard config if it exists
+        if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
+            // Include WireGuard config
             $wgConfig = storage_path("app/configs/{$vpnUser->username}_wg.conf");
             if (file_exists($wgConfig)) {
                 $zip->addFile($wgConfig, "{$vpnUser->username}_wg.conf");
             }
 
-            // 🔑 Add each OpenVPN config if it exists
+            // Include OpenVPN configs for all assigned servers
             foreach ($servers as $server) {
-                $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
-                $ovpnFile = storage_path("app/public/ovpn_configs/{$safeServerName}_{$vpnUser->username}.ovpn");
+                $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name) . "_$vpnUser->username.ovpn";
+                $ovpnPath = storage_path("app/public/ovpn_configs/$fileName");
 
-                if (file_exists($ovpnFile)) {
-                    $zip->addFile($ovpnFile, "{$safeServerName}_{$vpnUser->username}.ovpn");
+                if (file_exists($ovpnPath)) {
+                    $zip->addFile($ovpnPath, $fileName);
                 }
             }
 
             $zip->close();
 
-            return response()->download($zipFilePath)->deleteFileAfterSend(true);
+            return response()->download($zipFilePath)->deleteFileAfterSend();
         }
 
         return back()->with('error', 'Could not create ZIP file.');

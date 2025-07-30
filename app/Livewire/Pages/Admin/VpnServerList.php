@@ -6,8 +6,10 @@ use Exception;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 use Livewire\Attributes\Layout;
-use App\Models\VpnServer;
-use App\Jobs\SyncOpenVPNCredentials;
+use App\Models\VpnServer; // ✅ Import the VpnServer model
+use App\Models\VpnUser; // ✅ Import the VpnUser model
+use App\Jobs\SyncOpenVPNCredentials; // ✅ Import the SyncOpenVPNCredentials job
+use App\Jobs\GenerateVpnConfig; // ✅ Import the GenerateVpnConfig job
 use Log;
 
 #[Layout('layouts.app')]
@@ -20,7 +22,6 @@ class VpnServerList extends Component
 
     public $deployLog = [];
     public $isDeploying = false;
-    // ... existing properties ...
     public $syncStatus = [];
 
     protected $listeners = ['refreshOnlineCounts' => '$refresh'];
@@ -32,9 +33,6 @@ class VpnServerList extends Component
             return $server;
         });
     }
-
-
-
 
     public function syncServer($id): void
     {
@@ -56,7 +54,14 @@ class VpnServerList extends Component
         }
     }
 
-    // Add this new method
+    public function generateConfig($id, $protocol): void
+    {
+        $user = VpnUser::findOrFail($id); // Locate the VPN user by ID
+        GenerateVpnConfig::dispatch($user, $protocol); // Dispatch the job to generate config
+
+        session()->flash('message', "Config generation for $protocol has been queued.");
+    }
+
     public function getListeners()
     {
         return array_merge($this->listeners, [
@@ -70,6 +75,7 @@ class VpnServerList extends Component
         $this->syncStatus[$event['server_id']] = $event['status'];
         $this->loadServers();
     }
+
     public function mount(): void
     {
         $this->loadServers();
@@ -83,7 +89,6 @@ class VpnServerList extends Component
         });
     }
 
-
     public function createServer(): void
     {
         $this->validate([
@@ -94,7 +99,7 @@ class VpnServerList extends Component
 
         VpnServer::create([
             'name' => $this->name,
-            'ip_address' => $this->ip, // use ip_address if that's your DB column
+            'ip_address' => $this->ip,
             'protocol' => $this->protocol,
             'status' => $this->status,
         ]);
@@ -107,13 +112,13 @@ class VpnServerList extends Component
 
     public function deleteServer($id): void
     {
-    VpnServer::destroy($id);
-    $this->loadServers();
-    session()->flash('status-message', '🗑️ VPN Server deleted.');
-}
+        VpnServer::destroy($id);
+        $this->loadServers();
+        session()->flash('status-message', '🗑️ VPN Server deleted.');
+    }
+
     public function render(): View
     {
         return view('livewire.pages.admin.vpn-server-list');
     }
-
 }
