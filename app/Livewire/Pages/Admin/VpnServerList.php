@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Pages\Admin;
 
+use Exception;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
 use Livewire\Attributes\Layout;
 use App\Models\VpnServer;
 use App\Jobs\SyncOpenVPNCredentials;
+use Log;
 
 #[Layout('layouts.app')]
 class VpnServerList extends Component
@@ -18,6 +20,8 @@ class VpnServerList extends Component
 
     public $deployLog = [];
     public $isDeploying = false;
+    // ... existing properties ...
+    public $syncStatus = [];
 
     protected $listeners = ['refreshOnlineCounts' => '$refresh'];
 
@@ -41,9 +45,30 @@ class VpnServerList extends Component
             return;
         }
 
-        dispatch(new SyncOpenVPNCredentials($server));
+        try {
+            dispatch(new SyncOpenVPNCredentials($server));
+            $this->syncStatus[$id] = 'syncing';
+            session()->flash('status-message', "🔄 Sync started for $server->name");
+        } catch (Exception $e) {
+            $this->syncStatus[$id] = 'failed';
+            session()->flash('status-message', "❌ Sync failed for $server->name: " . $e->getMessage());
+            Log::error("Sync failed for server $id: " . $e->getMessage());
+        }
+    }
 
-        session()->flash('status-message', "🔄 Sync started for $server->name");
+    // Add this new method
+    public function getListeners()
+    {
+        return array_merge($this->listeners, [
+            'echo:sync.completed,SyncCompleted' => 'handleSyncCompleted',
+            'refreshOnlineCounts' => '$refresh'
+        ]);
+    }
+
+    public function handleSyncCompleted($event): void
+    {
+        $this->syncStatus[$event['server_id']] = $event['status'];
+        $this->loadServers();
     }
     public function mount(): void
     {
