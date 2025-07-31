@@ -25,7 +25,7 @@ class VpnServerController extends Controller
 
         DeployVpnServer::dispatch($server);
 
-        return redirect()->route('vpn_servers.show', $server->id)
+        return redirect()->route('admin.servers.show', $server->id)
             ->with('success', 'Server created and deployment started.');
     }
 

@@ -39,7 +39,7 @@ class VpnUserController extends Controller
         // Dispatch configuration generation
         GenerateVpnConfig::dispatch($user, $server->protocol);
 
-        return redirect()->route('admin.servers.users.index', $server->id)
+        return redirect()->route('admin.servers.users.index', ['vpnServer' => $server->id])
             ->with('success', 'User created, and VPN configuration is being generated.');
     }
 

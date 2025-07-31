@@ -1,5 +1,11 @@
 <?php
 
+use App\Http\Controllers\VpnConfigController;
+use App\Http\Controllers\VpnServerController;
+use App\Livewire\Pages\Admin\ServerEdit;
+use App\Livewire\Pages\Admin\ServerShow;
+use App\Livewire\Pages\Admin\VpnUserList;
+use App\Livewire\Pages\Client\Dashboard;
 use App\Models\VpnUser;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProfileController;
@@ -45,13 +51,13 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/create-user', CreateUser::class)->name('create-user');
 
 	// ✅ VPN config download
-	Route::get('/clients/{vpnUser}/config', [\App\Http\Controllers\VpnConfigController::class, 'download'])
+	Route::get('/clients/{vpnUser}/config', [VpnConfigController::class, 'download'])
 	    ->name('clients.config.download');
 
-	Route::get('/clients/{vpnUser}/config/{vpnServer}', [\App\Http\Controllers\VpnConfigController::class, 'downloadForServer'])
+	Route::get('/clients/{vpnUser}/config/{vpnServer}', [VpnConfigController::class, 'downloadForServer'])
 	    ->name('clients.config.downloadForServer');
 
-	Route::get('/clients/{vpnUser}/configs/download-all', [\App\Http\Controllers\VpnConfigController::class, 'downloadAll'])
+	Route::get('/clients/{vpnUser}/configs/download-all', [VpnConfigController::class, 'downloadAll'])
 	    ->name('clients.configs.downloadAll');
 
 	Route::get('/vpn-users/{vpnUser}/configs', VpnUserConfigs::class)
@@ -60,21 +66,21 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // ✅ VPN server management
         Route::get('/servers', VpnServerList::class)->name('servers.index');
         Route::get('/servers/create', ServerCreate::class)->name('servers.create');
-        Route::get('/servers/{vpnServer}/edit', \App\Livewire\Pages\Admin\ServerEdit::class)->name('servers.edit');
+        Route::get('/servers/{vpnServer}/edit', ServerEdit::class)->name('servers.edit');
 	    Route::get('/servers/{vpnServer}/install-status', ServerInstallStatus::class)->name('servers.install-status');
-        Route::get('/servers/{vpnServer}', \App\Livewire\Pages\Admin\ServerShow::class)->name('servers.show');
-        Route::delete('/servers/{vpnServer}', [\App\Http\Controllers\VpnServerController::class, 'destroy'])->name('servers.destroy');
+        Route::get('/servers/{vpnServer}', ServerShow::class)->name('servers.show');
+        Route::delete('/servers/{vpnServer}', [VpnServerController::class, 'destroy'])->name('servers.destroy');
 
 	// ✅ VPN User Management per server
         Route::prefix('/servers/{vpnServer}/users')->group(function () {
-        Route::get('/', [\App\Http\Controllers\VpnUserController::class, 'index'])->name('servers.users.index');
-        Route::get('/create', [\App\Http\Controllers\VpnUserController::class, 'create'])->name('servers.users.create');
-        Route::post('/', [\App\Http\Controllers\VpnUserController::class, 'store'])->name('servers.users.store');
-        Route::post('/sync', [\App\Http\Controllers\VpnUserController::class, 'sync'])->name('servers.users.sync');
+        Route::get('/', [VpnUserController::class, 'index'])->name('servers.users.index');
+        Route::get('/create', [VpnUserController::class, 'create'])->name('servers.users.create');
+        Route::post('/', [VpnUserController::class, 'store'])->name('servers.users.store');
+        Route::post('/sync', [VpnUserController::class, 'sync'])->name('servers.users.sync');
 	 });
 
 	// ✅ VPN Users page
-	Route::get('/vpn-user-list', \App\Livewire\Pages\Admin\VpnUserList::class)->name('vpn-user-list');
+	Route::get('/vpn-user-list', VpnUserList::class)->name('vpn-user-list');
 
 	// ✅ WireGuard config download
 	Route::get('/wireguard/configs/{filename}', function ($filename) {
@@ -106,8 +112,8 @@ Route::prefix('client')->name('client.')->group(function () {
 
     // ✅ Authenticated Client Routes
     Route::middleware('auth:client')->group(function () {
-        Route::get('/dashboard', \App\Livewire\Pages\Client\Dashboard::class)->name('dashboard');
-        Route::get('/vpn/{server}/download', [\App\Http\Controllers\VpnConfigController::class, 'download'])->name('vpn.download');
+        Route::get('/dashboard', Dashboard::class)->name('dashboard');
+        Route::get('/vpn/{server}/download', [VpnConfigController::class, 'download'])->name('vpn.download');
     });
 });
 
