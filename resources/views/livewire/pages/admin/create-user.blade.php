@@ -8,7 +8,7 @@
     @endif
 
 
-    <form action="{{ route('admin.servers.users.store', [$server->id]) }}" method="POST" class="space-y-4">
+    <form action="{{ route('admin.servers.users.store', ['vpnServer' => $server->id]) }}" method="POST">
         @csrf
         <!-- Username -->
         <div>
