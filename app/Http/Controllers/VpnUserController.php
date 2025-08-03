@@ -22,6 +22,9 @@ class VpnUserController extends Controller
         $server = VpnServer::findOrFail($vpnServer);
 
         return view('livewire.pages.admin.create-user', compact('server'));
+
+        dd($vpnServer, $server);
+
     }
 
     public function store(Request $request, $vpnServer) // Matches: admin/servers/{vpnServer}/users

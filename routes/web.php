@@ -30,11 +30,12 @@ Route::get('/dashboard', fn () => view('dashboard'))
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
 
-// ✅ Admin routes
+// ✅ General Admin Features
 Route::middleware(['auth', 'verified', 'role:admin'])
-    ->prefix('admin' )
+    ->prefix('admin')
     ->name('admin.')
     ->group(function () {
+        // Dashboard
         Route::get('/dashboard', function () {
             return view('dashboards.admin', [
                 'totalUsers' => User::count(),
@@ -46,9 +47,38 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ]);
         })->name('dashboard');
 
-        // ✅ Admin user management
+        // Admin user management
         Route::get('/users', UserList::class)->name('users.index');
-        Route::get('/create-user', CreateUser::class)->name('create-user');
+        Route::get('/users/create', CreateUser::class)->name('users.create');
+
+        // Settings Page
+        Route::get('/settings', fn () => view('admin.settings'))->name('settings');
+
+        // VPN User List (general)
+        Route::get('/vpn-user-list', VpnUserList::class)->name('vpn-user-list');
+    });
+
+// ✅ Server-Specific Features
+Route::middleware(['auth', 'verified', 'role:admin'])
+    ->prefix('admin/servers')
+    ->name('admin.servers.')
+    ->group(function () {
+        // VPN server management
+        Route::get('/', VpnServerList::class)->name('index');
+        Route::get('/create', ServerCreate::class)->name('create');
+        Route::get('/{vpnServer}/edit', ServerEdit::class)->name('edit');
+        Route::get('/{vpnServer}/install-status', ServerInstallStatus::class)->name('install-status');
+        Route::get('/{vpnServer}', ServerShow::class)->name('show');
+        Route::delete('/{vpnServer}', [VpnServerController::class, 'destroy'])->name('destroy');
+
+        // VPN Users per Server
+        Route::prefix('/{vpnServer}/users')->group(function () {
+            Route::get('/', [VpnUserController::class, 'index'])->name('users.index');
+            Route::get('/create', [VpnUserController::class, 'create'])->name('users.create');
+            Route::post('/', [VpnUserController::class, 'store'])->name('users.store');
+            Route::post('/sync', [VpnUserController::class, 'sync'])->name('users.sync');
+        });
+    });
 
 	// ✅ VPN config download
 	Route::get('/clients/{vpnUser}/config', [VpnConfigController::class, 'download'])
@@ -63,25 +93,6 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 	Route::get('/vpn-users/{vpnUser}/configs', VpnUserConfigs::class)
 	    ->name('clients.configs.index');
 
-        // ✅ VPN server management
-        Route::get('/servers', VpnServerList::class)->name('servers.index');
-        Route::get('/servers/create', ServerCreate::class)->name('servers.create');
-        Route::get('/servers/{vpnServer}/edit', ServerEdit::class)->name('servers.edit');
-	    Route::get('/servers/{vpnServer}/install-status', ServerInstallStatus::class)->name('servers.install-status');
-        Route::get('/servers/{vpnServer}', ServerShow::class)->name('servers.show');
-        Route::delete('/servers/{vpnServer}', [VpnServerController::class, 'destroy'])->name('servers.destroy');
-
-	// ✅ VPN User Management per server
-        Route::prefix('/servers/{vpnServer}/users')->group(function () {
-        Route::get('/', [VpnUserController::class, 'index'])->name('servers.users.index');
-        Route::get('/create', [VpnUserController::class, 'create'])->name('servers.users.create');
-        Route::post('/', [VpnUserController::class, 'store'])->name('servers.users.store');
-        Route::post('/sync', [VpnUserController::class, 'sync'])->name('servers.users.sync');
-	 });
-
-	// ✅ VPN Users page
-	Route::get('/vpn-user-list', VpnUserList::class)->name('vpn-user-list');
-
 	// ✅ WireGuard config download
 	Route::get('/wireguard/configs/{filename}', function ($filename) {
 	    $path = storage_path('app/configs/' . $filename);
@@ -90,10 +101,6 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 	    }
 	    return response()->download($path);
 	})->name('wireguard.configs.download');
-
-        // ✅ Settings
-        Route::get('/settings', fn () => view('admin.settings'))->name('settings');
-    });
 
 // ✅ Reseller routes
 Route::middleware(['auth', 'verified', 'role:reseller'])

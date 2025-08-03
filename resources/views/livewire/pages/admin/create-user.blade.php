@@ -1,6 +1,6 @@
 <div class="max-w-xl mx-auto p-6 bg-white shadow rounded space-y-5">
     <h2 class="text-xl font-semibold">Create New VPN Client</h2>
-{{ dd($server) }}
+
     @if (session()->has('success'))
         <div class="p-3 bg-green-100 text-green-700 rounded border border-green-300">
             {{ session('success') }}
