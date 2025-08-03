@@ -75,7 +75,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::prefix('/{vpnServer}/users')->group(function () {
             Route::get('/', [VpnUserController::class, 'index'])->name('users.index');
             Route::get('/create', [VpnUserController::class, 'create'])->name('users.create');
-            Route::post('/', [VpnUserController::class, 'store'])->name('users.store');
+            Route::post('/{vpnServer}', [VpnUserController::class, 'store'])->name('users.store');
             Route::post('/sync', [VpnUserController::class, 'sync'])->name('users.sync');
         });
     });
