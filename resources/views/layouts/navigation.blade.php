@@ -38,8 +38,8 @@
     <div class="pt-4 pb-4 bg-gray-50 rounded shadow space-y-1">
         @foreach ([
             ['route' => 'admin.dashboard', 'label' => '🏠 Dashboard'],
-	    ['route' => 'admin.create-user', 'label' => '➕ Create VPN Users'],
-            ['route' => 'admin.vpn-user-list', 'label' => '🔑 VPN Users'],
+	    ['route' => 'servers.users.create', 'label' => '➕ Create VPN Users'],
+            ['route' => 'servers.users.store', 'label' => '🔑 VPN Users'],
             ['route' => 'admin.servers.index', 'label' => '🌐 VPN Servers'],
             ['route' => 'admin.settings', 'label' => '⚙️ Settings'],
         ] as $item)
