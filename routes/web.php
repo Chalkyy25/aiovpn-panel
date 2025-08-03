@@ -55,7 +55,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
 
         // VPN User List (general)
-        Route::get('/vpn-user-list', VpnUserList::class)->name('vpn-user-list');
+        Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
     });
 
 // ✅ Server-Specific Features
