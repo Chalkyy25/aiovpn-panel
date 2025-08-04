@@ -64,9 +64,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // VPN Users (global list)
         Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
 
-	// Resellers (Placeholder)
-	Route::get('/resellers/create', fn () => 'Reseller create page coming soon...')->name('resellers.create');
-
+	    // Resellers (Placeholder)
+        Route::get('/resellers/create', CreateReseller::class)->name('resellers.create');
     });
 
 
@@ -112,7 +111,7 @@ Route::get('/vpn-users/{vpnuser}/configs', VpnUserConfigs::class)
 
 // ✅ WireGuard Config Downloads
 Route::get('/wireguard/configs/{filename}', function ($filename) {
-    $path = storage_path("app/configs/{$filename}");
+    $path = storage_path("app/configs/$filename");
     abort_unless(file_exists($path), 404);
     return response()->download($path);
 })->name('wireguard.configs.download');
