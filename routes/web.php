@@ -21,7 +21,8 @@ use App\Livewire\Pages\Admin\{
     ServerEdit,
     ServerShow,
     ServerInstallStatus,
-    VpnUserConfigs
+    VpnUserConfigs,
+    CreateReseller
 };
 use App\Livewire\Pages\Client\Dashboard;
 
@@ -62,6 +63,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         // VPN Users (global list)
         Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
+
+	// Resellers (Placeholder)
+	Route::get('/resellers/create', fn () => 'Reseller create page coming soon...')->name('resellers.create');
+
     });
 
 
