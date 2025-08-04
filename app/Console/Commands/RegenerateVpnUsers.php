@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Jobs\SyncOpenVPNCredentials;
+use App\Jobs\AddWireGuardPeer;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Illuminate\Console\Command;
@@ -78,6 +79,9 @@ class RegenerateVpnUsers extends Command
 
             // Attach all servers or specified servers
             $user->vpnServers()->attach($servers->pluck('id'));
+
+            // Set up WireGuard peer for the user
+            AddWireGuardPeer::dispatch($user);
 
             $bar->advance();
         }

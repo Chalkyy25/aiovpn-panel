@@ -4,6 +4,7 @@ namespace App\Livewire\Pages\Admin;
 
 use App\Models\VpnUser;
 use App\Models\VpnServer;
+use App\Jobs\AddWireGuardPeer;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Application;
@@ -71,6 +72,10 @@ Log::info("VPN user created", [
     'expires_at' => $vpnUser->expires_at,
     'servers' => $vpnUser->vpnServers->pluck('name')->toArray()
 ]);
+
+// Set up WireGuard peer for the user
+AddWireGuardPeer::dispatch($vpnUser);
+Log::info("🔧 WireGuard peer setup queued for user {$vpnUser->username}");
 
 // Add success message and reset form
 session()->flash('success', 'VPN user created successfully!');

@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Jobs\GenerateVpnConfig;
+use App\Jobs\AddWireGuardPeer;
 
 class VpnUserController extends Controller
 {
@@ -40,6 +41,9 @@ class VpnUserController extends Controller
 
         // Dispatch configuration generation
         GenerateVpnConfig::dispatch($user, $server->protocol);
+
+        // Set up WireGuard peer for the user
+        AddWireGuardPeer::dispatch($user);
 
         return redirect()->route('admin.servers.users.index', ['vpnServer' => $server->id])
             ->with('success', 'User created, and VPN configuration is being generated.');
