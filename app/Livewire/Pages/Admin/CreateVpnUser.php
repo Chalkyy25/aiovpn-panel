@@ -6,6 +6,7 @@ use App\Models\VpnUser;
 use App\Models\VpnServer;
 use Livewire\Component;
 
+#[Layout('layouts.app')]
 class CreateVpnUser extends Component
 {
 public $username;
