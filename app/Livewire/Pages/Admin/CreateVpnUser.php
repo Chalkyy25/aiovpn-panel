@@ -53,6 +53,9 @@ $vpnUser = VpnUser::create([
 // Sync the selected servers
 $vpnUser->vpnServers()->sync($this->selectedServers);
 
+// Reload the VPN user to ensure we have the latest data including server associations
+$vpnUser->refresh();
+
 // Manually generate OpenVPN configurations
 \App\Services\VpnConfigBuilder::generate($vpnUser);
 
@@ -66,7 +69,7 @@ foreach ($vpnUser->vpnServers as $server) {
 Log::info("VPN user created", [
     'username' => $vpnUser->username,
     'expires_at' => $vpnUser->expires_at,
-    'servers' => $vpnUser->vpnServers->pluck('id')->toArray()
+    'servers' => $vpnUser->vpnServers->pluck('name')->toArray()
 ]);
 
 // Add success message and reset form
