@@ -7,7 +7,8 @@ use App\Models\VpnServer;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Application;
-use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Hash;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -17,9 +18,20 @@ class CreateVpnUser extends Component
 public $username;
 public $password;
 public $selectedServers = [];
-public $expiry;
+public $expiry = '1m'; // Set default value
 
-public function save(): RedirectResponse
+/**
+ * Set up initial component state
+ */
+public function mount(): void
+{
+    // Set default expiry to 1 month if not specified
+    if (empty($this->expiry)) {
+        $this->expiry = '1m';
+    }
+}
+
+public function save(): void
 {
 $this->validate([
 'username' => 'required|unique:vpn_users,username',
@@ -28,16 +40,31 @@ $this->validate([
 'selectedServers' => 'required|array|min:1',
 ]);
 
+// Extract the duration in months from the expiry string
+$months = (int) rtrim($this->expiry, 'm');
+
 $vpnUser = VpnUser::create([
 'username' => $this->username,
-'password' => $this->password,
-'expires_at' => now()->addMonths((int) rtrim($this->expiry, 'm')),
+'plain_password' => $this->password, // Store plaintext password for reference
+'password' => bcrypt($this->password), // Store hashed password for authentication
+'expires_at' => now()->addMonths($months),
 ]);
 
 $vpnUser->vpnServers()->sync($this->selectedServers);
 
-session()->flash('message', 'VPN user created successfully!');
-return redirect()->route('admin.vpn-users.index');
+// Log the successful creation for debugging
+Log::info("VPN user created", [
+    'username' => $vpnUser->username,
+    'expires_at' => $vpnUser->expires_at,
+    'servers' => $vpnUser->vpnServers->pluck('id')->toArray()
+]);
+
+// Add success message and reset form
+session()->flash('success', 'VPN user created successfully!');
+
+// Reset form fields
+$this->reset(['username', 'password', 'selectedServers']);
+$this->expiry = '1m'; // Reset to default
 }
 
 public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application

@@ -1,4 +1,24 @@
 <div class="bg-gray-900 text-white rounded shadow p-6">
+    @if ($errors->any())
+        <div class="mb-4 p-4 bg-red-800 text-white rounded-md shadow">
+            <h3 class="font-semibold">Form errors:</h3>
+            <ul class="mt-2 list-disc pl-5 space-y-1">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+    <!-- Success Message -->
+    @if (session()->has('success'))
+        <div class="mb-4 p-4 bg-green-800 text-green-100 rounded-md shadow flex items-center">
+            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+            </svg>
+            <span>{{ session('success') }}</span>
+        </div>
+    @endif
+
     <!-- Tabs -->
     <div class="flex border-b border-gray-700 mb-6 text-sm font-semibold space-x-6">
         <button class="pb-2 border-b-2 border-blue-500 text-white">Details</button>
@@ -11,24 +31,33 @@
         <!-- Username -->
         <div>
             <label class="block text-sm font-medium mb-1 text-gray-300">Username</label>
-            <input type="text" wire:model="username"
+            <input type="text" wire:model.lazy="username"
                    placeholder="Leave blank to auto-generate"
-                   class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500" />
+                   class="w-full bg-gray-800 border {{ $errors->has('username') ? 'border-red-500' : 'border-gray-600' }} rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500" />
+            @error('username')
+                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+            @enderror
         </div>
 
         <!-- Password -->
         <div>
             <label class="block text-sm font-medium mb-1 text-gray-300">Password</label>
-            <input type="text" wire:model="password"
+            <input type="text" wire:model.lazy="password"
                    placeholder="Leave blank to auto-generate"
-                   class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500" />
+                   class="w-full bg-gray-800 border {{ $errors->has('password') ? 'border-red-500' : 'border-gray-600' }} rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500" />
+            @error('password')
+                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+            @enderror
         </div>
 
         <!-- Duration -->
         <div>
             <label class="block text-sm font-medium mb-1 text-gray-300">Duration</label>
             <select wire:model="expiry"
-                    class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500">
+                    class="w-full bg-gray-800 border {{ $errors->has('expiry') ? 'border-red-500' : 'border-gray-600' }} rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500">
+            @error('expiry')
+                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+            @enderror
                 <option value="1m">1 Month</option>
                 <option value="3m">3 Months</option>
                 <option value="6m">6 Months</option>
@@ -39,7 +68,10 @@
         <!-- Server Selection -->
         <div>
             <label class="block text-sm font-medium mb-2 text-gray-300">Assign to Servers</label>
-            <div class="space-y-2">
+            <div class="space-y-2 {{ $errors->has('selectedServers') ? 'border border-red-500 p-2 rounded' : '' }}">
+            @error('selectedServers')
+                <p class="mb-2 text-sm text-red-500">{{ $message }}</p>
+            @enderror
                 @foreach ($servers as $server)
                     <label class="flex items-center space-x-2 text-sm text-gray-300">
                         <input type="checkbox" wire:model="selectedServers" value="{{ $server->id }}"
@@ -51,7 +83,15 @@
         </div>
 
         <!-- Submit Button -->
-        <div class="md:col-span-2 text-right pt-4">
+        <div class="md:col-span-2 text-right pt-4 flex items-center justify-end space-x-3">
+            @if(session()->has('success'))
+                <a href="{{ route('admin.vpn-users.index') }}"
+                   class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded font-medium inline-flex items-center space-x-2">
+                    <span>✅</span>
+                    <span>View All Users</span>
+                </a>
+            @endif
+
             <button type="submit"
                     class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-medium inline-flex items-center space-x-2"
                     wire:loading.attr="disabled"

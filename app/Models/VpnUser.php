@@ -39,6 +39,9 @@ class VpnUser extends Authenticatable
         'max_connections',
         'is_online',
         'last_seen_at',
+        'expires_at', // Added missing expires_at field
+        'is_active', // Added missing is_active field
+        'last_ip',   // Added missing last_ip field
     ];
 
     protected $hidden = [
