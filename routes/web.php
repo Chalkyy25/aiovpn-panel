@@ -62,7 +62,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
 
         // VPN Users (global list)
-        Route::get('/vpn-users', [VpnUserList::class])->name('vpn-users.index');
+        Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
         Route::get('/vpn-users/create', CreateVpnUser::class)->name('vpn-users.create');
 
         // Reseller Create
