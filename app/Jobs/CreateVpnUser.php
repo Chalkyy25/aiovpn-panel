@@ -55,7 +55,7 @@ class CreateVpnUser implements ShouldQueue
 
         // 🔁 Loop servers and generate configs
         foreach ($vpnUser->vpnServers as $server) {
-            dispatch(new \App\Jobs\AddWireGuardPeer($vpnUser));
+            dispatch(new \App\Jobs\AddWireGuardPeer($vpnUser, $server));
             dispatch(new \App\Jobs\SyncOpenVPNCredentials($server));
             dispatch(new \App\Jobs\GenerateOvpnFile($vpnUser, $server));
         }
