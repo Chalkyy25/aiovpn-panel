@@ -1,4 +1,3 @@
-<x-app-layout>
     <x-slot name="header">
         <h2 class="text-xl font-semibold text-gray-800">➕ Add VPN Line</h2>
     </x-slot>
@@ -32,4 +31,3 @@
 
         <x-button wire:click="save">💾 Create VPN User</x-button>
     </div>
-</x-app-layout>
