@@ -32,12 +32,10 @@
                     <x-nav-link href="#" :active="false">Lines</x-nav-link>
                     <div
                         x-show="linesOpen"
-                        x-cloak
                         x-transition:enter="transition ease-out duration-100"
                         x-transition:enter-start="transform opacity-0 scale-95"
                         x-transition:enter-end="transform opacity-100 scale-100"
                         class="absolute mt-2 bg-white shadow rounded py-1 w-48 z-50"
-                        style="display: none;"
                     >
                         <x-nav-link href="{{ route('admin.vpn-users.create') }}">Add Line</x-nav-link>
                         <x-nav-link href="#">Generate Trial Line</x-nav-link>

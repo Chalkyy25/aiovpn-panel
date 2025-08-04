@@ -7,7 +7,7 @@
     </div>
 
     <!-- Form -->
-    <form wire:submit.prevent="create" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <form wire:submit.prevent="save" class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Username -->
         <div>
             <label class="block text-sm font-medium mb-1 text-gray-300">Username</label>
@@ -27,12 +27,12 @@
         <!-- Duration -->
         <div>
             <label class="block text-sm font-medium mb-1 text-gray-300">Duration</label>
-            <select wire:model="duration"
+            <select wire:model="expiry"
                     class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500">
-                <option value="1">1 Month</option>
-                <option value="3">3 Months</option>
-                <option value="6">6 Months</option>
-                <option value="12">12 Months</option>
+                <option value="1m">1 Month</option>
+                <option value="3m">3 Months</option>
+                <option value="6m">6 Months</option>
+                <option value="12m">12 Months</option>
             </select>
         </div>
 
