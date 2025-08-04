@@ -45,17 +45,17 @@
                     </div>
                 </div>
 
-                <x-nav-link href="{{ route('admin.servers.index') }}" x-bind:active="request()->routeIs('admin.servers.*')">Servers</x-nav-link>
-                <x-nav-link href="{{ route('admin.settings') }}" x-bind:active="request()->routeIs('admin.settings')">Settings</x-nav-link>
+                <x-nav-link href="{{ route('admin.servers.index') }}" :active="request()->routeIs('admin.servers.*')">Servers</x-nav-link>
+                <x-nav-link href="{{ route('admin.settings') }}" :active="request()->routeIs('admin.settings')">Settings</x-nav-link>
             </div>
 
             <!-- Mobile menu toggle -->
             <div class="sm:hidden flex items-center">
-                <button type="button" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none">
-                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                        <path x-bind:class="{ 'hidden': open, 'inline-flex': !open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                <button type="button" x-on:click="open = !open" class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none">
+                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path :class="{ 'hidden': open, 'inline-flex': !open }" class="inline-flex" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M4 6h16M4 12h16M4 18h16" />
-                        <path x-bind:class="{ 'hidden': !open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        <path :class="{ 'hidden': !open, 'inline-flex': open }" class="hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                               d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
