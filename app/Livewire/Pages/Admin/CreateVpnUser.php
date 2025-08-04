@@ -34,8 +34,8 @@ public function mount(): void
 public function save(): void
 {
 $this->validate([
-'username' => 'required|unique:vpn_users,username',
-'password' => 'required|min:4',
+'username' => 'nullable|unique:vpn_users,username',
+'password' => 'nullable|min:6',
 'expiry' => 'required|in:1m,3m,6m,12m',
 'selectedServers' => 'required|array|min:1',
 ]);
