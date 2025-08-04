@@ -4,6 +4,11 @@ namespace App\Livewire\Pages\Admin;
 
 use App\Models\VpnUser;
 use App\Models\VpnServer;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Contracts\View\View;
+use Illuminate\Foundation\Application;
+use Illuminate\Http\RedirectResponse;
+use Livewire\Attributes\Layout;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
@@ -14,7 +19,7 @@ public $password;
 public $selectedServers = [];
 public $expiry;
 
-public function save()
+public function save(): RedirectResponse
 {
 $this->validate([
 'username' => 'required|unique:vpn_users,username',
@@ -35,7 +40,7 @@ session()->flash('message', 'VPN user created successfully!');
 return redirect()->route('admin.vpn-users.index');
 }
 
-public function render()
+public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
 {
 return view('livewire.pages.admin.create-vpn-user', [
 'servers' => VpnServer::all(),
