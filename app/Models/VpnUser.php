@@ -139,13 +139,20 @@ class VpnUser extends Authenticatable
         });
 
         static::created(function (self $vpnUser) {
-            // Build .conf or .ovpn file
-            VpnConfigBuilder::generate($vpnUser);
+            // Note: OpenVPN configuration generation and credential syncing is now handled
+            // in the CreateVpnUser component to ensure servers are associated first.
+            // This event handler is kept for backward compatibility with other parts of the application.
 
-            // Sync OpenVPN credentials
-            foreach ($vpnUser->vpnServers as $server) {
-                SyncOpenVPNCredentials::dispatch($server);
-                Log::info("🚀 Synced OpenVPN credentials to $server->name ($server->ip_address)");
+            // Only generate configs and sync credentials if servers are already associated
+            if ($vpnUser->vpnServers->isNotEmpty()) {
+                // Build .conf or .ovpn file
+                VpnConfigBuilder::generate($vpnUser);
+
+                // Sync OpenVPN credentials
+                foreach ($vpnUser->vpnServers as $server) {
+                    SyncOpenVPNCredentials::dispatch($server);
+                    Log::info("🚀 Synced OpenVPN credentials to $server->name ($server->ip_address)");
+                }
             }
         });
     }

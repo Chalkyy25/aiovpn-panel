@@ -50,7 +50,17 @@ $vpnUser = VpnUser::create([
 'expires_at' => now()->addMonths($months),
 ]);
 
+// Sync the selected servers
 $vpnUser->vpnServers()->sync($this->selectedServers);
+
+// Manually generate OpenVPN configurations
+\App\Services\VpnConfigBuilder::generate($vpnUser);
+
+// Manually sync OpenVPN credentials for each server
+foreach ($vpnUser->vpnServers as $server) {
+    \App\Jobs\SyncOpenVPNCredentials::dispatch($server);
+    Log::info("🚀 Synced OpenVPN credentials to $server->name ($server->ip_address)");
+}
 
 // Log the successful creation for debugging
 Log::info("VPN user created", [
