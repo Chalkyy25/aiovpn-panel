@@ -35,6 +35,10 @@ class VpnServer extends Model
 
     // ─── Relationships ──────────────────────────────────────────────
 
+    public function getRouteKeyName(): string
+    {
+        return 'id';
+    }
 
     public function clients(): BelongsToMany
     {
