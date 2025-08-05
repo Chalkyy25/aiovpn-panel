@@ -26,11 +26,18 @@ public function mount(VpnServer $vpnServer): void
 {
     $vpnServer = $vpnServer->fresh();
 
-    // Check if model is null or has no IP
-    if (!$vpnServer || blank($vpnServer->ip_address)) {
-        logger()->error("Server {$vpnServer->name} has no IP address!", [
-            'id' => $vpnServer->id ?? 'null',
-            'ip_address' => $vpnServer->ip_address ?? 'null',
+    // Check if model is null after refresh or has no IP
+    if ($vpnServer === null || blank($vpnServer->ip_address ?? null)) {
+        // Get server name safely
+        $serverName = $vpnServer ? $vpnServer->name : null;
+
+        // Use a default name if server name is null or empty
+        $displayName = $serverName ? $serverName : 'unknown';
+
+        logger()->error("Server {$displayName} has no IP address!", [
+            'id' => $vpnServer ? ($vpnServer->id ?? 'null') : 'null',
+            'ip_address' => $vpnServer ? ($vpnServer->ip_address ?? 'null') : 'null',
+            'name' => $displayName,
         ]);
         $this->uptime = '❌ Missing IP';
         return;
