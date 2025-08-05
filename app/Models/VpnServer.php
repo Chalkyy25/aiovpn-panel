@@ -92,10 +92,10 @@ class VpnServer extends Model
 
         if ($this->ssh_type === 'key') {
             $keyPath = storage_path('app/ssh_keys/' . $this->ssh_key);  // Changed this line
-            return "ssh -i $keyPath -o StrictHostKeyChecking=no -p $port $user@$ip";
+            return "ssh -i $keyPath -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p $port $user@$ip";
         }
 
-        return "sshpass -p '$this->ssh_password' ssh -o StrictHostKeyChecking=no -p $port $user@$ip";
+        return "sshpass -p '$this->ssh_password' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p $port $user@$ip";
     }
 
 

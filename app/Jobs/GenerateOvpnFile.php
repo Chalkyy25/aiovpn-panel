@@ -132,7 +132,7 @@ EOL;
     {
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         $sshUser = 'root';
-        $command = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip 'cat $remotePath'";
+        $command = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip 'cat $remotePath'";
 
         exec($command, $output, $status);
         if ($status !== 0 || empty($output)) {

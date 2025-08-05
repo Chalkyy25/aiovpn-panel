@@ -44,7 +44,7 @@ class DeployVpnServer implements ShouldQueue
             $user    = $this->vpnServer->ssh_user;
             $sshType = $this->vpnServer->ssh_type;
 
-            $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
+            $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30";
 
             $authPart = match ($sshType) {
                 'key' => "-i " . escapeshellarg(storage_path('app/ssh_keys/' . ($this->vpnServer->ssh_key ?? 'id_rsa'))),

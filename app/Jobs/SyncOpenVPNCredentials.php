@@ -87,7 +87,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
     private function runSsh(string $command, string $ip, string $sshKey, string $sshUser, string $label): void
     {
-        $fullCmd = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip '$command'";
+        $fullCmd = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command'";
         exec($fullCmd, $output, $status);
 
         if ($status !== 0) {
@@ -100,7 +100,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
     private function runScp(string $localPath, string $remotePath, string $ip, string $sshKey, string $sshUser): void
     {
-        $cmd = "scp -i $sshKey -o StrictHostKeyChecking=no $localPath $sshUser@$ip:$remotePath";
+        $cmd = "scp -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $localPath $sshUser@$ip:$remotePath";
         exec($cmd, $output, $status);
 
         if ($status !== 0) {

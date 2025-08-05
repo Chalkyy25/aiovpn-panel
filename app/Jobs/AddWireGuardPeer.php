@@ -129,7 +129,7 @@ class AddWireGuardPeer implements ShouldQueue
     {
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         $sshUser = 'root';
-        $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no $sshUser@$ip '$command'";
+        $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command'";
 
         exec($sshCommand, $output, $status);
 
