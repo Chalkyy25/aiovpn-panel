@@ -28,7 +28,7 @@ public function mount(VpnServer $vpnServer): void
 
     // Check if model is null or has no IP
     if (!$vpnServer || blank($vpnServer->ip_address)) {
-        logger()->error("❌ Server is invalid or has no IP. Raw data:", [
+        logger()->error("Server {$vpnServer->name} has no IP address!", [
             'id' => $vpnServer->id ?? 'null',
             'ip_address' => $vpnServer->ip_address ?? 'null',
         ]);
