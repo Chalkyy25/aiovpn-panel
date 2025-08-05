@@ -12,8 +12,8 @@ trap 'ERROR_CODE=$?; echo -e "\n❌ Deployment failed with code: $ERROR_CODE\n\n
 
 # Global Configuration
 DEBUG=false
-VPN_USER="${VPN_USER:-}"
-VPN_PASS="${VPN_PASS:-}"
+VPN_USER="${VPN_USER:-admin}"
+VPN_PASS="${VPN_PASS:-$(openssl rand -base64 12)}"
 
 # Debug mode: Enable extended logging
 [ "$DEBUG" = true ] && set -x
@@ -121,6 +121,67 @@ EOF
   echo "[5] Server configuration written successfully."
 }
 
+function create_auth_script() {
+  echo "[5.1] Creating authentication script…"
+
+  # Create auth directory if it doesn't exist
+  mkdir -p /etc/openvpn/auth
+  chmod 700 /etc/openvpn/auth
+
+  # Create initial password file with default credentials if not exists
+  if [ ! -f /etc/openvpn/auth/psw-file ]; then
+    echo "$VPN_USER $VPN_PASS" > /etc/openvpn/auth/psw-file
+    chmod 600 /etc/openvpn/auth/psw-file
+    echo "✅ Created initial password file with default credentials"
+  fi
+
+  # Create the authentication script
+  cat <<'EOF' > /etc/openvpn/auth/checkpsw.sh
+#!/bin/sh
+###########################################################
+# checkpsw.sh (C) 2004 Mathias Sundman <mathias@openvpn.se>
+#
+# This script will authenticate OpenVPN users against
+# a plain text file. The passfile should simply contain
+# one row per user with the username first followed by
+# a space and then the password.
+
+PASSFILE="/etc/openvpn/auth/psw-file"
+LOG_FILE="/var/log/openvpn-password.log"
+TIME_STAMP=`date "+%Y-%m-%d %T"`
+
+###########################################################
+
+if [ ! -r "${PASSFILE}" ]; then
+  echo "${TIME_STAMP}: Could not open password file \"${PASSFILE}\" for reading." >> ${LOG_FILE}
+  exit 1
+fi
+
+CREDENTIALS=$(cat $1 | tr -d '\r')
+USERNAME=$(echo $CREDENTIALS | cut -d' ' -f1)
+PASSWORD=$(echo $CREDENTIALS | cut -d' ' -f2-)
+
+if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+  echo "${TIME_STAMP}: Empty username or password from $USERNAME." >> ${LOG_FILE}
+  exit 1
+fi
+
+CORRECT_PASSWORD=$(grep -E "^${USERNAME}[ \t]+" ${PASSFILE} | cut -d' ' -f2-)
+
+if [ "$PASSWORD" = "$CORRECT_PASSWORD" ]; then
+  echo "${TIME_STAMP}: Successful authentication: $USERNAME." >> ${LOG_FILE}
+  exit 0
+fi
+
+echo "${TIME_STAMP}: Authentication failed: $USERNAME." >> ${LOG_FILE}
+exit 1
+EOF
+
+  # Set proper permissions for the authentication script
+  chmod 755 /etc/openvpn/auth/checkpsw.sh
+  echo "[5.1] Authentication script created successfully."
+}
+
 function enable_openvpn() {
   echo "[6] Restarting OpenVPN service…"
   systemctl enable openvpn@server
@@ -141,8 +202,17 @@ function configure_wireguard() {
 
   mkdir -p /etc/wireguard
   umask 077 && wg genkey | tee /etc/wireguard/server_private_key | wg pubkey > /etc/wireguard/server_public_key
-  local PRIVATE_KEY=$(cat /etc/wireguard/server_private_key)
-  local PUBLIC_IP=$(curl -s https://api.ipify.org)
+  PRIVATE_KEY=$(cat /etc/wireguard/server_private_key)
+  PUBLIC_IP=$(curl -s https://api.ipify.org)
+
+  # Detect the primary network interface
+  DEFAULT_IFACE=$(ip -4 route show default | grep -Po '(?<=dev )(\S+)' | head -1)
+  if [ -z "$DEFAULT_IFACE" ]; then
+    DEFAULT_IFACE="eth0"
+    echo "⚠️ Could not detect primary network interface, using default: $DEFAULT_IFACE"
+  else
+    echo "✅ Detected primary network interface: $DEFAULT_IFACE"
+  fi
 
   cat <<EOF > /etc/wireguard/wg0.conf
 [Interface]
@@ -154,7 +224,7 @@ EOF
 
   # Apply IP forwarding and NAT
   sysctl -w net.ipv4.ip_forward=1
-  iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+  iptables -t nat -A POSTROUTING -o $DEFAULT_IFACE -j MASQUERADE
 
   systemctl enable wg-quick@wg0
   systemctl start wg-quick@wg0
@@ -170,6 +240,7 @@ update_system
 install_dependencies
 configure_openvpn
 write_server_configuration
+create_auth_script
 enable_openvpn
 configure_wireguard
 

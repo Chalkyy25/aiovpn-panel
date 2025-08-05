@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Jobs\SyncOpenVPNCredentials;
+use Throwable;
 
 class DeployVpnServer implements ShouldQueue
 {
@@ -41,7 +42,7 @@ class DeployVpnServer implements ShouldQueue
             $ip      = $this->vpnServer->ip_address;
             $port    = $this->vpnServer->ssh_port ?? 22;
             $user    = $this->vpnServer->ssh_user;
-            $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+            $keyPath = storage_path('app/ssh_keys/' . ($this->vpnServer->ssh_key ?? 'id_rsa'));
 
             if (!is_file($keyPath)) {
                 $this->failWith("❌ SSH key not found at $keyPath");
@@ -49,7 +50,34 @@ class DeployVpnServer implements ShouldQueue
             }
 
             $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
-            $sshCmd  = "ssh -i $keyPath $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
+
+            // Test SSH connection before proceeding
+            $testCmd = "ssh -i $keyPath $sshOpts $user@$ip 'echo CONNECTION_OK'";
+            exec($testCmd, $testOutput, $testStatus);
+
+            if ($testStatus !== 0) {
+                $this->failWith("❌ Cannot establish SSH connection to {$this->vpnServer->name} ($ip)");
+                return;
+            }
+
+            Log::info("✅ SSH connection test successful for {$this->vpnServer->name} ($ip)");
+
+            // Get or create default VPN user credentials
+            $vpnUser = 'admin';
+            $vpnPass = substr(md5(uniqid()), 0, 12); // Generate a random password
+
+            // Check if we already have VPN users for this server
+            $existingUsers = $this->vpnServer->vpnUsers()->where('is_active', true)->first();
+            if ($existingUsers) {
+                $vpnUser = $existingUsers->username;
+                $vpnPass = $existingUsers->plain_password ?? $vpnPass;
+                Log::info("🔑 Using existing VPN user: $vpnUser");
+            } else {
+                Log::info("🔑 Using default VPN user: $vpnUser with generated password");
+            }
+
+            // Prepare SSH command with environment variables
+            $sshCmd = "VPN_USER='$vpnUser' VPN_PASS='$vpnPass' ssh -i $keyPath $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
 
             $scriptPath = base_path('resources/scripts/deploy-openvpn.sh');
             if (!is_file($scriptPath)) {
@@ -131,19 +159,19 @@ class DeployVpnServer implements ShouldQueue
                 'status' => $exit === 0 ? 'online' : 'offline',
             ]);
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->failWith("❌ Exception: " . $e->getMessage(), $e);
         }
 
         Log::info("✅ DeployVpnServer job finished");
     }
 
-    public function failed(\Throwable $e): void
+    public function failed(Throwable $e): void
     {
         $this->failWith("❌ Job exception: " . $e->getMessage(), $e);
     }
 
-    private function failWith(string $message, \Throwable $e = null): void
+    private function failWith(string $message, Throwable $e = null): void
     {
         Log::error('DEPLOY_JOB: ' . $message);
         if ($e) Log::error($e);
