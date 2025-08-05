@@ -56,8 +56,7 @@ class DeployVpnServer implements ShouldQueue
             $keyPath = str_starts_with($keyValue, '/')
                 ? $keyValue
                 : storage_path('app/ssh_keys/' . $keyValue);
-
-            // Build the base SSH command (corrected: only one ssh!)
+            
             if ($sshType === 'password') {
                 $authPart = "sshpass -p " . escapeshellarg($this->vpnServer->ssh_password);
                 $sshCmdBase = "$authPart ssh $sshOpts $user@$ip";
@@ -65,10 +64,10 @@ class DeployVpnServer implements ShouldQueue
                 $authPart = "-i " . escapeshellarg($keyPath);
                 $sshCmdBase = "ssh $authPart $sshOpts $user@$ip";
             }
-
+            
             // Log the command that will be run
             Log::info('SSH command for test:', [$sshCmdBase]);
-
+            
             // Test SSH connection
             $testOutput = [];
             $testStatus = null;
@@ -79,6 +78,7 @@ class DeployVpnServer implements ShouldQueue
                 $this->failWith("❌ SSH connection failed to $ip");
                 return;
             }
+
 
             Log::info("✅ SSH test successful for server $ip");
 
