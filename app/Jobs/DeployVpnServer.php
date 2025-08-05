@@ -52,7 +52,9 @@ public function handle(): void
 
         $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30";
 
-        $keyPath = storage_path('app/ssh_keys/' . ($this->vpnServer->ssh_key ?? 'id_rsa'));
+        $keyValue = $this->vpnServer->ssh_key ?? 'id_rsa';
+        $keyPath = str_starts_with($keyValue, '/')? 
+        $keyValue : storage_path('app/ssh_keys/' . $keyValue);
         $authPart = '';
         if ($sshType === 'key') {
             $authPart = "-i " . escapeshellarg($keyPath);
