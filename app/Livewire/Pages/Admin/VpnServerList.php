@@ -83,10 +83,12 @@ class VpnServerList extends Component
 
     public function loadServers(): void
     {
-        $this->servers = VpnServer::latest()->get()->map(function ($server) {
-            $server->online_user_count = $server->getOnlineUserCount();
-            return $server;
-        });
+        $this->servers = VpnServer::latest()
+            ->get()
+            ->map(function ($server) {
+                $server->online_user_count = $server->getOnlineUserCount();
+                return $server;
+            });
     }
 
     public function createServer(): void

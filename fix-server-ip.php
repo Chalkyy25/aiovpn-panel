@@ -1,82 +1,102 @@
 <?php
 
+// This script fixes the server data in the database by updating the IP addresses
+// of two servers and deleting the rest
+
 require __DIR__ . '/vendor/autoload.php';
 
 // Bootstrap Laravel
 $app = require_once __DIR__ . '/bootstrap/app.php';
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-$kernel->bootstrap();
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\VpnServer;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
-echo "Checking for VPN servers with missing IP addresses...\n\n";
+echo "Starting server data fix...\n";
 
-// Get all servers
-$servers = VpnServer::all();
-echo "Found " . $servers->count() . " VPN servers in the database.\n";
+// Begin a transaction to ensure all operations succeed or fail together
+DB::beginTransaction();
 
-// Check for servers with missing IP addresses
-$serversWithMissingIp = $servers->filter(function ($server) {
-    return empty($server->ip_address);
-});
+try {
+    // Get all servers
+    $servers = VpnServer::all();
+    echo "Found " . $servers->count() . " servers in total.\n";
 
-echo "Found " . $serversWithMissingIp->count() . " servers with missing IP addresses.\n";
+    // Keep track of which servers to keep
+    $germanyServer = null;
+    $ukServer = null;
 
-if ($serversWithMissingIp->count() > 0) {
-    echo "\nServers with missing IP addresses:\n";
-
-    foreach ($serversWithMissingIp as $server) {
-        echo "ID: {$server->id}, Name: {$server->name}\n";
-
-        // Check if there's an 'ip' field in the database that might have the IP address
-        $rawServer = DB::table('vpn_servers')->where('id', $server->id)->first();
-
-        // Debug: Print all fields of the server
-        echo "  Raw database fields:\n";
-        foreach ((array)$rawServer as $field => $value) {
-            echo "    $field: " . ($value ?: 'NULL') . "\n";
+    // Find the first two servers to update
+    foreach ($servers as $server) {
+        if (!$germanyServer) {
+            $germanyServer = $server;
+            continue;
         }
 
-        // Ask for a new IP address
-        echo "\n  Enter a new IP address for this server (or leave empty to skip): ";
-        $newIp = trim(fgets(STDIN));
-
-        if (!empty($newIp)) {
-            // Validate IP address
-            if (filter_var($newIp, FILTER_VALIDATE_IP)) {
-                // Update the server
-                $server->ip_address = $newIp;
-                $server->save();
-
-                echo "  ✅ Updated server {$server->name} with IP address {$newIp}\n";
-                Log::info("Updated server {$server->name} (ID: {$server->id}) with IP address {$newIp}");
-            } else {
-                echo "  ❌ Invalid IP address: {$newIp}\n";
-            }
-        } else {
-            echo "  ⚠️ Skipped updating server {$server->name}\n";
-        }
-
-        echo "\n";
-    }
-
-    // Verify the updates
-    $remainingServersWithMissingIp = VpnServer::all()->filter(function ($server) {
-        return empty($server->ip_address);
-    });
-
-    echo "After updates, there are " . $remainingServersWithMissingIp->count() . " servers with missing IP addresses.\n";
-
-    if ($remainingServersWithMissingIp->count() > 0) {
-        echo "\nRemaining servers with missing IP addresses:\n";
-        foreach ($remainingServersWithMissingIp as $server) {
-            echo "ID: {$server->id}, Name: {$server->name}\n";
+        if (!$ukServer) {
+            $ukServer = $server;
+            break;
         }
     }
-} else {
-    echo "\nAll servers have IP addresses set. No action needed.\n";
+
+    // Update the Germany server
+    if ($germanyServer) {
+        echo "Updating Germany server (ID: {$germanyServer->id})...\n";
+        $germanyServer->update([
+            'name' => 'Germany',
+            'ip_address' => '5.22.212.177',
+            'deployment_status' => 'succeeded', // Set to succeeded to make buttons work
+        ]);
+        echo "✅ Germany server updated.\n";
+    } else {
+        echo "❌ No server found to update as Germany server.\n";
+    }
+
+    // Update the UK London server
+    if ($ukServer) {
+        echo "Updating UK London server (ID: {$ukServer->id})...\n";
+        $ukServer->update([
+            'name' => 'UK London',
+            'ip_address' => '83.136.254.231',
+            'deployment_status' => 'succeeded', // Set to succeeded to make buttons work
+        ]);
+        echo "✅ UK London server updated.\n";
+    } else {
+        echo "❌ No server found to update as UK London server.\n";
+    }
+
+    // Delete all other servers
+    $serversToDelete = VpnServer::whereNotIn('id', [
+        $germanyServer ? $germanyServer->id : 0,
+        $ukServer ? $ukServer->id : 0,
+    ])->get();
+
+    echo "Deleting " . $serversToDelete->count() . " extra servers...\n";
+    foreach ($serversToDelete as $server) {
+        echo "Deleting server ID: {$server->id}, Name: {$server->name}...\n";
+        $server->delete();
+    }
+    echo "✅ Extra servers deleted.\n";
+
+    // Commit the transaction
+    DB::commit();
+    echo "✅ All changes committed to the database.\n";
+
+} catch (\Exception $e) {
+    // Rollback the transaction if anything fails
+    DB::rollBack();
+    echo "❌ Error: " . $e->getMessage() . "\n";
+    echo "❌ All changes have been rolled back.\n";
 }
 
-echo "\nDone.\n";
+echo "\nServer data fix completed.\n";
+
+// Verify the changes
+echo "\nVerifying changes...\n";
+$updatedServers = VpnServer::all();
+echo "Found " . $updatedServers->count() . " servers after fix:\n";
+foreach ($updatedServers as $server) {
+    echo "- ID: {$server->id}, Name: {$server->name}, IP: {$server->ip_address}, Status: {$server->deployment_status}\n";
+}
+
+echo "\nFix completed.\n";

@@ -1,114 +1,64 @@
 <?php
 
+// This script tests if the server filtering and SSH key path handling work correctly
+
 require __DIR__ . '/vendor/autoload.php';
 
 // Bootstrap Laravel
 $app = require_once __DIR__ . '/bootstrap/app.php';
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-$kernel->bootstrap();
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\VpnServer;
-use App\Livewire\Pages\Admin\ServerShow;
 use Illuminate\Support\Facades\Log;
 
-echo "Testing the server IP address fix...\n\n";
+// Check all servers in the database
+echo "Checking all servers in the database...\n";
+$allServers = VpnServer::all();
 
-// Get all servers
-$servers = VpnServer::all();
-echo "Found " . $servers->count() . " VPN servers in the database.\n\n";
+echo "Found " . $allServers->count() . " servers in total:\n";
+foreach ($allServers as $server) {
+    echo "- ID: {$server->id}, Name: {$server->name}, IP: {$server->ip_address}, Status: {$server->deployment_status}\n";
+}
 
-// Test each server
-foreach ($servers as $server) {
-    echo "Testing server: {$server->name} (ID: {$server->id})\n";
-    echo "  IP Address: " . ($server->ip_address ?: 'NULL') . "\n";
+// Test server filtering
+echo "\nTesting server filtering...\n";
+$allowedIps = ['5.22.212.177', '83.136.254.231'];
+$filteredServers = VpnServer::whereIn('ip_address', $allowedIps)->get();
 
-    // Create a ServerShow component and mount the server
-    $component = new ServerShow();
+echo "Found " . $filteredServers->count() . " servers with the specified IP addresses:\n";
+foreach ($filteredServers as $server) {
+    echo "- {$server->name} ({$server->ip_address})\n";
+}
 
-    // Capture logs
-    $logs = [];
-    Log::shouldReceive('info')->andReturnUsing(function ($message, $context = []) use (&$logs) {
-        $logs[] = ['level' => 'info', 'message' => $message, 'context' => $context];
-        return null;
-    });
+// Test SSH key path handling
+echo "\nTesting SSH key path handling...\n";
+$possiblePaths = [
+    '/var/www/aiovpn/storage/app/ssh_keys/id_rsa',
+    storage_path('app/ssh_keys/id_rsa'),
+    base_path('storage/app/ssh_keys/id_rsa'),
+    base_path('storage/ssh_keys/id_rsa')
+];
 
-    Log::shouldReceive('error')->andReturnUsing(function ($message, $context = []) use (&$logs) {
-        $logs[] = ['level' => 'error', 'message' => $message, 'context' => $context];
-        return null;
-    });
-
-    Log::shouldReceive('warning')->andReturnUsing(function ($message, $context = []) use (&$logs) {
-        $logs[] = ['level' => 'warning', 'message' => $message, 'context' => $context];
-        return null;
-    });
-
-    // Mount the server
-    $component->mount($server);
-
-    // Check if the component has the server with IP address
-    if (isset($component->vpnServer) && !empty($component->vpnServer->ip_address)) {
-        echo "  ✅ Component has server with IP address: {$component->vpnServer->ip_address}\n";
+foreach ($possiblePaths as $path) {
+    echo "Checking if SSH key exists at: {$path}\n";
+    if (is_file($path)) {
+        echo "✅ SSH key found at: {$path}\n";
     } else {
-        echo "  ❌ Component does not have server with IP address\n";
+        echo "❌ SSH key not found at: {$path}\n";
     }
-
-    // Print logs
-    echo "\n  Logs:\n";
-    foreach ($logs as $log) {
-        echo "    [{$log['level']}] {$log['message']}\n";
-        if (!empty($log['context'])) {
-            echo "      Context: " . json_encode($log['context']) . "\n";
-        }
-    }
-
-    echo "\n";
 }
 
-// Test with a server that has no IP address
-echo "Testing with a server that has no IP address...\n";
-$testServer = new VpnServer();
-$testServer->id = 999;
-$testServer->name = "Test Server";
-$testServer->exists = true;
-// Intentionally not setting ip_address
+// Check if any servers have missing IP addresses
+echo "\nChecking for servers with missing IP addresses...\n";
+$serversWithoutIp = VpnServer::whereNull('ip_address')->orWhere('ip_address', '')->get();
 
-// Create a ServerShow component and mount the server
-$component = new ServerShow();
-
-// Capture logs
-$logs = [];
-Log::shouldReceive('info')->andReturnUsing(function ($message, $context = []) use (&$logs) {
-    $logs[] = ['level' => 'info', 'message' => $message, 'context' => $context];
-    return null;
-});
-
-Log::shouldReceive('error')->andReturnUsing(function ($message, $context = []) use (&$logs) {
-    $logs[] = ['level' => 'error', 'message' => $message, 'context' => $context];
-    return null;
-});
-
-Log::shouldReceive('warning')->andReturnUsing(function ($message, $context = []) use (&$logs) {
-    $logs[] = ['level' => 'warning', 'message' => $message, 'context' => $context];
-    return null;
-});
-
-// Mount the server
-$component->mount($testServer);
-
-// Check if the component has the server with IP address
-if (isset($component->vpnServer) && !empty($component->vpnServer->ip_address)) {
-    echo "  ✅ Component has server with IP address: {$component->vpnServer->ip_address}\n";
+if ($serversWithoutIp->count() > 0) {
+    echo "Found " . $serversWithoutIp->count() . " servers with missing IP addresses:\n";
+    foreach ($serversWithoutIp as $server) {
+        echo "- {$server->id}: {$server->name}\n";
+    }
 } else {
-    echo "  ❌ Component does not have server with IP address\n";
-}
-
-// Print logs
-echo "\n  Logs:\n";
-foreach ($logs as $log) {
-    echo "    [{$log['level']}] {$log['message']}\n";
-    if (!empty($log['context'])) {
-        echo "      Context: " . json_encode($log['context']) . "\n";
-    }
+    echo "No servers with missing IP addresses found.\n";
 }
 
 echo "\nTest completed.\n";

@@ -278,10 +278,26 @@ public function mount(VpnServer $vpnServer): void
         $ssh = new SSH2($this->vpnServer->ip_address, $sshPort);
 
         if ($this->vpnServer->ssh_type === 'key') {
-            $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
-            if (!is_file($keyPath)) {
-                throw new RuntimeException('SSH key not found at ' . $keyPath);
+            // Try multiple possible paths for the SSH key
+            $possiblePaths = [
+                '/var/www/aiovpn/storage/app/ssh_keys/id_rsa',
+                storage_path('app/ssh_keys/id_rsa'),
+                base_path('storage/app/ssh_keys/id_rsa'),
+                base_path('storage/ssh_keys/id_rsa')
+            ];
+
+            $keyPath = null;
+            foreach ($possiblePaths as $path) {
+                if (is_file($path)) {
+                    $keyPath = $path;
+                    break;
+                }
             }
+
+            if (!$keyPath) {
+                throw new RuntimeException('SSH key not found in any of the expected locations');
+            }
+
             $key = PublicKeyLoader::load(file_get_contents($keyPath));
             $login = $ssh->login($this->vpnServer->ssh_user, $key);
         } else {
