@@ -8,7 +8,7 @@ php artisan view:clear
 php artisan config:clear
 
 # Reload PHP-FPM (uncomment and edit your PHP version as needed)
-sudo systemctl reload php8.2-fpm
-# sudo systemctl reload php8.3-fpm
+sudo systemctl restart php8.2-fpm
+sudo systemctl restart nginx
 
 echo "✅ All Laravel caches cleared!"
