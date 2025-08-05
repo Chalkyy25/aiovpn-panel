@@ -86,7 +86,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/create', ServerCreate::class)->name('create');
         Route::get('/{vpnserver}/edit', ServerEdit::class)->name('edit');
         Route::get('/{vpnserver}/install-status', ServerInstallStatus::class)->name('install-status');
-        Route::get('/{vpnserver}', ServerShow::class)->name('show');
+        Route::get('/servers/{vpnserver}', ServerShow::class)->whereNumber('vpnserver')->name('servers.show');
         Route::delete('/{vpnserver}', [VpnServerController::class, 'destroy'])->name('destroy');
 
         // VPN Users for a Specific Server
