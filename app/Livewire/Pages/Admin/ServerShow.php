@@ -124,7 +124,7 @@ class ServerShow extends Component
         }
     }
 
-    public function deleteServer(): void
+    public function deleteServer():
     {
         $name = $this->vpnServer->name;
         $this->vpnServer->delete();
