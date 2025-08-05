@@ -10,6 +10,7 @@ use phpseclib3\Crypt\PublicKeyLoader;
 use RuntimeException;
 use Throwable;
 
+#[Layout('layouts.app')]
 class ServerShow extends Component
 {
     public VpnServer $vpnServer;
