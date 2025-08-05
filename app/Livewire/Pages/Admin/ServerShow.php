@@ -94,6 +94,12 @@ public function mount(VpnServer $vpnServer): void
 
     public function rebootServer(): void
     {
+        // Check if IP address is missing or empty
+        if (blank($this->vpnServer->ip_address)) {
+            session()->flash('status', '❌ Reboot failed: Server IP address is missing.');
+            return;
+        }
+
         try {
             $ssh = $this->makeSshClient();
             $ssh->exec('reboot');
@@ -123,6 +129,12 @@ public function mount(VpnServer $vpnServer): void
             return;
         }
 
+        // Check if IP address is missing or empty
+        if (blank($this->vpnServer->ip_address)) {
+            session()->flash('status', '❌ Deployment failed: Server IP address is missing.');
+            return;
+        }
+
         $this->vpnServer->update([
             'deployment_status' => 'queued',
             'deployment_log' => '',
@@ -134,6 +146,12 @@ public function mount(VpnServer $vpnServer): void
 
     public function restartVpn(): void
     {
+        // Check if IP address is missing or empty
+        if (blank($this->vpnServer->ip_address)) {
+            session()->flash('message', '❌ Restart failed: Server IP address is missing.');
+            return;
+        }
+
         try {
             $ssh = $this->makeSshClient();
             $ssh->exec('systemctl restart openvpn@server');
@@ -145,8 +163,16 @@ public function mount(VpnServer $vpnServer): void
 
     private function makeSshClient(): SSH2
     {
-        logger()->info("SSH → {$this->vpnServer->ip_address}:{$this->vpnServer->ssh_port}");
-        $ssh = new SSH2($this->vpnServer->ip_address, $this->vpnServer->ssh_port);
+        // Validate IP address
+        if (blank($this->vpnServer->ip_address)) {
+            throw new \RuntimeException('Server IP address is missing or empty');
+        }
+
+        // Validate SSH port
+        $sshPort = $this->vpnServer->ssh_port ?? 22;
+
+        logger()->info("SSH → {$this->vpnServer->ip_address}:{$sshPort}");
+        $ssh = new SSH2($this->vpnServer->ip_address, $sshPort);
 
         if ($this->vpnServer->ssh_type === 'key') {
             $keyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
