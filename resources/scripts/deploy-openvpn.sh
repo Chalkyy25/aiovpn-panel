@@ -74,20 +74,27 @@ function install_dependencies() {
 function configure_openvpn() {
   echo "[4] Configuring OpenVPN server…"
 
-  # Generate CA and server certificates
+  # Set up Easy-RSA and PKI
   mkdir -p /etc/openvpn/easy-rsa/keys
   cp -a /usr/share/easy-rsa/* /etc/openvpn/easy-rsa
   cd /etc/openvpn/easy-rsa
-  ./easyrsa init-pki
-  EASYRSA_BATCH=1 ./easyrsa build-ca nopass
-  EASYRSA_BATCH=1 ./easyrsa gen-req server nopass
-  EASYRSA_BATCH=1 ./easyrsa sign-req server server
-  ./easyrsa gen-dh
-  openvpn --genkey --secret /etc/openvpn/ta.key
+  export EASYRSA_BATCH=1
 
-  # Copy server configuration files
-  cp pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
-  echo "[4] OpenVPN certificates generated successfully."
+  if [ ! -d "pki" ]; then
+    echo "[4] PKI not found. Initializing fresh PKI and generating server certificates…"
+    ./easyrsa init-pki
+    ./easyrsa build-ca nopass
+    ./easyrsa gen-req server nopass
+    ./easyrsa sign-req server server
+    ./easyrsa gen-dh
+    openvpn --genkey --secret /etc/openvpn/ta.key
+
+    # Copy certs and keys
+    cp pki/ca.crt pki/issued/server.crt pki/private/server.key pki/dh.pem /etc/openvpn/
+    echo "[4] OpenVPN certificates generated successfully."
+  else
+    echo "[4] PKI already exists. Skipping certificate generation."
+  fi
 }
 
 function write_server_configuration() {
