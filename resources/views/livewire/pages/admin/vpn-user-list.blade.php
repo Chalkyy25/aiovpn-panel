@@ -37,9 +37,9 @@
                                 @if($user->vpnServers->count() > 0)
                                     <div class="flex flex-wrap gap-1">
                                         @foreach($user->vpnServers as $server)
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                            <a href="{{ route('admin.servers.show', $server->id) }}" class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 cursor-pointer">
                                                 {{ $server->name }}
-                                            </span>
+                                            </a>
                                         @endforeach
                                     </div>
                                 @else

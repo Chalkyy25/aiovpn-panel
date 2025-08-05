@@ -32,7 +32,7 @@ class VpnServerController extends Controller
     public function show($id)
     {
         $vpnServer = VpnServer::findOrFail($id);
-        return view('vpn_servers.show', compact('vpnServer'));
+        return redirect()->route('admin.servers.show', $vpnServer->id);
     }
 
     public function destroy($id)
