@@ -2,9 +2,10 @@
 
 namespace App\Livewire\Pages\Admin;
 
-use Livewire\Component;
 use App\Models\VpnServer;
 use App\Jobs\DeployVpnServer;
+use Livewire\Component;
+use Livewire\Attributes\Layout;
 use phpseclib3\Net\SSH2;
 use phpseclib3\Crypt\PublicKeyLoader;
 use RuntimeException;
@@ -87,6 +88,7 @@ class ServerShow extends Component
             }
 
             $key = PublicKeyLoader::load(file_get_contents($keyPath));
+
             if (!$ssh->login($user, $key)) {
                 throw new RuntimeException('SSH login failed (key)');
             }
@@ -112,6 +114,7 @@ class ServerShow extends Component
         ]);
 
         DeployVpnServer::dispatch($this->vpnServer);
+
         session()->flash('status', '🚀 Deployment started.');
     }
 
@@ -125,14 +128,6 @@ class ServerShow extends Component
         }
     }
 
-    public function deleteServer()
-    {
-        $name = $this->vpnServer->name;
-        $this->vpnServer->delete();
-        session()->flash('status', "🗑️ Server “$name” deleted.");
-        return redirect()->route('admin.servers.index');
-    }
-
     public function restartVpn(): void
     {
         try {
@@ -141,6 +136,15 @@ class ServerShow extends Component
         } catch (Throwable $e) {
             session()->flash('message', '❌ Restart failed: ' . $e->getMessage());
         }
+    }
+
+    public function deleteServer()
+    {
+        $name = $this->vpnServer->name;
+        $this->vpnServer->delete();
+
+        session()->flash('status', "🗑️ Server “$name” deleted.");
+        return redirect()->route('admin.servers.index');
     }
 
     public function getFilteredLogProperty(): array
