@@ -22,18 +22,23 @@ class ServerShow extends Component
     public string $deploymentStatus = '…';
     public string $deploymentLog = '';
 
-    public function mount(VpnServer $vpnServer): void
-    {
-        $this->vpnServer = $vpnServer;
+public function mount(VpnServer $vpnServer): void
+{
+    $vpnServer = $vpnServer->fresh();
 
-        if (blank($vpnServer->ip_address)) {
-            logger()->error("Server {$vpnServer->id} has no IP address!");
-            $this->uptime = '❌ Missing IP';
-            return;
-        }
-
-        $this->refresh();
+    // Check if model is null or has no IP
+    if (!$vpnServer || blank($vpnServer->ip_address)) {
+        logger()->error("❌ Server is invalid or has no IP. Raw data:", [
+            'id' => $vpnServer->id ?? 'null',
+            'ip_address' => $vpnServer->ip_address ?? 'null',
+        ]);
+        $this->uptime = '❌ Missing IP';
+        return;
     }
+
+    $this->vpnServer = $vpnServer;
+    $this->refresh();
+}
 
     public function refresh(): void
     {
