@@ -25,7 +25,7 @@ class DeployVpnServer implements ShouldQueue
 
     public function handle(): void
     {
-        Log::info("🚀 Starting DeployVpnServer job");
+        Log::info("🚀 Starting DeployVpnServer job for server #{$this->vpnServer->id}");
 
         if ($this->vpnServer->is_deploying) {
             Log::warning("⚠️ Already deploying: Server #{$this->vpnServer->id}");
@@ -42,54 +42,60 @@ class DeployVpnServer implements ShouldQueue
             $ip      = $this->vpnServer->ip_address;
             $port    = $this->vpnServer->ssh_port ?? 22;
             $user    = $this->vpnServer->ssh_user;
-            $keyPath = storage_path('app/ssh_keys/' . ($this->vpnServer->ssh_key ?? 'id_rsa'));
-
-            if (!is_file($keyPath)) {
-                $this->failWith("❌ SSH key not found at $keyPath");
-                return;
-            }
+            $sshType = $this->vpnServer->ssh_type;
 
             $sshOpts = "-p $port -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null";
 
-            // Test SSH connection before proceeding
-            $testCmd = "ssh -i $keyPath $sshOpts $user@$ip 'echo CONNECTION_OK'";
-            exec($testCmd, $testOutput, $testStatus);
+            $authPart = match ($sshType) {
+                'key' => "-i " . escapeshellarg(storage_path('app/ssh_keys/' . ($this->vpnServer->ssh_key ?? 'id_rsa'))),
+                'password' => "sshpass -p '{$this->vpnServer->ssh_password}'",
+                default => '',
+            };
 
+            $sshCmdBase = "$authPart ssh $sshOpts $user@$ip";
+
+            // Test SSH connection
+            exec("$sshCmdBase 'echo CONNECTION_OK'", $testOutput, $testStatus);
             if ($testStatus !== 0) {
-                $this->failWith("❌ Cannot establish SSH connection to {$this->vpnServer->name} ($ip)");
+                $this->failWith("❌ SSH connection failed to $ip");
                 return;
             }
 
-            Log::info("✅ SSH connection test successful for {$this->vpnServer->name} ($ip)");
+            Log::info("✅ SSH test successful for server $ip");
 
-            // Get or create default VPN user credentials
+            // Get or generate VPN credentials
             $vpnUser = 'admin';
-            $vpnPass = substr(md5(uniqid()), 0, 12); // Generate a random password
+            $vpnPass = substr(md5(uniqid()), 0, 12);
 
-            // Check if we already have VPN users for this server
-            $existingUsers = $this->vpnServer->vpnUsers()->where('is_active', true)->first();
-            if ($existingUsers) {
-                $vpnUser = $existingUsers->username;
-                $vpnPass = $existingUsers->plain_password ?? $vpnPass;
-                Log::info("🔑 Using existing VPN user: $vpnUser");
+            $existing = $this->vpnServer->vpnUsers()->where('is_active', true)->first();
+            if ($existing) {
+                $vpnUser = $existing->username;
+                $vpnPass = $existing->plain_password ?? $vpnPass;
+                Log::info("🔑 Reusing existing user: $vpnUser");
             } else {
-                Log::info("🔑 Using default VPN user: $vpnUser with generated password");
+                Log::info("🔑 Using default user: $vpnUser with generated password");
             }
 
-            // Prepare SSH command with environment variables
-            $sshCmd = "VPN_USER='$vpnUser' VPN_PASS='$vpnPass' ssh -i $keyPath $sshOpts $user@$ip 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
+            // Build SSH execution command
+            $env = "VPN_USER='$vpnUser' VPN_PASS='$vpnPass'";
+            $fullCmd = "$env $sshCmdBase 'bash -se < /dev/stdin && echo EXIT_CODE:\$?'";
 
             $scriptPath = base_path('resources/scripts/deploy-openvpn.sh');
             if (!is_file($scriptPath)) {
-                $this->failWith("❌ Missing deployment script at $scriptPath");
+                $this->failWith("❌ Missing script at $scriptPath");
                 return;
             }
 
             $script = file_get_contents($scriptPath);
 
-            // 🔧 Execute deployment via SSH
+            // Run script
             $pipes = [];
-            $proc  = proc_open($sshCmd, [0 => ['pipe','r'], 1 => ['pipe','w'], 2 => ['pipe','w']], $pipes);
+            $proc = proc_open($fullCmd, [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ], $pipes);
+
             if (!is_resource($proc)) {
                 $this->failWith("❌ Failed to open SSH process");
                 return;
@@ -99,9 +105,9 @@ class DeployVpnServer implements ShouldQueue
             fclose($pipes[0]);
 
             $output = '';
-            $error  = '';
-            $streams = [$pipes[1], $pipes[2]];
+            $error = '';
             $map = [(int)$pipes[1] => 'out', (int)$pipes[2] => 'err'];
+            $streams = [$pipes[1], $pipes[2]];
 
             while ($streams) {
                 $read = $streams;
@@ -127,53 +133,47 @@ class DeployVpnServer implements ShouldQueue
 
             proc_close($proc);
 
-            // 🔧 Process output and exit code
             $combined = $this->vpnServer->deployment_log . $output . $error;
-            $exit = preg_match('/EXIT_CODE:(\d+)/', $combined, $m) ? (int)$m[1] : 255;
-            $combined = preg_replace('/EXIT_CODE:\d+/', '', $combined);
+            $exitCode = preg_match('/EXIT_CODE:(\d+)/', $combined, $m) ? (int)$m[1] : 255;
+            $cleanLog = preg_replace('/EXIT_CODE:\d+/', '', $combined);
 
-            $lines = explode("\n", $combined);
-            $filtered = array_filter($lines, fn($l) =>
-                !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION/', $l)
-                && trim($l) !== ''
+            $filteredLines = array_filter(explode("\n", $cleanLog), fn($line) =>
+                trim($line) !== '' && !preg_match('/^\.+\+|\*+|DH parameters appear to be ok|Generating DH parameters|DEPRECATED OPTION/', $line)
             );
 
-            $finalLog = implode("\n", $filtered);
-            $status   = $exit === 0 ? 'succeeded' : 'failed';
+            $finalLog = implode("\n", $filteredLines);
+            $status = $exitCode === 0 ? 'succeeded' : 'failed';
 
-            $finalLog .= $exit === 0
-                ? "\n✅ Deployment succeeded"
-                : "\n❌ Deployment failed (exit code: $exit)";
-
-            Log::info("🔍 Exit code after VPN deploy: $exit");
-
-            // 🔧 Dispatch sync credentials job if deployment succeeded
-            if ($exit === 0) {
+            if ($exitCode === 0) {
+                $finalLog .= "\n✅ Deployment succeeded";
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
+            } else {
+                $finalLog .= "\n❌ Deployment failed (exit code: $exitCode)";
             }
+
+            Log::info("🔍 Deployment exit code: $exitCode");
 
             $this->vpnServer->update([
                 'is_deploying' => false,
                 'deployment_status' => $status,
                 'deployment_log' => $finalLog,
-                'status' => $exit === 0 ? 'online' : 'offline',
+                'status' => $exitCode === 0 ? 'online' : 'offline',
             ]);
-
         } catch (Throwable $e) {
-            $this->failWith("❌ Exception: " . $e->getMessage(), $e);
+            $this->failWith("❌ Exception during deployment: " . $e->getMessage(), $e);
         }
 
-        Log::info("✅ DeployVpnServer job finished");
+        Log::info("✅ DeployVpnServer job complete for server #{$this->vpnServer->id}");
     }
 
     public function failed(Throwable $e): void
     {
-        $this->failWith("❌ Job exception: " . $e->getMessage(), $e);
+        $this->failWith("❌ Job failed with exception: " . $e->getMessage(), $e);
     }
 
     private function failWith(string $message, Throwable $e = null): void
     {
-        Log::error('DEPLOY_JOB: ' . $message);
+        Log::error($message);
         if ($e) Log::error($e);
 
         $this->vpnServer->update([
