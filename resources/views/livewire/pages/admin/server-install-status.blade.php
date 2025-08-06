@@ -2,15 +2,17 @@
     <h2 class="text-xl font-semibold mb-4">🚀 Deployment Status: {{ $vpnServer->name }}</h2>
     <div class="mb-4">
         @php
-            $statusColors = [
-                'succeeded' => 'bg-green-200 text-green-800',
-                'failed' => 'bg-red-200 text-red-800',
-                'running' => 'bg-yellow-200 text-yellow-800',
-                'default' => 'bg-gray-200 text-gray-800'
-            ];
-            $colorClass = $statusColors[$deploymentStatus] ?? $statusColors['default'];
+            // Separate background and text colors to avoid duplicate CSS properties
+            $bgColor = match($deploymentStatus) {
+                'succeeded' => 'bg-green-200',
+                'failed' => 'bg-red-200',
+                'running' => 'bg-yellow-200',
+                default => 'bg-gray-200'
+            };
+            // Use a single text color
+            $textColor = 'text-gray-800';
         @endphp
-        <span class="inline-block px-3 py-1 rounded {{ $colorClass }}">
+        <span class="inline-block px-3 py-1 rounded {{ $bgColor }} {{ $textColor }}">
             Status: {{ ucfirst($deploymentStatus) ?: 'Unknown' }}
         </span>
     </div>

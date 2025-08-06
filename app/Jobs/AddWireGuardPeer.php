@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -15,7 +16,7 @@ class AddWireGuardPeer implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     protected VpnUser $vpnUser;
-    protected $server = null;
+    protected ?object $server = null;
 
     /**
      * Create a new job instance.
@@ -23,7 +24,7 @@ class AddWireGuardPeer implements ShouldQueue
      * @param VpnUser $vpnUser
      * @param object|null $server
      */
-    public function __construct(VpnUser $vpnUser, $server = null)
+    public function __construct(VpnUser $vpnUser, object $server = null)
     {
         $this->vpnUser = $vpnUser->load('vpnServers');
         $this->server = $server;
@@ -76,10 +77,12 @@ class AddWireGuardPeer implements ShouldQueue
         $allSuccessful = ($successCount === $totalServers);
         $failedServers = $totalServers - $successCount;
 
-        if ($allSuccessful) {
-            Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username} on all {$totalServers} servers");
-        } else {
-            Log::error("❌ WireGuard peer setup FAILED for user: {$this->vpnUser->username} - Failed on {$failedServers}/{$totalServers} servers");
+        // Log completion message regardless of whether all servers succeeded
+        Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username}");
+
+        // If there were failures, log them explicitly
+        if (!$allSuccessful) {
+            Log::warning("⚠️ WireGuard peer setup had partial failures for user: {$this->vpnUser->username} - Failed on $failedServers/$totalServers servers");
         }
     }
 
@@ -90,9 +93,9 @@ class AddWireGuardPeer implements ShouldQueue
      * @param array $userKeys
      * @return bool Whether the operation was successful
      */
-    protected function addPeerToServer($server, array $userKeys): bool
+    protected function addPeerToServer(object $server, array $userKeys): bool
     {
-        Log::info("🔧 Adding WireGuard peer to server: {$server->name} ({$server->ip_address})");
+        Log::info("🔧 Adding WireGuard peer to server: $server->name ($server->ip_address)");
 
         // Create peer configuration
         $peerConfig = [
@@ -107,13 +110,13 @@ class AddWireGuardPeer implements ShouldQueue
         );
 
         if ($result['status'] !== 0) {
-            Log::error("❌ [WG] Failed to add peer for {$this->vpnUser->username} on {$server->name}");
+            Log::error("❌ [WG] Failed to add peer for {$this->vpnUser->username} on $server->name");
             $errorMsg = !empty($result['output']) ? implode("\n", $result['output']) : "SSH command failed with status code {$result['status']}";
             Log::error("Error: " . $errorMsg);
             return false;
         }
 
-        Log::info("✅ [WG] Successfully added peer for {$this->vpnUser->username} on {$server->name}");
+        Log::info("✅ [WG] Successfully added peer for {$this->vpnUser->username} on $server->name");
         return true;
     }
 
@@ -151,7 +154,7 @@ class AddWireGuardPeer implements ShouldQueue
     private function executeRemoteCommand(string $ip, string $command): array
     {
         // Find the server by IP address
-        $server = \App\Models\VpnServer::where('ip_address', $ip)->first();
+        $server = VpnServer::where('ip_address', $ip)->first();
 
         if ($server) {
             // Use the server's getSshCommand method to get the proper SSH command
@@ -166,7 +169,7 @@ class AddWireGuardPeer implements ShouldQueue
             $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command' 2>&1";
 
             // Log warning about using default SSH settings
-            \Illuminate\Support\Facades\Log::warning("⚠️ [WG] Using default SSH settings for IP: $ip - server not found in database");
+            Log::warning("⚠️ [WG] Using default SSH settings for IP: $ip - server not found in database");
         }
 
         // Use proc_open for better error handling
@@ -204,20 +207,22 @@ class AddWireGuardPeer implements ShouldQueue
                 $outputArray[] = "STDERR: " . $stderr;
             }
 
-            // If we have no output but command failed, add more detailed error messages
-            if (empty($outputArray) && $status !== 0) {
-                // Add specific error messages based on status code
-                if ($status === 255) {
-                    $outputArray[] = "SSH connection failed. Possible causes: server unreachable, authentication failure, or connection timeout.";
-                } elseif ($status === 127) {
-                    $outputArray[] = "Command not found on remote server. Check if WireGuard is properly installed.";
-                } elseif ($status === 126) {
-                    $outputArray[] = "Permission denied when executing command on remote server.";
-                } else {
-                    $outputArray[] = "SSH command failed with status code $status. Check server connectivity and WireGuard configuration.";
+            // If command failed, always add detailed error information
+            if ($status !== 0) {
+                // If output array is empty, add error message based on status code
+                if (empty($outputArray)) {
+                    if ($status === 255) {
+                        $outputArray[] = "SSH connection failed. Possible causes: server unreachable, authentication failure, or connection timeout.";
+                    } elseif ($status === 127) {
+                        $outputArray[] = "Command not found on remote server. Check if WireGuard is properly installed.";
+                    } elseif ($status === 126) {
+                        $outputArray[] = "Permission denied when executing command on remote server.";
+                    } else {
+                        $outputArray[] = "SSH command failed with status code $status. Check server connectivity and WireGuard configuration.";
+                    }
                 }
 
-                // Log the full SSH command for debugging (with sensitive info redacted)
+                // Add command details for debugging (with sensitive info redacted)
                 $redactedCommand = preg_replace('/-i\s+\S+/', '-i [REDACTED]', $sshCommand);
                 $outputArray[] = "Command attempted: $redactedCommand";
             }
