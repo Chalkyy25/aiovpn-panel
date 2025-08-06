@@ -56,9 +56,16 @@ EOL;
             $fileName = "{$safeServerName}_{$vpnUser->username}.ovpn";
 
             Storage::disk('local')->put("configs/{$fileName}", $config);
-            $generatedFiles[] = storage_path("app/configs/{$fileName}");
+            $fullPath = storage_path("app/configs/{$fileName}");
+            
+            // Set correct permissions/ownership
+            @chmod($fullPath, 0644);
+            @chown($fullPath, 'www-data');
+            @chgrp($fullPath, 'www-data');
+            
+            $generatedFiles[] = $fullPath;
 
-            Log::info("✅ OpenVPN config generated: {$fileName}");
+        Log::info("✅ OpenVPN config generated: {$fileName}");
         }
 
         return $generatedFiles;
