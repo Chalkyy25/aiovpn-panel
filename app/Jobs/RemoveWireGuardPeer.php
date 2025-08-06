@@ -134,13 +134,17 @@ class RemoveWireGuardPeer implements ShouldQueue
      */
     private function buildRemovePeerCommand(string $publicKey): string
     {
-        $interface = 'wg0';
-        $cleanKey = escapeshellarg(trim($publicKey));
+        $publicKey = escapeshellarg(trim($publicKey));
 
         return <<<BASH
-wg set $interface peer $cleanKey remove && \
-wg-quick strip $interface > /etc/wireguard/$interface.conf && \
-wg-quick down $interface && wg-quick up $interface
+# Remove from live config
+wg set wg0 peer $publicKey remove
+
+# Remove from saved config
+sed -i "/$publicKey/,+2d" /etc/wireguard/wg0.conf
+
+# Restart interface
+wg-quick down wg0 && wg-quick up wg0
 BASH;
     }
 
