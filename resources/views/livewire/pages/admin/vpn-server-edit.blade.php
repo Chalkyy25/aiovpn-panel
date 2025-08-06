@@ -10,19 +10,19 @@
     <form wire:submit.prevent="save">
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Name</label>
-            <input type="text" wire:model.defer="name" class="w-full border rounded px-3 py-2" />
+            <input type="text" wire:model="name" class="w-full border rounded px-3 py-2" />
             @error('name') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">IP Address</label>
-            <input type="text" wire:model.defer="ip" class="w-full border rounded px-3 py-2" />
+            <input type="text" wire:model="ip" class="w-full border rounded px-3 py-2" />
             @error('ip') <p class="text-red-500 text-sm mt-1">{{ $message }}</p> @enderror
         </div>
 
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Protocol</label>
-            <select wire:model.defer="protocol" class="w-full border rounded px-3 py-2">
+            <select wire:model="protocol" class="w-full border rounded px-3 py-2">
                 <option value="OpenVPN">OpenVPN</option>
                 <option value="WireGuard">WireGuard</option>
             </select>
@@ -31,7 +31,7 @@
 
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1">Status</label>
-            <select wire:model.defer="status" class="w-full border rounded px-3 py-2">
+            <select wire:model="status" class="w-full border rounded px-3 py-2">
                 <option value="online">Online</option>
                 <option value="offline">Offline</option>
             </select>

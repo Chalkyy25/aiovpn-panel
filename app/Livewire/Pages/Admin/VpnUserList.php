@@ -12,16 +12,21 @@ use Illuminate\Support\Facades\Log;
 use App\Jobs\RemoveWireGuardPeer;
 use App\Jobs\GenerateOvpnFile;
 use App\Jobs\AddWireGuardPeer;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 
+#[Layout('layouts.app')]
 class VpnUserList extends Component
 {
     use WithPagination;
 
     public $search = '';
 
-    protected $listeners = [
-        'refreshUsers' => '$refresh', // optional, in case something external triggers it
-    ];
+    #[On('refreshUsers')]
+    public function refresh()
+    {
+        // Refresh component
+    }
 
     public function updatingSearch(): void
     {
@@ -106,7 +111,6 @@ class VpnUserList extends Component
             ->orderBy('id', 'desc')
             ->paginate(20);
 
-        return view('livewire.pages.admin.vpn-user-list', compact('users'))
-            ->layout('layouts.app');
+        return view('livewire.pages.admin.vpn-user-list', compact('users'));
     }
 }

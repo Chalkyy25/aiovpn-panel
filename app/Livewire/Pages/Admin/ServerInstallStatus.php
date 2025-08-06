@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Admin;
 use Livewire\Component;
 use App\Models\VpnServer;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Computed;
 
 #[Layout('layouts.app')]
 class ServerInstallStatus extends Component
@@ -26,9 +27,10 @@ class ServerInstallStatus extends Component
         $this->deploymentStatus = $this->vpnServer->deployment_status ?? '';
     }
 
-    // Computed property (Livewire 3) for filtered log lines
+    // Computed property for filtered log lines
 
-    public function getFilteredLogProperty(): array
+    #[Computed]
+    public function filteredLog(): array
     {
         $lines = preg_split('/\r\n|\r|\n/', $this->deploymentLog ?? '');
 

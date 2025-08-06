@@ -6,45 +6,60 @@ use Livewire\Component;
 use App\Models\VpnServer;
 use App\Jobs\DeployVpnServer;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Rule;
+use Livewire\Attributes\Validate;
 use Illuminate\Support\Facades\Log;
 
 #[Layout('layouts.app')]
 class ServerCreate extends Component
 {
+    #[Rule('required|string|max:100')]
     public $name;
+
+    #[Rule('required|ip')]
     public $ip;
-    public $protocol     = 'OpenVPN';
-    public $sshType      = 'key';
-    public $sshPort      = 22;
-    public $sshUsername  = 'root';
+
+    #[Rule('required|in:OpenVPN,WireGuard')]
+    public $protocol = 'OpenVPN';
+
+    #[Rule('required|in:key,password')]
+    public $sshType = 'key';
+
+    #[Rule('required|integer|min:1|max:65535')]
+    public $sshPort = 22;
+
+    #[Rule('required|string')]
+    public $sshUsername = 'root';
+
     public $sshPassword;
 
-    public $port         = 1194;
-    public $transport    = 'udp';
-    public $dns          = '1.1.1.1';
+    #[Rule('nullable|integer')]
+    public $port = 1194;
 
-    public $enableIPv6   = false;
+    #[Rule('nullable|in:udp,tcp')]
+    public $transport = 'udp';
+
+    #[Rule('nullable|string')]
+    public $dns = '1.1.1.1';
+
+    public $enableIPv6 = false;
     public $enableLogging = false;
-    public $enableProxy  = false;
-    public $header1      = false;
-    public $header2      = false;
+    public $enableProxy = false;
+    public $header1 = false;
+    public $header2 = false;
 
 public function create()
 {
     Log::info('🛠️ Server creation triggered', ['ip' => $this->ip]);
 
-    $this->validate([
-        'name'        => 'required|string|max:100',
-        'ip'          => 'required|ip',
-        'protocol'    => 'required|in:OpenVPN,WireGuard',
-        'sshPort'     => 'required|integer|min:1|max:65535',
-        'sshType'     => 'required|in:key,password',
-        'sshUsername' => 'required|string',
-        'sshPassword' => $this->sshType === 'password' ? 'required|string' : 'nullable',
-        'port'        => 'nullable|integer',
-        'transport'   => 'nullable|in:udp,tcp',
-        'dns'         => 'nullable|string',
-    ]);
+    // Handle conditional validation for sshPassword
+    if ($this->sshType === 'password') {
+        $this->validate([
+            'sshPassword' => 'required|string',
+        ]);
+    }
+
+    // The rest of the validation is handled by the #[Rule] attributes
 
     $sshKeyPath = null;
     if ($this->sshType === 'key') {

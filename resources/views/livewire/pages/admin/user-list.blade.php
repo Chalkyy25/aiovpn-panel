@@ -10,9 +10,9 @@
     @if ($editingUser)
         <div class="mb-6 p-4 border rounded bg-gray-50">
             <h3 class="font-semibold mb-4">Edit User: {{ $editingUser->email }}</h3>
-            <x-input label="Name" wire:model.defer="editName" class="mb-3" />
-            <x-input label="Email" wire:model.defer="editEmail" class="mb-3" />
-            <x-select label="Role" wire:model.defer="editRole" :options="['admin' => 'Admin', 'reseller' => 'Reseller', 'client' => 'Client']" class="mb-4" />
+            <x-input label="Name" wire:model="editName" class="mb-3" />
+            <x-input label="Email" wire:model="editEmail" class="mb-3" />
+            <x-select label="Role" wire:model="editRole" :options="['admin' => 'Admin', 'reseller' => 'Reseller', 'client' => 'Client']" class="mb-4" />
 
             <div class="flex gap-2">
                 <x-button wire:click="updateUser">Save</x-button>
@@ -23,7 +23,7 @@
 
     <!-- 🔎 Filters -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-        <x-input type="text" placeholder="Search by name or email" wire:model.defer="search" class="w-full md:w-1/3" />
+        <x-input type="text" placeholder="Search by name or email" wire:model.live="search" class="w-full md:w-1/3" />
         <x-select wire:model="roleFilter" class="w-full md:w-48">
             <option value="">All Roles</option>
             <option value="admin">Admin</option>
@@ -103,14 +103,14 @@
 
 @push('scripts')
     <script>
-        document.addEventListener('livewire:load', function () {
+        document.addEventListener('livewire:init', function () {
             Livewire.on('userUpdated', () => {
                 // Optionally, you can add any additional JS logic here after a user is updated
             });
 
             Livewire.on('userDeleted', () => {
-            // Optionally, you can add any additional JS logic here after a user is deleted
+                // Optionally, you can add any additional JS logic here after a user is deleted
+            });
         });
-    });
-</script>
+    </script>
 @endpush

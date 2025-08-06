@@ -69,8 +69,8 @@
 </div>
 
 <script>
-    document.addEventListener('livewire:load', function () {
-        Livewire.hook('message.processed', (message, component) => {
+    document.addEventListener('livewire:init', function () {
+        Livewire.hook('commit', () => {
             let logDiv = document.getElementById('deploy-log');
             if (logDiv) logDiv.scrollTop = logDiv.scrollHeight;
         });
