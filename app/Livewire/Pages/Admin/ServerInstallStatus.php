@@ -13,7 +13,7 @@ class ServerInstallStatus extends Component
     public string $deploymentLog = '';
     public string $deploymentStatus = '';
 
-    public function mount(VpnServer $vpnserver)
+    public function mount(VpnServer $vpnserver): void
     {
         $this->vpnServer = $vpnserver;
         $this->refreshStatus();
@@ -28,29 +28,30 @@ class ServerInstallStatus extends Component
 
     // Computed property (Livewire 3) for filtered log lines
 
-public function getFilteredLogProperty(): array
-{
-    $lines = preg_split('/\r\n|\r|\n/', $this->deploymentLog ?? '');
+    public function getFilteredLogProperty(): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $this->deploymentLog ?? '');
 
-    $filtered = [];
-    foreach ($lines as $line) {
-        $line = trim($line);
-        // If you want to skip truly empty lines, uncomment this next line:
-        // if ($line === '') continue;
+        $filtered = [];
+        foreach ($lines as $line) {
+            $line = trim($line);
 
-        $color = '';
-        if (str_contains($line, '❌')) $color = 'text-red-400';
-        elseif (str_contains($line, 'WARNING')) $color = 'text-yellow-400';
-        elseif (str_contains($line, '✅')) $color = 'text-green-400';
+            if ($line === '') continue; // Only skip completely blank lines
 
-        $filtered[] = [
-            'text' => $line,
-            'color' => $color,
-        ];
+            $color = '';
+            if (str_contains($line, '❌')) $color = 'text-red-400';
+            elseif (str_contains($line, 'WARNING')) $color = 'text-yellow-400';
+            elseif (str_contains($line, '✅')) $color = 'text-green-400';
+
+            $filtered[] = [
+                'text' => $line,
+                'color' => $color,
+            ];
+        }
+
+        return $filtered;
     }
 
-    return $filtered;
-}
 
     public function render()
     {
