@@ -14,7 +14,8 @@
         "livewire/livewire": "^3.6",
         "phpseclib/phpseclib": "^3.0",
         "spatie/ssh": "^1.13",
-        "ext-zip": "*"
+        "ext-zip": "*",
+        "ext-openssl": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
