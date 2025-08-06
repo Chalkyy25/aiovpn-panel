@@ -23,7 +23,8 @@ use App\Livewire\Pages\Admin\{CreateUser,
     ServerInstallStatus,
     VpnUserConfigs,
     CreateReseller,
-    ResellerList};
+    ResellerList,
+    VpnDashboard};
 use App\Livewire\Pages\Client\Dashboard;
 
 // 🌐 Public Landing Page
@@ -53,6 +54,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
                 'activeVpnUsers' => VpnUser::has('vpnServers')->count(),
             ]);
         })->name('dashboard');
+
+        // VPN Dashboard
+        Route::get('/vpn-dashboard', VpnDashboard::class)->name('vpn-dashboard');
 
         // Users
         Route::get('/users', UserList::class)->name('users.index');

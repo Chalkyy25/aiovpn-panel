@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -70,6 +71,16 @@ class VpnUser extends Authenticatable
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');
+    }
+
+    public function connections(): HasMany
+    {
+        return $this->hasMany(VpnUserConnection::class);
+    }
+
+    public function activeConnections(): HasMany
+    {
+        return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
     }
 
     /*

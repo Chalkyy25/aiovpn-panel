@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Log;
 
 class VpnServer extends Model
@@ -48,6 +49,16 @@ class VpnServer extends Model
     public function vpnUsers(): BelongsToMany
     {
         return $this->belongsToMany(VpnUser::class, 'vpn_user_server', 'server_id', 'user_id');
+    }
+
+    public function connections(): HasMany
+    {
+        return $this->hasMany(VpnUserConnection::class, 'vpn_server_id');
+    }
+
+    public function activeConnections(): HasMany
+    {
+        return $this->hasMany(VpnUserConnection::class, 'vpn_server_id')->where('is_connected', true);
     }
 
     // ─── Deployment log helper ──────────────────────────────────────

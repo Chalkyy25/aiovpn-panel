@@ -13,6 +13,10 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('vpn:sync')->everyMinute();
+
+        // Update VPN connection status every minute
+        // For 30-second intervals, set up a cron job: */30 * * * * * php artisan vpn:update-status
+        $schedule->command('vpn:update-status')->everyMinute();
     }
 
     /**

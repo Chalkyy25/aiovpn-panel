@@ -128,10 +128,11 @@ class VpnUserList extends Component
      */
     public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
     {
-        $users = VpnUser::with('vpnServers')
+        $users = VpnUser::with(['vpnServers', 'activeConnections'])
             ->when($this->search, fn($q) =>
                 $q->where('username', 'like', '%' . $this->search . '%')
             )
+            ->orderBy('is_online', 'desc')
             ->orderBy('id', 'desc')
             ->paginate(20);
 

@@ -1,4 +1,4 @@
-<div class="max-w-7xl mx-auto p-4">
+<div wire:poll.10s class="max-w-7xl mx-auto p-4">
     <h2 class="text-xl font-semibold mb-4">VPN Users</h2>
 
     @if (session()->has('message'))
@@ -29,7 +29,17 @@
                 @forelse ($users as $user)
                     <tr>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="text-sm font-medium text-gray-900">{{ $user->username }}</div>
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 h-2.5 w-2.5 {{ $user->is_online ? 'bg-green-400' : 'bg-gray-400' }} rounded-full"></div>
+                                <div class="ml-3">
+                                    <div class="text-sm font-medium text-gray-900">{{ $user->username }}</div>
+                                    @if($user->is_online && $user->last_seen_at)
+                                        <div class="text-xs text-green-600">Online - {{ $user->last_seen_at->diffForHumans() }}</div>
+                                    @elseif($user->last_seen_at)
+                                        <div class="text-xs text-gray-500">Last seen {{ $user->last_seen_at->diffForHumans() }}</div>
+                                    @endif
+                                </div>
+                            </div>
                         </td>
 
                         <td class="px-6 py-4">
@@ -59,9 +69,16 @@
                         </td>
 
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $user->is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
-                                {{ $user->is_active ? 'Active' : 'Inactive' }}
-                            </span>
+                            <div class="flex flex-col space-y-1">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $user->is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
+                                    {{ $user->is_active ? 'Active' : 'Inactive' }}
+                                </span>
+                                @if($user->is_online)
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        {{ $user->activeConnections->count() }} connection{{ $user->activeConnections->count() !== 1 ? 's' : '' }}
+                                    </span>
+                                @endif
+                            </div>
                         </td>
 
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
