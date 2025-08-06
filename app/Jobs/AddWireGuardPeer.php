@@ -45,7 +45,7 @@ class AddWireGuardPeer implements ShouldQueue
 
         // If a specific server is provided, add peer only to that server
         if ($this->server) {
-            $this->addPeerToServer($this->server, $userKeys);
+            $success = $this->addPeerToServer($this->server, $userKeys);
             return;
         }
 
@@ -55,11 +55,19 @@ class AddWireGuardPeer implements ShouldQueue
             return;
         }
 
+        $allSuccessful = true;
         foreach ($this->vpnUser->vpnServers as $server) {
-            $this->addPeerToServer($server, $userKeys);
+            $success = $this->addPeerToServer($server, $userKeys);
+            if (!$success) {
+                $allSuccessful = false;
+            }
         }
 
-        Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username}");
+        if ($allSuccessful) {
+            Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username}");
+        } else {
+            Log::error("❌ WireGuard peer setup completed with errors for user: {$this->vpnUser->username}");
+        }
     }
 
     /**
@@ -67,9 +75,9 @@ class AddWireGuardPeer implements ShouldQueue
      *
      * @param object $server
      * @param array $userKeys
-     * @return void
+     * @return bool Whether the operation was successful
      */
-    protected function addPeerToServer($server, array $userKeys): void
+    protected function addPeerToServer($server, array $userKeys): bool
     {
         Log::info("🔧 Adding WireGuard peer to server: {$server->name} ({$server->ip_address})");
 
@@ -87,11 +95,13 @@ class AddWireGuardPeer implements ShouldQueue
 
         if ($result['status'] !== 0) {
             Log::error("❌ [WG] Failed to add peer for {$this->vpnUser->username} on {$server->name}");
-            Log::error("Error: " . implode("\n", $result['output']));
-            return;
+            $errorMsg = !empty($result['output']) ? implode("\n", $result['output']) : "SSH command failed with status code {$result['status']}";
+            Log::error("Error: " . $errorMsg);
+            return false;
         }
 
         Log::info("✅ [WG] Successfully added peer for {$this->vpnUser->username} on {$server->name}");
+        return true;
     }
 
     /**
@@ -129,13 +139,58 @@ class AddWireGuardPeer implements ShouldQueue
     {
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         $sshUser = 'root';
-        $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command'";
 
-        exec($sshCommand, $output, $status);
+        // Add error output redirection to capture stderr
+        $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command' 2>&1";
 
+        // Use proc_open for better error handling
+        $descriptorspec = [
+            0 => ["pipe", "r"],  // stdin
+            1 => ["pipe", "w"],  // stdout
+            2 => ["pipe", "w"]   // stderr
+        ];
+
+        $process = proc_open($sshCommand, $descriptorspec, $pipes);
+
+        if (is_resource($process)) {
+            // Close stdin
+            fclose($pipes[0]);
+
+            // Read stdout
+            $output = stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+
+            // Read stderr
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+
+            // Get exit code
+            $status = proc_close($process);
+
+            // Combine stdout and stderr if needed
+            $outputArray = [];
+            if (!empty($output)) {
+                $outputArray = explode("\n", trim($output));
+            }
+            if (!empty($stderr) && $status !== 0) {
+                $outputArray[] = "STDERR: " . $stderr;
+            }
+
+            // If we have no output but command failed, add a generic message
+            if (empty($outputArray) && $status !== 0) {
+                $outputArray[] = "SSH command failed with no output. Check server connectivity.";
+            }
+
+            return [
+                'status' => $status,
+                'output' => $outputArray,
+            ];
+        }
+
+        // If proc_open failed
         return [
-            'status' => $status,
-            'output' => $output,
+            'status' => 255,
+            'output' => ['Failed to execute SSH command: could not start process'],
         ];
     }
 }
