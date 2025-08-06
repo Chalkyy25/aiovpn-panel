@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\VpnUser;
 use App\Models\VpnServer;
+use App\Services\VpnConfigBuilder;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\Response;
 use ZipArchive;
 
 class VpnConfigController extends Controller
@@ -68,5 +70,112 @@ class VpnConfigController extends Controller
         }
 
         return back()->with('error', 'Could not create ZIP file.');
+    }
+
+    /**
+     * Generate and download OpenVPN config without saving to file.
+     */
+    public function generateOpenVpnConfig(VpnUser $vpnUser, VpnServer $vpnServer)
+    {
+        try {
+            $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+
+            $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
+
+            return response($configContent)
+                ->header('Content-Type', 'application/x-openvpn-profile')
+                ->header('Content-Disposition', "attachment; filename=\"$fileName\"");
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Failed to generate OpenVPN config: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show live OpenVPN sessions for a server.
+     */
+    public function showLiveSessions(VpnServer $vpnServer)
+    {
+        try {
+            $sessions = VpnConfigBuilder::getLiveOpenVpnSessions($vpnServer);
+
+            return response()->json([
+                'success' => true,
+                'server' => [
+                    'id' => $vpnServer->id,
+                    'name' => $vpnServer->name,
+                    'ip_address' => $vpnServer->ip_address
+                ],
+                'sessions' => $sessions,
+                'total_sessions' => count($sessions),
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch live sessions: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Test OpenVPN connectivity for a server.
+     */
+    public function testConnectivity(VpnServer $vpnServer)
+    {
+        try {
+            $results = VpnConfigBuilder::testOpenVpnConnectivity($vpnServer);
+
+            return response()->json([
+                'success' => true,
+                'server' => [
+                    'id' => $vpnServer->id,
+                    'name' => $vpnServer->name,
+                    'ip_address' => $vpnServer->ip_address
+                ],
+                'connectivity' => $results,
+                'overall_status' => $results['server_reachable'] && $results['openvpn_running'] && $results['port_open'] && $results['certificates_available'],
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to test connectivity: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate OpenVPN config preview (returns config as JSON for display).
+     */
+    public function previewOpenVpnConfig(VpnUser $vpnUser, VpnServer $vpnServer)
+    {
+        try {
+            $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+
+            return response()->json([
+                'success' => true,
+                'server' => [
+                    'id' => $vpnServer->id,
+                    'name' => $vpnServer->name,
+                    'ip_address' => $vpnServer->ip_address
+                ],
+                'user' => [
+                    'id' => $vpnUser->id,
+                    'username' => $vpnUser->username
+                ],
+                'config_content' => $configContent,
+                'config_lines' => count(explode("\n", $configContent)),
+                'timestamp' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to generate config preview: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
