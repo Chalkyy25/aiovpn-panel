@@ -38,10 +38,11 @@ class ServerInstallStatus extends Component
 
             if ($line === '') continue; // Only skip completely blank lines
 
-            $color = '';
+            // Determine color based on line content
             if (str_contains($line, '❌')) $color = 'text-red-400';
             elseif (str_contains($line, 'WARNING')) $color = 'text-yellow-400';
             elseif (str_contains($line, '✅')) $color = 'text-green-400';
+            else $color = 'text-white';
 
             $filtered[] = [
                 'text' => $line,
