@@ -106,6 +106,9 @@ class AddWireGuardPeer implements ShouldQueue
         // Make sure AllowedIPs has correct format and doesn't have double /32 suffix
         if (!str_contains($peerConfig['AllowedIPs'], '/')) {
             $peerConfig['AllowedIPs'] .= '/32';
+        } elseif (str_ends_with($peerConfig['AllowedIPs'], '/32/32')) {
+            // Fix duplicate /32 suffix if it exists
+            $peerConfig['AllowedIPs'] = str_replace('/32/32', '/32', $peerConfig['AllowedIPs']);
         }
 
         // Add peer to server

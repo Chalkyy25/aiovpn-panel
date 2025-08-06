@@ -91,7 +91,14 @@ class VpnServer extends Model
         $user = $this->ssh_user ?? 'root';
 
         if ($this->ssh_type === 'key') {
-            $keyPath = storage_path('app/ssh_keys/' . $this->ssh_key);  // Changed this line
+            // Handle both filename and full path scenarios for ssh_key
+            if (str_starts_with($this->ssh_key, '/') || str_contains($this->ssh_key, ':\\')) {
+                // ssh_key contains full path (Unix or Windows style)
+                $keyPath = $this->ssh_key;
+            } else {
+                // ssh_key contains just filename, construct full path
+                $keyPath = storage_path('app/ssh_keys/' . $this->ssh_key);
+            }
             return "ssh -i $keyPath -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p $port $user@$ip";
         }
 
