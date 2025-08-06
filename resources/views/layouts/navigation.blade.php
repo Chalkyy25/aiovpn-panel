@@ -24,6 +24,10 @@
                     Dashboard
                 </x-nav-link>
 
+                <x-nav-link href="{{ route('admin.vpn-dashboard') }}" :active="request()->routeIs('admin.vpn-dashboard')">
+                    VPN Monitor
+                </x-nav-link>
+
                 <!-- Users Dropdown -->
                 <div
                     class="xui-dropdown"
@@ -97,6 +101,7 @@
     <div class="xui-mobile-menu" x-show="open" x-cloak x-transition>
         <div class="xui-mobile-menu-inner">
             <x-nav-link href="{{ route('admin.dashboard') }}">🏠 Dashboard</x-nav-link>
+            <x-nav-link href="{{ route('admin.vpn-dashboard') }}">📊 VPN Monitor</x-nav-link>
 
             <div class="xui-mobile-section">
                 <div class="xui-mobile-section-title">Users</div>
