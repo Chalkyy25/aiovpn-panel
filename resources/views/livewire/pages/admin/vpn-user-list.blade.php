@@ -19,6 +19,7 @@
             <thead class="bg-gray-50">
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Password</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Servers</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expires</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
@@ -39,6 +40,16 @@
                                         <div class="text-xs text-gray-500">Last seen {{ $user->last_seen_at->diffForHumans() }}</div>
                                     @endif
                                 </div>
+                            </div>
+                        </td>
+
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-gray-900">
+                                @if($user->plain_password)
+                                    <span class="font-mono bg-gray-100 px-2 py-1 rounded text-xs">{{ $user->plain_password }}</span>
+                                @else
+                                    <span class="text-gray-400 text-xs">Not available</span>
+                                @endif
                             </div>
                         </td>
 
@@ -96,7 +107,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                        <td colspan="6" class="px-6 py-4 text-center text-gray-500">
                             No VPN users found
                         </td>
                     </tr>
