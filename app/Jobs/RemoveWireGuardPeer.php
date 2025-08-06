@@ -44,6 +44,9 @@ class RemoveWireGuardPeer implements ShouldQueue
             return;
         }
 
+        // Log the public key for debugging
+        Log::info("🔑 [WG] Removing peer with public key: {$this->vpnUser->wireguard_public_key}");
+
         // If a specific server is provided, remove peer only from that server
         if ($this->server) {
             $this->removePeerFromServer($this->server);
@@ -73,6 +76,27 @@ class RemoveWireGuardPeer implements ShouldQueue
     {
         Log::info("🔧 Removing WireGuard peer from server: $server->name ($server->ip_address)");
 
+        // First verify if the peer exists on the server
+        $verifyResult = $this->executeRemoteCommand(
+            $server->ip_address,
+            "wg show wg0 peers | grep -q '{$this->vpnUser->wireguard_public_key}' && echo 'PEER_EXISTS'"
+        );
+
+        $peerExists = false;
+        if ($verifyResult['status'] === 0) {
+            foreach ($verifyResult['output'] as $line) {
+                if (str_contains($line, 'PEER_EXISTS')) {
+                    $peerExists = true;
+                    break;
+                }
+            }
+        }
+
+        if (!$peerExists) {
+            Log::warning("⚠️ [WG] Peer for {$this->vpnUser->username} not found on $server->name, possibly already removed.");
+            return;
+        }
+
         // Remove peer from server
         $result = $this->executeRemoteCommand(
             $server->ip_address,
@@ -82,6 +106,20 @@ class RemoveWireGuardPeer implements ShouldQueue
         if ($result['status'] !== 0) {
             Log::error("❌ [WG] Failed to remove peer for {$this->vpnUser->username} from $server->name");
             Log::error("Error: " . implode("\n", $result['output']));
+            return;
+        }
+
+        // Check for peer still exists message
+        $peerStillExists = false;
+        foreach ($result['output'] as $line) {
+            if (str_contains($line, 'PEER_STILL_EXISTS')) {
+                $peerStillExists = true;
+                break;
+            }
+        }
+
+        if ($peerStillExists) {
+            Log::error("❌ [WG] Peer removal command executed but peer still exists for {$this->vpnUser->username} on $server->name");
             return;
         }
 
@@ -98,13 +136,19 @@ class RemoveWireGuardPeer implements ShouldQueue
     {
         $interface = 'wg0'; // Default WireGuard interface
 
+        // Ensure the public key is clean and properly formatted
+        $publicKey = trim($publicKey);
+
         // Command to remove peer by public key
-        $wgCommand = "wg set $interface peer $publicKey remove";
+        $wgCommand = "wg set $interface peer '$publicKey' remove";
+
+        // Add verification to check if peer was removed
+        $checkCommand = "wg show $interface peers | grep -q '$publicKey' && echo 'PEER_STILL_EXISTS'";
 
         // Save configuration permanently
         $saveCommand = "wg-quick save $interface";
 
-        return "$wgCommand && $saveCommand";
+        return "$wgCommand && $checkCommand; $saveCommand";
     }
 
     // executeRemoteCommand method moved to ExecutesRemoteCommands trait

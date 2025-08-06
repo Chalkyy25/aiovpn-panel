@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Pages\Admin;
 
+use App\Jobs\RemoveWireGuardPeer;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Application;
@@ -76,6 +77,34 @@ class VpnUserList extends Component
         Log::info("🔧 WireGuard peer setup queued for user $user->username");
 
         session()->flash('message', "WireGuard peer setup for $user->username has been queued.");
+    }
+
+    /**
+     * Force remove WireGuard peer for this user.
+     */
+    public function forceRemoveWireGuardPeer($id): void
+    {
+        $user = VpnUser::findOrFail($id);
+
+        if (empty($user->wireguard_public_key)) {
+            session()->flash('message', "User $user->username has no WireGuard public key.");
+            return;
+        }
+
+        $servers = $user->vpnServers;
+
+        if ($servers->isEmpty()) {
+            session()->flash('message', "User $user->username is not associated with any servers.");
+            return;
+        }
+
+        foreach ($servers as $server) {
+            Log::info("🔧 Force removing WireGuard peer for user $user->username on server $server->name");
+            RemoveWireGuardPeer::dispatch(clone $user, $server);
+        }
+
+        Log::info("🔧 WireGuard peer removal forced for user $user->username");
+        session()->flash('message', "WireGuard peer removal for $user->username has been queued.");
     }
 
     /**

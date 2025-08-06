@@ -164,10 +164,28 @@ class VpnUser extends Authenticatable
             // Load relationships to ensure they're available for cleanup jobs
             $vpnUser->load('vpnServers');
 
-            // Dispatch WireGuard peer removal job
-            if (!empty($vpnUser->wireguard_public_key)) {
-                RemoveWireGuardPeer::dispatch($vpnUser);
+            // Store the public key before deletion to ensure it's available for the job
+            $wireguardPublicKey = $vpnUser->wireguard_public_key;
+
+            // Log the key for debugging
+            if (!empty($wireguardPublicKey)) {
+                Log::info("🔑 [WG] User has public key: {$wireguardPublicKey}");
+            }
+
+            // Dispatch WireGuard peer removal job for each server directly
+            if (!empty($wireguardPublicKey) && $vpnUser->vpnServers->isNotEmpty()) {
+                foreach ($vpnUser->vpnServers as $server) {
+                    Log::info("🔧 Dispatching WireGuard peer removal for user {$vpnUser->username} on server {$server->name}");
+                    RemoveWireGuardPeer::dispatch(clone $vpnUser, $server);
+                }
                 Log::info("🔧 WireGuard peer removal queued for user: {$vpnUser->username}");
+            } else {
+                if (empty($wireguardPublicKey)) {
+                    Log::warning("⚠️ No WireGuard public key found for user: {$vpnUser->username}");
+                }
+                if ($vpnUser->vpnServers->isEmpty()) {
+                    Log::warning("⚠️ No servers associated with user: {$vpnUser->username}");
+                }
             }
 
             // Dispatch OpenVPN cleanup job
