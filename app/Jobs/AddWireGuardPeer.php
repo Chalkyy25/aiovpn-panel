@@ -147,8 +147,8 @@ class AddWireGuardPeer implements ShouldQueue
         // Join commands with spaces
         $wgCommand = implode(' ', $commands);
 
-        // Save configuration permanently
-        $saveCommand = "wg-quick save $interface";
+        // Save configuration permanently - use correct WireGuard command
+        $saveCommand = "wg showconf $interface > /etc/wireguard/$interface.conf";
 
         return "$wgCommand && $saveCommand";
     }

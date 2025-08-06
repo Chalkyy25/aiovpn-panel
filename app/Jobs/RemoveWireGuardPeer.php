@@ -145,8 +145,8 @@ class RemoveWireGuardPeer implements ShouldQueue
         // Add verification to check if peer was removed
         $checkCommand = "wg show $interface peers | grep -q '$publicKey' && echo 'PEER_STILL_EXISTS'";
 
-        // Save configuration permanently
-        $saveCommand = "wg-quick save $interface";
+        // Save configuration permanently - use correct WireGuard command
+        $saveCommand = "wg showconf $interface > /etc/wireguard/$interface.conf";
 
         return "$wgCommand && $checkCommand; $saveCommand";
     }
