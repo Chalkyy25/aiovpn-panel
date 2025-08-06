@@ -46,6 +46,14 @@ class AddWireGuardPeer implements ShouldQueue
         // If a specific server is provided, add peer only to that server
         if ($this->server) {
             $success = $this->addPeerToServer($this->server, $userKeys);
+
+            // Log final status for single server case
+            if ($success) {
+                Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username} on server: {$this->server->name}");
+            } else {
+                Log::error("❌ WireGuard peer setup failed for user: {$this->vpnUser->username} on server: {$this->server->name}");
+            }
+
             return;
         }
 
@@ -55,18 +63,23 @@ class AddWireGuardPeer implements ShouldQueue
             return;
         }
 
-        $allSuccessful = true;
+        $successCount = 0;
+        $totalServers = $this->vpnUser->vpnServers->count();
+
         foreach ($this->vpnUser->vpnServers as $server) {
             $success = $this->addPeerToServer($server, $userKeys);
-            if (!$success) {
-                $allSuccessful = false;
+            if ($success) {
+                $successCount++;
             }
         }
 
+        $allSuccessful = ($successCount === $totalServers);
+        $failedServers = $totalServers - $successCount;
+
         if ($allSuccessful) {
-            Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username}");
+            Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username} on all {$totalServers} servers");
         } else {
-            Log::error("❌ WireGuard peer setup completed with errors for user: {$this->vpnUser->username}");
+            Log::error("❌ WireGuard peer setup FAILED for user: {$this->vpnUser->username} - Failed on {$failedServers}/{$totalServers} servers");
         }
     }
 
@@ -137,11 +150,24 @@ class AddWireGuardPeer implements ShouldQueue
      */
     private function executeRemoteCommand(string $ip, string $command): array
     {
-        $sshKey = storage_path('app/ssh_keys/id_rsa');
-        $sshUser = 'root';
+        // Find the server by IP address
+        $server = \App\Models\VpnServer::where('ip_address', $ip)->first();
 
-        // Add error output redirection to capture stderr
-        $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command' 2>&1";
+        if ($server) {
+            // Use the server's getSshCommand method to get the proper SSH command
+            $sshBaseCommand = $server->getSshCommand();
+            // Add the command to execute
+            $sshCommand = "$sshBaseCommand '$command' 2>&1";
+        } else {
+            // Fallback to default SSH settings if server not found
+            $sshKey = storage_path('app/ssh_keys/id_rsa');
+            $sshUser = 'root';
+            // Add error output redirection to capture stderr
+            $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command' 2>&1";
+
+            // Log warning about using default SSH settings
+            \Illuminate\Support\Facades\Log::warning("⚠️ [WG] Using default SSH settings for IP: $ip - server not found in database");
+        }
 
         // Use proc_open for better error handling
         $descriptorspec = [
@@ -172,13 +198,28 @@ class AddWireGuardPeer implements ShouldQueue
             if (!empty($output)) {
                 $outputArray = explode("\n", trim($output));
             }
-            if (!empty($stderr) && $status !== 0) {
+
+            // Always capture stderr if it exists, regardless of status code
+            if (!empty($stderr)) {
                 $outputArray[] = "STDERR: " . $stderr;
             }
 
-            // If we have no output but command failed, add a generic message
+            // If we have no output but command failed, add more detailed error messages
             if (empty($outputArray) && $status !== 0) {
-                $outputArray[] = "SSH command failed with no output. Check server connectivity.";
+                // Add specific error messages based on status code
+                if ($status === 255) {
+                    $outputArray[] = "SSH connection failed. Possible causes: server unreachable, authentication failure, or connection timeout.";
+                } elseif ($status === 127) {
+                    $outputArray[] = "Command not found on remote server. Check if WireGuard is properly installed.";
+                } elseif ($status === 126) {
+                    $outputArray[] = "Permission denied when executing command on remote server.";
+                } else {
+                    $outputArray[] = "SSH command failed with status code $status. Check server connectivity and WireGuard configuration.";
+                }
+
+                // Log the full SSH command for debugging (with sensitive info redacted)
+                $redactedCommand = preg_replace('/-i\s+\S+/', '-i [REDACTED]', $sshCommand);
+                $outputArray[] = "Command attempted: $redactedCommand";
             }
 
             return [
