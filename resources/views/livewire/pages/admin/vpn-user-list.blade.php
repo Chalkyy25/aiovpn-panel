@@ -48,7 +48,7 @@
                                 @if($user->plain_password)
                                     <span class="font-mono bg-gray-100 px-2 py-1 rounded text-xs">{{ $user->plain_password }}</span>
                                 @else
-                                    <span class="text-gray-400 text-xs">Not available</span>
+                                    <span class="text-gray-400 text-xs">Password encrypted</span>
                                 @endif
                             </div>
                         </td>
