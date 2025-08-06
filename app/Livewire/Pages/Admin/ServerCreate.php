@@ -63,9 +63,12 @@ public function create()
 
     $sshKeyPath = null;
     if ($this->sshType === 'key') {
-        $sshKeyPath = '/var/www/aiovpn/storage/app/ssh_keys/id_rsa';
+        // Use storage_path helper to ensure correct path
+        $sshKeyPath = storage_path('app/ssh_keys/id_rsa');
+
         if (!file_exists($sshKeyPath)) {
             Log::warning("⚠️ SSH key path missing: $sshKeyPath");
+            session()->flash('error', "SSH key not found at expected path. Please check server configuration.");
         }
     }
 

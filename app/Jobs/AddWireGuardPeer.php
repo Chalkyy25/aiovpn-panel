@@ -100,8 +100,13 @@ class AddWireGuardPeer implements ShouldQueue
         // Create peer configuration
         $peerConfig = [
             'PublicKey' => $userKeys['wireguard_public_key'],
-            'AllowedIPs' => $userKeys['wireguard_address'] . '/32',
+            'AllowedIPs' => $userKeys['wireguard_address'],
         ];
+
+        // Make sure AllowedIPs has correct format and doesn't have double /32 suffix
+        if (!str_contains($peerConfig['AllowedIPs'], '/')) {
+            $peerConfig['AllowedIPs'] .= '/32';
+        }
 
         // Add peer to server
         $result = $this->executeRemoteCommand(
@@ -163,10 +168,21 @@ class AddWireGuardPeer implements ShouldQueue
             $sshCommand = "$sshBaseCommand '$command' 2>&1";
         } else {
             // Fallback to default SSH settings if server not found
+            // Use absolute path for SSH key and validate it exists
             $sshKey = storage_path('app/ssh_keys/id_rsa');
+
+            // Verify SSH key exists
+            if (!file_exists($sshKey)) {
+                Log::error("❌ SSH key not found at path: $sshKey");
+                return [
+                    'status' => 255,
+                    'output' => ["SSH key not found at: $sshKey"]
+                ];
+            }
+
             $sshUser = 'root';
             // Add error output redirection to capture stderr
-            $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command' 2>&1";
+            $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p 22 $sshUser@$ip '$command' 2>&1";
 
             // Log warning about using default SSH settings
             Log::warning("⚠️ [WG] Using default SSH settings for IP: $ip - server not found in database");
