@@ -1,6 +1,6 @@
+/* Import XUI styles */
+@import 'xui.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Alpine.js styles */
-[x-cloak] { display: none !important; }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="xui-html">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,30 +15,27 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 
-    <!-- Alpine.js -->
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
-    <style>
-        [x-cloak] { display: none !important; }
-    </style>
+    <!-- XUI styles and Alpine.js are loaded via Vite -->
 </head>
 <body class="font-sans antialiased">
-    <div class="min-h-screen bg-gray-100">
+    <div class="xui-layout">
         @include('layouts.navigation')
 
         <!-- Page Heading -->
         @if (isset($header))
-            <header class="bg-white shadow">
-                <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <header class="xui-header">
+                <div class="xui-container">
                     {{ $header }}
                 </div>
             </header>
         @endif
 
         <!-- Page Content -->
-        <main>
-            {{ $slot ?? '' }}
-            @yield('content')
+        <main class="xui-main">
+            <div class="xui-container">
+                {{ $slot ?? '' }}
+                @yield('content')
+            </div>
         </main>
     </div>
 

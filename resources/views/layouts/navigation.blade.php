@@ -1,5 +1,5 @@
 <nav
-    class="bg-white border-b border-gray-200"
+    class="xui-nav"
     x-data="{
         open: false,
         usersOpen: false,
@@ -8,25 +8,25 @@
         linesTimeout: null
     }"
 >
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between h-16">
+    <div class="xui-container">
+        <div class="xui-nav-inner">
 
             <!-- Logo -->
-            <div class="flex-shrink-0 flex items-center">
+            <div class="xui-nav-logo">
                 <a href="/">
-                    <x-application-logo class="block h-10 w-auto fill-current text-gray-600" />
+                    <x-application-logo class="xui-logo" />
                 </a>
             </div>
 
             <!-- Desktop menu -->
-            <div class="hidden sm:flex sm:items-center sm:space-x-8">
+            <div class="xui-nav-menu">
                 <x-nav-link href="{{ route('admin.dashboard') }}" :active="request()->routeIs('admin.dashboard')">
                     Dashboard
                 </x-nav-link>
 
                 <!-- Users Dropdown -->
                 <div
-                    class="relative"
+                    class="xui-dropdown"
                     @mouseenter="clearTimeout(usersTimeout); usersOpen = true"
                     @mouseleave="usersTimeout = setTimeout(() => usersOpen = false, 300)"
                 >
@@ -35,7 +35,7 @@
                         x-show="usersOpen"
                         x-cloak
                         x-transition
-                        class="absolute mt-2 bg-white shadow rounded py-1 w-48 z-50"
+                        class="xui-dropdown-menu"
                         @mouseenter="clearTimeout(usersTimeout)"
                         @mouseleave="usersTimeout = setTimeout(() => usersOpen = false, 300)"
                     >
@@ -46,7 +46,7 @@
 
                 <!-- Lines Dropdown -->
                 <div
-                    class="relative"
+                    class="xui-dropdown"
                     @mouseenter="clearTimeout(linesTimeout); linesOpen = true"
                     @mouseleave="linesTimeout = setTimeout(() => linesOpen = false, 300)"
                 >
@@ -56,7 +56,7 @@
                         x-transition:enter="transition ease-out duration-300"
                         x-transition:enter-start="transform opacity-0 scale-95"
                         x-transition:enter-end="transform opacity-100 scale-100"
-                        class="absolute mt-2 bg-white shadow rounded py-1 w-48 z-50"
+                        class="xui-dropdown-menu"
                         @mouseenter="clearTimeout(linesTimeout)"
                         @mouseleave="linesTimeout = setTimeout(() => linesOpen = false, 300)"
                     >
@@ -76,9 +76,9 @@
             </div>
 
             <!-- Mobile toggle -->
-            <div class="sm:hidden flex items-center">
+            <div class="xui-nav-mobile-toggle">
                 <button type="button" @click="open = !open"
-                        class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none"
+                        class="xui-mobile-button"
                 >
                     <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
                         <path :class="{ 'hidden': open, 'inline-flex': !open }" class="inline-flex"
@@ -94,18 +94,18 @@
     </div>
 
     <!-- Mobile dropdown -->
-    <div class="sm:hidden" x-show="open" x-cloak x-transition>
-        <div class="bg-gray-50 py-4 px-4 space-y-2">
+    <div class="xui-mobile-menu" x-show="open" x-cloak x-transition>
+        <div class="xui-mobile-menu-inner">
             <x-nav-link href="{{ route('admin.dashboard') }}">🏠 Dashboard</x-nav-link>
 
-            <div>
-                <div class="text-sm font-semibold text-gray-600 mt-2">Users</div>
+            <div class="xui-mobile-section">
+                <div class="xui-mobile-section-title">Users</div>
                 <x-nav-link href="{{ route('admin.resellers.create') }}">➕ Add User</x-nav-link>
                 <x-nav-link href="{{ route('admin.resellers.index') }}">👥 Manage Users</x-nav-link>
             </div>
 
-            <div>
-                <div class="text-sm font-semibold text-gray-600 mt-2">Lines</div>
+            <div class="xui-mobile-section">
+                <div class="xui-mobile-section-title">Lines</div>
                 <x-nav-link href="{{ route('admin.vpn-users.create') }}">➕ Add Line</x-nav-link>
                 <x-nav-link href="#">🎁 Trial Line</x-nav-link>
                 <x-nav-link href="{{ route('admin.vpn-users.index') }}">📋 Manage Lines</x-nav-link>

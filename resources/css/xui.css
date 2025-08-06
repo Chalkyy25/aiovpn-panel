@@ -1,0 +1,191 @@
+[x-cloak] { display: none !important; }
+
+/* XUI Theme Base Styles */
+.xui-html {
+    scroll-behavior: smooth;
+}
+
+.xui-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.xui-main {
+    flex: 1;
+    width: 100%;
+    padding: 2rem 0;
+    background-color: #f9fafb;
+}
+
+.xui-container {
+    width: 100%;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+.xui-header {
+    padding: 1.5rem 0;
+    background-color: white;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.xui-card {
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    padding: 1.5rem;
+    background-color: white;
+}
+
+/* XUI Navigation Styles */
+.xui-nav {
+    background-color: white;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.xui-nav-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 4rem;
+}
+
+.xui-nav-logo {
+    display: flex;
+    align-items: center;
+}
+
+.xui-logo {
+    height: 2.5rem;
+    width: auto;
+}
+
+.xui-nav-menu {
+    display: none;
+    align-items: center;
+    gap: 2rem;
+}
+
+@media (min-width: 640px) {
+    .xui-nav-menu {
+        display: flex;
+    }
+}
+
+.xui-dropdown {
+    position: relative;
+}
+
+.xui-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 0.5rem;
+    background-color: white;
+    border-radius: 0.375rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    padding: 0.5rem 0;
+    width: 12rem;
+    z-index: 50;
+}
+
+.xui-nav-mobile-toggle {
+    display: flex;
+    align-items: center;
+}
+
+@media (min-width: 640px) {
+    .xui-nav-mobile-toggle {
+        display: none;
+    }
+}
+
+.xui-mobile-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    color: #6b7280;
+}
+
+.xui-mobile-button:hover {
+    color: #4b5563;
+    background-color: #f3f4f6;
+}
+
+.xui-mobile-menu {
+    display: block;
+    background-color: #f9fafb;
+}
+
+@media (min-width: 640px) {
+    .xui-mobile-menu {
+        display: none;
+    }
+}
+
+.xui-mobile-menu-inner {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.xui-mobile-section {
+    margin-top: 0.5rem;
+}
+
+.xui-mobile-section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #4b5563;
+    margin-bottom: 0.25rem;
+}
+
+/* XUI Nav Link Styles */
+.xui-nav-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #4b5563;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+}
+
+.xui-nav-link:hover {
+    color: #111827;
+    background-color: #f3f4f6;
+}
+
+.xui-nav-link-active {
+    color: #1f2937;
+    background-color: #f3f4f6;
+    font-weight: 600;
+}
+
+.xui-mobile-nav-link {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    color: #4b5563;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+}
+
+.xui-mobile-nav-link:hover {
+    color: #111827;
+    background-color: #e5e7eb;
+}
+
+.xui-mobile-nav-link-active {
+    color: #1f2937;
+    background-color: #e5e7eb;
+    font-weight: 600;
+}
