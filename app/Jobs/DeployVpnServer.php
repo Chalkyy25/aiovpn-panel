@@ -56,15 +56,15 @@ class DeployVpnServer implements ShouldQueue
             $keyPath = str_starts_with($keyValue, '/')
                 ? $keyValue
                 : storage_path('app/ssh_keys/' . $keyValue);
-            
-            if ($sshType === 'password') {
-                $authPart = "sshpass -p " . escapeshellarg($this->vpnServer->ssh_password);
-                $sshCmdBase = "$authPart ssh $sshOpts $user@$ip";
-            } else {
-                $authPart = "-i " . escapeshellarg($keyPath);
-                $sshCmdBase = "ssh $authPart $sshOpts $user@$ip";
-            }
-            
+
+if ($sshType === 'password') {
+    $authPart = "sshpass -p " . escapeshellarg($this->vpnServer->ssh_password);
+    $sshCmdBase = "$authPart ssh $sshOpts $user@$ip";
+} else {
+    $authPart = "-i $keyPath";
+    $sshCmdBase = "ssh $authPart $sshOpts $user@$ip";
+}
+
             // Log the command that will be run
             Log::info('SSH command for test:', [$sshCmdBase]);
             
