@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Jobs\SyncOpenVPNCredentials;
+use App\Jobs\RemoveWireGuardPeer;
+use App\Jobs\RemoveOpenVPNUser;
 use App\Services\VpnConfigBuilder;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -153,6 +155,25 @@ class VpnUser extends Authenticatable
                     SyncOpenVPNCredentials::dispatch($server);
                     Log::info("🚀 Synced OpenVPN credentials to $server->name ($server->ip_address)");
                 }
+            }
+        });
+
+        static::deleting(function (self $vpnUser) {
+            Log::info("🗑️ Auto-cleanup triggered for VPN user: {$vpnUser->username}");
+
+            // Load relationships to ensure they're available for cleanup jobs
+            $vpnUser->load('vpnServers');
+
+            // Dispatch WireGuard peer removal job
+            if (!empty($vpnUser->wireguard_public_key)) {
+                RemoveWireGuardPeer::dispatch($vpnUser);
+                Log::info("🔧 WireGuard peer removal queued for user: {$vpnUser->username}");
+            }
+
+            // Dispatch OpenVPN cleanup job
+            if ($vpnUser->vpnServers->isNotEmpty()) {
+                RemoveOpenVPNUser::dispatch($vpnUser);
+                Log::info("🔧 OpenVPN cleanup queued for user: {$vpnUser->username}");
             }
         });
     }

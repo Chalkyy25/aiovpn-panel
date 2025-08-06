@@ -9,7 +9,6 @@ use Livewire\Component;
 use Livewire\WithPagination;
 use App\Models\VpnUser;
 use Illuminate\Support\Facades\Log;
-use App\Jobs\RemoveWireGuardPeer;
 use App\Jobs\GenerateOvpnFile;
 use App\Jobs\AddWireGuardPeer;
 use Livewire\Attributes\Layout;
@@ -34,22 +33,18 @@ class VpnUserList extends Component
     }
 
     /**
-     * Delete a VPN user and remove their WireGuard peer.
+     * Delete a VPN user and automatically clean up peers and files.
      */
     public function deleteUser($id): void
     {
         $user = VpnUser::findOrFail($id);
-
-        // Remove WireGuard peer
-        dispatch(new RemoveWireGuardPeer($user));
-
         $username = $user->username;
 
-        // Delete user
+        // Delete user - cleanup jobs will be automatically dispatched via model events
         $user->delete();
 
-        Log::info("🗑️ Deleted VPN user $username");
-        session()->flash('message', "User $username deleted successfully!");
+        Log::info("🗑️ Deleted VPN user $username with auto-cleanup");
+        session()->flash('message', "User $username deleted successfully! Cleanup jobs have been queued.");
 
         // Reset pagination to reflect an updated list
         $this->resetPage();
