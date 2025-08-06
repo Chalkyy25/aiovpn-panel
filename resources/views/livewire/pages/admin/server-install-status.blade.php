@@ -10,18 +10,18 @@
             Status: {{ ucfirst($deploymentStatus) ?: 'Unknown' }}
         </span>
     </div>
-    <div
-        wire:poll.2s="refreshStatus"
-        class="bg-black rounded-lg p-4 overflow-y-auto"
-        style="min-height: 250px; max-height: 400px; font-family: monospace;"
-        id="deployment-log"
-    >
-        @forelse($this->filteredLog as $entry)
-            <div class="{{ $entry['color'] }}">{{ $entry['text'] }}</div>
-        @empty
-            <div class="text-gray-400">No deployment logs found.</div>
-        @endforelse
-    </div>
+<div
+    wire:poll.2s="refreshStatus"
+    class="bg-black rounded-lg p-4 overflow-y-auto"
+    style="min-height: 250px; max-height: 400px; font-family: monospace;"
+    id="deployment-log"
+>
+    @forelse($this->filteredLog as $entry)
+        <div class="{{ $entry['color'] }}">{{ $entry['text'] }}</div>
+    @empty
+        <div class="text-gray-400">No deployment logs found.</div>
+    @endforelse
+</div>
 </div>
 
 <script>
