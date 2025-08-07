@@ -55,10 +55,8 @@ EOL;
             $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
             $fileName = "{$safeServerName}_{$vpnUser->username}.ovpn";
 
-            Storage::disk('local')->put("configs/{$fileName}", $config);
-            $fullPath = storage_path("app/configs/{$fileName}");
-            
-            // Set correct permissions/ownership
+            Storage::disk('public')->put("ovpn_configs/{$fileName}", $config);
+            $fullPath = storage_path("app/public/ovpn_configs/{$fileName}");
             @chmod($fullPath, 0644);
             @chown($fullPath, 'www-data');
             @chgrp($fullPath, 'www-data');
