@@ -105,6 +105,7 @@ verb 3
 explicit-exit-notify 1
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 script-security 3
+client-cert-not-required
 username-as-common-name
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 8.8.8.8"
