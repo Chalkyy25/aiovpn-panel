@@ -26,6 +26,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         Log::info("🔄 Starting VPN connection status update");
 
         $servers = VpnServer::where('deployment_status', 'succeeded')->get();
+        Log::info('Found servers: ' . $servers->count());
 
         if ($servers->isEmpty()) {
             Log::info("⚠️ No active VPN servers found");
