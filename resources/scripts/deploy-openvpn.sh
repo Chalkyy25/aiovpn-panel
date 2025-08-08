@@ -101,6 +101,7 @@ keepalive 10 120
 persist-key
 persist-tun
 status /var/log/openvpn-status.log
+status-version 2
 verb 3
 explicit-exit-notify 1
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
@@ -200,8 +201,8 @@ EOF
 
 sysctl -w net.ipv4.ip_forward=1
 
-iptables -t nat -C POSTROUTING -o $DEFAULT_IFACE -j MASQUERADE 2>/dev/null || \
-iptables -t nat -A POSTROUTING -o $DEFAULT_IFACE -j MASQUERADE
+iptables -t nat -C POSTROUTING -o "$DEFAULT_IFACE" -j MASQUERADE 2>/dev/null || \
+iptables -t nat -A POSTROUTING -o "$DEFAULT_IFACE" -j MASQUERADE
 
 systemctl enable wg-quick@wg0
 systemctl restart wg-quick@wg0
