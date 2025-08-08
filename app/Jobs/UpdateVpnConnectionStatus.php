@@ -89,66 +89,75 @@ class UpdateVpnConnectionStatus implements ShouldQueue
      * Parse OpenVPN status log to extract connected users.
      */
     protected function parseStatusLog(string $statusLog): array
-    {
-        $connectedUsers = [];
-        $lines = explode("\n", $statusLog);
-        $inClientSection = false;
+{
+    $connectedUsers = [];
+    $lines = explode("\n", $statusLog);
+    $inClientSection = false;
+    $isStatusVersion2 = false;
 
-        foreach ($lines as $line) {
-            $line = trim($line);
+    foreach ($lines as $line) {
+        $line = trim($line);
 
-            // Start of client list section
-            if (str_contains($line, 'Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since')) {
-                $inClientSection = true;
-                continue;
+        // ===== STATUS-VERSION 2 (modern log: lines start with "CLIENT_LIST,") =====
+        if (str_starts_with($line, 'CLIENT_LIST,')) {
+            $isStatusVersion2 = true;
+            $parts = explode(',', $line);
+            if (count($parts) > 7) {
+                $username = $parts[1];
+                $realAddress = $parts[2];
+                $clientIp = explode(':', $realAddress)[0];
+                $bytesReceived = (int) $parts[5];
+                $bytesSent = (int) $parts[6];
+                $connectedSince = $parts[7];
+                $connectedAt = null;
+                try {
+                    $connectedAt = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
+                } catch (\Exception $e) {}
+                $connectedUsers[$username] = [
+                    'client_ip' => $clientIp,
+                    'bytes_received' => $bytesReceived,
+                    'bytes_sent' => $bytesSent,
+                    'connected_at' => $connectedAt,
+                ];
             }
-
-            // End of client list section
-            if (str_contains($line, 'ROUTING TABLE')) {
-                $inClientSection = false;
-                break;
-            }
-
-            // Parse client line
-            if ($inClientSection && !empty($line) && str_contains($line, ',')) {
-                $parts = explode(',', $line);
-
-                if (count($parts) >= 5) {
-                    $username = trim($parts[0]);
-                    $realAddress = trim($parts[1]);
-                    $bytesReceived = (int) trim($parts[2]);
-                    $bytesSent = (int) trim($parts[3]);
-                    $connectedSince = trim($parts[4]);
-
-                    // Extract client IP (remove port if present)
-                    $clientIp = explode(':', $realAddress)[0];
-
-                    // Parse connection time
-                    $connectedAt = null;
-                    try {
-                        $connectedAt = Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
-                    } catch (\Exception $e) {
-                        // Try alternative formats
-                        try {
-                            $connectedAt = Carbon::createFromFormat('M d H:i:s Y', $connectedSince);
-                        } catch (\Exception $e) {
-                            Log::warning("⚠️ Could not parse connection time: {$connectedSince}");
-                        }
-                    }
-
-                    $connectedUsers[$username] = [
-                        'client_ip' => $clientIp,
-                        'bytes_received' => $bytesReceived,
-                        'bytes_sent' => $bytesSent,
-                        'connected_at' => $connectedAt,
-                    ];
-                }
-            }
+            continue;
         }
 
-        Log::info("📊 Found " . count($connectedUsers) . " connected users on server");
-        return $connectedUsers;
+        // ===== LEGACY FORMAT (section between "Common Name..." and "ROUTING TABLE") =====
+        if (str_contains($line, 'Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since')) {
+            $inClientSection = true;
+            continue;
+        }
+        if ($inClientSection && str_contains($line, 'ROUTING TABLE')) {
+            $inClientSection = false;
+            break;
+        }
+        if ($inClientSection && !empty($line) && str_contains($line, ',')) {
+            $parts = explode(',', $line);
+            if (count($parts) >= 5) {
+                $username = trim($parts[0]);
+                $realAddress = trim($parts[1]);
+                $clientIp = explode(':', $realAddress)[0];
+                $bytesReceived = (int) trim($parts[2]);
+                $bytesSent = (int) trim($parts[3]);
+                $connectedSince = trim($parts[4]);
+                $connectedAt = null;
+                try {
+                    $connectedAt = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
+                } catch (\Exception $e) {}
+                $connectedUsers[$username] = [
+                    'client_ip' => $clientIp,
+                    'bytes_received' => $bytesReceived,
+                    'bytes_sent' => $bytesSent,
+                    'connected_at' => $connectedAt,
+                ];
+            }
+        }
     }
+
+    \Log::info("📊 Found " . count($connectedUsers) . " connected users on server");
+    return $connectedUsers;
+}
 
     /**
      * Update connections in database.
