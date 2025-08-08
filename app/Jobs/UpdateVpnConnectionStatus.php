@@ -95,11 +95,14 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
     foreach ($lines as $line) {
         $line = trim($line);
+
+        // Modern OpenVPN: lines start with CLIENT_LIST
         if (str_starts_with($line, 'CLIENT_LIST,')) {
             $parts = explode(',', $line);
 
-            if (count($parts) >= 12) {
-                $username = trim($parts[1]); // or $parts[9] if that's your real username
+            if (count($parts) >= 5) {
+                $username = trim($parts[1]); // Modern: username is in 2nd position (double check your real log!)
+                // Some logs: username at $parts[1], some at $parts[8], you may need to adjust!
                 $realAddress = trim($parts[2]);
                 $bytesReceived = (int) trim($parts[5]);
                 $bytesSent = (int) trim($parts[6]);
@@ -121,7 +124,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    \Log::info("📊 Found " . count($connectedUsers) . " connected users on server (modern parser)");
+    Log::info("📊 Found " . count($connectedUsers) . " connected users on server (modern parser)");
     return $connectedUsers;
 }
 
