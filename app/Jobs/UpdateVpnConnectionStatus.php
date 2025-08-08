@@ -7,6 +7,7 @@ use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
 use App\Traits\ExecutesRemoteCommands;
 use Carbon\Carbon;
+use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -45,13 +46,13 @@ class UpdateVpnConnectionStatus implements ShouldQueue
      */
     protected function updateServerConnections(VpnServer $server): void
     {
-        Log::info("🔍 Checking connections for server: {$server->name} ({$server->ip_address})");
+        Log::info("🔍 Checking connections for server: $server->name ($server->ip_address)");
 
         try {
             $statusLog = $this->fetchOpenVpnStatusLog($server);
 
             if (empty($statusLog)) {
-                Log::warning("⚠️ Could not fetch status log from {$server->name}");
+                Log::warning("⚠️ Could not fetch status log from $server->name");
                 $this->markAllUsersDisconnected($server);
                 return;
             }
@@ -59,8 +60,8 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $connectedUsers = $this->parseStatusLog($statusLog);
             $this->updateConnectionsInDatabase($server, $connectedUsers);
 
-        } catch (\Exception $e) {
-            Log::error("❌ Error updating connections for {$server->name}: " . $e->getMessage());
+        } catch (Exception $e) {
+            Log::error("❌ Error updating connections for $server->name: " . $e->getMessage());
             $this->markAllUsersDisconnected($server);
         }
     }
@@ -70,15 +71,15 @@ class UpdateVpnConnectionStatus implements ShouldQueue
      */
     protected function fetchOpenVpnStatusLog(VpnServer $server): string
     {
-        $statusPath = '/etc/openvpn/openvpn-status.log';
+        $statusPath = '/var/log/openvpn-status.log';
 
         $result = $this->executeRemoteCommand(
             $server->ip_address,
-            "cat {$statusPath}"
+            "cat $statusPath"
         );
 
         if ($result['status'] !== 0) {
-            Log::error("❌ Failed to fetch status log from {$server->name}: " . implode("\n", $result['output']));
+            Log::error("❌ Failed to fetch status log from $server->name: " . implode("\n", $result['output']));
             return '';
         }
 
@@ -111,8 +112,8 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
                 $connectedAt = null;
                 try {
-                    $connectedAt = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
-                } catch (\Exception $e) {}
+                    $connectedAt = Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
+                } catch (Exception) {}
 
                 $connectedUsers[$username] = [
                     'client_ip' => $clientIp,
@@ -172,16 +173,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 }
 
                 // Check if user has any active connections on other servers
-                $hasActiveConnections = VpnUserConnection::where('vpn_user_id', $user->id)
-                    ->where('is_connected', true)
-                    ->exists();
-
-                if (!$hasActiveConnections) {
-                    $user->update([
-                        'is_online' => false,
-                        'last_seen_at' => now(),
-                    ]);
-                }
+                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($user->id);
             }
         }
     }
@@ -202,16 +194,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             ]);
 
             // Check if user has any other active connections
-            $hasActiveConnections = VpnUserConnection::where('vpn_user_id', $connection->vpn_user_id)
-                ->where('is_connected', true)
-                ->exists();
-
-            if (!$hasActiveConnections) {
-                VpnUser::where('id', $connection->vpn_user_id)->update([
-                    'is_online' => false,
-                    'last_seen_at' => now(),
-                ]);
-            }
+            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($connection->vpn_user_id);
         }
     }
 }

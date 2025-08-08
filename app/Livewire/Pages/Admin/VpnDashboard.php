@@ -80,16 +80,7 @@ class VpnDashboard extends Component
             ]);
 
             // Check if user has any other active connections
-            $hasActiveConnections = VpnUserConnection::where('vpn_user_id', $connection->vpn_user_id)
-                ->where('is_connected', true)
-                ->exists();
-
-            if (!$hasActiveConnections) {
-                $connection->vpnUser->update([
-                    'is_online' => false,
-                    'last_seen_at' => now(),
-                ]);
-            }
+            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($connection->vpn_user_id);
 
             session()->flash('message', "User {$connection->vpnUser->username} has been disconnected from {$connection->vpnServer->name}");
         }

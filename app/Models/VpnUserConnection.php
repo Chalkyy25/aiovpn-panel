@@ -66,6 +66,23 @@ class VpnUserConnection extends Model
 
     // ─── Helper Methods ─────────────────────────────────────────────
 
+    /**
+     * Update user's online status if they have no active connections.
+     */
+    public static function updateUserOnlineStatusIfNoActiveConnections(int $userId): void
+    {
+        $hasActiveConnections = static::where('vpn_user_id', $userId)
+            ->where('is_connected', true)
+            ->exists();
+
+        if (!$hasActiveConnections) {
+            VpnUser::where('id', $userId)->update([
+                'is_online' => false,
+                'last_seen_at' => now(),
+            ]);
+        }
+    }
+
     public function getConnectionDurationAttribute(): ?int
     {
         if (!$this->connected_at) {

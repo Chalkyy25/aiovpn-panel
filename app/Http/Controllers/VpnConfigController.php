@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\VpnUser;
 use App\Models\VpnServer;
 use App\Services\VpnConfigBuilder;
+use Exception;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Response;
 use ZipArchive;
@@ -86,7 +87,7 @@ class VpnConfigController extends Controller
                 ->header('Content-Type', 'application/x-openvpn-profile')
                 ->header('Content-Disposition', "attachment; filename=\"$fileName\"");
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return back()->with('error', 'Failed to generate OpenVPN config: ' . $e->getMessage());
         }
     }
@@ -111,38 +112,10 @@ class VpnConfigController extends Controller
                 'timestamp' => now()->toISOString()
             ]);
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to fetch live sessions: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Test OpenVPN connectivity for a server.
-     */
-    public function testConnectivity(VpnServer $vpnServer)
-    {
-        try {
-            $results = VpnConfigBuilder::testOpenVpnConnectivity($vpnServer);
-
-            return response()->json([
-                'success' => true,
-                'server' => [
-                    'id' => $vpnServer->id,
-                    'name' => $vpnServer->name,
-                    'ip_address' => $vpnServer->ip_address
-                ],
-                'connectivity' => $results,
-                'overall_status' => $results['server_reachable'] && $results['openvpn_running'] && $results['port_open'] && $results['certificates_available'],
-                'timestamp' => now()->toISOString()
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Failed to test connectivity: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -171,7 +144,7 @@ class VpnConfigController extends Controller
                 'timestamp' => now()->toISOString()
             ]);
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to generate config preview: ' . $e->getMessage()
