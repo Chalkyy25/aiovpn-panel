@@ -155,7 +155,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    \Log::info("📊 Found " . count($connectedUsers) . " connected users on server");
+    Log::info("📊 Found " . count($connectedUsers) . " connected users on server");
     return $connectedUsers;
 }
 
