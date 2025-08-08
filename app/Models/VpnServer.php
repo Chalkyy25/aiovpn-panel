@@ -81,7 +81,7 @@ class VpnServer extends Model
     public function getOnlineUserCount(): int
     {
         $ssh = $this->getSshCommand(); // This must return something like: ssh -i /path/to/key root@ip
-        $statusPath = '/etc/openvpn/openvpn-status.log';
+        $statusPath = '/var/log/openvpn-status.log'; // Updated to match deployment script configuration
 
         // Count client lines between "Common Name" and "ROUTING TABLE"
         $cmd = "$ssh \"awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l\"";
@@ -101,6 +101,12 @@ class VpnServer extends Model
         $port = $this->ssh_port ?? 22;
         $user = $this->ssh_user ?? 'root';
 
+        // Create a temporary directory for SSH operations to avoid permission issues
+        $tempSshDir = storage_path('app/temp_ssh');
+        if (!is_dir($tempSshDir)) {
+            mkdir($tempSshDir, 0700, true);
+        }
+
         if ($this->ssh_type === 'key') {
             // Handle both filename and full path scenarios for ssh_key
             if (str_starts_with($this->ssh_key, '/') || str_contains($this->ssh_key, ':\\')) {
@@ -110,10 +116,10 @@ class VpnServer extends Model
                 // ssh_key contains just filename, construct full path
                 $keyPath = storage_path('app/ssh_keys/' . $this->ssh_key);
             }
-            return "ssh -i $keyPath -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p $port $user@$ip";
+            return "ssh -i $keyPath -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o UserKnownHostsFile=$tempSshDir/known_hosts -p $port $user@$ip";
         }
 
-        return "sshpass -p '$this->ssh_password' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p $port $user@$ip";
+        return "sshpass -p '$this->ssh_password' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o UserKnownHostsFile=$tempSshDir/known_hosts -p $port $user@$ip";
     }
 
 

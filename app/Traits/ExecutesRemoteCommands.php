@@ -38,9 +38,15 @@ trait ExecutesRemoteCommands
                 ];
             }
 
+            // Create a temporary directory for SSH operations to avoid permission issues
+            $tempSshDir = storage_path('app/temp_ssh');
+            if (!is_dir($tempSshDir)) {
+                mkdir($tempSshDir, 0700, true);
+            }
+
             $sshUser = 'root';
-            // Add error output redirection to capture stderr
-            $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 -p 22 $sshUser@$ip '$command' 2>&1";
+            // Add error output redirection to capture stderr and use custom known_hosts file
+            $sshCommand = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o UserKnownHostsFile=$tempSshDir/known_hosts -p 22 $sshUser@$ip '$command' 2>&1";
 
             // Log warning about using default SSH settings
             Log::warning("⚠️ Using default SSH settings for IP: $ip - server not found in database");
