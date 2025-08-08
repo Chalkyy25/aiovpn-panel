@@ -6,6 +6,7 @@ use App\Jobs\SyncOpenVPNCredentials;
 use App\Jobs\RemoveWireGuardPeer;
 use App\Jobs\RemoveOpenVPNUser;
 use App\Services\VpnConfigBuilder;
+use App\Traits\ExecutesRemoteCommands;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,7 +29,7 @@ use Illuminate\Support\Str;
  */
 class VpnUser extends Authenticatable
 {
-    use HasFactory;
+    use HasFactory, ExecutesRemoteCommands;
 
     protected $fillable = [
         'username',
@@ -103,11 +104,13 @@ class VpnUser extends Authenticatable
     private function fetchOpenVpnStatusLog(VpnServer $server): string
     {
         $logPath = '/etc/openvpn/openvpn-status.log';
-        $ssh = $server->getSshCommand();
-        $cmd = "$ssh 'cat $logPath'";
-        exec($cmd, $output, $exitCode);
 
-        return $exitCode === 0 ? implode("\n", $output) : '';
+        $result = $this->executeRemoteCommand(
+            $server->ip_address,
+            "cat $logPath"
+        );
+
+        return $result['status'] === 0 ? implode("\n", $result['output']) : '';
     }
 
     private function countConnectionsForUser(string $log): int

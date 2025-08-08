@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\ExecutesRemoteCommands;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 
 class VpnServer extends Model
 {
-    use HasFactory;
+    use HasFactory, ExecutesRemoteCommands;
 
     protected $fillable = [
         'name',
@@ -80,16 +81,16 @@ class VpnServer extends Model
 
     public function getOnlineUserCount(): int
     {
-        $ssh = $this->getSshCommand(); // This must return something like: ssh -i /path/to/key root@ip
-        $statusPath = '/var/log/openvpn-status.log'; // Updated to match deployment script configuration
+        $statusPath = '/etc/openvpn/openvpn-status.log'; // Updated to match deployment script configuration
 
         // Count client lines between "Common Name" and "ROUTING TABLE"
-        $cmd = "$ssh \"awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l\"";
+        $result = $this->executeRemoteCommand(
+            $this->ip_address,
+            "awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l"
+        );
 
-        exec($cmd, $output, $code);
-
-        if ($code === 0 && isset($output[0])) {
-            return (int) trim($output[0]);
+        if ($result['status'] === 0 && isset($result['output'][0])) {
+            return (int) trim($result['output'][0]);
         }
 
         return 0;

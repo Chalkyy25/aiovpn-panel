@@ -71,7 +71,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
      */
     protected function fetchOpenVpnStatusLog(VpnServer $server): string
     {
-        $statusPath = '/var/log/openvpn-status.log';
+        $statusPath = '/etc/openvpn/openvpn-status.log';
 
         $result = $this->executeRemoteCommand(
             $server->ip_address,
