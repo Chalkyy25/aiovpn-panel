@@ -31,7 +31,7 @@ class VpnDashboard extends Component
 
     public function getServersProperty()
     {
-        return VpnServer::where('deployment_status', 'active')
+        return VpnServer::where('deployment_status', 'succeeded')
             ->withCount(['activeConnections'])
             ->orderBy('name')
             ->get();
