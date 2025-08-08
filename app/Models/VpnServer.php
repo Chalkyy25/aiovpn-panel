@@ -81,7 +81,7 @@ class VpnServer extends Model
 
     public function getOnlineUserCount(): int
     {
-        $statusPath = '/etc/openvpn/openvpn-status.log'; // Updated to match deployment script configuration
+        $statusPath = '/var/log/openvpn-status.log'; // Updated to match deployment script configuration
 
         // Count client lines between "Common Name" and "ROUTING TABLE"
         $result = $this->executeRemoteCommand(

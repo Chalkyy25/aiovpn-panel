@@ -31,7 +31,7 @@ This implementation adds comprehensive real-time VPN monitoring capabilities to 
 
 ### ✅ Automated Status Updates
 - **Scheduled job** that runs every minute (configurable to 30 seconds)
-- **OpenVPN status log parsing** from `/etc/openvpn/openvpn-status.log`
+- **OpenVPN status log parsing** from `/var/log/openvpn-status.log`
 - **Automatic database updates** with current connection status
 - **Console command** for manual execution and testing
 
@@ -131,7 +131,7 @@ php test_vpn_status_update.php
 ### 1. Status Collection
 - The `UpdateVpnConnectionStatus` job runs every minute
 - It connects to each active VPN server via SSH
-- Reads the OpenVPN status log at `/etc/openvpn/openvpn-status.log`
+- Reads the OpenVPN status log at `/var/log/openvpn-status.log`
 - Parses the CSV-format log to extract connection details
 
 ### 2. Data Processing
@@ -188,7 +188,7 @@ username2,192.168.1.101:54322,2048,4096,2025-08-06 18:25:30
 1. **No connections showing**:
    - Check if OpenVPN servers are active
    - Verify SSH connectivity to servers
-   - Check OpenVPN status log exists at `/etc/openvpn/openvpn-status.log`
+   - Check OpenVPN status log exists at `/var/log/openvpn-status.log`
 
 2. **Status not updating**:
    - Ensure scheduler is running

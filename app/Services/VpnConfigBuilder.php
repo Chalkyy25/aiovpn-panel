@@ -60,7 +60,7 @@ EOL;
             @chmod($fullPath, 0644);
             @chown($fullPath, 'www-data');
             @chgrp($fullPath, 'www-data');
-            
+
             $generatedFiles[] = $fullPath;
 
         Log::info("✅ OpenVPN config generated: {$fileName}");
@@ -210,7 +210,7 @@ EOL;
 
         try {
             // Get OpenVPN status log
-            $result = $instance->executeRemoteCommand($server->ip_address, 'cat /etc/openvpn/openvpn-status.log');
+            $result = $instance->executeRemoteCommand($server->ip_address, 'cat /var/log/openvpn-status.log');
 
             if ($result['status'] !== 0) {
                 Log::warning("⚠️ Could not fetch OpenVPN status from server {$server->name}");

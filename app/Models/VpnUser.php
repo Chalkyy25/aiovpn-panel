@@ -103,7 +103,7 @@ class VpnUser extends Authenticatable
 
     private function fetchOpenVpnStatusLog(VpnServer $server): string
     {
-        $logPath = '/etc/openvpn/openvpn-status.log';
+        $logPath = '/var/log/openvpn-status.log';
 
         $result = $this->executeRemoteCommand(
             $server->ip_address,

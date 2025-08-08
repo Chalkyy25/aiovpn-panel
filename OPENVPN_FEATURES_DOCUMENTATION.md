@@ -241,7 +241,7 @@ php demo_openvpn_features.php
 
 **Session Monitoring Returns Empty**
 - Verify OpenVPN service is running on server
-- Check if status log file exists at `/etc/openvpn/openvpn-status.log`
+- Check if status log file exists at `/var/log/openvpn-status.log`
 - Confirm SSH access and proper permissions
 
 **Connectivity Test Fails**
