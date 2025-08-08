@@ -92,59 +92,25 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 {
     $connectedUsers = [];
     $lines = explode("\n", $statusLog);
-    $inClientSection = false;
-    $isStatusVersion2 = false;
 
     foreach ($lines as $line) {
         $line = trim($line);
-
-        // ===== STATUS-VERSION 2 (modern log: lines start with "CLIENT_LIST,") =====
         if (str_starts_with($line, 'CLIENT_LIST,')) {
-            $isStatusVersion2 = true;
             $parts = explode(',', $line);
-            if (count($parts) > 7) {
-                $username = $parts[1];
-                $realAddress = $parts[2];
-                $clientIp = explode(':', $realAddress)[0];
-                $bytesReceived = (int) $parts[5];
-                $bytesSent = (int) $parts[6];
-                $connectedSince = $parts[7];
-                $connectedAt = null;
-                try {
-                    $connectedAt = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
-                } catch (\Exception $e) {}
-                $connectedUsers[$username] = [
-                    'client_ip' => $clientIp,
-                    'bytes_received' => $bytesReceived,
-                    'bytes_sent' => $bytesSent,
-                    'connected_at' => $connectedAt,
-                ];
-            }
-            continue;
-        }
 
-        // ===== LEGACY FORMAT (section between "Common Name..." and "ROUTING TABLE") =====
-        if (str_contains($line, 'Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since')) {
-            $inClientSection = true;
-            continue;
-        }
-        if ($inClientSection && str_contains($line, 'ROUTING TABLE')) {
-            $inClientSection = false;
-            break;
-        }
-        if ($inClientSection && !empty($line) && str_contains($line, ',')) {
-            $parts = explode(',', $line);
-            if (count($parts) >= 5) {
-                $username = trim($parts[0]);
-                $realAddress = trim($parts[1]);
+            if (count($parts) >= 12) {
+                $username = trim($parts[1]); // or $parts[9] if that's your real username
+                $realAddress = trim($parts[2]);
+                $bytesReceived = (int) trim($parts[5]);
+                $bytesSent = (int) trim($parts[6]);
+                $connectedSince = trim($parts[7]);
                 $clientIp = explode(':', $realAddress)[0];
-                $bytesReceived = (int) trim($parts[2]);
-                $bytesSent = (int) trim($parts[3]);
-                $connectedSince = trim($parts[4]);
+
                 $connectedAt = null;
                 try {
                     $connectedAt = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
                 } catch (\Exception $e) {}
+
                 $connectedUsers[$username] = [
                     'client_ip' => $clientIp,
                     'bytes_received' => $bytesReceived,
@@ -155,7 +121,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    Log::info("📊 Found " . count($connectedUsers) . " connected users on server");
+    \Log::info("📊 Found " . count($connectedUsers) . " connected users on server (modern parser)");
     return $connectedUsers;
 }
 
