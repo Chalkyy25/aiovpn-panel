@@ -84,6 +84,21 @@ class VpnUser extends Authenticatable
         return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
     }
 
+    public function vpnSessions(): HasMany
+    {
+        return $this->hasMany(VpnSession::class, 'user_id');
+    }
+
+    public function activeSessions(): HasMany
+    {
+        return $this->hasMany(VpnSession::class, 'user_id')->where('is_active', true);
+    }
+
+    public function kickHistory(): HasMany
+    {
+        return $this->hasMany(KickHistory::class, 'user_id');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Authentication
