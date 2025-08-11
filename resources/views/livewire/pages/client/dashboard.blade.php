@@ -49,37 +49,43 @@
     </div>
 
     <h3 class="text-xl mb-3">Your VPN Servers</h3>
-    @if ($vpnServers->isEmpty())
-        <p>You have no assigned VPN servers yet.</p>
-    @else
-        <div class="space-y-4">
-            @foreach ($vpnServers as $server)
-                <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg border">
-                    <div>
-                        <strong class="text-lg">{{ $server->name }}</strong>
-                        @if($server->location)
-                            <span class="text-gray-600"> - {{ $server->location }}</span>
-                        @endif
-                        <br>
-                        <span class="text-sm">Status:
-                            <span class="{{ $server->is_online ? 'text-green-600' : 'text-red-600' }} font-semibold">
-                                {{ $server->is_online ? 'Online' : 'Offline' }}
-                            </span>
-                        </span>
-                    </div>
-                    <div class="flex space-x-2">
-                        <a href="{{ route('clients.config.downloadForServer', [$user, $server]) }}"
-                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                            📥 Download OpenVPN
-                        </a>
-                        <a href="{{ route('clients.config.download', $user) }}"
-                           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                            📦 Download WireGuard
-                        </a>
-                    </div>
-                </div>
-            @endforeach
+
+@if ($vpnServers->isEmpty())
+  <p>You have no assigned VPN servers yet.</p>
+@else
+  <div class="space-y-4">
+    @foreach ($vpnServers as $server)
+      <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg border">
+        <div>
+          <strong class="text-lg">{{ $server->name }}</strong>
+          @if($server->location)
+            <span class="text-gray-600"> - {{ $server->location }}</span>
+          @endif
+          <br>
+          <span class="text-sm">Status:
+            <span class="{{ $server->is_online ? 'text-green-600' : 'text-red-600' }} font-semibold">
+              {{ $server->is_online ? 'Online' : 'Offline' }}
+            </span>
+          </span>
         </div>
+
+        <div class="flex space-x-2">
+          {{-- OpenVPN: generate on the fly (embeds CA/TLS) --}}
+          <a href="{{ route('clients.config.downloadForServer', [$vpnUser->id, $server->id]) }}"
+             class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+            📥 Download OpenVPN
+          </a>
+
+          {{-- WireGuard (hide if you’re not using WG) --}}
+          <a href="{{ route('clients.config.download', $vpnUser->id) }}"
+             class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+            📦 Download WireGuard
+          </a>
+        </div>
+      </div>
+    @endforeach
+  </div>
+@endif
 
         <!-- Download All Configs Button -->
         <div class="mt-6 pt-4 border-t">
