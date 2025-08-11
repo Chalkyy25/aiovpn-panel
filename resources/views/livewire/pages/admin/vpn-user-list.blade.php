@@ -29,31 +29,33 @@
             <tbody class="bg-white divide-y divide-gray-200">
                 @forelse ($users as $user)
                     <tr>
-                        <td class="px-6 py-4 whitespace-nowrap">
-    <div class="flex items-center">
-        <div class="flex-shrink-0 h-2.5 w-2.5 {{ $user->is_online ? 'bg-green-400' : 'bg-gray-400' }} rounded-full"></div>
-        <div class="ml-3">
-            <div class="text-sm font-medium text-gray-900">{{ $user->username }}</div>
-
-            @php
-                $onlineSince = $user->online_since;          // Carbon|null (from accessor)
-                $lastSeen    = $user->last_seen_at;          // Carbon|null (cast)
-            @endphp
-
-            @if($user->is_online && $user->online_since)
-  <div class="text-xs text-green-600">
-    Online – {{ $user->online_since->diffForHumans() }}
-  </div>
-@elseif($user->last_seen_at)
-  <div class="text-xs text-gray-500">
-    Offline – {{ $user->last_seen_at->diffForHumans() }}
-  </div>
-@else
-  <div class="text-xs text-gray-400">Never connected</div>
-@endif
-        </div>
-    </div>
-</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+            <div class="flex items-center">
+                <!-- Status dot -->
+                <div class="flex-shrink-0 h-2.5 w-2.5 {{ $user->is_online ? 'bg-green-400' : 'bg-gray-400' }} rounded-full"></div>
+        
+                <!-- Username & Status -->
+                <div class="ml-3">
+                    <div class="text-sm font-medium text-gray-900">
+                        {{ $user->username }}
+                    </div>
+        
+                    @if($user->is_online && $user->online_since)
+                        <div class="text-xs text-green-600">
+                            Online – {{ $user->online_since->diffForHumans() }}
+                        </div>
+                    @elseif($user->last_disconnected_at)
+                        <div class="text-xs text-gray-500">
+                            Offline – {{ $user->last_disconnected_at->diffForHumans() }}
+                        </div>
+                    @else
+                        <div class="text-xs text-gray-400">
+                            Never connected
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </td>
 
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="text-sm text-gray-900">
