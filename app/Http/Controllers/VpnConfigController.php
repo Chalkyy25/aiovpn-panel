@@ -6,12 +6,39 @@ use App\Models\VpnUser;
 use App\Models\VpnServer;
 use App\Services\VpnConfigBuilder;
 use Exception;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Response;
 use ZipArchive;
 
 class VpnConfigController extends Controller
 {
+    public function downloadForClient(VpnServer $vpnserver)
+    {
+        $client = Auth::guard('client')->user();
+        abort_if(!$client, 401, 'Unauthenticated client');
+        abort_if(empty($vpnserver->ip_address), 400, 'Server IP missing');
+    
+        // Small creds shim for the builder (needs username/password)
+        $creds = (object)[
+            'username' => $client->username,
+            'password' => $client->password, // ensure this is plain, not hashed
+        ];
+    
+        $config = \App\Services\VpnConfigBuilder::generateOpenVpnConfigString($creds, $vpnserver);
+    
+        $safe = Str::of($vpnserver->name)->replace([' ', '(', ')'], ['_', '', '']);
+        $file = "{$safe}_{$client->username}.ovpn";
+    
+        return response($config)
+            ->header('Content-Type', 'application/x-openvpn-profile')
+            ->header('Content-Disposition', "attachment; filename=\"{$file}\"")
+            ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
     public function download(VpnUser $vpnUser, VpnServer $vpnServer = null) // Matches: admin/clients/{vpnUser}/config and client/vpn/{server}/download
     {
         // If server is provided, generate OpenVPN config with server name
