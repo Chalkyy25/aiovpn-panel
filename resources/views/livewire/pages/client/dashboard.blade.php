@@ -28,7 +28,6 @@
                 </div>
             </div>
         </div>
-    @endif
 
     <!-- Header with Logout Button -->
     <div class="flex items-center justify-between mb-6">
