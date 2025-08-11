@@ -1,5 +1,5 @@
 <div class="p-6">
-    <!-- Impersonation Banner -->
+    {{-- Impersonation Banner --}}
     @if(session()->has('impersonating_admin_id'))
         <div class="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-6 rounded">
             <div class="flex items-center justify-between">
@@ -11,7 +11,7 @@
                     </div>
                     <div class="ml-3">
                         <p class="text-sm font-medium">
-                            🔐 Admin Impersonation Active - You are viewing as {{ $user->username }}
+                            🔐 Admin Impersonation Active — You are viewing as {{ $user->username }}
                         </p>
                         <p class="text-xs">
                             Admin: {{ session('impersonating_admin_name') }}
@@ -28,8 +28,9 @@
                 </div>
             </div>
         </div>
+    @endif
 
-    <!-- Header with Logout Button -->
+    {{-- Header + Logout --}}
     <div class="flex items-center justify-between mb-6">
         <div>
             <h2 class="text-2xl font-semibold">Welcome, {{ $user->username }}</h2>
@@ -49,49 +50,49 @@
 
     <h3 class="text-xl mb-3">Your VPN Servers</h3>
 
-@if ($vpnServers->isEmpty())
-  <p>You have no assigned VPN servers yet.</p>
-@else
-  <div class="space-y-4">
-    @foreach ($vpnServers as $server)
-      <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg border">
-        <div>
-          <strong class="text-lg">{{ $server->name }}</strong>
-          @if($server->location)
-            <span class="text-gray-600"> - {{ $server->location }}</span>
-          @endif
-          <br>
-          <span class="text-sm">Status:
-            <span class="{{ $server->is_online ? 'text-green-600' : 'text-red-600' }} font-semibold">
-              {{ $server->is_online ? 'Online' : 'Offline' }}
-            </span>
-          </span>
-        </div>
+    @if ($vpnServers->isEmpty())
+        <p>You have no assigned VPN servers yet.</p>
+    @else
+        <div class="space-y-4">
+            @foreach ($vpnServers as $server)
+                <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg border">
+                    <div>
+                        <strong class="text-lg">{{ $server->name }}</strong>
+                        @if($server->location)
+                            <span class="text-gray-600"> - {{ $server->location }}</span>
+                        @endif
+                        <br>
+                        <span class="text-sm">
+                            Status:
+                            <span class="{{ $server->is_online ? 'text-green-600' : 'text-red-600' }} font-semibold">
+                                {{ $server->is_online ? 'Online' : 'Offline' }}
+                            </span>
+                        </span>
+                    </div>
 
-        <div class="flex space-x-2">
-          {{-- OpenVPN: generate on the fly (embeds CA/TLS) --}}
-          <a href="{{ route('clients.config.downloadForServer', [$vpnUser->id, $server->id]) }}"
-             class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-            📥 Download OpenVPN
-          </a>
+                    <div class="flex space-x-2">
+                        {{-- OpenVPN: generate on the fly (embeds CA/TLS) --}}
+                        <a href="{{ route('clients.config.downloadForServer', [$user->id, $server->id]) }}"
+                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                            📥 Download OpenVPN
+                        </a>
 
-          {{-- WireGuard (hide if you’re not using WG) --}}
-          <a href="{{ route('clients.config.download', $vpnUser->id) }}"
-             class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-            📦 Download WireGuard
-          </a>
-        </div>
-      </div>
-    @endforeach
-  </div>
-@endif
-
-        <!-- Download All Configs Button -->
-        <div class="mt-6 pt-4 border-t">
-            <a href="{{ route('clients.configs.downloadAll', $user) }}"
-               class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-md font-medium transition-colors inline-flex items-center">
-                📦 Download All Configs (ZIP)
-            </a>
+                        {{-- WireGuard (hide if unused) --}}
+                        <a href="{{ route('clients.config.download', $user->id) }}"
+                           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                            📦 Download WireGuard
+                        </a>
+                    </div>
+                </div>
+            @endforeach
         </div>
     @endif
+
+    {{-- Download all --}}
+    <div class="mt-6 pt-4 border-t">
+        <a href="{{ route('clients.configs.downloadAll', $user->id) }}"
+           class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-md font-medium transition-colors inline-flex items-center">
+            📦 Download All Configs (ZIP)
+        </a>
+    </div>
 </div>
