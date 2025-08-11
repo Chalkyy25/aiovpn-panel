@@ -76,12 +76,6 @@
                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
                             📥 Download OpenVPN
                         </a>
-
-                        {{-- WireGuard (hide if unused) --}}
-                        <a href="{{ route('clients.config.download', $user->id) }}"
-                           class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                            📦 Download WireGuard
-                        </a>
                     </div>
                 </div>
             @endforeach
