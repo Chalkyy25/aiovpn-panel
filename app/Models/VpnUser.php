@@ -56,6 +56,7 @@ class VpnUser extends Authenticatable
     protected $casts = [
         'is_online'    => 'boolean',
         'last_seen_at' => 'datetime',
+        'expires_at'   => 'datetime',
     ];
 
     /*
