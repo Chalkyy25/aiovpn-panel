@@ -84,25 +84,24 @@ class VpnUserConnection extends Model
      * set last_seen_at to the most recent disconnected_at we know about.
      */
     public static function updateUserOnlineStatusIfNoActiveConnections(int $userId): void
-    {
-        $hasActive = static::where('vpn_user_id', $userId)
-            ->where('is_connected', true)
-            ->exists();
+{
+    $hasActive = static::where('vpn_user_id', $userId)
+        ->where('is_connected', true)
+        ->exists();
 
-        if ($hasActive) {
-            // Ensure flag is true; do not touch last_seen_at here.
-            VpnUser::where('id', $userId)->update(['is_online' => true]);
-            return;
-        }
-
-        // Most recent disconnect time across all servers for this user
-        $lastDisc = static::where('vpn_user_id', $userId)->max('disconnected_at');
-
-        VpnUser::where('id', $userId)->update([
-            'is_online'    => false,
-            'last_seen_at' => $lastDisc, // <- key line: real last seen time
-        ]);
+    if ($hasActive) {
+        // Don't touch last_seen_at while online.
+        VpnUser::where('id', $userId)->update(['is_online' => true]);
+        return;
     }
+
+    $lastDisc = static::where('vpn_user_id', $userId)->max('disconnected_at'); // may be null
+
+    VpnUser::where('id', $userId)->update([
+        'is_online'    => false,
+        'last_seen_at' => $lastDisc, // null is OK if never connected
+    ]);
+}
 
     /**
      * Duration (in seconds) for this connection (up to now if still connected).
