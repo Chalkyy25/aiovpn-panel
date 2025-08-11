@@ -14,6 +14,7 @@ use App\Http\Controllers\ClientAuthController;
 // ✅ Livewire Pages
 use App\Livewire\Pages\Admin\{CreateUser,
     CreateVpnUser,
+    EditVpnUser,
     UserList,
     VpnUserList,
     VpnServerList,
@@ -68,6 +69,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // VPN Users (global list)
         Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
         Route::get('/vpn-users/create', CreateVpnUser::class)->name('vpn-users.create');
+        Route::get('/vpn-users/{vpnUser}/edit', EditVpnUser::class)->name('vpn-users.edit');
 
         // Reseller Create
         Route::get('/resellers/create', CreateReseller::class)->name('resellers.create');
