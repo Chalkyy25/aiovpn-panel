@@ -81,12 +81,4 @@
             @endforeach
         </div>
     @endif
-
-    {{-- Download all --}}
-    <div class="mt-6 pt-4 border-t">
-        <a href="{{ route('clients.configs.downloadAll', $user->id) }}"
-           class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-md font-medium transition-colors inline-flex items-center">
-            📦 Download All Configs (ZIP)
-        </a>
-    </div>
 </div>
