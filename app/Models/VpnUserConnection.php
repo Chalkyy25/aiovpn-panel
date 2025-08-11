@@ -79,6 +79,12 @@ class VpnUserConnection extends Model
             VpnUser::where('id', $userId)->update([
                 'is_online' => false,
                 'last_seen_at' => now(),
+            // latest known disconnect time for this user
+            $lastDisc = self::where('vpn_user_id', $vpnUserId)->max('disconnected_at');
+        
+            \App\Models\VpnUser::where('id', $vpnUserId)->update([
+                'is_online'    => false,
+                'last_seen_at' => $lastDisc, // <-- key line
             ]);
         }
     }
