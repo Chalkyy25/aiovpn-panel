@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\VpnUser;
 use App\Models\VpnServer;
 use App\Traits\ExecutesRemoteCommands;
+use Exception;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 
@@ -19,14 +20,14 @@ class VpnConfigBuilder
         $generatedFiles = [];
 
         foreach ($vpnUser->vpnServers as $server) {
-            $caCert = trim(Storage::disk('local')->get("certs/{$server->id}/ca.crt"));
-            $tlsKey = trim(Storage::disk('local')->get("certs/{$server->id}/ta.key"));
+            $caCert = trim(Storage::disk('local')->get("certs/$server->id/ca.crt"));
+            $tlsKey = trim(Storage::disk('local')->get("certs/$server->id/ta.key"));
 
             $config = <<<EOL
 client
 dev tun
 proto udp
-remote {$server->ip_address} 1194
+remote $server->ip_address 1194
 resolv-retry infinite
 nobind
 persist-key
@@ -53,17 +54,17 @@ EOL;
 
             // ✅ Create filename based on server name + username
             $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
-            $fileName = "{$safeServerName}_{$vpnUser->username}.ovpn";
+            $fileName = "{$safeServerName}_$vpnUser->username.ovpn";
 
-            Storage::disk('public')->put("ovpn_configs/{$fileName}", $config);
-            $fullPath = storage_path("app/public/ovpn_configs/{$fileName}");
+            Storage::disk('public')->put("ovpn_configs/$fileName", $config);
+            $fullPath = storage_path("app/public/ovpn_configs/$fileName");
             @chmod($fullPath, 0644);
             @chown($fullPath, 'www-data');
             @chgrp($fullPath, 'www-data');
 
             $generatedFiles[] = $fullPath;
 
-        Log::info("✅ OpenVPN config generated: {$fileName}");
+        Log::info("✅ OpenVPN config generated: $fileName");
         }
 
         return $generatedFiles;
@@ -78,12 +79,12 @@ EOL;
         $server = $vpnUser->vpnServers->first();
 
         if (!$server) {
-            Log::warning("⚠️ No server assigned to user {$vpnUser->username} for WireGuard config.");
+            Log::warning("⚠️ No server assigned to user $vpnUser->username for WireGuard config.");
             return '';
         }
 
-        $serverPublicKey = trim(Storage::disk('local')->get("wireguard/{$server->id}/server_public_key"));
-        $serverEndpoint = "{$server->ip_address}:51820";
+        $serverPublicKey = trim(Storage::disk('local')->get("wireguard/$server->id/server_public_key"));
+        $serverEndpoint = "$server->ip_address:51820";
 
         $config = <<<EOL
 [Interface]
@@ -98,17 +99,18 @@ AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25
 EOL;
 
-        $fileName = "{$vpnUser->username}.conf";
-        Storage::disk('local')->put("configs/{$fileName}", $config);
+        $fileName = "$vpnUser->username.conf";
+        Storage::disk('local')->put("configs/$fileName", $config);
 
-        Log::info("✅ WireGuard config generated: {$fileName}");
+        Log::info("✅ WireGuard config generated: $fileName");
 
-        return storage_path("app/configs/{$fileName}");
+        return storage_path("app/configs/$fileName");
     }
 
     /**
      * Generate OpenVPN config for a specific server without saving to file.
      * Returns the config content as a string.
+     * @throws Exception
      */
     public static function generateOpenVpnConfigString(VpnUser $vpnUser, VpnServer $server): string
     {
@@ -117,12 +119,12 @@ EOL;
             $caCert = '';
             $tlsKey = '';
 
-            if (Storage::disk('local')->exists("certs/{$server->id}/ca.crt")) {
-                $caCert = trim(Storage::disk('local')->get("certs/{$server->id}/ca.crt"));
+            if (Storage::disk('local')->exists("certs/$server->id/ca.crt")) {
+                $caCert = trim(Storage::disk('local')->get("certs/$server->id/ca.crt"));
             }
 
-            if (Storage::disk('local')->exists("certs/{$server->id}/ta.key")) {
-                $tlsKey = trim(Storage::disk('local')->get("certs/{$server->id}/ta.key"));
+            if (Storage::disk('local')->exists("certs/$server->id/ta.key")) {
+                $tlsKey = trim(Storage::disk('local')->get("certs/$server->id/ta.key"));
             }
 
             // If certificates not found in storage, try to fetch from server
@@ -137,7 +139,7 @@ EOL;
 client
 dev tun
 proto udp
-remote {$server->ip_address} 1194
+remote $server->ip_address 1194
 resolv-retry infinite
 nobind
 persist-key
@@ -162,11 +164,11 @@ key-direction 1
 </auth-user-pass>
 EOL;
 
-            Log::info("✅ OpenVPN config generated for {$vpnUser->username} on server {$server->name}");
+            Log::info("✅ OpenVPN config generated for $vpnUser->username on server $server->name");
             return $config;
 
-        } catch (\Exception $e) {
-            Log::error("❌ Failed to generate OpenVPN config for {$vpnUser->username} on server {$server->name}: " . $e->getMessage());
+        } catch (Exception $e) {
+            Log::error("❌ Failed to generate OpenVPN config for $vpnUser->username on server $server->name: " . $e->getMessage());
             throw $e;
         }
     }
@@ -191,10 +193,10 @@ EOL;
                 $certs['ta'] = implode("\n", $taResult['output']);
             }
 
-            Log::info("✅ Certificates fetched from server {$server->name}");
+            Log::info("✅ Certificates fetched from server $server->name");
 
-        } catch (\Exception $e) {
-            Log::error("❌ Failed to fetch certificates from server {$server->name}: " . $e->getMessage());
+        } catch (Exception $e) {
+            Log::error("❌ Failed to fetch certificates from server $server->name: " . $e->getMessage());
         }
 
         return $certs;
@@ -213,17 +215,17 @@ EOL;
             $result = $instance->executeRemoteCommand($server->ip_address, 'cat /var/log/openvpn-status.log');
 
             if ($result['status'] !== 0) {
-                Log::warning("⚠️ Could not fetch OpenVPN status from server {$server->name}");
+                Log::warning("⚠️ Could not fetch OpenVPN status from server $server->name");
                 return $sessions;
             }
 
             $statusLog = implode("\n", $result['output']);
             $sessions = $instance->parseOpenVpnStatusLog($statusLog);
 
-            Log::info("✅ Fetched " . count($sessions) . " active sessions from server {$server->name}");
+            Log::info("✅ Fetched " . count($sessions) . " active sessions from server $server->name");
 
-        } catch (\Exception $e) {
-            Log::error("❌ Failed to get live sessions from server {$server->name}: " . $e->getMessage());
+        } catch (Exception $e) {
+            Log::error("❌ Failed to get live sessions from server $server->name: " . $e->getMessage());
         }
 
         return $sessions;
@@ -242,19 +244,19 @@ EOL;
             $line = trim($line);
 
             // Start of client list section
-            if (strpos($line, 'Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since') !== false) {
+            if (str_contains($line, 'Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since')) {
                 $inClientSection = true;
                 continue;
             }
 
             // End of client list section
-            if (strpos($line, 'ROUTING TABLE') !== false) {
+            if (str_contains($line, 'ROUTING TABLE')) {
                 $inClientSection = false;
                 break;
             }
 
             // Parse client data
-            if ($inClientSection && !empty($line) && strpos($line, ',') !== false) {
+            if ($inClientSection && !empty($line) && str_contains($line, ',')) {
                 $parts = explode(',', $line);
                 if (count($parts) >= 5) {
                     $sessions[] = [
@@ -328,7 +330,7 @@ EOL;
 
             Log::info("✅ OpenVPN connectivity test completed for server {$server->name}");
 
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Log::error("❌ OpenVPN connectivity test failed for server {$server->name}: " . $e->getMessage());
             $results['details']['error'] = $e->getMessage();
         }
