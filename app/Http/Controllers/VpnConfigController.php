@@ -12,8 +12,27 @@ use ZipArchive;
 
 class VpnConfigController extends Controller
 {
-    public function download(VpnUser $vpnUser) // Matches: admin/clients/{vpnUser}/config
+    public function download(VpnUser $vpnUser, VpnServer $vpnServer = null) // Matches: admin/clients/{vpnUser}/config and client/vpn/{server}/download
     {
+        // If server is provided, generate OpenVPN config with server name
+        if ($vpnServer) {
+            try {
+                $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+                $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
+
+                return response($configContent)
+                    ->header('Content-Type', 'application/x-openvpn-profile')
+                    ->header('Content-Disposition', "attachment; filename=\"$fileName\"")
+                    ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                    ->header('Pragma', 'no-cache')
+                    ->header('Expires', '0');
+
+            } catch (Exception $e) {
+                abort(500, "Failed to generate OpenVPN config for $vpnServer->name: " . $e->getMessage());
+            }
+        }
+
+        // Default behavior for WireGuard configs
         $path = "configs/{$vpnUser->username}_wg.conf";
 
         if (!Storage::disk('local')->exists($path)) {
@@ -80,11 +99,11 @@ class VpnConfigController extends Controller
 
                 $zip->close();
 
-                return response()->download($zipFilePath)
-                    ->deleteFileAfterSend()
-                    ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                    ->header('Pragma', 'no-cache')
-                    ->header('Expires', '0');
+                $response = response()->download($zipFilePath)->deleteFileAfterSend();
+                $response->headers->set('Cache-Control', 'no-cache, no-store, must-revalidate');
+                $response->headers->set('Pragma', 'no-cache');
+                $response->headers->set('Expires', '0');
+                return $response;
             }
 
             return back()->with('error', 'Could not create ZIP file.');

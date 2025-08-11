@@ -156,7 +156,7 @@ Route::prefix('client')->name('client.')->group(function () {
     // Authenticated Client Area
     Route::middleware('auth:client')->group(function () {
         Route::get('/dashboard', Dashboard::class)->name('dashboard');
-        Route::get('/vpn/{server}/download', [VpnConfigController::class, 'download'])->name('vpn.download');
+        Route::get('/vpn/{vpnserver}/download', [VpnConfigController::class, 'download'])->name('vpn.download');
     });
 });
 

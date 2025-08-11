@@ -30,10 +30,23 @@
         </div>
     @endif
 
-    <h2 class="text-2xl font-semibold mb-4">Welcome, {{ $user->username }}</h2>
-    @if($user->email)
-        <p class="mb-6">Your email: {{ $user->email }}</p>
-    @endif
+    <!-- Header with Logout Button -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h2 class="text-2xl font-semibold">Welcome, {{ $user->username }}</h2>
+            @if($user->email)
+                <p class="text-gray-600 mt-1">Your email: {{ $user->email }}</p>
+            @endif
+        </div>
+        <div>
+            <form method="POST" action="{{ route('client.logout') }}" class="inline">
+                @csrf
+                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors inline-flex items-center">
+                    🚪 Logout
+                </button>
+            </form>
+        </div>
+    </div>
 
     <h3 class="text-xl mb-3">Your VPN Servers</h3>
     @if ($vpnServers->isEmpty())
