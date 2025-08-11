@@ -2,27 +2,28 @@
 
 namespace App\Livewire\Pages\Client;
 
+use App\Models\VpnUser;
+use App\Models\VpnServer;
 use Livewire\Component;
 use Livewire\Attributes\Layout;
 use Illuminate\Support\Facades\Auth;
 
-#[Layout('layouts.app')]  // <-- Add this here
-
+#[Layout('layouts.app')]
 class Dashboard extends Component
 {
-    public $user;
-    public $vpnServers;
+    public $vpnUser;     // the logged-in client
+    public $vpnServers;  // servers assigned to this client
 
-    public function mount()
+    public function mount(): void
     {
-        $this->user = Auth::guard('client')->user();
-        $this->vpnServers = $this->user->vpnServers()->get();
+        $this->vpnUser    = Auth::guard('client')->user();
+        $this->vpnServers = $this->vpnUser?->vpnServers()->get() ?? collect();
     }
 
     public function render()
     {
         return view('livewire.pages.client.dashboard', [
-            'vpnUser' => $this->vpnUser,
+            'vpnUser'    => $this->vpnUser,
             'vpnServers' => $this->vpnServers,
         ]);
     }
