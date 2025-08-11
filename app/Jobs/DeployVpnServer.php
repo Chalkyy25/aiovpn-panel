@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\VpnServer;
+use App\Models\VpnUser;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\SerializesModels;
@@ -67,7 +68,7 @@ if ($sshType === 'password') {
 
             // Log the command that will be run
             Log::info('SSH command for test:', [$sshCmdBase]);
-            
+
             // Test SSH connection
             $testOutput = [];
             $testStatus = null;
@@ -166,6 +167,21 @@ if ($sshType === 'password') {
 
             if ($exitCode === 0) {
                 $finalLog .= "\n✅ Deployment succeeded";
+
+                // 🔄 Auto-assign all existing active users to the new server
+                $existingUsers = VpnUser::where('is_active', true)->get();
+                if ($existingUsers->isNotEmpty()) {
+                    Log::info("👥 Auto-assigning {$existingUsers->count()} existing users to new server {$this->vpnServer->name}");
+
+                    $userIds = $existingUsers->pluck('id')->toArray();
+                    $this->vpnServer->vpnUsers()->syncWithoutDetaching($userIds);
+
+                    $finalLog .= "\n👥 Auto-assigned {$existingUsers->count()} existing users to server";
+                    Log::info("✅ Successfully assigned existing users to server {$this->vpnServer->name}");
+                } else {
+                    Log::info("ℹ️ No existing active users found to assign to server {$this->vpnServer->name}");
+                }
+
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
             } else {
                 $finalLog .= "\n❌ Deployment failed (exit code: $exitCode)";
