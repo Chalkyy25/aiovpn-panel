@@ -112,12 +112,11 @@ verb 3
 key-direction 1
 EOL;
 
-        // Save config
-        $fileName = "public/ovpn_configs/{$server->name}_$username.ovpn";
-        Storage::put($fileName, $config);
-        Storage::setVisibility($fileName, 'public');
+        // ✅ SECURITY FIX: No longer save configs to disk
+        // Configs are now generated on-demand via authenticated routes
+        $fileName = "{$server->name}_$username.ovpn";
 
-        Log::info("✅ [OVPN] Config saved: storage/app/$fileName");
+        Log::info("✅ [OVPN] Config prepared for on-demand generation: $fileName");
     }
 
     /**

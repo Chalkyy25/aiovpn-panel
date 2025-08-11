@@ -17,57 +17,27 @@ class VpnConfigBuilder
      */
     public static function generate(VpnUser $vpnUser): array
     {
-        $generatedFiles = [];
+        // ✅ SECURITY FIX: No longer save configs to disk
+        // Configs are now generated on-demand via authenticated routes
+        $generatedConfigs = [];
 
         foreach ($vpnUser->vpnServers as $server) {
-            $caCert = trim(Storage::disk('local')->get("certs/$server->id/ca.crt"));
-            $tlsKey = trim(Storage::disk('local')->get("certs/$server->id/ta.key"));
-
-            $config = <<<EOL
-client
-dev tun
-proto udp
-remote $server->ip_address 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-remote-cert-tls server
-auth-user-pass
-auth SHA256
-cipher AES-256-CBC
-verb 3
-<ca>
-$caCert
-</ca>
-<tls-auth>
-$tlsKey
-</tls-auth>
-key-direction 1
-
-# Embedded user-pass
-<auth-user-pass>
-{$vpnUser->username}
-{$vpnUser->password}
-</auth-user-pass>
-EOL;
-
-            // ✅ Create filename based on server name + username
             $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
             $fileName = "{$safeServerName}_$vpnUser->username.ovpn";
 
-            Storage::disk('public')->put("ovpn_configs/$fileName", $config);
-            $fullPath = storage_path("app/public/ovpn_configs/$fileName");
-            @chmod($fullPath, 0644);
-            @chown($fullPath, 'www-data');
-            @chgrp($fullPath, 'www-data');
+            // Return config info without saving to disk
+            $generatedConfigs[] = [
+                'server_id' => $server->id,
+                'server_name' => $server->name,
+                'filename' => $fileName,
+                'user_id' => $vpnUser->id,
+                'username' => $vpnUser->username
+            ];
 
-            $generatedFiles[] = $fullPath;
-
-        Log::info("✅ OpenVPN config generated: $fileName");
+            Log::info("✅ OpenVPN config prepared for on-demand generation: $fileName");
         }
 
-        return $generatedFiles;
+        return $generatedConfigs;
     }
 
     /**

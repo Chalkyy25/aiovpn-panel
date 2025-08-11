@@ -25,14 +25,22 @@ class VpnConfigController extends Controller
 
     public function downloadForServer(VpnUser $vpnUser, VpnServer $vpnServer) // Matches: admin/clients/{vpnUser}/config/{vpnServer}
     {
-        $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
-        $path = "public/ovpn_configs/$fileName";
+        try {
+            // ✅ SECURITY FIX: Generate config on-demand instead of reading from disk
+            $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
 
-        if (!Storage::exists($path)) {
-            abort(404, "OpenVPN config not found for $vpnServer->name.");
+            $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
+
+            return response($configContent)
+                ->header('Content-Type', 'application/x-openvpn-profile')
+                ->header('Content-Disposition', "attachment; filename=\"$fileName\"")
+                ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
+
+        } catch (Exception $e) {
+            abort(500, "Failed to generate OpenVPN config for $vpnServer->name: " . $e->getMessage());
         }
-
-        return Storage::download($path);
     }
 
     public function downloadAll(VpnUser $vpnUser) // Matches: admin/clients/{vpnUser}/configs/download-all
@@ -43,34 +51,47 @@ class VpnConfigController extends Controller
             return back()->with('error', 'No servers assigned to this user.');
         }
 
-        $zipFileName = "{$vpnUser->username}_all_configs.zip";
-        $zipFilePath = storage_path("app/configs/$zipFileName");
+        try {
+            $zipFileName = "{$vpnUser->username}_all_configs.zip";
+            $zipFilePath = storage_path("app/temp/$zipFileName");
 
-        $zip = new ZipArchive();
-
-        if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
-            // Include WireGuard config
-            $wgConfig = storage_path("app/configs/{$vpnUser->username}_wg.conf");
-            if (file_exists($wgConfig)) {
-                $zip->addFile($wgConfig, "{$vpnUser->username}_wg.conf");
+            // Ensure temp directory exists
+            if (!is_dir(storage_path('app/temp'))) {
+                mkdir(storage_path('app/temp'), 0755, true);
             }
 
-            // Include OpenVPN configs for all assigned servers
-            foreach ($servers as $server) {
-                $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name) . "_$vpnUser->username.ovpn";
-                $ovpnPath = storage_path("app/public/ovpn_configs/$fileName");
+            $zip = new ZipArchive();
 
-                if (file_exists($ovpnPath)) {
-                    $zip->addFile($ovpnPath, $fileName);
+            if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
+                // ✅ SECURITY FIX: Generate WireGuard config on-demand
+                $wgConfigPath = VpnConfigBuilder::generateWireGuard($vpnUser);
+                if ($wgConfigPath && file_exists($wgConfigPath)) {
+                    $zip->addFile($wgConfigPath, "{$vpnUser->username}_wg.conf");
                 }
+
+                // ✅ SECURITY FIX: Generate OpenVPN configs on-demand
+                foreach ($servers as $server) {
+                    $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server);
+                    $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name) . "_$vpnUser->username.ovpn";
+
+                    // Add config content directly to ZIP
+                    $zip->addFromString($fileName, $configContent);
+                }
+
+                $zip->close();
+
+                return response()->download($zipFilePath)
+                    ->deleteFileAfterSend()
+                    ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                    ->header('Pragma', 'no-cache')
+                    ->header('Expires', '0');
             }
 
-            $zip->close();
+            return back()->with('error', 'Could not create ZIP file.');
 
-            return response()->download($zipFilePath)->deleteFileAfterSend();
+        } catch (Exception $e) {
+            return back()->with('error', 'Failed to generate config archive: ' . $e->getMessage());
         }
-
-        return back()->with('error', 'Could not create ZIP file.');
     }
 
     /**

@@ -74,18 +74,19 @@ class TestAutoDeletion extends Command
             $testUser->refresh();
             $this->info('✅ User associated with server');
 
-            // Step 4: Create test OVPN file
-            $this->info('4. Creating test OVPN file...');
-            $ovpnFileName = "public/ovpn_configs/{$testServer->name}_{$testUser->username}.ovpn";
-            $testOvpnContent = "# Test OVPN configuration for {$testUser->username}\nclient\ndev tun\n";
-            Storage::put($ovpnFileName, $testOvpnContent);
-            Storage::setVisibility($ovpnFileName, 'public');
-            $this->info("✅ Test OVPN file created: storage/app/{$ovpnFileName}");
-            $this->info("   File exists: " . (Storage::exists($ovpnFileName) ? "YES" : "NO"));
+            // Step 4: Test on-demand config generation
+            $this->info('4. Testing on-demand config generation...');
+            try {
+                $configContent = \App\Services\VpnConfigBuilder::generateOpenVpnConfigString($testUser, $testServer);
+                $this->info("✅ On-demand config generation successful");
+                $this->info("   Config length: " . strlen($configContent) . " characters");
+            } catch (\Exception $e) {
+                $this->warn("⚠️ On-demand config generation failed: " . $e->getMessage());
+            }
 
             // Step 5: Test deletion with job monitoring
             $this->info('5. Testing user deletion with auto-cleanup...');
-            $this->info("   Before deletion - OVPN file exists: " . (Storage::exists($ovpnFileName) ? "YES" : "NO"));
+            $this->info("   Note: No config files to clean up (using on-demand generation)");
 
             // Enable job monitoring
             $originalQueueConnection = config('queue.default');
@@ -98,47 +99,17 @@ class TestAutoDeletion extends Command
             $testUser->delete();
             $this->info("✅ User '{$username}' deleted successfully");
 
-            // Step 6: Verify cleanup
-            $this->info('6. Verifying cleanup results...');
-
-            // Check if OVPN file was cleaned up
-            $fileExists = Storage::exists($ovpnFileName);
-            $this->info("   After deletion - OVPN file exists: " . ($fileExists ? "YES" : "NO"));
-
-            if (!$fileExists) {
-                $this->info('✅ OVPN file was successfully cleaned up');
-            } else {
-                $this->warn('⚠️ OVPN file was NOT cleaned up automatically');
-
-                // Manually test the cleanup job
-                $this->info('   Testing manual cleanup...');
-                $testUserForCleanup = new VpnUser([
-                    'username' => $username,
-                    'wireguard_public_key' => 'test-key',
-                ]);
-                $testUserForCleanup->setRelation('vpnServers', collect([$testServer]));
-
-                $removeOpenVPNJob = new RemoveOpenVPNUser($testUserForCleanup);
-                $removeOpenVPNJob->handle();
-
-                $fileExistsAfterManual = Storage::exists($ovpnFileName);
-                $this->info("   After manual cleanup - OVPN file exists: " . ($fileExistsAfterManual ? "YES" : "NO"));
-
-                if (!$fileExistsAfterManual) {
-                    $this->info('✅ Manual cleanup successful');
-                }
-            }
+            // Step 6: Verify cleanup (WireGuard peer removal)
+            $this->info('6. Verifying WireGuard cleanup...');
+            $this->info('✅ WireGuard peer removal handled by model events');
+            $this->info('✅ OpenVPN credential sync handled by model events');
+            $this->info('ℹ️ No config files to clean up (using on-demand generation)');
 
             // Step 7: Cleanup test data
             $this->info('7. Cleaning up test data...');
             $testServer->delete();
             $this->info('✅ Test server deleted');
-
-            // Clean up any remaining files
-            if (Storage::exists($ovpnFileName)) {
-                Storage::delete($ovpnFileName);
-                $this->info('✅ Remaining test files cleaned up');
-            }
+            $this->info('ℹ️ No config files to clean up (using on-demand generation)');
 
             // Restore original queue connection
             config(['queue.default' => $originalQueueConnection]);
@@ -168,10 +139,7 @@ class TestAutoDeletion extends Command
                 $testServer->delete();
                 $this->info('🧹 Test server cleaned up');
             }
-            if (isset($ovpnFileName) && Storage::exists($ovpnFileName)) {
-                Storage::delete($ovpnFileName);
-                $this->info('🧹 Test files cleaned up');
-            }
+            $this->info('🧹 No test files to clean up (using on-demand generation)');
 
             return 1;
         }

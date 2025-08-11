@@ -6,8 +6,10 @@ use App\Models\Client;
 use App\Models\VpnServer;
 use App\Jobs\SyncOpenVPNCredentials;
 use App\Jobs\GenerateOvpnFile;
+use App\Services\VpnConfigBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Exception;
 
 class ClientController extends Controller
 {
@@ -49,14 +51,35 @@ return redirect()->route('clients.create')
 
 public function download($id)
 {
-    $client = Client::findOrFail($id);
-    $path = "ovpn_configs/{$client->username}.ovpn";
+    try {
+        $client = Client::findOrFail($id);
 
-    if (!Storage::exists($path)) {
-        abort(404, 'Config not found');
+        // ✅ SECURITY FIX: Generate config on-demand instead of reading from disk
+        // Note: This assumes Client model has a relationship to VpnServer
+        $server = $client->vpnServer ?? VpnServer::first();
+
+        if (!$server) {
+            abort(404, 'No VPN server available for this client');
+        }
+
+        // Convert Client to VpnUser-like object for compatibility
+        $vpnUser = (object) [
+            'username' => $client->username,
+            'password' => $client->password
+        ];
+
+        $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server);
+
+        return response($configContent)
+            ->header('Content-Type', 'application/x-openvpn-profile')
+            ->header('Content-Disposition', "attachment; filename=\"{$client->username}.ovpn\"")
+            ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+
+    } catch (Exception $e) {
+        abort(500, 'Failed to generate config: ' . $e->getMessage());
     }
-
-    return response()->download(storage_path("app/{$path}"), "{$client->username}.ovpn");
 }
 
 public function index()

@@ -69,30 +69,11 @@ class RemoveOpenVPNUser implements ShouldQueue
     {
         Log::info("🔧 Cleaning up OpenVPN for server: $server->name ($server->ip_address)");
 
-        // Remove OVPN configuration file
-        $this->removeOvpnFile($server);
+        // ✅ SECURITY FIX: No config files to remove since we use on-demand generation
+        Log::info("ℹ️ [OVPN] No config files to clean up (using on-demand generation)");
 
         // Regenerate OpenVPN credentials to remove this user
         $this->regenerateCredentials($server);
-    }
-
-    /**
-     * Remove the OVPN configuration file for this user and server.
-     *
-     * @param VpnServer $server
-     * @return void
-     */
-    protected function removeOvpnFile(VpnServer $server): void
-    {
-        $username = $this->vpnUser->username;
-        $fileName = "public/ovpn_configs/{$server->name}_$username.ovpn";
-
-        if (Storage::exists($fileName)) {
-            Storage::delete($fileName);
-            Log::info("✅ [OVPN] Deleted config file: storage/app/$fileName");
-        } else {
-            Log::info("ℹ️ [OVPN] Config file not found: storage/app/$fileName");
-        }
     }
 
     /**
