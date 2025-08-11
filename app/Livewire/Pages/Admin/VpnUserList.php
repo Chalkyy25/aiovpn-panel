@@ -127,15 +127,19 @@ class VpnUserList extends Component
      * Renders the VPN user list with optional search filtering.
      */
     public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
-    {
-        $users = VpnUser::with(['vpnServers', 'activeConnections'])
-            ->when($this->search, fn($q) =>
-                $q->where('username', 'like', '%' . $this->search . '%')
-            )
-            ->orderBy('is_online', 'desc')
-            ->orderBy('id', 'desc')
-            ->paginate(20);
+{
+    $users = VpnUser::with([
+            'vpnServers:id,name',
+            'activeConnections:id,vpn_user_id,connected_at',
+            'connections:id,vpn_user_id,disconnected_at,is_connected',
+        ])
+        ->when($this->search, fn($q) =>
+            $q->where('username', 'like', '%'.$this->search.'%')
+        )
+        ->orderBy('is_online', 'desc')
+        ->orderBy('id', 'desc')
+        ->paginate(20);
 
-        return view('livewire.pages.admin.vpn-user-list', compact('users'));
-    }
+    return view('livewire.pages.admin.vpn-user-list', compact('users'));
+}
 }
