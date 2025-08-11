@@ -47,7 +47,6 @@ class SyncVpnUserStatus extends Command
 
             if ($user) {
                 $user->is_online = true;
-                $user->last_seen_at = $now;
                 $user->save();
 
                 Log::info("✅ User $username marked online at $now");
