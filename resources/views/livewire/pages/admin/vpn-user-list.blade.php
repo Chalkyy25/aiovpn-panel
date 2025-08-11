@@ -40,17 +40,17 @@
                 $lastSeen    = $user->last_seen_at;          // Carbon|null (cast)
             @endphp
 
-            @if($user->is_online)
-                <div class="text-xs text-green-600">
-                    Online — {{ $onlineSince ? $onlineSince->diffForHumans(now(), true) : 'just now' }}
-                </div>
-            @elseif($lastSeen)
-                <div class="text-xs text-gray-500">
-                    Last seen {{ $lastSeen->diffForHumans() }}
-                </div>
-            @else
-                <div class="text-xs text-gray-400">No activity recorded</div>
-            @endif
+            @if($user->is_online && $user->online_since)
+  <div class="text-xs text-green-600">
+    Online – {{ $user->online_since->diffForHumans() }}
+  </div>
+@elseif($user->last_seen_at)
+  <div class="text-xs text-gray-500">
+    Offline – {{ $user->last_seen_at->diffForHumans() }}
+  </div>
+@else
+  <div class="text-xs text-gray-400">Never connected</div>
+@endif
         </div>
     </div>
 </td>
