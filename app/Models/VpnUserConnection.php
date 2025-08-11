@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,14 +24,18 @@ class VpnUserConnection extends Model
     ];
 
     protected $casts = [
-        'is_connected' => 'boolean',
-        'connected_at' => 'datetime',
+        'is_connected'    => 'boolean',
+        'connected_at'    => 'datetime',
         'disconnected_at' => 'datetime',
-        'bytes_received' => 'integer',
-        'bytes_sent' => 'integer',
+        'bytes_received'  => 'integer',
+        'bytes_sent'      => 'integer',
     ];
 
-    // ─── Relationships ──────────────────────────────────────────────
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
 
     public function vpnUser(): BelongsTo
     {
@@ -42,7 +47,11 @@ class VpnUserConnection extends Model
         return $this->belongsTo(VpnServer::class);
     }
 
-    // ─── Scopes ─────────────────────────────────────────────────────
+    /*
+    |--------------------------------------------------------------------------
+    | Scopes
+    |--------------------------------------------------------------------------
+    */
 
     public function scopeConnected($query)
     {
@@ -54,68 +63,84 @@ class VpnUserConnection extends Model
         return $query->where('is_connected', false);
     }
 
-    public function scopeForServer($query, $serverId)
+    public function scopeForServer($query, int $serverId)
     {
         return $query->where('vpn_server_id', $serverId);
     }
 
-    public function scopeForUser($query, $userId)
+    public function scopeForUser($query, int $userId)
     {
         return $query->where('vpn_user_id', $userId);
     }
 
-    // ─── Helper Methods ─────────────────────────────────────────────
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
 
     /**
-     * Update user's online status if they have no active connections.
+     * If user has no active connections anywhere, mark them offline and
+     * set last_seen_at to the most recent disconnected_at we know about.
      */
     public static function updateUserOnlineStatusIfNoActiveConnections(int $userId): void
     {
-        $hasActiveConnections = static::where('vpn_user_id', $userId)
+        $hasActive = static::where('vpn_user_id', $userId)
             ->where('is_connected', true)
             ->exists();
 
-        if (!$hasActiveConnections) {
-            VpnUser::where('id', $userId)->update([
-                'is_online' => false,
-                'last_seen_at' => now(),
-            // latest known disconnect time for this user
-            $lastDisc = self::where('vpn_user_id', $vpnUserId)->max('disconnected_at');
-        
-            \App\Models\VpnUser::where('id', $vpnUserId)->update([
-                'is_online'    => false,
-                'last_seen_at' => $lastDisc, // <-- key line
-            ]);
+        if ($hasActive) {
+            // Ensure flag is true; do not touch last_seen_at here.
+            VpnUser::where('id', $userId)->update(['is_online' => true]);
+            return;
         }
+
+        // Most recent disconnect time across all servers for this user
+        $lastDisc = static::where('vpn_user_id', $userId)->max('disconnected_at');
+
+        VpnUser::where('id', $userId)->update([
+            'is_online'    => false,
+            'last_seen_at' => $lastDisc, // <- key line: real last seen time
+        ]);
     }
 
+    /**
+     * Duration (in seconds) for this connection (up to now if still connected).
+     */
     public function getConnectionDurationAttribute(): ?int
     {
-        if (!$this->connected_at) {
+        if (!$this->connected_at instanceof Carbon) {
             return null;
         }
 
-        $endTime = $this->disconnected_at ?? now();
-        return $this->connected_at->diffInSeconds($endTime);
+        $end = $this->disconnected_at instanceof Carbon ? $this->disconnected_at : now();
+        return $this->connected_at->diffInSeconds($end);
     }
 
+    /**
+     * Total bytes transferred on this connection.
+     */
     public function getTotalBytesAttribute(): int
     {
-        return $this->bytes_received + $this->bytes_sent;
+        return (int) $this->bytes_received + (int) $this->bytes_sent;
     }
 
+    /**
+     * Human readable total bytes.
+     */
     public function getFormattedBytesAttribute(): string
     {
-        $bytes = $this->getTotalBytesAttribute();
+        $bytes = $this->total_bytes;
 
         if ($bytes >= 1073741824) {
             return number_format($bytes / 1073741824, 2) . ' GB';
-        } elseif ($bytes >= 1048576) {
+        }
+        if ($bytes >= 1048576) {
             return number_format($bytes / 1048576, 2) . ' MB';
-        } elseif ($bytes >= 1024) {
+        }
+        if ($bytes >= 1024) {
             return number_format($bytes / 1024, 2) . ' KB';
         }
-
         return $bytes . ' B';
     }
 }
