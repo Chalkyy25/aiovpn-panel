@@ -96,6 +96,12 @@
                             <a href="{{ route('admin.vpn-users.edit', $user->id) }}" class="text-green-600 hover:text-green-900">Edit</a>
                             <button wire:click="generateOvpn({{ $user->id }})" class="text-indigo-600 hover:text-indigo-900">OpenVPN</button>
                             <button wire:click="generateWireGuard({{ $user->id }})" class="text-blue-600 hover:text-blue-900">WireGuard</button>
+                            <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
+                                @csrf
+                                <button type="submit" class="text-purple-600 hover:text-purple-900" title="Login as this client">
+                                    🔐 Login as Client
+                                </button>
+                            </form>
                             <button wire:click="toggleActive({{ $user->id }})" class="text-yellow-600 hover:text-yellow-900">
                                 {{ $user->is_active ? 'Disable' : 'Enable' }}
                             </button>

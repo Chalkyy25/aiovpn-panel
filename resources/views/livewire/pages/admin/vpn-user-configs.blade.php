@@ -10,7 +10,7 @@
                     <span class="font-semibold">{{ $server->name }}</span>
                     <span class="text-sm text-gray-500">({{ $server->location ?? 'Unknown' }})</span>
                 </div>
-                <a href="{{ route('admin.clients.config.downloadForServer', [$vpnUser, $server]) }}"
+                <a href="{{ route('clients.config.downloadForServer', [$vpnUser, $server]) }}"
                    class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm">
                     Download Config
                 </a>
@@ -21,7 +21,7 @@
     </div>
 
     <div class="mt-6">
-        <a href="{{ route('admin.clients.configs.downloadAll', $vpnUser) }}"
+        <a href="{{ route('clients.configs.downloadAll', $vpnUser) }}"
            class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
             Download All Configs (ZIP)
         </a>

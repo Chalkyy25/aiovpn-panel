@@ -15,7 +15,7 @@ class Dashboard extends Component
 
     public function mount()
     {
-        $this->user = Auth::user();
+        $this->user = Auth::guard('client')->user();
         $this->vpnServers = $this->user->vpnServers()->get();
     }
 

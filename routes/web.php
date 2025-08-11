@@ -10,6 +10,7 @@ use App\Http\Controllers\VpnUserController;
 use App\Http\Controllers\VpnServerController;
 use App\Http\Controllers\VpnConfigController;
 use App\Http\Controllers\ClientAuthController;
+use App\Http\Controllers\AdminImpersonationController;
 
 // ✅ Livewire Pages
 use App\Livewire\Pages\Admin\{CreateUser,
@@ -76,6 +77,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         //Reseller List
         Route::get('/resellers', ResellerList::class)->name('resellers.index');
+
+        // Admin Impersonation
+        Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
+        Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
 
     });
 
