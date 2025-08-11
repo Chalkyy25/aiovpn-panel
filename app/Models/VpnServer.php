@@ -15,7 +15,7 @@ class VpnServer extends Model
 {
     use HasFactory, ExecutesRemoteCommands;
 
-    
+    protected $appends = ['is_online'];
     protected $fillable = [
         'name',
         'ip_address',
@@ -149,8 +149,10 @@ class VpnServer extends Model
 
     // ─── Status Helpers ─────────────────────────────────────────────
 
-    public function isActive(): bool
+    public function getIsOnlineAttribute(): bool
     {
+        // Treat servers that finished deployment as "online"
+        // (swap this logic later to a health-check flag if you want)
         return $this->deployment_status === 'succeeded';
     }
 
