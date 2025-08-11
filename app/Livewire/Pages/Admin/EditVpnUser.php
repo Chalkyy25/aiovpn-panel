@@ -26,6 +26,7 @@ class EditVpnUser extends Component
     public $expiry = '1m';
     public $maxConnections;
     public $isActive;
+    public $extendExpiry = false;
 
     /**
      * Set up initial component state
@@ -63,18 +64,21 @@ class EditVpnUser extends Component
             'selectedServers' => 'required|array|min:1',
             'maxConnections' => 'required|integer|min:1|max:10',
             'isActive' => 'boolean',
+            'extendExpiry' => 'boolean',
         ]);
-
-        // Extract the duration in months from the expiry string
-        $months = (int) rtrim($this->expiry, 'm');
 
         // Prepare update data
         $updateData = [
             'username' => $this->username,
-            'expires_at' => now()->addMonths($months),
             'max_connections' => $this->maxConnections,
             'is_active' => $this->isActive,
         ];
+
+        // Only update expiry date if extend expiry is checked
+        if ($this->extendExpiry) {
+            $months = (int) rtrim($this->expiry, 'm');
+            $updateData['expires_at'] = now()->addMonths($months);
+        }
 
         // Only update password if provided
         if (!empty($this->password)) {

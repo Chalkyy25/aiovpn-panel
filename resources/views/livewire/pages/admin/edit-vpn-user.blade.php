@@ -97,6 +97,22 @@
             @enderror
         </div>
 
+        <!-- Extend Expiry -->
+        <div class="md:col-span-2">
+            <label class="flex items-center space-x-2 text-sm text-gray-300">
+                <input type="checkbox" wire:model="extendExpiry"
+                       class="text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring focus:ring-blue-500" />
+                <span>Extend expiry date (if unchecked, current expiry date will be preserved)</span>
+            </label>
+            @error('extendExpiry')
+                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
+            @enderror
+            <p class="mt-1 text-xs text-gray-400">
+                ⚠️ Only check this if you want to extend the user's subscription from today.
+                Leave unchecked to preserve the current expiry date when making other changes.
+            </p>
+        </div>
+
         <!-- Server Selection -->
         <div class="md:col-span-2">
             <label class="block text-sm font-medium mb-2 text-gray-300">Assign to Servers</label>
