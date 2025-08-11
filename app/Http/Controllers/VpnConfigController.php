@@ -14,7 +14,7 @@ use ZipArchive;
 
 class VpnConfigController extends Controller
 {
-    public function downloadForClient(VpnServer $vpnserver)
+    public function clientDownload(VpnServer $vpnserver)
     {
         $client = Auth::guard('client')->user();
         abort_if(!$client, 401, 'Unauthenticated client');
