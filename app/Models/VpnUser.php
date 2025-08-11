@@ -84,6 +84,34 @@ class VpnUser extends Authenticatable
     {
         return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
     }
+    
+    /**
+ * The earliest connected_at among current active connections (if any).
+ */
+public function getOnlineSinceAttribute()
+{
+    // Use the loaded relation if present to avoid extra queries
+    $coll = $this->relationLoaded('activeConnections')
+        ? $this->activeConnections
+        : $this->activeConnections()->get();
+
+    $ts = $coll->min('connected_at'); // null if none
+    return $ts ? \Carbon\Carbon::parse($ts) : null;
+}
+
+/**
+ * The latest disconnected_at among past connections (fallback for offline).
+ */
+public function getLastDisconnectedAtAttribute()
+{
+    // Prefer a loaded relation to keep it cheap
+    $coll = $this->relationLoaded('connections')
+        ? $this->connections
+        : $this->connections()->get();
+
+    $ts = $coll->where('is_connected', false)->max('disconnected_at');
+    return $ts ? \Carbon\Carbon::parse($ts) : null;
+}
 
     /*
     |--------------------------------------------------------------------------
