@@ -72,9 +72,9 @@
 
                     <div class="flex space-x-2">
                         {{-- OpenVPN: generate on the fly (embeds CA/TLS) --}}
-                        <a href="{{ route('clients.config.downloadForServer', [$user->id, $server->id]) }}"
-                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
-                            📥 Download OpenVPN
+                        <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id]) }}"
+                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                          📥 Download OpenVPN
                         </a>
                     </div>
                 </div>
