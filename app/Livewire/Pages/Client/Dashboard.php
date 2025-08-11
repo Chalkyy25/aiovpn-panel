@@ -22,7 +22,7 @@ class Dashboard extends Component
     public function render()
     {
         return view('livewire.pages.client.dashboard', [
-            'user' => $this->user,
+            'vpnUser' => $this->vpnUser,
             'vpnServers' => $this->vpnServers,
         ]);
     }
