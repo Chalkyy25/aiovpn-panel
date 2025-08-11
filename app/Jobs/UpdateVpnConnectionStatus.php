@@ -161,7 +161,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             if (!$user->is_online) {
                 $user->is_online = true;
             }
-            $user->last_seen_at = now();
             $user->last_ip      = $conn->client_ip;
             $user->save();
 
