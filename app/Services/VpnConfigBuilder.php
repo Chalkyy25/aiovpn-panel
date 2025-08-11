@@ -150,6 +150,12 @@ EOL;
     {
         $certs = ['ca' => '', 'ta' => ''];
 
+        // Validate server IP address before attempting remote commands
+        if (empty($server->ip_address)) {
+            Log::error("❌ Cannot fetch certificates from server $server->name: IP address is null or empty");
+            return $certs;
+        }
+
         try {
             // Fetch CA certificate
             $caResult = $this->executeRemoteCommand($server->ip_address, 'cat /etc/openvpn/ca.crt');
@@ -179,6 +185,12 @@ EOL;
     {
         $instance = new static();
         $sessions = [];
+
+        // Validate server IP address before attempting remote commands
+        if (empty($server->ip_address)) {
+            Log::error("❌ Cannot fetch OpenVPN sessions from server $server->name: IP address is null or empty");
+            return $sessions;
+        }
 
         try {
             // Get OpenVPN status log

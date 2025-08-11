@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Traits\ExecutesRemoteCommands;
+use Exception;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
 class VpnServer extends Model
 {
@@ -81,16 +83,26 @@ class VpnServer extends Model
 
     public function getOnlineUserCount(): int
     {
+        // Validate IP address before attempting remote command
+        if (empty($this->ip_address)) {
+            Log::warning("⚠️ Cannot get online user count for server $this->name: IP address is null or empty");
+            return 0;
+        }
+
         $statusPath = '/var/log/openvpn-status.log'; // Updated to match deployment script configuration
 
-        // Count client lines between "Common Name" and "ROUTING TABLE"
-        $result = $this->executeRemoteCommand(
-            $this->ip_address,
-            "awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l"
-        );
+        try {
+            // Count client lines between "Common Name" and "ROUTING TABLE"
+            $result = $this->executeRemoteCommand(
+                $this->ip_address,
+                "awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l"
+            );
 
-        if ($result['status'] === 0 && isset($result['output'][0])) {
-            return (int) trim($result['output'][0]);
+            if ($result['status'] === 0 && isset($result['output'][0])) {
+                return (int) trim($result['output'][0]);
+            }
+        } catch (Exception $e) {
+            Log::error("❌ Failed to get online user count for server $this->name: " . $e->getMessage());
         }
 
         return 0;
@@ -99,6 +111,13 @@ class VpnServer extends Model
     public function getSshCommand(): string
     {
         $ip = $this->ip_address;
+
+        // Validate IP address
+        if (empty($ip)) {
+            Log::error("❌ Cannot generate SSH command for server $this->name: IP address is null or empty");
+            throw new InvalidArgumentException("Server IP address is required to generate SSH command");
+        }
+
         $port = $this->ssh_port ?? 22;
         $user = $this->ssh_user ?? 'root';
 
