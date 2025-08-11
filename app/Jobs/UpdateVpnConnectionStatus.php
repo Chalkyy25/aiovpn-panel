@@ -133,49 +133,51 @@ class UpdateVpnConnectionStatus implements ShouldQueue
      * Update connections in database.
      */
     protected function updateConnectionsInDatabase(VpnServer $server, array $connectedUsers): void
-    {
-        // Get all users associated with this server
-        $serverUsers = $server->vpnUsers()->get();
+{
+    $serverUsers = $server->vpnUsers()->get();
 
-        foreach ($serverUsers as $user) {
-            $connection = VpnUserConnection::firstOrCreate([
-                'vpn_user_id' => $user->id,
-                'vpn_server_id' => $server->id,
-            ]);
+    foreach ($serverUsers as $user) {
+        $conn = VpnUserConnection::firstOrCreate([
+            'vpn_user_id'   => $user->id,
+            'vpn_server_id' => $server->id,
+        ]);
 
-            if (isset($connectedUsers[$user->username])) {
-                // User is connected
-                $userData = $connectedUsers[$user->username];
+        if (isset($connectedUsers[$user->username])) {
+            $u = $connectedUsers[$user->username];
 
-                $connection->update([
-                    'is_connected' => true,
-                    'client_ip' => $userData['client_ip'],
-                    'connected_at' => $userData['connected_at'] ?? $connection->connected_at ?? now(),
-                    'bytes_received' => $userData['bytes_received'],
-                    'bytes_sent' => $userData['bytes_sent'],
-                    'disconnected_at' => null,
-                ]);
-
-                // Update user's global online status
-                $user->update([
-                    'is_online' => true,
-                    'last_seen_at' => now(),
-                    'last_ip' => $userData['client_ip'],
-                ]);
-
-            } else {
-                // User is not connected
-                if ($connection->is_connected) {
-                    $connection->update([
-                        'is_connected' => false,
-                        'disconnected_at' => now(),
-                    ]);
-                }
-
-                // Check if user has any active connections on other servers
-                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($user->id);
+            // 👉 Only set connected_at on transition offline -> online
+            if (!$conn->is_connected) {
+                $conn->connected_at = $u['connected_at'] ?? now();
+                $conn->disconnected_at = null;
             }
+
+            $conn->is_connected   = true;
+            $conn->client_ip      = $u['client_ip']      ?? $conn->client_ip;
+            $conn->bytes_received = $u['bytes_received'] ?? $conn->bytes_received;
+            $conn->bytes_sent     = $u['bytes_sent']     ?? $conn->bytes_sent;
+            $conn->save();
+
+            // Optional global flags
+            if (!$user->is_online) {
+                $user->is_online = true;
+            }
+            $user->last_seen_at = now();
+            $user->last_ip      = $conn->client_ip;
+            $user->save();
+
+        } else {
+            // Transition online -> offline
+            if ($conn->is_connected) {
+                $conn->is_connected    = false;
+                $conn->disconnected_at = now();
+                $conn->save();
+            }
+
+            // If no other active connections, mark user offline
+            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($user->id);
         }
+    }
+}
     }
 
     /**
