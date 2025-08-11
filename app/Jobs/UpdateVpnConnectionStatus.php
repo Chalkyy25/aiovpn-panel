@@ -188,14 +188,14 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             ->where('is_connected', true)
             ->get();
 
-        foreach ($connections as $connection) {
-            $connection->update([
+        foreach ($connections as $conn) {
+            $conn->update([
                 'is_connected' => false,
                 'disconnected_at' => now(),
             ]);
 
             // Check if user has any other active connections
-            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($connection->vpn_user_id);
+            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($conn->vpn_user_id);
         }
     }
 }
