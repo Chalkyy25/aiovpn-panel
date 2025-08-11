@@ -15,29 +15,49 @@ use ZipArchive;
 class VpnConfigController extends Controller
 {
     public function clientDownload(VpnServer $vpnserver)
-    {
-        $client = Auth::guard('client')->user();
-        abort_if(!$client, 401, 'Unauthenticated client');
-        abort_if(empty($vpnserver->ip_address), 400, 'Server IP missing');
-    
-        // Small creds shim for the builder (needs username/password)
-        $creds = (object)[
-            'username' => $client->username,
-            'password' => $client->password, // ensure this is plain, not hashed
-        ];
-    
-        $config = \App\Services\VpnConfigBuilder::generateOpenVpnConfigString($creds, $vpnserver);
-    
-        $safe = Str::of($vpnserver->name)->replace([' ', '(', ')'], ['_', '', '']);
-        $file = "{$safe}_{$client->username}.ovpn";
-    
-        return response($config)
+{
+    $client = Auth::guard('client')->user();
+    abort_unless($client, 403);
+
+    // If guard already returns a VpnUser, use it. Otherwise resolve by username.
+    if ($client instanceof VpnUser) {
+        $vpnUser = $client;
+    } else {
+        $vpnUser = VpnUser::where('username', $client->username)->first();
+        if (! $vpnUser) {
+            // Fallback: create an in-memory VpnUser instance (not saved)
+            $vpnUser = new VpnUser([
+                'username' => $client->username,
+                'password' => $client->password, // ensure this is the cleartext OpenVPN password
+            ]);
+        }
+    }
+
+    // (Optional) ensure the user is actually assigned to this server
+    try {
+        $isAssigned = method_exists($vpnUser, 'vpnServers')
+            ? $vpnUser->vpnServers()->whereKey($vpnserver->id)->exists()
+            : true; // if fallback instance without relation, skip the check
+
+        if (! $isAssigned) {
+            abort(403, 'Server not assigned to your account.');
+        }
+
+        $content = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnserver);
+        $name = str_replace([' ', '(', ')'], ['_', '', ''], $vpnserver->name) . "_{$vpnUser->username}.ovpn";
+
+        return response($content)
             ->header('Content-Type', 'application/x-openvpn-profile')
-            ->header('Content-Disposition', "attachment; filename=\"{$file}\"")
+            ->header('Content-Disposition', "attachment; filename=\"{$name}\"")
             ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
             ->header('Pragma', 'no-cache')
             ->header('Expires', '0');
+
+    } catch (\Throwable $e) {
+        report($e);
+        abort(500, 'Failed to generate OpenVPN config: '.$e->getMessage());
     }
+}
 
     public function download(VpnUser $vpnUser, VpnServer $vpnServer = null) // Matches: admin/clients/{vpnUser}/config and client/vpn/{server}/download
     {
