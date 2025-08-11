@@ -5,58 +5,56 @@ namespace App\Services;
 use App\Models\VpnUser;
 use App\Models\VpnServer;
 use App\Traits\ExecutesRemoteCommands;
+use Carbon\Carbon;
 use Exception;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class VpnConfigBuilder
 {
     use ExecutesRemoteCommands;
+
     /**
-     * Generate OpenVPN configs for all servers assigned to the user.
+     * Return config descriptors for a user's assigned servers (no files written).
      */
     public static function generate(VpnUser $vpnUser): array
     {
-        // ✅ SECURITY FIX: No longer save configs to disk
-        // Configs are now generated on-demand via authenticated routes
-        $generatedConfigs = [];
-
+        $items = [];
         foreach ($vpnUser->vpnServers as $server) {
-            $safeServerName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
-            $fileName = "{$safeServerName}_$vpnUser->username.ovpn";
-
-            // Return config info without saving to disk
-            $generatedConfigs[] = [
-                'server_id' => $server->id,
+            $safeName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
+            $items[] = [
+                'server_id'   => $server->id,
                 'server_name' => $server->name,
-                'filename' => $fileName,
-                'user_id' => $vpnUser->id,
-                'username' => $vpnUser->username
+                'filename'    => "{$safeName}_{$vpnUser->username}.ovpn",
+                'user_id'     => $vpnUser->id,
+                'username'    => $vpnUser->username,
             ];
-
-            Log::info("✅ OpenVPN config prepared for on-demand generation: $fileName");
+            Log::info("✅ Prepared on-demand OpenVPN config: {$safeName}_{$vpnUser->username}.ovpn");
         }
-
-        return $generatedConfigs;
+        return $items;
     }
 
     /**
-     * Generate WireGuard config for the user.
+     * Generate a WireGuard config (as a string, no disk).
      */
     public static function generateWireGuard(VpnUser $vpnUser): string
     {
-        // Assuming only one server for WireGuard per user
         $server = $vpnUser->vpnServers->first();
-
         if (!$server) {
-            Log::warning("⚠️ No server assigned to user $vpnUser->username for WireGuard config.");
+            Log::warning("⚠️ No server assigned to {$vpnUser->username} for WireGuard.");
             return '';
         }
 
-        $serverPublicKey = trim(Storage::disk('local')->get("wireguard/$server->id/server_public_key"));
-        $serverEndpoint = "$server->ip_address:51820";
+        $pubPath = "wireguard/{$server->id}/server_public_key";
+        if (!Storage::disk('local')->exists($pubPath)) {
+            Log::error("❌ Missing WireGuard server public key at storage/app/{$pubPath}");
+            return '';
+        }
 
-        $config = <<<EOL
+        $serverPublicKey = trim(Storage::disk('local')->get($pubPath));
+        $endpoint = "{$server->ip_address}:51820";
+
+        return <<<CONF
 [Interface]
 PrivateKey = {$vpnUser->wireguard_private_key}
 Address = {$vpnUser->wireguard_address}
@@ -64,66 +62,47 @@ DNS = 1.1.1.1
 
 [Peer]
 PublicKey = {$serverPublicKey}
-Endpoint = {$serverEndpoint}
+Endpoint = {$endpoint}
 AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25
-EOL;
-
-        $fileName = "$vpnUser->username.conf";
-        Storage::disk('local')->put("configs/$fileName", $config);
-
-        Log::info("✅ WireGuard config generated: $fileName");
-
-        return storage_path("app/configs/$fileName");
+CONF;
     }
 
     /**
-     * Generate OpenVPN config for a specific server without saving to file.
-     * Returns the config content as a string.
+     * Build an OpenVPN client config as a string (no disk).
+     * Ensures CA/TLS are present; falls back to SSH fetch if not in storage.
      * @throws Exception
      */
     public static function generateOpenVpnConfigString(VpnUser $vpnUser, VpnServer $server): string
     {
         try {
-            // Try to get certificates from storage first
-            $caCert = '';
-            $tlsKey = '';
+            [$caCert, $tlsKey] = self::resolveCertificates($server);
 
-            if (Storage::disk('local')->exists("certs/$server->id/ca.crt")) {
-                $caCert = trim(Storage::disk('local')->get("certs/$server->id/ca.crt"));
-            }
+            $remote = "{$server->ip_address} 1194";
 
-            if (Storage::disk('local')->exists("certs/$server->id/ta.key")) {
-                $tlsKey = trim(Storage::disk('local')->get("certs/$server->id/ta.key"));
-            }
-
-            // If certificates not found in storage, try to fetch from server
-            if (empty($caCert) || empty($tlsKey)) {
-                $instance = new static();
-                $fetchedCerts = $instance->fetchCertificatesFromServer($server);
-                if (!empty($fetchedCerts['ca'])) $caCert = $fetchedCerts['ca'];
-                if (!empty($fetchedCerts['ta'])) $tlsKey = $fetchedCerts['ta'];
-            }
-
-            $config = <<<EOL
+            // AES-256-GCM (fast, modern); SHA256 for HMAC; explicit user/pass section embedded.
+            $cfg = <<<OVPN
+# Auto-generated by AIOVPN
 client
 dev tun
 proto udp
-remote $server->ip_address 1194
-resolv-retry infinite
+remote {$remote}
 nobind
 persist-key
 persist-tun
 remote-cert-tls server
-auth-user-pass
 auth SHA256
-cipher AES-256-CBC
+cipher AES-256-GCM
+ncp-ciphers AES-256-GCM:AES-128-GCM
+auth-user-pass
 verb 3
+
 <ca>
-$caCert
+{$caCert}
 </ca>
+
 <tls-auth>
-$tlsKey
+{$tlsKey}
 </tls-auth>
 key-direction 1
 
@@ -132,123 +111,202 @@ key-direction 1
 {$vpnUser->username}
 {$vpnUser->password}
 </auth-user-pass>
-EOL;
+OVPN;
 
-            Log::info("✅ OpenVPN config generated for $vpnUser->username on server $server->name");
-            return $config;
+            Log::info("✅ OpenVPN config generated for {$vpnUser->username} @ {$server->name}");
+            return $cfg;
 
         } catch (Exception $e) {
-            Log::error("❌ Failed to generate OpenVPN config for $vpnUser->username on server $server->name: " . $e->getMessage());
+            Log::error("❌ OVPN build failed for {$vpnUser->username} @ {$server->name}: {$e->getMessage()}");
             throw $e;
         }
     }
 
     /**
-     * Fetch certificates from the OpenVPN server.
+     * Resolve CA/TLS from storage or server; throw if missing.
+     * @return array{0:string,1:string}
+     */
+    private static function resolveCertificates(VpnServer $server): array
+    {
+        $ca = '';
+        $ta = '';
+
+        $caPath = "certs/{$server->id}/ca.crt";
+        $taPath = "certs/{$server->id}/ta.key";
+
+        if (Storage::disk('local')->exists($caPath)) {
+            $ca = trim(Storage::disk('local')->get($caPath));
+        }
+        if (Storage::disk('local')->exists($taPath)) {
+            $ta = trim(Storage::disk('local')->get($taPath));
+        }
+
+        if (empty($ca) || empty($ta)) {
+            $inst = new static();
+            if (empty($server->ip_address)) {
+                throw new Exception('Server IP missing; cannot fetch certificates.');
+            }
+            $fetched = $inst->fetchCertificatesFromServer($server);
+            $ca = $ca ?: ($fetched['ca'] ?? '');
+            $ta = $ta ?: ($fetched['ta'] ?? '');
+        }
+
+        if (empty($ca) || empty($ta)) {
+            throw new Exception("Certificates unavailable for server {$server->id} ({$server->name}).");
+        }
+
+        return [$ca, $ta];
+    }
+
+    /**
+     * Fetch certificates via SSH from the OpenVPN server.
+     * @return array{ca:string,ta:string}
      */
     private function fetchCertificatesFromServer(VpnServer $server): array
     {
-        $certs = ['ca' => '', 'ta' => ''];
-
-        // Validate server IP address before attempting remote commands
-        if (empty($server->ip_address)) {
-            Log::error("❌ Cannot fetch certificates from server $server->name: IP address is null or empty");
-            return $certs;
-        }
+        $result = ['ca' => '', 'ta' => ''];
 
         try {
-            // Fetch CA certificate
-            $caResult = $this->executeRemoteCommand($server->ip_address, 'cat /etc/openvpn/ca.crt');
-            if ($caResult['status'] === 0 && !empty($caResult['output'])) {
-                $certs['ca'] = implode("\n", $caResult['output']);
+            $ca = $this->executeRemoteCommand($server->ip_address, 'cat /etc/openvpn/ca.crt');
+            if ($ca['status'] === 0 && !empty($ca['output'])) {
+                $result['ca'] = implode("\n", $ca['output']);
             }
 
-            // Fetch TLS auth key
-            $taResult = $this->executeRemoteCommand($server->ip_address, 'cat /etc/openvpn/ta.key');
-            if ($taResult['status'] === 0 && !empty($taResult['output'])) {
-                $certs['ta'] = implode("\n", $taResult['output']);
+            $ta = $this->executeRemoteCommand($server->ip_address, 'cat /etc/openvpn/ta.key');
+            if ($ta['status'] === 0 && !empty($ta['output'])) {
+                $result['ta'] = implode("\n", $ta['output']);
             }
 
-            Log::info("✅ Certificates fetched from server $server->name");
-
+            Log::info("✅ Fetched certificates from {$server->name}");
         } catch (Exception $e) {
-            Log::error("❌ Failed to fetch certificates from server $server->name: " . $e->getMessage());
+            Log::error("❌ Fetch certs failed on {$server->name}: {$e->getMessage()}");
         }
 
-        return $certs;
+        return $result;
     }
 
     /**
-     * Get real-time OpenVPN sessions from server.
+     * Pull live OpenVPN sessions (supports status v1 and status-version 2).
      */
     public static function getLiveOpenVpnSessions(VpnServer $server): array
     {
-        $instance = new static();
-        $sessions = [];
-
-        // Validate server IP address before attempting remote commands
+        $inst = new static();
         if (empty($server->ip_address)) {
-            Log::error("❌ Cannot fetch OpenVPN sessions from server $server->name: IP address is null or empty");
-            return $sessions;
+            Log::error("❌ Missing IP for {$server->name}; cannot fetch status.");
+            return [];
         }
 
         try {
-            // Get OpenVPN status log
-            $result = $instance->executeRemoteCommand($server->ip_address, 'cat /var/log/openvpn-status.log');
+            // Prefer status-version 2 path if present; fall back to classic path.
+            $cmd = 'if [ -f /var/log/openvpn-status.log ]; then cat /var/log/openvpn-status.log; '
+                 . 'elif [ -f /etc/openvpn/openvpn-status.log ]; then cat /etc/openvpn/openvpn-status.log; '
+                 . 'else echo ""; fi';
 
-            if ($result['status'] !== 0) {
-                Log::warning("⚠️ Could not fetch OpenVPN status from server $server->name");
-                return $sessions;
+            $res = $inst->executeRemoteCommand($server->ip_address, $cmd);
+            if ($res['status'] !== 0) {
+                Log::warning("⚠️ Could not read status on {$server->name}");
+                return [];
             }
 
-            $statusLog = implode("\n", $result['output']);
-            $sessions = $instance->parseOpenVpnStatusLog($statusLog);
+            $log = implode("\n", $res['output']);
+            $sessions = self::parseStatusLog($log);
 
-            Log::info("✅ Fetched " . count($sessions) . " active sessions from server $server->name");
+            Log::info("✅ {$server->name}: found " . count($sessions) . " active session(s).");
+            return $sessions;
 
         } catch (Exception $e) {
-            Log::error("❌ Failed to get live sessions from server $server->name: " . $e->getMessage());
+            Log::error("❌ Live sessions error on {$server->name}: {$e->getMessage()}");
+            return [];
         }
-
-        return $sessions;
     }
 
     /**
-     * Parse OpenVPN status log to extract active sessions.
+     * Parse both status formats:
+     *  - v1 (classic): "Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since"
+     *  - v2 (CSV):     lines starting with "CLIENT_LIST,..."
      */
-    private function parseOpenVpnStatusLog(string $statusLog): array
+    private static function parseStatusLog(string $statusLog): array
     {
         $sessions = [];
-        $lines = explode("\n", $statusLog);
-        $inClientSection = false;
+        if (trim($statusLog) === '') {
+            return $sessions;
+        }
 
+        $lines = preg_split('/\r\n|\r|\n/', $statusLog);
+
+        // Try v2 CSV first.
+        $hasCsv = false;
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (str_starts_with($line, 'CLIENT_LIST,')) {
+                $hasCsv = true;
+                $parts = explode(',', $line);
+                // CLIENT_LIST,CommonName,RealAddr,VirtualAddr,VirtualIPv6,BytesIn,BytesOut,ConnectedSince,ConnectedSince_ts,Username,ClientID,PeerID,Cipher
+                if (count($parts) >= 9) {
+                    $username      = $parts[1];
+                    $realAddress   = $parts[2];
+                    $bytesReceived = (int)($parts[6] ?? 0);
+                    $bytesSent     = (int)($parts[5] ?? 0); // note: v2 lists Bytes Sent then Bytes Received order differs sometimes; keep both
+                    $connectedAtTs = (int)($parts[8] ?? 0);
+
+                    $clientIp = explode(':', $realAddress)[0];
+                    $connectedAt = $connectedAtTs ? Carbon::createFromTimestamp($connectedAtTs) : null;
+
+                    $sessions[] = [
+                        'username'         => $username,
+                        'real_address'     => $realAddress,
+                        'client_ip'        => $clientIp,
+                        'bytes_received'   => $bytesReceived,
+                        'bytes_sent'       => $bytesSent,
+                        'connected_since'  => $connectedAt ? $connectedAt->toDateTimeString() : null,
+                        'total_bytes'      => $bytesReceived + $bytesSent,
+                        'formatted_bytes'  => self::formatBytes($bytesReceived + $bytesSent),
+                    ];
+                }
+            }
+        }
+        if ($hasCsv) {
+            return $sessions;
+        }
+
+        // Fallback: v1 classic table.
+        $inClients = false;
         foreach ($lines as $line) {
             $line = trim($line);
 
-            // Start of client list section
             if (str_contains($line, 'Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since')) {
-                $inClientSection = true;
+                $inClients = true;
                 continue;
             }
-
-            // End of client list section
-            if (str_contains($line, 'ROUTING TABLE')) {
-                $inClientSection = false;
+            if ($inClients && str_starts_with($line, 'ROUTING TABLE')) {
                 break;
             }
+            if ($inClients && $line !== '' && str_contains($line, ',')) {
+                $p = explode(',', $line);
+                if (count($p) >= 5) {
+                    $username      = trim($p[0]);
+                    $realAddress   = trim($p[1]);
+                    $bytesReceived = (int) trim($p[2]);
+                    $bytesSent     = (int) trim($p[3]);
+                    $connectedSince= trim($p[4]);
 
-            // Parse client data
-            if ($inClientSection && !empty($line) && str_contains($line, ',')) {
-                $parts = explode(',', $line);
-                if (count($parts) >= 5) {
+                    $clientIp = explode(':', $realAddress)[0];
+                    $connectedAt = null;
+                    try {
+                        $connectedAt = Carbon::createFromFormat('Y-m-d H:i:s', $connectedSince);
+                    } catch (\Throwable) {
+                        // ignore parse fail
+                    }
+
                     $sessions[] = [
-                        'username' => $parts[0],
-                        'real_address' => $parts[1],
-                        'bytes_received' => (int)$parts[2],
-                        'bytes_sent' => (int)$parts[3],
-                        'connected_since' => $parts[4],
-                        'total_bytes' => (int)$parts[2] + (int)$parts[3],
-                        'formatted_bytes' => $this->formatBytes((int)$parts[2] + (int)$parts[3])
+                        'username'         => $username,
+                        'real_address'     => $realAddress,
+                        'client_ip'        => $clientIp,
+                        'bytes_received'   => $bytesReceived,
+                        'bytes_sent'       => $bytesSent,
+                        'connected_since'  => $connectedAt?->toDateTimeString() ?? $connectedSince,
+                        'total_bytes'      => $bytesReceived + $bytesSent,
+                        'formatted_bytes'  => self::formatBytes($bytesReceived + $bytesSent),
                     ];
                 }
             }
@@ -257,66 +315,50 @@ EOL;
         return $sessions;
     }
 
-    /**
-     * Format bytes to human readable format.
-     */
-    private function formatBytes(int $bytes): string
+    private static function formatBytes(int $bytes): string
     {
-        if ($bytes >= 1073741824) {
-            return number_format($bytes / 1073741824, 2) . ' GB';
-        } elseif ($bytes >= 1048576) {
-            return number_format($bytes / 1048576, 2) . ' MB';
-        } elseif ($bytes >= 1024) {
-            return number_format($bytes / 1024, 2) . ' KB';
-        }
-
-        return $bytes . ' B';
+        if ($bytes >= 1073741824) return number_format($bytes / 1073741824, 2) . ' GB';
+        if ($bytes >= 1048576)    return number_format($bytes / 1048576, 2) . ' MB';
+        if ($bytes >= 1024)       return number_format($bytes / 1024, 2) . ' KB';
+        return (string)$bytes . ' B';
     }
 
     /**
-     * Test OpenVPN connectivity to a server.
+     * Quick connectivity diagnostics via SSH.
      */
     public static function testOpenVpnConnectivity(VpnServer $server): array
     {
-        $instance = new static();
-        $results = [
-            'server_reachable' => false,
-            'openvpn_running' => false,
-            'port_open' => false,
+        $inst = new static();
+        $out = [
+            'server_reachable'       => false,
+            'openvpn_running'        => false,
+            'port_open'              => false,
             'certificates_available' => false,
-            'details' => []
+            'details'                => [],
         ];
 
         try {
-            // Test SSH connectivity
-            $sshResult = $instance->executeRemoteCommand($server->ip_address, 'echo "SSH connection successful"');
-            $results['server_reachable'] = ($sshResult['status'] === 0);
-            $results['details']['ssh'] = $sshResult;
+            $ssh = $inst->executeRemoteCommand($server->ip_address, 'echo ok');
+            $out['server_reachable'] = ($ssh['status'] === 0);
+            $out['details']['ssh'] = $ssh;
 
-            if ($results['server_reachable']) {
-                // Test OpenVPN service status
-                $serviceResult = $instance->executeRemoteCommand($server->ip_address, 'systemctl is-active openvpn@server');
-                $results['openvpn_running'] = ($serviceResult['status'] === 0 && in_array('active', $serviceResult['output']));
-                $results['details']['service'] = $serviceResult;
+            if ($out['server_reachable']) {
+                $svc  = $inst->executeRemoteCommand($server->ip_address, 'systemctl is-active openvpn@server');
+                $port = $inst->executeRemoteCommand($server->ip_address, 'ss -ulnp | grep ":1194" || netstat -ulnp | grep ":1194"');
+                $crt  = $inst->executeRemoteCommand($server->ip_address, 'test -s /etc/openvpn/ca.crt -a -s /etc/openvpn/ta.key && echo ok || echo missing');
 
-                // Test OpenVPN port
-                $portResult = $instance->executeRemoteCommand($server->ip_address, 'netstat -ulnp | grep :1194');
-                $results['port_open'] = ($portResult['status'] === 0 && !empty($portResult['output']));
-                $results['details']['port'] = $portResult;
-
-                // Test certificate availability
-                $certResult = $instance->executeRemoteCommand($server->ip_address, 'ls -la /etc/openvpn/ca.crt /etc/openvpn/ta.key');
-                $results['certificates_available'] = ($certResult['status'] === 0);
-                $results['details']['certificates'] = $certResult;
+                $out['openvpn_running']        = ($svc['status'] === 0 && in_array('active', $svc['output']));
+                $out['port_open']              = ($port['status'] === 0 && !empty($port['output']));
+                $out['certificates_available'] = ($crt['status'] === 0 && in_array('ok', $crt['output']));
+                $out['details'] += compact('svc','port','crt');
             }
 
-            Log::info("✅ OpenVPN connectivity test completed for server {$server->name}");
-
+            Log::info("✅ Connectivity test complete for {$server->name}");
         } catch (Exception $e) {
-            Log::error("❌ OpenVPN connectivity test failed for server {$server->name}: " . $e->getMessage());
-            $results['details']['error'] = $e->getMessage();
+            Log::error("❌ Connectivity test failed for {$server->name}: {$e->getMessage()}");
+            $out['details']['error'] = $e->getMessage();
         }
 
-        return $results;
+        return $out;
     }
 }
