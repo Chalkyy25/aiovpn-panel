@@ -94,7 +94,7 @@
                                   dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">
                           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none">
                               <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
-                              <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">¢</text>
+                              <text x="16" y="20" text-anchor="middle" font-size="16" font-weight="bold" fill="currentColor">$</text>
                             </svg>
                           <span>{{ $u->credits }}</span>
                         </a>
