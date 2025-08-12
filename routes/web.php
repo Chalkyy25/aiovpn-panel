@@ -29,6 +29,13 @@ use App\Livewire\Pages\Admin\{CreateUser,
     ResellerList,
     ManageCredits,
     VpnDashboard};
+    
+// Reseller Routes
+use App\Livewire\Pages\Reseller\UserList as ResellerUserList;
+use App\Livewire\Pages\Reseller\CreateUser as ResellerCreateUser;
+use App\Livewire\Pages\Reseller\CreateVpnUserWizard;
+
+// Client Routes
 use App\Livewire\Pages\Client\Dashboard;
 
 // 🌐 Public Landing Page
@@ -144,14 +151,21 @@ Route::get('/wireguard/configs/{filename}', function ($filename) {
 // ============================
 // ✅ Reseller Routes
 // ============================
-Route::middleware(['auth', 'verified', 'role:reseller'])
+Route::middleware(['auth','verified','role:reseller'])
     ->prefix('reseller')
     ->name('reseller.')
     ->group(function () {
         Route::get('/dashboard', fn () => view('dashboards.reseller'))->name('dashboard');
-        
-    //Trial Line Create
-        Route::get('/vpn-users/trial', CreateTrialLine::class)->name('vpn-users.trial');
+
+        // Clients (subseller users)
+        Route::get('/users', ResellerUserList::class)->name('users.index');
+        Route::get('/users/create', ResellerCreateUser::class)->name('users.create');
+
+        // Lines (reseller-scoped wizard: pick a client + package + servers)
+        Route::get('/vpn-users/create', CreateVpnUserWizard::class)->name('vpn-users.create');
+
+        // Credits page (you already linked this in the nav)
+        Route::get('/credits', fn () => view('reseller.credits'))->name('credits');
     });
 
 
