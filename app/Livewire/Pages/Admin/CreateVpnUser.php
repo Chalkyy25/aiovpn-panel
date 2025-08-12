@@ -17,6 +17,12 @@ use Livewire\Component;
 #[Layout('layouts.app')]
 class CreateVpnUser extends Component
 {
+    public function goTo(int $step): void
+    {
+        // Allow free tab clicking but restrict range
+        $this->step = max(1, min(3, $step));
+    }
+
     /** Wizard step: 1=form, 2=review, 3=done */
     public int $step = 1;
 
