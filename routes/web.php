@@ -31,9 +31,10 @@ use App\Livewire\Pages\Admin\{CreateUser,
     VpnDashboard};
     
 // Reseller Routes
-use App\Livewire\Pages\Reseller\UserList as ResellerUserList;
-use App\Livewire\Pages\Reseller\CreateUser as ResellerCreateUser;
-use App\Livewire\Pages\Reseller\CreateVpnUserWizard;
+use App\Livewire\Pages\Reseller\Dashboard as ResellerDashboard;
+use App\Livewire\Pages\Reseller\Credits as ResellerCredits;
+use App\Livewire\Pages\Reseller\ClientsList;
+use App\Livewire\Pages\Reseller\CreateClientLine;
 
 // Client Routes
 use App\Livewire\Pages\Client\Dashboard;
@@ -151,21 +152,16 @@ Route::get('/wireguard/configs/{filename}', function ($filename) {
 // ============================
 // ✅ Reseller Routes
 // ============================
-Route::middleware(['auth','verified','role:reseller'])
+Route::middleware(['auth', 'verified', 'role:reseller'])
     ->prefix('reseller')
     ->name('reseller.')
     ->group(function () {
-        Route::get('/dashboard', fn () => view('dashboards.reseller'))->name('dashboard');
+        Route::get('/dashboard', ResellerDashboard::class)->name('dashboard');
+        Route::get('/credits',   ResellerCredits::class)->name('credits');
 
-        // Clients (subseller users)
-        Route::get('/users', ResellerUserList::class)->name('users.index');
-        Route::get('/users/create', ResellerCreateUser::class)->name('users.create');
-
-        // Lines (reseller-scoped wizard: pick a client + package + servers)
-        Route::get('/vpn-users/create', CreateVpnUserWizard::class)->name('vpn-users.create');
-
-        // Credits page (you already linked this in the nav)
-        Route::get('/credits', fn () => view('reseller.credits'))->name('credits');
+        // Lines/clients (the “subsellers/clients” that belong to the reseller)
+        Route::get('/clients',        ClientsList::class)->name('clients.index');
+        Route::get('/clients/create', CreateClientLine::class)->name('clients.create');
     });
 
 
