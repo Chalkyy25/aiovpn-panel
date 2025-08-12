@@ -7,24 +7,18 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
-    /**
-     * Define the application's command schedule.
-     */
     protected function schedule(Schedule $schedule): void
     {
-        // Cron jobs removed - VPN operations now run as normal jobs
-        // Use the following commands to trigger jobs manually:
-        // php artisan vpn:sync (queues SyncVpnCredentials job)
-        // php artisan vpn:update-status (queues UpdateVpnConnectionStatus job)
+        // Disable expired trials & paid lines
+        $schedule->job(new \App\Jobs\DisableExpiredVpnUsers)
+            ->everyMinute()
+            ->onOneServer()          // safe when multiple schedulers could exist
+            ->withoutOverlapping();  // don’t run a second copy if the first is still going
     }
 
-    /**
-     * Register the commands for the application.
-     */
     protected function commands(): void
     {
         $this->load(__DIR__.'/Commands');
-
         require base_path('routes/console.php');
     }
 }
