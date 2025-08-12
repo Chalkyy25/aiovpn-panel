@@ -4,6 +4,8 @@
 use App\Models\CreditTransaction;
 use Illuminate\Support\Facades\DB;
 
+class User extends Model
+{
 public function creditTransactions()
 {
     return $this->hasMany(CreditTransaction::class);
@@ -59,4 +61,5 @@ public function deductCredits(int $amount, ?string $reason = null, array $meta =
     });
 
     $this->refresh();
+}
 }
