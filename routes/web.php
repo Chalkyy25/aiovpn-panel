@@ -72,6 +72,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
         Route::get('/vpn-users/create', CreateVpnUser::class)->name('vpn-users.create');
         Route::get('/vpn-users/{vpnUser}/edit', EditVpnUser::class)->name('vpn-users.edit');
+        
+        //Trial Line Create
+        Route::get('/vpn-users/trial', CreateTrialLine::class)->name('vpn-users.trial');
 
         // Reseller Create
         Route::get('/resellers/create', CreateReseller::class)->name('resellers.create');
@@ -145,6 +148,9 @@ Route::middleware(['auth', 'verified', 'role:reseller'])
     ->name('reseller.')
     ->group(function () {
         Route::get('/dashboard', fn () => view('dashboards.reseller'))->name('dashboard');
+        
+    //Trial Line Create
+        Route::get('/vpn-users/trial', CreateTrialLine::class)->name('vpn-users.trial');
     });
 
 
