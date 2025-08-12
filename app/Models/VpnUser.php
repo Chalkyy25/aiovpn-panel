@@ -35,6 +35,7 @@ class VpnUser extends Authenticatable
         'expires_at',
         'is_active',
         'last_ip',
+        'is_trial',
     ];
 
     protected $hidden = [
@@ -77,6 +78,10 @@ class VpnUser extends Authenticatable
     {
         return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
     }
+    
+    // helpful scopes
+public function scopeTrials($q)      { return $q->where('is_trial', true); }
+public function scopeActiveTrials($q){ return $q->where('is_trial', true)->where('expires_at','>',now()); }
 
     /*
     |--------------------------------------------------------------------------
