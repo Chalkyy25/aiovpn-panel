@@ -98,7 +98,7 @@
                                 <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1a4 4 0 012.6 1.4l-1.4 1.4a2.1 2.1 0 00-1.2-.7V11h1a3 3 0 010 6h-1v1h-2v-1.1A4 4 0 018.4 15l1.4-1.4a2.1 2.1 0 001.2.7V13h-1a3 3 0 010-6h1V6h2z"/>
                             </svg>
                             <span class="font-semibold leading-none">{{ $u->credits }}</span>
-                            <span class="text-[10px] font-bold opacity-70 leading-none">CR</span>
+                            <span class="text-[10px] font-bold opacity-70 leading-none">©️</span>
                         </a>
                     @endif
                 @endauth
