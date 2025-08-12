@@ -10,19 +10,22 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-	{
-  	  Schema::table('users', function (Blueprint $table) {
-        $table->integer('credits')->default(0);
-    });
-}
+    {
+Schema::create('packages', function (Blueprint $t) {
+    $t->id();
+    $t->string('name');
+    $t->unsignedInteger('price_credits');   // cost to create a vpn user
+    $t->unsignedTinyInteger('max_connections')->default(1);
+    $t->timestamps();
+});
+
+    }
 
     /**
      * Reverse the migrations.
      */
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            //
-        });
+        Schema::dropIfExists('packages');
     }
 };
