@@ -26,7 +26,7 @@ use App\Livewire\Pages\Admin\{CreateUser,
     VpnUserConfigs,
     CreateReseller,
     ResellerList,
-    ManageCredits;
+    ManageCredits,
     VpnDashboard};
 use App\Livewire\Pages\Client\Dashboard;
 
