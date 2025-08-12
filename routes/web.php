@@ -15,6 +15,7 @@ use App\Http\Controllers\AdminImpersonationController;
 // ✅ Livewire Pages
 use App\Livewire\Pages\Admin\{CreateUser,
     CreateVpnUser,
+    CreateTrialLine,
     EditVpnUser,
     UserList,
     VpnUserList,
