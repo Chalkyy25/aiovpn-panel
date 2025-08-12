@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\DB;
 
 class User extends Authenticatable
 {
+    public function isAdmin(): bool    { return $this->role === 'admin'; }
+    public function isReseller(): bool { return $this->role === 'reseller'; }
+
+
     public function creditTransactions(): HasMany
     {
         return $this->hasMany(CreditTransaction::class);
