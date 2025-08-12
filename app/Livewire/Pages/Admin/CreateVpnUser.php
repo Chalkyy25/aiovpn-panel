@@ -2,16 +2,14 @@
 
 namespace App\Livewire\Pages\Admin;
 
-use App\Jobs\SyncOpenVPNCredentials;
-use App\Models\VpnUser;
-use App\Models\VpnServer;
 use App\Jobs\AddWireGuardPeer;
+use App\Jobs\SyncOpenVPNCredentials;
+use App\Models\Package;
+use App\Models\VpnServer;
+use App\Models\VpnUser;
 use App\Services\VpnConfigBuilder;
-use Illuminate\Contracts\View\Factory;
-use Illuminate\Contracts\View\View;
-use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -19,84 +17,153 @@ use Livewire\Component;
 #[Layout('layouts.app')]
 class CreateVpnUser extends Component
 {
-public $username;
-public $password;
-public $selectedServers = [];
-public $expiry = '1m'; // Set default value
+    /** Wizard step: 1=form, 2=review, 3=done */
+    public int $step = 1;
 
-/**
- * Set up initial component state
- */
-public function mount(): void
-{
-    // Set default expiry to 1 month if not specified
-    if (empty($this->expiry)) {
-        $this->expiry = '1m';
+    /** Step 1 inputs */
+    public ?string $username = null;
+    public array $selectedServers = [];
+    public string $expiry = '1m';     // 1m, 3m, 6m, 12m
+    public ?int $packageId = null;    // chosen package
+
+    /** Derived / display */
+    public int $priceCredits = 0;
+
+    /** Lists for selects */
+    public $servers;   // VpnServer collection
+    public $packages;  // Package collection
+
+    public function mount(): void
+    {
+        // sensible default username
+        $this->username = 'user-' . Str::random(6);
+
+        $this->servers  = VpnServer::orderBy('name')->get(['id','name','ip_address']);
+        $this->packages = Package::orderBy('price_credits')->get();
+
+        if ($this->packages->count()) {
+            $this->packageId = $this->packages->first()->id;
+            $this->priceCredits = (int) $this->packages->first()->price_credits;
+        }
     }
-}
 
-public function save(): void
-{
-$this->validate([
-'username' => 'nullable|unique:vpn_users,username',
-'password' => 'nullable|min:6',
-'expiry' => 'required|in:1m,3m,6m,12m',
-'selectedServers' => 'required|array|min:1',
-]);
+    public function updatedPackageId(): void
+    {
+        $pkg = $this->packages->firstWhere('id', $this->packageId);
+        $this->priceCredits = $pkg ? (int) $pkg->price_credits : 0;
+    }
 
-// Auto-generate username and password similar to CreateUser.php
-$finalUsername = $this->username ?: 'user-' . Str::random(6);
-$plainPassword = Str::random(8);
+    /** Step 1 -> Step 2 */
+    public function next(): void
+    {
+        $this->validateStep1();
+        $this->step = 2;
+    }
 
-// Extract the duration in months from the expiry string
-$months = (int) rtrim($this->expiry, 'm');
+    /** Step 2 -> Step 1 */
+    public function back(): void
+    {
+        $this->step = 1;
+    }
 
-$vpnUser = VpnUser::create([
-'username' => $finalUsername,
-'plain_password' => $plainPassword, // Store plaintext password for reference
-'password' => bcrypt($plainPassword), // Store hashed password for authentication
-'expires_at' => now()->addMonths($months),
-]);
+    /** Finalize purchase + create user */
+    public function purchase(): void
+    {
+        $this->validateStep1();
 
-// Sync the selected servers
-$vpnUser->vpnServers()->sync($this->selectedServers);
+        $admin = auth()->user(); // admin only page
+        $pkg   = $this->packages->firstWhere('id', $this->packageId);
 
-// Reload the VPN user to ensure we have the latest data including server associations
-$vpnUser->refresh();
+        if (!$pkg) {
+            $this->addError('packageId', 'Invalid package selected.');
+            return;
+        }
+        if ($admin->credits < $pkg->price_credits) {
+            $this->addError('packageId', 'Not enough credits for this package.');
+            return;
+        }
 
-// Manually generate OpenVPN configurations
-VpnConfigBuilder::generate($vpnUser);
+        // Calculate expiry months
+        $months = (int) rtrim($this->expiry, 'm');
 
-// Manually sync OpenVPN credentials for each server
-foreach ($vpnUser->vpnServers as $server) {
-    SyncOpenVPNCredentials::dispatch($server);
-    Log::info("🚀 Synced OpenVPN credentials to $server->name ($server->ip_address)");
-}
+        DB::transaction(function () use ($admin, $pkg, $months) {
+            // 1) Deduct credits + log transaction
+            $admin->deductCredits(
+                (int) $pkg->price_credits,
+                'Create VPN user',
+                ['username' => $this->username, 'package_id' => $pkg->id]
+            );
 
-// Log the successful creation for debugging
-Log::info("✅ VPN user created: {$vpnUser->username} (password: {$plainPassword})", [
-    'username' => $vpnUser->username,
-    'plain_password' => $plainPassword,
-    'expires_at' => $vpnUser->expires_at,
-    'servers' => $vpnUser->vpnServers->pluck('name')->toArray()
-]);
+            // 2) Create VPN user (generate password NOW; review kept blank)
+            $plainPassword = Str::random(12);
 
-// Set up WireGuard peer for the user
-AddWireGuardPeer::dispatch($vpnUser);
-Log::info("🔧 WireGuard peer setup queued for user {$vpnUser->username}");
+            $vpnUser = VpnUser::create([
+                'username'        => $this->username,
+                'plain_password'  => $plainPassword,          // you already use this field
+                'password'        => bcrypt($plainPassword),  // auth credential
+                'max_connections' => $pkg->max_connections,
+                'is_active'       => true,
+                'expires_at'      => now()->addMonths($months),
+            ]);
 
-// Add success message and reset form
-session()->flash('success', "✅ VPN user {$vpnUser->username} created successfully! Password: {$plainPassword}");
+            // 3) Attach servers
+            if (!empty($this->selectedServers)) {
+                $vpnUser->vpnServers()->sync($this->selectedServers);
+            }
+            $vpnUser->refresh();
 
-// Reset form fields
-$this->reset(['username', 'password', 'selectedServers']);
-$this->expiry = '1m'; // Reset to default
-}
+            // 4) Generate OVPN on-demand metadata (no disk) and queue sync per server
+            VpnConfigBuilder::generate($vpnUser);
+            foreach ($vpnUser->vpnServers as $server) {
+                SyncOpenVPNCredentials::dispatch($server);
+                Log::info("🚀 Synced OpenVPN credentials to {$server->name} ({$server->ip_address})");
+            }
 
-public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
-{
-return view('livewire.pages.admin.create-vpn-user', [
-'servers' => VpnServer::all(),
-]);
-}
+            // 5) WireGuard peer (optional)
+            AddWireGuardPeer::dispatch($vpnUser);
+
+            // 6) Notify UI
+            session()->flash(
+                'success',
+                "✅ VPN user {$vpnUser->username} created. Password: {$plainPassword}"
+            );
+
+            Log::info('✅ VPN user created via wizard', [
+                'admin_id'   => $admin->id,
+                'username'   => $vpnUser->username,
+                'servers'    => $vpnUser->vpnServers->pluck('id')->all(),
+                'package_id' => $pkg->id,
+                'expires_at' => $vpnUser->expires_at,
+            ]);
+        });
+
+        // success -> done page
+        $this->reset(['username','selectedServers','expiry','packageId','priceCredits']);
+        $this->expiry = '1m';
+        $this->step = 3;
+    }
+
+    protected function validateStep1(): void
+    {
+        $this->validate([
+            'username'        => 'required|string|min:3|max:50|unique:vpn_users,username',
+            'selectedServers' => 'required|array|min:1',
+            'selectedServers.*' => 'exists:vpn_servers,id',
+            'expiry'          => 'required|in:1m,3m,6m,12m',
+            'packageId'       => 'required|exists:packages,id',
+        ], [], [
+            'selectedServers' => 'servers',
+        ]);
+    }
+
+    public function render()
+    {
+        return view('livewire.pages.admin.create-vpn-user', [
+            'servers'      => $this->servers,
+            'packages'     => $this->packages,
+            'adminCredits' => auth()->user()->credits,
+            'step'         => $this->step,
+            'priceCredits' => $this->priceCredits,
+        ]);
+    }
 }
