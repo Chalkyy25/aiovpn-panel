@@ -26,6 +26,7 @@ use App\Livewire\Pages\Admin\{CreateUser,
     VpnUserConfigs,
     CreateReseller,
     ResellerList,
+    ManageCredits;
     VpnDashboard};
 use App\Livewire\Pages\Client\Dashboard;
 
@@ -77,6 +78,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         //Reseller List
         Route::get('/resellers', ResellerList::class)->name('resellers.index');
+        
+        //Manage Credits
+         Route::get('/credits', ManageCredits::class)->name('credits');
 
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
