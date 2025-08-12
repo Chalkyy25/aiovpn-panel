@@ -1,14 +1,12 @@
 <nav
     class="xui-nav"
     x-data="{
-    open: false,
-    usersOpen: false,
-    usersTimeout: null,
-    linesOpen: false,
-    linesTimeout: null,
-    creditsOpen: false,
-    creditsTimeout: null
-}"
+        open: false,
+        usersOpen: false,
+        usersTimeout: null,
+        linesOpen: false,
+        linesTimeout: null
+    }"
 >
     <div class="xui-container">
         <div class="xui-nav-inner">
@@ -80,67 +78,47 @@
                     Settings
                 </x-nav-link>
             </div>
-            
-            @auth
-    @if (auth()->user()->isAdmin() || auth()->user()->isReseller())
-        <div
-            class="relative ml-4 hidden md:flex items-center"
-            @mouseenter="clearTimeout(creditsTimeout); creditsOpen = true"
-            @mouseleave="creditsTimeout = setTimeout(() => creditsOpen = false, 250)"
-        >
-            <button type="button"
-                    class="flex items-center gap-1 px-3 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
-                    @click="creditsOpen = !creditsOpen">
-                {{-- coin icon --}}
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1a3.9 3.9 0 012.6 1.4l-1.4 1.4A2.1 2.1 0 0013 9.7V11h1a3 3 0 010 6h-1v1h-2v-1.1A3.9 3.9 0 018.4 15l1.4-1.4a2.1 2.1 0 001.2.7V13h-1a3 3 0 010-6h1V6h2z"/>
-                </svg>
-                <span class="font-semibold">{{ auth()->user()->credits }}</span>
-                <svg class="h-4 w-4 opacity-70" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M5.23 7.21L10 12l4.77-4.79-1.42-1.41L10 9.17 6.65 5.8 5.23 7.2z"/>
-                </svg>
-            </button>
 
-            <div x-show="creditsOpen" x-cloak x-transition
-                 class="absolute right-0 top-full mt-2 w-64 rounded-md bg-white dark:bg-gray-900 shadow-lg ring-1 ring-black/5 z-50">
-                <div class="px-4 py-3 text-sm">
-                    Balance:
-                    <span class="font-bold">{{ auth()->user()->credits }}</span> credits
+            <!-- Right-side actions: Credits badge + Mobile toggle -->
+            <div class="flex items-center gap-3">
+                @auth
+                    @php
+                        $u = auth()->user();
+                        $isAdmin    = method_exists($u,'isAdmin') ? $u->isAdmin() : $u->role === 'admin';
+                        $isReseller = method_exists($u,'isReseller') ? $u->isReseller() : $u->role === 'reseller';
+                        $creditsUrl = $isAdmin ? route('admin.credits') : ($isReseller ? route('reseller.credits') : '#');
+                    @endphp
+
+                    @if ($isAdmin || $isReseller)
+                        <!-- Persistent credits pill -->
+                        <a href="{{ $creditsUrl }}"
+                           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold
+                                  bg-gray-100 text-gray-900 hover:bg-gray-200
+                                  dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                           title="Credits">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1a4 4 0 012.6 1.4l-1.4 1.4a2.1 2.1 0 00-1.2-.7V11h1a3 3 0 010 6h-1v1h-2v-1.1A4 4 0 018.4 15l1.4-1.4a2.1 2.1 0 001.2.7V13h-1a3 3 0 010-6h1V6h2z"/>
+                            </svg>
+                            <span>{{ $u->credits }}</span>
+                        </a>
+                    @endif
+                @endauth
+
+                <!-- Mobile toggle -->
+                <div class="xui-nav-mobile-toggle">
+                    <button type="button" @click="open = !open" class="xui-mobile-button">
+                        <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
+                            <path :class="{ 'hidden': open, 'inline-flex': !open }" class="inline-flex"
+                                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M4 6h16M4 12h16M4 18h16" />
+                            <path :class="{ 'hidden': !open, 'inline-flex': open }" class="hidden"
+                                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
-
-                @if (auth()->user()->isAdmin())
-                    <a href="{{ route('admin.credits') }}"
-                       class="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">
-                        Manage reseller credits
-                    </a>
-                @endif
-
-                @if (auth()->user()->isReseller())
-                    <a href="{{ route('reseller.credits') }}"
-                       class="block px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">
-                        Credits & history
-                    </a>
-                @endif
             </div>
-        </div>
-    @endif
-@endauth
 
-            <!-- Mobile toggle -->
-            <div class="xui-nav-mobile-toggle">
-                <button type="button" @click="open = !open"
-                        class="xui-mobile-button"
-                >
-                    <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
-                        <path :class="{ 'hidden': open, 'inline-flex': !open }" class="inline-flex"
-                              stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M4 6h16M4 12h16M4 18h16" />
-                        <path :class="{ 'hidden': !open, 'inline-flex': open }" class="hidden"
-                              stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
         </div>
     </div>
 
@@ -149,30 +127,6 @@
         <div class="xui-mobile-menu-inner">
             <x-nav-link href="{{ route('admin.dashboard') }}">🏠 Dashboard</x-nav-link>
             <x-nav-link href="{{ route('admin.vpn-dashboard') }}">📊 VPN Monitor</x-nav-link>
-            
-            @auth
-    @if (auth()->user()->isAdmin() || auth()->user()->isReseller())
-        <div class="xui-mobile-section">
-            <div class="xui-mobile-section-title">Credits</div>
-            <div class="flex items-center justify-between px-3 py-2 rounded bg-gray-100 dark:bg-gray-800">
-                <div class="flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1a3.9 3.9 0 012.6 1.4l-1.4 1.4A2.1 2.1 0 0013 9.7V11h1a3 3 0 010 6h-1v1h-2v-1.1A3.9 3.9 0 018.4 15l1.4-1.4a2.1 2.1 0 001.2.7V13h-1a3 3 0 010-6h1V6h2z"/>
-                    </svg>
-                    <span class="font-medium">Balance</span>
-                </div>
-                <span class="font-semibold">{{ auth()->user()->credits }}</span>
-            </div>
-
-            @if (auth()->user()->isAdmin())
-                <x-nav-link href="{{ route('admin.credits') }}">🔧 Manage reseller credits</x-nav-link>
-            @endif
-            @if (auth()->user()->isReseller())
-                <x-nav-link href="{{ route('reseller.credits') }}">🧾 Credits & history</x-nav-link>
-            @endif
-        </div>
-    @endif
-@endauth
 
             <div class="xui-mobile-section">
                 <div class="xui-mobile-section-title">Users</div>
