@@ -61,7 +61,7 @@
                         @mouseleave="linesTimeout = setTimeout(() => linesOpen = false, 300)"
                     >
                         <x-nav-link href="{{ route('admin.vpn-users.create') }}">Add Line</x-nav-link>
-                        <x-nav-link href="#">Generate Trial Line</x-nav-link>
+                        <x-nav-link href="{{ route('admin.vpn-users.trial') }}">Generate Trial Line</x-nav-link>
                         <x-nav-link href="{{ route('admin.vpn-users.index') }}">Manage Lines</x-nav-link>
                     </div>
                 </div>
@@ -122,8 +122,8 @@
     {{-- Mobile drawer --}}
     <div class="xui-mobile-menu" x-show="open" x-cloak x-transition>
         <div class="xui-mobile-menu-inner">
-            <x-nav-link href="{{ route('admin.dashboard') }}">🏠 Dashboard</x-nav-link>
-            <x-nav-link href="{{ route('admin.vpn-dashboard') }}">📊 VPN Monitor</x-nav-link>
+            <x-nav-link href="{{ route('admin.dashboard') }}">Dashboard</x-nav-link>
+            <x-nav-link href="{{ route('admin.vpn-dashboard') }}">VPN Monitor</x-nav-link>
 
             {{-- Credits quick view on mobile (same link as pill) --}}
             @auth
@@ -145,15 +145,15 @@
 
             <div class="xui-mobile-section">
                 <div class="xui-mobile-section-title">Users</div>
-                <x-nav-link href="{{ route('admin.resellers.create') }}">➕ Add User</x-nav-link>
-                <x-nav-link href="{{ route('admin.resellers.index') }}">👥 Manage Users</x-nav-link>
+                <x-nav-link href="{{ route('admin.resellers.create') }}">Add User</x-nav-link>
+                <x-nav-link href="{{ route('admin.resellers.index') }}">Manage Users</x-nav-link>
             </div>
 
             <div class="xui-mobile-section">
                 <div class="xui-mobile-section-title">Lines</div>
-                <x-nav-link href="{{ route('admin.vpn-users.create') }}">➕ Add Line</x-nav-link>
-                <x-nav-link href="#">🎁 Trial Line</x-nav-link>
-                <x-nav-link href="{{ route('admin.vpn-users.index') }}">📋 Manage Lines</x-nav-link>
+                <x-nav-link href="{{ route('admin.vpn-users.create') }}">Add Line</x-nav-link>
+                <x-nav-link href="{{ route('admin.vpn-users.trial') }}">Generate Trial Line</x-nav-link>
+                <x-nav-link href="{{ route('admin.vpn-users.index') }}">Manage Lines</x-nav-link>
             </div>
 
             <x-nav-link href="{{ route('admin.servers.index') }}">🌐 Servers</x-nav-link>
