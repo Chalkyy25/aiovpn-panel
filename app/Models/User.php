@@ -1,6 +1,5 @@
 <?php
-namespace App/Model;
-// app/Models/User.php
+namespace App\Model;
 use App\Models\CreditTransaction;
 use Illuminate\Support\Facades\DB;
 
