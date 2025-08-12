@@ -92,14 +92,10 @@
                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold
                                   bg-gray-100 text-gray-900 hover:bg-gray-200
                                   dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">
-                          <svg class="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
-                            <!-- coin -->
-                            <circle cx="12" cy="12" r="10" class="fill-yellow-400 dark:fill-yellow-500"></circle>
-                            <circle cx="12" cy="12" r="8" class="fill-yellow-300 dark:fill-yellow-400"></circle>
-                            <!-- $ mark -->
-                            <path d="M12 6v12M9 9.5h4.5a2 2 0 010 4H10a2 2 0 000 4h5"
-                                  class="stroke-gray-900 dark:stroke-gray-900" stroke-width="2" fill="none" stroke-linecap="round"/>
-                          </svg>
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none">
+                              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+                              <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">¢</text>
+                            </svg>
                           <span>{{ $u->credits }}</span>
                         </a>
                     @endif
