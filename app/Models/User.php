@@ -1,76 +1,25 @@
 <?php
 
-namespace App\Models;
+// app/Models/User.php
+public function creditTransactions() { return $this->hasMany(\App\Models\CreditTransaction::class); }
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
+public function hasCredits(int $amount): bool { return $this->credits >= $amount; }
 
-class User extends Authenticatable
+public function addCredits(int $amount, string $reason = null, array $meta = []): void
 {
-    use HasApiTokens, HasFactory, Notifiable;
-
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'role',        // ✅ Make sure this is fillable too
-        'created_by',  // ✅ Track who created the user
-        'is_active',   // ✅ Allow setting active status
-    ];
-
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
-
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'password' => 'hashed',
-    ];
-
-    // ✅ Relationship to show who created this user
-    public function creator()
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
-    public function vpnServers()
-{
-    return $this->belongsToMany(VpnServer::class, 'client_vpn_server'); // adjust pivot table name if needed
+    $this->increment('credits', $amount);
+    \App\Models\CreditTransaction::create([
+        'user_id'=>$this->id,'change'=>$amount,'reason'=>$reason,'meta'=>$meta ?: null,
+    ]);
 }
-    public function isAdmin()
-    {
-        return $this->role === 'admin';
-    }
 
-    public function isReseller()
-    {
-        return $this->role === 'reseller';
-    }
-
-    public function isClient()
-    {
-        return $this->role === 'client';
-    }
-    public function isActive()
-    {
-        return $this->is_active;
-    }
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-    public function scopeInactive($query)
-    {
-        return $query->where('is_active', false);
-    }
-    public function scopeRole($query, $role)
-    {
-        return $query->where('role', $role);
-    }
-    public function scopeCreatedBy($query, $userId)
-    {
-        return $query->where('created_by', $userId);
-    }
+public function deductCredits(int $amount, string $reason = null, array $meta = []): void
+{
+    if ($amount < 0) throw new \InvalidArgumentException('amount must be positive');
+    $ok = static::where('id',$this->id)->where('credits','>=',$amount)->decrement('credits',$amount);
+    if ($ok === 0) throw new \RuntimeException('Not enough credits');
+    \App\Models\CreditTransaction::create([
+        'user_id'=>$this->id,'change'=>-$amount,'reason'=>$reason,'meta'=>$meta ?: null,
+    ]);
+    $this->refresh();
 }
