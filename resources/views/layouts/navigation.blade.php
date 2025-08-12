@@ -91,14 +91,16 @@
                         <a href="{{ $creditsUrl }}"
                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold
                                   bg-gray-100 text-gray-900 hover:bg-gray-200
-                                  dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
-                           title="Credits">
-                            {{-- coin icon --}}
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1a4 4 0 012.6 1.4l-1.4 1.4a2.1 2.1 0 00-1.2-.7V11h1a3 3 0 010 6h-1v1h-2v-1.1A4 4 0 018.4 15l1.4-1.4a2.1 2.1 0 001.2.7V13h-1a3 3 0 010-6h1V6h2z"/>
-                            </svg>
-                            <span class="text-[10px] font-bold opacity-70 leading-none">©️</span>
-                            <span class="font-semibold leading-none">{{ $u->credits }}</span>
+                                  dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">
+                          <svg class="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                            <!-- coin -->
+                            <circle cx="12" cy="12" r="10" class="fill-yellow-400 dark:fill-yellow-500"></circle>
+                            <circle cx="12" cy="12" r="8" class="fill-yellow-300 dark:fill-yellow-400"></circle>
+                            <!-- $ mark -->
+                            <path d="M12 6v12M9 9.5h4.5a2 2 0 010 4H10a2 2 0 000 4h5"
+                                  class="stroke-gray-900 dark:stroke-gray-900" stroke-width="2" fill="none" stroke-linecap="round"/>
+                          </svg>
+                          <span>{{ $u->credits }}</span>
                         </a>
                     @endif
                 @endauth
