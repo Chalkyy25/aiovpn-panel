@@ -1,7 +1,7 @@
 <div class="bg-gray-900 text-white rounded shadow p-6">
-    {{-- Errors --}}
+    {{-- Global errors --}}
     @if ($errors->any())
-        <div class="mb-4 p-4 bg-red-800 text-white rounded-md shadow">
+        <div class="mb-4 p-4 bg-red-800 rounded-md shadow">
             <h3 class="font-semibold">Form errors:</h3>
             <ul class="mt-2 list-disc pl-5 space-y-1">
                 @foreach ($errors->all() as $error)
@@ -15,28 +15,37 @@
     @if (session()->has('success'))
         <div class="mb-4 p-4 bg-green-800 text-green-100 rounded-md shadow flex items-center">
             <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M5 13l4 4L19 7"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
             <span>{{ session('success') }}</span>
         </div>
     @endif
 
-    {{-- Tabs / steps --}}
+    {{-- Step nav --}}
+    @php
+        // simple guards for visual state
+        $canGoReview = filled($username) && count($selectedServers) > 0 && in_array($expiry, ['1m','3m','6m','12m']) && $packageId;
+        $canGoDone   = ($step === 3); // becomes true only after successful purchase()
+    @endphp
+
     <div class="flex border-b border-gray-700 mb-6 text-sm font-semibold space-x-6">
         <button type="button"
                 wire:click="goTo(1)"
-                class="pb-2 {{ $step === 1 ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white' }}">
+                class="pb-2 transition-colors {{ $step === 1 ? 'border-b-2 border-blue-500 text-white' : 'text-gray-300 hover:text-white' }}">
             Details
         </button>
+
         <button type="button"
                 wire:click="goTo(2)"
-                class="pb-2 {{ $step === 2 ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white' }}">
+                @disabled(!$canGoReview)
+                class="pb-2 transition-colors {{ $step === 2 ? 'border-b-2 border-blue-500 text-white' : ($canGoReview ? 'text-gray-300 hover:text-white' : 'text-gray-500 cursor-not-allowed') }}">
             Review Purchase
         </button>
+
         <button type="button"
                 wire:click="goTo(3)"
-                class="pb-2 {{ $step === 3 ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white' }}">
+                @disabled(!$canGoDone)
+                class="pb-2 transition-colors {{ $step === 3 ? 'border-b-2 border-blue-500 text-white' : ($canGoDone ? 'text-gray-300 hover:text-white' : 'text-gray-500 cursor-not-allowed') }}">
             Done
         </button>
     </div>
@@ -49,10 +58,8 @@
                 <label class="block text-sm font-medium mb-1 text-gray-300">Username</label>
                 <input type="text" wire:model.lazy="username"
                        placeholder="Auto-generated if left as is"
-                       class="w-full bg-gray-800 border {{ $errors->has('username') ? 'border-red-500' : 'border-gray-600' }} rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500"/>
-                @error('username')
-                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
-                @enderror
+                       class="w-full bg-gray-800 border {{ $errors->has('username') ? 'border-red-500' : 'border-gray-600' }} rounded px-3 py-2 focus:outline-none focus:ring focus:ring-blue-500">
+                @error('username') <p class="mt-1 text-sm text-red-500">{{ $message }}</p> @enderror
             </div>
 
             {{-- Duration --}}
@@ -65,9 +72,7 @@
                     <option value="6m">6 Months</option>
                     <option value="12m">12 Months</option>
                 </select>
-                @error('expiry')
-                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
-                @enderror
+                @error('expiry') <p class="mt-1 text-sm text-red-500">{{ $message }}</p> @enderror
             </div>
 
             {{-- Package --}}
@@ -81,15 +86,13 @@
                         </option>
                     @endforeach
                 </select>
-                @error('packageId')
-                <p class="mt-1 text-sm text-red-500">{{ $message }}</p>
-                @enderror
+                @error('packageId') <p class="mt-1 text-sm text-red-500">{{ $message }}</p> @enderror
 
-                <div class="mt-2 text-xs text-gray-300">
+                <div class="mt-2 text-xs text-gray-300 space-y-0.5">
                     <div>Cost: <span class="font-semibold">{{ $priceCredits }}</span> credits</div>
                     <div>Your credits: <span class="font-semibold">{{ $adminCredits }}</span></div>
                     @if($adminCredits < $priceCredits)
-                        <div class="text-red-400 mt-1">Not enough credits for this package.</div>
+                        <div class="text-red-400">Not enough credits for this package.</div>
                     @endif
                 </div>
             </div>
@@ -98,14 +101,12 @@
             <div>
                 <label class="block text-sm font-medium mb-2 text-gray-300">Assign to Servers</label>
                 <div class="space-y-2 {{ $errors->has('selectedServers') ? 'border border-red-500 p-2 rounded' : '' }}">
-                    @error('selectedServers')
-                    <p class="mb-2 text-sm text-red-500">{{ $message }}</p>
-                    @enderror
+                    @error('selectedServers') <p class="mb-2 text-sm text-red-500">{{ $message }}</p> @enderror
 
                     @forelse ($servers as $server)
                         <label class="flex items-center space-x-2 text-sm text-gray-300">
                             <input type="checkbox" wire:model="selectedServers" value="{{ $server->id }}"
-                                   class="text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring focus:ring-blue-500"/>
+                                   class="text-blue-500 bg-gray-700 border-gray-600 rounded focus:ring focus:ring-blue-500">
                             <span>{{ $server->name }} ({{ $server->ip_address }})</span>
                         </label>
                     @empty
@@ -114,13 +115,12 @@
                 </div>
             </div>
 
-            {{-- Step controls --}}
+            {{-- Controls --}}
             <div class="md:col-span-2 text-right pt-4">
                 <button type="button"
                         wire:click="next"
                         class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-medium inline-flex items-center space-x-2"
-                        @disabled($adminCredits < $priceCredits)
-                >
+                        @disabled($adminCredits < $priceCredits)>
                     <span>Next</span>
                 </button>
             </div>
@@ -131,6 +131,7 @@
     @if ($step === 2)
         <div class="space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {{-- Summary --}}
                 <div class="bg-gray-800 rounded p-4">
                     <h4 class="font-semibold mb-3">Summary</h4>
                     <dl class="text-sm space-y-2">
@@ -156,9 +157,7 @@
                         <div>
                             <dt class="text-gray-300 mb-1">Servers</dt>
                             <dd class="text-gray-100">
-                                @php
-                                    $serverMap = $servers->keyBy('id');
-                                @endphp
+                                @php $serverMap = $servers->keyBy('id'); @endphp
                                 @if (count($selectedServers))
                                     <ul class="list-disc pl-5 space-y-1">
                                         @foreach ($selectedServers as $sid)
@@ -175,15 +174,14 @@
                     </dl>
                 </div>
 
+                {{-- Credits --}}
                 <div class="bg-gray-800 rounded p-4">
                     <h4 class="font-semibold mb-3">Credits</h4>
                     <div class="text-sm space-y-2">
                         <div class="flex justify-between">
                             <span class="text-gray-300">Package</span>
                             <span class="text-gray-100">
-                                @php
-                                    $pkg = $packages->firstWhere('id', $packageId);
-                                @endphp
+                                @php $pkg = $packages->firstWhere('id', $packageId); @endphp
                                 {{ $pkg?->name ?? '—' }}
                             </span>
                         </div>
@@ -207,6 +205,7 @@
                 </div>
             </div>
 
+            {{-- Controls --}}
             <div class="text-right space-x-3">
                 <button type="button"
                         wire:click="back"
@@ -217,8 +216,7 @@
                 <button type="button"
                         wire:click="purchase"
                         class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded font-medium inline-flex items-center space-x-2"
-                        @disabled($adminCredits < $priceCredits)
-                >
+                        @disabled($adminCredits < $priceCredits)>
                     <span>Purchase</span>
                 </button>
             </div>
