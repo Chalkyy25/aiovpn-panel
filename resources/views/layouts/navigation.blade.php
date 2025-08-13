@@ -12,7 +12,7 @@
             <!-- Logo -->
             <div class="flex items-center">
                 <a href="{{ url('/') }}" class="flex items-center space-x-2">
-                    <x-application-logo type="mark" class="h-12 w-auto" alt="AIO VPN Logo" />
+                    <x-application-logo type="mark" alt="AIO VPN Logo" />
                     <span class="text-lg font-bold text-gray-800">AIO VPN</span>
                 </a>
             </div>
@@ -139,12 +139,12 @@
                     </div>
                 @endif
             @endauth
-            
+
             <x-nav-link href="{{ route('admin.dashboard') }}">Dashboard</x-nav-link>
             <x-nav-link href="{{ route('admin.vpn-dashboard') }}">VPN Monitor</x-nav-link>
 
             {{-- Credits quick view on mobile (same link as pill) --}}
-           
+
 
             <div class="xui-mobile-section">
                 <div class="xui-mobile-section-title">Users</div>

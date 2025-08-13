@@ -19,7 +19,7 @@
 @if ($type === 'mark')
     <img
         src="{{ $src }}"
-        {{ $common->merge(['class' => 'h-9 w-9 rounded-md ring-1 ring-black/5 dark:ring-white/10 object-contain bg-white max-w-full']) }}
+        {{ $common->merge(['class' => 'h-8 w-8 rounded-md ring-1 ring-black/5 dark:ring-white/10 object-contain bg-white max-w-full']) }}
      alt="">
 @else
     <img
