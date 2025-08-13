@@ -7,16 +7,29 @@ use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvid
 
 class AuthServiceProvider extends ServiceProvider
 {
+    /**
+     * Model → Policy map.
+     */
     protected $policies = [
-        // Model::class => Policy::class,
+        \App\Models\User::class => \App\Policies\UserPolicy::class,
     ];
 
+    /**
+     * Register any authentication / authorization services.
+     */
     public function boot(): void
     {
-        // Only admins can manage credits
+        // Registers the policies above
+        $this->registerPolicies();
+
+        // Optional: make admins superusers (policies/gates auto-allow)
+        Gate::before(function ($user, string $ability) {
+            return ($user->role === 'admin') ? true : null;
+        });
+
+        // Gate used in UI (e.g., show "Manage Credits" only to admins)
         Gate::define('manage-credits', function ($user) {
-            // adjust if your role field/name differs
-            return $user && $user->role === 'admin';
+            return $user->role === 'admin';
         });
     }
 }
