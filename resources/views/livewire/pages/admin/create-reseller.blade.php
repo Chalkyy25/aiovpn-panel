@@ -1,6 +1,11 @@
-<div class="p-6 bg-white rounded shadow">
-    <h2 class="text-xl font-semibold mb-4">Create Reseller</h2>
+<div>
+    <form wire:submit.prevent="save" class="space-y-6">
+        <x-input label="Name" wire:model="name" required />
+        <x-input label="Email" type="email" wire:model="email" required />
+        <x-input label="Password" wire:model="password" readonly />
+        <x-input label="Credits" type="number" wire:model="credits" min="0" />
+        <x-checkbox label="Active" wire:model="is_active" />
 
-    {{-- You can later turn this into a form --}}
-    <p>This page will let you create new resellers.</p>
+        <x-button type="submit">Create Reseller</x-button>
+    </form>
 </div>
