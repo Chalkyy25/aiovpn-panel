@@ -8,32 +8,62 @@ class UserPolicy
 {
     /**
      * Admins can do everything.
-     * Resellers can generally act on users they created (clients only).
+     * Resellers can only act on CLIENTS they created (created_by = reseller_id).
+     * Resellers can NOT create/update/delete other resellers.
      */
 
     public function viewAny(User $user): bool
     {
+        // Admins and resellers can list users they are allowed to see
         return $this->isAdmin($user) || $this->isReseller($user);
     }
 
     public function view(User $user, User $model): bool
     {
-        if ($this->isAdmin($user)) return true;
-
-        // Reseller can view themselves and users they own (created_by = reseller id), but never admins.
-        if ($this->isReseller($user)) {
-            if ($user->id === $model->id) return true;                 // own profile
-            if ($this->isAdmin($model)) return false;                   // never view admins
-            return $this->owns($user, $model);                          // created_by match
+        if ($this->isAdmin($user)) {
+            return true;
         }
 
-        // Clients can view only themselves.
+        if ($this->isReseller($user)) {
+            // Can view themselves
+            if ($user->id === $model->id) return true;
+
+            // Can view ONLY clients they own; never admins or resellers
+            return $this->isClient($model) && $this->owns($user, $model);
+        }
+
+        // Clients: only themselves
         return $user->id === $model->id;
     }
 
+    /**
+     * Generic "create" (used by Laravel for showing a generic create button).
+     * Here we allow:
+     *  - Admin: yes
+     *  - Reseller: yes (but ONLY for clients; enforced with createClient() below)
+     *
+     * If you want to be stricter, you can return $this->isAdmin($user) here and
+     * authorize specific creates with createClient/createReseller instead.
+     */
     public function create(User $user): bool
     {
-        // Admin can create anyone; reseller can create their own clients.
+        return $this->isAdmin($user) || $this->isReseller($user);
+    }
+
+    /**
+     * Explicit: only admins can create RESELLERS.
+     */
+    public function createReseller(User $user): bool
+    {
+        return $this->isAdmin($user);
+    }
+
+    /**
+     * Explicit: admins or resellers can create CLIENTS.
+     * (Resellers cannot create sub-sellers.)
+     */
+    public function createClient(User $user): bool
+    {
         return $this->isAdmin($user) || $this->isReseller($user);
     }
 
@@ -41,14 +71,16 @@ class UserPolicy
     {
         if ($this->isAdmin($user)) return true;
 
-        // Reseller: may update only users they own, and not admins or themselves.
         if ($this->isReseller($user)) {
-            if ($user->id === $model->id) return false;                 // no self-elevation
-            if ($this->isAdmin($model)) return false;                   // cannot touch admins
+            // Cannot update themselves, admins, or resellers
+            if ($user->id === $model->id) return false;
+            if (!$this->isClient($model)) return false;
+
+            // Only clients they own
             return $this->owns($user, $model);
         }
 
-        // Client: only themselves.
+        // Clients: only themselves
         return $user->id === $model->id;
     }
 
@@ -56,10 +88,12 @@ class UserPolicy
     {
         if ($this->isAdmin($user)) return true;
 
-        // Reseller: may delete only owned users; not admins; not themselves.
         if ($this->isReseller($user)) {
+            // Cannot delete themselves, admins, or resellers
             if ($user->id === $model->id) return false;
-            if ($this->isAdmin($model)) return false;
+            if (!$this->isClient($model)) return false;
+
+            // Only clients they own
             return $this->owns($user, $model);
         }
 
@@ -68,13 +102,11 @@ class UserPolicy
 
     public function restore(User $user, User $model): bool
     {
-        // Same rules as delete
         return $this->delete($user, $model);
     }
 
     public function forceDelete(User $user, User $model): bool
     {
-        // Same rules as delete
         return $this->delete($user, $model);
     }
 
@@ -94,9 +126,14 @@ class UserPolicy
             : $user->role === 'reseller';
     }
 
+    protected function isClient(User $user): bool
+    {
+        // Adjust if you use a different role name for end-users
+        return $user->role === 'client';
+    }
+
     protected function owns(User $actor, User $target): bool
     {
-        // target must have been created by this reseller
         return (int) $target->created_by === (int) $actor->id;
     }
 }
