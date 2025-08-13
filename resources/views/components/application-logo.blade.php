@@ -19,11 +19,11 @@
 @if ($type === 'mark')
     <img
         src="{{ $src }}"
-        {{ $common->merge(['class' => 'h-9 w-9 rounded-md ring-1 ring-black/5 dark:ring-white/10 object-contain bg-white']) }}
-    >
+        {{ $common->merge(['class' => 'h-9 w-9 rounded-md ring-1 ring-black/5 dark:ring-white/10 object-contain bg-white max-w-full']) }}
+     alt="">
 @else
     <img
         src="{{ $src }}"
-        {{ $common->merge(['class' => 'h-12 sm:h-14 w-auto object-contain']) }}
-    >
+        {{ $common->merge(['class' => 'h-12 sm:h-14 w-auto object-contain max-w-full']) }}
+     alt="">
 @endif

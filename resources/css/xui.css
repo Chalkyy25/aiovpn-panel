@@ -61,6 +61,8 @@
 .xui-logo {
     height: 2.5rem;
     width: auto;
+    object-fit: contain;
+    max-width: 100%;
 }
 
 .xui-nav-menu {
