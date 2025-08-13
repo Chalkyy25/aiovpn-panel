@@ -5,7 +5,7 @@
 
 @if ($type === 'mark')
     <img
-        src="{{ asset('images/branding/logo-mark.svg') }}"
+        src="{{ asset('images/logo.svg') }}"
         alt="{{ $alt }}"
         {{ $attributes->merge(['class' => 'h-9 w-9 rounded-md ring-1 ring-black/5 dark:ring-white/10']) }}
         loading="eager"
@@ -13,7 +13,7 @@
     >
 @else
     <img
-        src="{{ asset('images/branding/logo-full.svg') }}"
+        src="{{ asset('images/logo.svg') }}"
         alt="{{ $alt }}"
         {{ $attributes->merge(['class' => 'h-8 w-auto']) }}
         loading="eager"
