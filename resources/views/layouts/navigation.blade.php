@@ -9,9 +9,9 @@
     <div class="xui-container">
         <div class="xui-nav-inner">
 
-            {{-- Logo --}}
+            <!-- Logo -->
             <div class="xui-nav-logo">
-                <a href="/" class="block">
+                <a href="/" class="inline-flex items-center">
                     <x-application-logo type="mark" class="h-9 w-9" />
                 </a>
             </div>
