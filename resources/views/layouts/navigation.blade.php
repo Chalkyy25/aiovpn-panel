@@ -10,16 +10,12 @@
         <div class="xui-nav-inner">
 
             <!-- Logo -->
-            <div class="xui-nav-logo">
-    <a href="{{ url('/') }}" class="inline-flex items-center space-x-2">
-        <x-application-logo 
-            type="mark" 
-            class="h-9 w-9 object-contain" 
-            alt="AIO VPN Logo"
-        />
-        <span class="text-lg font-bold text-gray-800">AIO VPN</span>
-    </a>
-</div>
+            <div class="flex items-center">
+                <a href="{{ url('/') }}" class="flex items-center space-x-2">
+                    <x-application-logo type="mark" class="h-12 w-auto" alt="AIO VPN Logo" />
+                    <span class="text-lg font-bold text-gray-800">AIO VPN</span>
+                </a>
+            </div>
 
             {{-- Desktop menu --}}
             <div class="xui-nav-menu">
