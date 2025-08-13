@@ -11,8 +11,8 @@
 
             {{-- Logo --}}
             <div class="xui-nav-logo">
-                <a href="/">
-                    <x-application-logo class="xui-logo" />
+                <a href="/" class="block">
+                    <x-application-logo type="mark" class="h-9 w-9" />
                 </a>
             </div>
 
