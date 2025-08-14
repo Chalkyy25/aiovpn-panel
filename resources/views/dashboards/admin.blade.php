@@ -32,17 +32,17 @@
 
             {{-- STAT CARDS (circled style) --}}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                <x-state-card title="Users (Total)"       :value="$m['totalUsers']"     icon="o-user-group" />
-                <x-state-card title="Active Users"        :value="$m['activeUsers']"    icon="o-rectangle-stack" />
-                <x-state-card title="VPN Users"           :value="$m['totalVpnUsers']"  icon="o-server" />
-                <x-state-card title="Active VPN Users"    :value="$m['activeVpnUsers']" icon="o-bolt" hint="have servers" />
+                <x-stat-card title="Users (Total)"       :value="$m['totalUsers']"     icon="o-user-group" />
+                <x-stat-card title="Active Users"        :value="$m['activeUsers']"    icon="o-rectangle-stack" />
+                <x-stat-card title="VPN Users"           :value="$m['totalVpnUsers']"  icon="o-server" />
+                <x-stat-card title="Active VPN Users"    :value="$m['activeVpnUsers']" icon="o-bolt" hint="have servers" />
             </div>
 
             {{-- OPTIONAL: a second row (uncomment if you want 6 stats visible) --}}
-            {{-- <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                <x-state-card title="Resellers" :value="$m['totalResellers']" icon="o-briefcase" />
-                <x-state-card title="Clients"   :value="$m['totalClients']"   icon="o-user" />
-            </div> --}}
+             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                <x-stat-card title="Resellers" :value="$m['totalResellers']" icon="o-briefcase" />
+                <x-stat-card title="Clients"   :value="$m['totalClients']"   icon="o-user" />
+            </div>
 
             {{-- SERVERS (put your tabs/filters here if you like) --}}
             <x-section-card title="Servers">
