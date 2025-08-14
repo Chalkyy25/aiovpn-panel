@@ -10,15 +10,14 @@
         <div class="xui-nav-inner">
 
         {{-- Logo --}}
-            <div class="flex items-center">
-                <a href="{{ url('/') }}" class="flex items-center gap-2">
-                    {{-- Compact logo for the navbar --}}
-                    <x-application-logo type="mark" alt="AIO VPN" class="shrink-0" />
-            
-                    {{-- Brand text: visible from md+ to keep mobile header clean --}}
-                    <span class="hidden md:inline text-lg font-bold tracking-tight text-gray-900">
-                        AIO VPN
-                    </span>
+            <div class="flex items-center h-16">
+                <a href="{{ url('/') }}" class="flex items-center space-x-2">
+                    <x-application-logo 
+                        type="mark" 
+                        alt="AIO VPN Logo"
+                        class="!h-10 !w-auto" 
+                    />
+                    <span class="text-lg font-bold text-gray-800">AIO VPN</span>
                 </a>
             </div>
 
