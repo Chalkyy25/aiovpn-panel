@@ -40,10 +40,10 @@
             </div>
 
             {{-- OPTIONAL: a second row (uncomment if you want 6 stats visible) --}}
-             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+             {{-- <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                 <x-stat-card title="Resellers" :value="$m['totalResellers']" icon="o-briefcase" />
                 <x-stat-card title="Clients"   :value="$m['totalClients']"   icon="o-user" />
-            </div>
+            </div> --}}
 
             {{-- SERVERS (put your tabs/filters here if you like) --}}
             <x-section-card title="Servers">
