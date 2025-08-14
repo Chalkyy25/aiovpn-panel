@@ -93,7 +93,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
         Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
 
-    });
+    );
 
 
 // ============================
