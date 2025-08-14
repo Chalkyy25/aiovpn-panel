@@ -1,166 +1,97 @@
-<nav
-    class="xui-nav"
-    x-data="{
-        open: false,
-        usersOpen: false, usersTimeout: null,
-        linesOpen: false, linesTimeout: null
-    }"
->
-    <div class="xui-container">
-        <div class="xui-nav-inner">
-
-        {{-- Logo --}}
-            <div class="flex items-center">
-    <a href="{{ url('/') }}" class="inline-flex items-center">
-        <x-application-logo type="mark" class="brand-logo" />
-        <span class="ml-2 text-lg font-bold text-gray-800">AIO VPN</span>
-    </a>
-</div>
-
-            {{-- Desktop menu --}}
-            <div class="xui-nav-menu">
-                <x-nav-link href="{{ route('admin.dashboard') }}" :active="request()->routeIs('admin.dashboard')">
-                    Dashboard
-                </x-nav-link>
-
-                <x-nav-link href="{{ route('admin.vpn-dashboard') }}" :active="request()->routeIs('admin.vpn-dashboard')">
-                    VPN Monitor
-                </x-nav-link>
-
-                {{-- Users dropdown --}}
-                <div
-                    class="xui-dropdown"
-                    @mouseenter="clearTimeout(usersTimeout); usersOpen = true"
-                    @mouseleave="usersTimeout = setTimeout(() => usersOpen = false, 300)"
-                >
-                    <x-nav-link href="#" :active="false">Users</x-nav-link>
-                    <div
-                        x-show="usersOpen" x-cloak x-transition
-                        class="xui-dropdown-menu"
-                        @mouseenter="clearTimeout(usersTimeout)"
-                        @mouseleave="usersTimeout = setTimeout(() => usersOpen = false, 300)"
-                    >
-                        <x-nav-link href="{{ route('admin.resellers.create') }}">Add User</x-nav-link>
-                        <x-nav-link href="{{ route('admin.resellers.index') }}">Manage Users</x-nav-link>
-                    </div>
-                </div>
-
-                {{-- Lines dropdown --}}
-                <div
-                    class="xui-dropdown"
-                    @mouseenter="clearTimeout(linesTimeout); linesOpen = true"
-                    @mouseleave="linesTimeout = setTimeout(() => linesOpen = false, 300)"
-                >
-                    <x-nav-link href="#" :active="false">Lines</x-nav-link>
-                    <div
-                        x-show="linesOpen"
-                        x-transition:enter="transition ease-out duration-300"
-                        x-transition:enter-start="transform opacity-0 scale-95"
-                        x-transition:enter-end="transform opacity-100 scale-100"
-                        class="xui-dropdown-menu"
-                        @mouseenter="clearTimeout(linesTimeout)"
-                        @mouseleave="linesTimeout = setTimeout(() => linesOpen = false, 300)"
-                    >
-                        <x-nav-link href="{{ route('admin.vpn-users.create') }}">Add Line</x-nav-link>
-                        <x-nav-link href="{{ route('admin.vpn-users.trial') }}">Generate Trial Line</x-nav-link>
-                        <x-nav-link href="{{ route('admin.vpn-users.index') }}">Manage Lines</x-nav-link>
-                    </div>
-                </div>
-
-                {{-- Other items --}}
-                <x-nav-link href="{{ route('admin.servers.index') }}" :active="request()->routeIs('admin.servers.*')">
-                    Servers
-                </x-nav-link>
-                <x-nav-link href="{{ route('admin.settings') }}" :active="request()->routeIs('admin.settings')">
-                    Settings
-                </x-nav-link>
-            </div>
-
-            {{-- Right side: Credits pill + mobile toggle --}}
-            <div class="flex items-center gap-3">
-
-                @auth
-                    @php
-                        $u = auth()->user();
-                        $isAdmin    = method_exists($u,'isAdmin') ? $u->isAdmin() : ($u->role === 'admin');
-                        $isReseller = method_exists($u,'isReseller') ? $u->isReseller() : ($u->role === 'reseller');
-                        $creditsUrl = $isAdmin ? route('admin.credits') : ($isReseller ? route('reseller.credits') : '#');
-                    @endphp
-
-                    @if ($isAdmin || $isReseller)
-                        {{-- Persistent credits pill with icon (visible on all breakpoints) --}}
-                        <a href="{{ $creditsUrl }}"
-                           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold
-                                  bg-gray-100 text-gray-900 hover:bg-gray-200
-                                  dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">
-                          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none">
-                              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
-                              <text x="12" y="17" text-anchor="middle" font-size="14" font-weight="bold" fill="currentColor">$</text>
-                            </svg>
-                          <span>{{ $u->credits }}</span>
-                        </a>
-                    @endif
-                @endauth
-
-                {{-- Mobile toggle --}}
-                <div class="xui-nav-mobile-toggle">
-                    <button type="button" @click="open = !open" class="xui-mobile-button">
-                        <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                            <path :class="{ 'hidden': open, 'inline-flex': !open }" class="inline-flex"
-                                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M4 6h16M4 12h16M4 18h16"/>
-                            <path :class="{ 'hidden': !open, 'inline-flex': open }" class="hidden"
-                                  stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-        </div>
+{{-- resources/views/layouts/navigation.blade.php --}}
+<nav class="px-2 pb-4 space-y-1 text-sm" aria-label="Sidebar">
+    {{-- Top brand (desktop sidebar header already shows the logo; keep this minimal here) --}}
+    {{-- You can remove this block if you prefer only the header logo --}}
+    <div class="px-3 py-1.5 font-semibold" x-show="!$root.sidebarCollapsed">
+        AIO VPN
     </div>
 
-    {{-- Mobile drawer --}}
-    <div class="xui-mobile-menu" x-show="open" x-cloak x-transition>
-        <div class="xui-mobile-menu-inner">
-             @auth
-                @if ($isAdmin || $isReseller)
-                    <div class="xui-mobile-section">
-                        <div class="xui-mobile-section-title">Credits</div>
-                        <a href="{{ $creditsUrl }}" class="flex items-center justify-between px-3 py-2 rounded bg-gray-100 dark:bg-gray-800">
-                            <div class="flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v1.1a4 4 0 012.6 1.4l-1.4 1.4a2.1 2.1 0 00-1.2-.7V11h1a3 3 0 010 6h-1v1h-2v-1.1A4 4 0 018.4 15l1.4-1.4a2.1 2.1 0 001.2.7V13h-1a3 3 0 010-6h1V6h2z"/>
-                                </svg>
-                                <span class="font-medium">Balance</span>
-                            </div>
-                            <span class="font-semibold">{{ $u->credits }} ©️</span>
-                        </a>
-                    </div>
-                @endif
-            @endauth
+    {{-- Main --}}
+    <x-nav-link href="{{ route('admin.dashboard') }}" :active="request()->routeIs('admin.dashboard')"
+                class="group flex items-center gap-3 px-3 py-2 rounded-md">
+        <x-icon name="o-home" class="w-5 h-5 shrink-0"/>
+        <span class="truncate" x-show="!$root.sidebarCollapsed">Dashboard</span>
+    </x-nav-link>
 
-            <x-nav-link href="{{ route('admin.dashboard') }}">Dashboard</x-nav-link>
-            <x-nav-link href="{{ route('admin.vpn-dashboard') }}">VPN Monitor</x-nav-link>
+    <x-nav-link href="{{ route('admin.vpn-dashboard') }}" :active="request()->routeIs('admin.vpn-dashboard')"
+                class="group flex items-center gap-3 px-3 py-2 rounded-md">
+        <x-icon name="o-chart-bar" class="w-5 h-5 shrink-0"/>
+        <span class="truncate" x-show="!$root.sidebarCollapsed">VPN Monitor</span>
+    </x-nav-link>
 
-            {{-- Credits quick view on mobile (same link as pill) --}}
+    {{-- Users group --}}
+    <div class="mt-3">
+        <div class="px-3 text-[11px] uppercase tracking-wide text-gray-500"
+             x-show="!$root.sidebarCollapsed">Users</div>
 
+        <x-nav-link href="{{ route('admin.resellers.create') }}"
+                    :active="request()->routeIs('admin.resellers.create')"
+                    class="group flex items-center gap-3 px-3 py-2 rounded-md">
+            <x-icon name="o-plus" class="w-5 h-5 shrink-0"/>
+            <span class="truncate" x-show="!$root.sidebarCollapsed">Add User</span>
+        </x-nav-link>
 
-            <div class="xui-mobile-section">
-                <div class="xui-mobile-section-title">Users</div>
-                <x-nav-link href="{{ route('admin.resellers.create') }}">Add User</x-nav-link>
-                <x-nav-link href="{{ route('admin.resellers.index') }}">Manage Users</x-nav-link>
-            </div>
-
-            <div class="xui-mobile-section">
-                <div class="xui-mobile-section-title">Lines</div>
-                <x-nav-link href="{{ route('admin.vpn-users.create') }}">Add Line</x-nav-link>
-                <x-nav-link href="{{ route('admin.vpn-users.trial') }}">Generate Trial Line</x-nav-link>
-                <x-nav-link href="{{ route('admin.vpn-users.index') }}">Manage Lines</x-nav-link>
-            </div>
-
-            <x-nav-link href="{{ route('admin.servers.index') }}">🌐 Servers</x-nav-link>
-            <x-nav-link href="{{ route('admin.settings') }}">⚙️ Settings</x-nav-link>
-        </div>
+        <x-nav-link href="{{ route('admin.resellers.index') }}"
+                    :active="request()->routeIs('admin.resellers.index')"
+                    class="group flex items-center gap-3 px-3 py-2 rounded-md">
+            <x-icon name="o-user-group" class="w-5 h-5 shrink-0"/>
+            <span class="truncate" x-show="!$root.sidebarCollapsed">Manage Users</span>
+        </x-nav-link>
     </div>
+
+    {{-- Lines group --}}
+    <div class="mt-3">
+        <div class="px-3 text-[11px] uppercase tracking-wide text-gray-500"
+             x-show="!$root.sidebarCollapsed">Lines</div>
+
+        <x-nav-link href="{{ route('admin.vpn-users.create') }}"
+                    :active="request()->routeIs('admin.vpn-users.create')"
+                    class="group flex items-center gap-3 px-3 py-2 rounded-md">
+            <x-icon name="o-plus-circle" class="w-5 h-5 shrink-0"/>
+            <span class="truncate" x-show="!$root.sidebarCollapsed">Add Line</span>
+        </x-nav-link>
+
+        <x-nav-link href="{{ route('admin.vpn-users.trial') }}"
+                    :active="request()->routeIs('admin.vpn-users.trial')"
+                    class="group flex items-center gap-3 px-3 py-2 rounded-md">
+            <x-icon name="o-clock" class="w-5 h-5 shrink-0"/>
+            <span class="truncate" x-show="!$root.sidebarCollapsed">Generate Trial Line</span>
+        </x-nav-link>
+
+        <x-nav-link href="{{ route('admin.vpn-users.index') }}"
+                    :active="request()->routeIs('admin.vpn-users.index')"
+                    class="group flex items-center gap-3 px-3 py-2 rounded-md">
+            <x-icon name="o-list-bullet" class="w-5 h-5 shrink-0"/>
+            <span class="truncate" x-show="!$root.sidebarCollapsed">Manage Lines</span>
+        </x-nav-link>
+    </div>
+
+    {{-- Servers & Settings --}}
+    <x-nav-link href="{{ route('admin.servers.index') }}" :active="request()->routeIs('admin.servers.*')"
+                class="group flex items-center gap-3 px-3 py-2 rounded-md">
+        <x-icon name="o-server" class="w-5 h-5 shrink-0"/>
+        <span class="truncate" x-show="!$root.sidebarCollapsed">Servers</span>
+    </x-nav-link>
+
+    <x-nav-link href="{{ route('admin.settings') }}" :active="request()->routeIs('admin.settings')"
+                class="group flex items-center gap-3 px-3 py-2 rounded-md">
+        <x-icon name="o-cog-6-tooth" class="w-5 h-5 shrink-0"/>
+        <span class="truncate" x-show="!$root.sidebarCollapsed">Settings</span>
+    </x-nav-link>
+
+    {{-- (Optional) Credits shortcut in sidebar as a link --}}
+    @auth
+        @php
+            $u = auth()->user();
+            $isAdmin    = method_exists($u,'isAdmin') ? $u->isAdmin() : ($u->role === 'admin');
+            $isReseller = method_exists($u,'isReseller') ? $u->isReseller() : ($u->role === 'reseller');
+            $creditsUrl = $isAdmin ? route('admin.credits') : ($isReseller ? route('reseller.credits') : '#');
+        @endphp
+        @if ($isAdmin || $isReseller)
+            <x-nav-link href="{{ $creditsUrl }}" class="group flex items-center gap-3 px-3 py-2 rounded-md mt-3">
+                <x-icon name="o-banknotes" class="w-5 h-5 shrink-0"/>
+                <span class="truncate" x-show="!$root.sidebarCollapsed">Credits: {{ $u->credits }}</span>
+            </x-nav-link>
+        @endif
+    @endauth
 </nav>
