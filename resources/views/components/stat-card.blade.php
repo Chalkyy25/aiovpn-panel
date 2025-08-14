@@ -1,10 +1,3 @@
-@props([
-    'title' => '',
-    'value' => '',
-    'icon'  => 'o-chart-bar',  // your <x-icon> names
-    'hint'  => null,           // optional small label (e.g. "24h")
-])
-
 <div {{ $attributes->merge([
     'class' => 'flex items-center gap-4 rounded-xl bg-white border shadow-sm px-4 py-3 hover:shadow-md transition'
 ]) }}>
