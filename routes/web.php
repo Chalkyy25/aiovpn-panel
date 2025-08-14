@@ -6,6 +6,7 @@ use App\Models\VpnUser;
 
 // ✅ Controllers
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\VpnUserController;
 use App\Http\Controllers\VpnServerController;
 use App\Http\Controllers\VpnConfigController;
@@ -51,22 +52,20 @@ Route::get('/dashboard', fn () => view('dashboard'))
 // ======================
 // ✅ Admin Routes
 // ======================
+<?php
+
+use App\Http\Controllers\Admin\DashboardController;
+use Illuminate\Support\Facades\Route;
+
 Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
-        // Dashboard
-        Route::get('/dashboard', function () {
-            return view('dashboards.admin', [
-                'totalUsers'     => User::count(),
-                'activeUsers'    => User::where('is_active', true)->count(),
-                'totalVpnUsers'  => VpnUser::count(),
-                'totalResellers' => User::where('role', 'reseller')->count(),
-                'totalClients'   => User::where('role', 'client')->count(),
-                'activeVpnUsers' => VpnUser::has('vpnServers')->count(),
-            ]);
-        })->name('dashboard');
+        // Dashboard (controller — invokes __invoke on DashboardController)
+        Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
+        // ...keep your other admin routes here (vpn-dashboard, users, servers, etc.)
+    });
         // VPN Dashboard
         Route::get('/vpn-dashboard', VpnDashboard::class)->name('vpn-dashboard');
 
