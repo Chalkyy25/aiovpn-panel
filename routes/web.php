@@ -52,10 +52,6 @@ Route::get('/dashboard', fn () => view('dashboard'))
 // ======================
 // ✅ Admin Routes
 // ======================
-<?php
-
-use App\Http\Controllers\Admin\DashboardController;
-use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('admin')
