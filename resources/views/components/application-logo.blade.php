@@ -1,29 +1,25 @@
 @props([
-    // 'mark' = small square for navbar, 'full' = wider version for auth pages
+    // 'mark' = compact (navbar), 'full' = larger (auth pages, headers)
     'type' => 'mark',
     'alt'  => 'AIO VPN',
 ])
 
 @php
-    // Using the same file for both variants. If you later add two files,
-    // change these to branding/logo-mark.svg and branding/logo-full.svg.
     $src = asset('images/logo.svg');
 
-    $common = $attributes->merge([
+    // Base attributes (avoid duplicating "alt"/"loading"/"decoding")
+    $base = [
         'alt'      => $alt,
         'loading'  => 'eager',
         'decoding' => 'async',
-    ]);
+        'class'    => 'select-none object-contain', // no drag ghost; keep aspect
+    ];
+
+    $classes = $type === 'mark'
+        // ~40–44px tall works well in a navbar
+        ? 'h-11 w-auto'
+        // Slightly larger for hero/auth screens
+        : 'h-14 sm:h-16 w-auto';
 @endphp
 
-@if ($type === 'mark')
-    <img
-        src="{{ $src }}"
-        {{ $common->merge(['class' => 'h-8 w-8 rounded-md ring-1 ring-black/5 dark:ring-white/10 object-contain bg-white max-w-full']) }}
-     alt="">
-@else
-    <img
-        src="{{ $src }}"
-        {{ $common->merge(['class' => 'h-12 sm:h-14 w-auto object-contain max-w-full']) }}
-     alt="">
-@endif
+<img src="{{ $src }}" {{ $attributes->merge($base)->class($classes) }}>
