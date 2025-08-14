@@ -1,14 +1,12 @@
 @props([
     'title' => '',
     'value' => '',
-    'icon'  => 'o-chart-bar',  // any <x-icon> name you already use
-    'hint'  => null,           // optional small text on the right (eg. "Last 5m")
+    'icon'  => 'o-chart-bar',  // your <x-icon> names
+    'hint'  => null,           // optional small label (e.g. "24h")
 ])
 
 <div {{ $attributes->merge([
-    'class' =>
-        'flex items-center gap-4 rounded-xl bg-white border shadow-sm px-4 py-3 ' .
-        'hover:shadow-md transition'
+    'class' => 'flex items-center gap-4 rounded-xl bg-white border shadow-sm px-4 py-3 hover:shadow-md transition'
 ]) }}>
     <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
         <x-icon :name="$icon" class="w-5 h-5 text-gray-700" />
@@ -20,6 +18,6 @@
     </div>
 
     @if($hint)
-        <div class="text-xs text-gray-400 whitespace-nowrap">{{ $hint }}</div>
+        <span class="text-xs text-gray-400 whitespace-nowrap">{{ $hint }}</span>
     @endif
 </div>
