@@ -1,6 +1,18 @@
-/* Import XUI styles */
-@import 'xui.css';
-
+/* Tailwind base styles */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Alpine.js helper — hide until Alpine is ready */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Optional: keep if you want logo size set via CSS instead of inline classes */
+.brand-logo {
+    height: 32px;
+    width: auto;
+    max-height: 32px;
+    object-fit: contain;
+    display: inline-block;
+}
