@@ -1,24 +1,20 @@
 @props([
-    // 'mark' = compact (navbar), 'full' = larger (auth pages, headers)
     'type' => 'mark',
     'alt'  => 'AIO VPN',
 ])
 
 @php
     $src = asset('images/logo.svg');
-
-    // Base attributes (avoid duplicating "alt"/"loading"/"decoding")
     $base = [
         'alt'      => $alt,
         'loading'  => 'eager',
         'decoding' => 'async',
-        'class'    => 'select-none object-contain', // no drag ghost; keep aspect
+        'class'    => 'select-none object-contain',
     ];
 
+    // h-10 = 40px tall (perfect balance)
     $classes = $type === 'mark'
-        // ~40–44px tall works well in a navbar
-        ? 'h-11 w-auto'
-        // Slightly larger for hero/auth screens
+        ? 'h-10 w-auto'
         : 'h-14 sm:h-16 w-auto';
 @endphp
 
