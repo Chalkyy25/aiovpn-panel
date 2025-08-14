@@ -1,29 +1,54 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\VpnUser;
+use App\Models\User;
 use App\Models\VpnServer;
+use App\Models\VpnUser;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 
-class DashboardController extends Controller
+final class DashboardController extends Controller
 {
     public function __invoke()
     {
-        // TODO: replace with your real sources for online/active metrics
-        $metrics = [
-            'online_users'       => 0, // e.g., VpnUser::where('status','online')->count()
-            'active_connections' => 0, // your real-time source
-            'active_servers'     => VpnServer::query()->count() ?? 0,
-            'avg_time'           => '0m', // compute from session logs if available
-        ];
+        // Cache briefly to avoid hammering DB (tune as needed)
+        $metrics = Cache::remember('admin.dashboard.metrics', now()->addSeconds(15), function () {
+            $totalUsers     = User::count();
+            $activeUsers    = User::where('is_active', true)->count();
+            $totalVpnUsers  = VpnUser::count();
+            $activeVpnUsers = VpnUser::has('vpnServers')->count();
+            $totalResellers = User::where('role', 'reseller')->count();
+            $totalClients   = User::where('role', 'client')->count();
 
-        $users = VpnUser::query()
-            ->with('vpnServers')
-            ->latest('id')
-            ->limit(10)
-            ->get();
+            // ---- Server stats (robust to different schemas)
+            $totalServers = VpnServer::count();
 
-        return view('admin.dashboard', compact('metrics', 'users'));
+            $onlineByStatus    = VpnServer::where('status', 'online')->count();      // if you have a 'status' column
+            $onlineByActive    = VpnServer::where('is_active', true)->count();       // or a boolean flag
+            $onlineByHeartbeat = VpnServer::whereNotNull('last_seen_at')
+                ->where('last_seen_at', '>=', Carbon::now()->subMinutes(5))->count(); // or heartbeat
+
+            $onlineServers  = max($onlineByStatus, $onlineByActive, $onlineByHeartbeat);
+            $offlineServers = max($totalServers - $onlineServers, 0);
+
+            return [
+                'totalUsers'     => $totalUsers,
+                'activeUsers'    => $activeUsers,
+                'totalVpnUsers'  => $totalVpnUsers,
+                'activeVpnUsers' => $activeVpnUsers,
+                'totalResellers' => $totalResellers,
+                'totalClients'   => $totalClients,
+                'totalServers'   => $totalServers,
+                'onlineServers'  => $onlineServers,
+                'offlineServers' => $offlineServers,
+            ];
+        });
+
+        // pass just what the Blade expects
+        return view('dashboards.admin', $metrics);
     }
 }
