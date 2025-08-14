@@ -53,6 +53,14 @@
     height: 4rem;
 }
 
+.brand-logo {
+  height: 32px !important;   /* nav logo height */
+  width: auto !important;
+  max-height: 32px !important;
+  object-fit: contain !important;
+  display: inline-block;
+}
+
 .xui-nav-logo {
     display: flex;
     align-items: center;
