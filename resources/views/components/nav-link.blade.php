@@ -1,6 +1,6 @@
 @props([
     'active' => false,
-    'icon'   => null,   // e.g. "o-home" if you use <x-icon>
+    'icon'   => null, // Optional icon name for <x-icon>
 ])
 
 @php
@@ -11,10 +11,9 @@ $classes = $active
 
 <a {{ $attributes->merge(['class' => $classes]) }}>
     @if($icon)
-        <x-icon :name="$icon" class="w-5 h-5 shrink-0 {{ $active ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-700' }}" />
+        <x-icon :name="$icon"
+                class="w-5 h-5 shrink-0 {{ $active ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-700' }}" />
     @endif
-
-    {{-- Hide label when the parent layout is collapsed --}}
     <span class="truncate" x-show="!$root.sidebarCollapsed">
         {{ $slot }}
     </span>
