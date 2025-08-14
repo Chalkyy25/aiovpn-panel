@@ -1,5 +1,6 @@
 @php
     use App\Models\VpnUser;
+    use App\Models\VpnServer;
 
     // The route passes:
     // totalUsers, activeUsers, totalVpnUsers, totalResellers, totalClients, activeVpnUsers
