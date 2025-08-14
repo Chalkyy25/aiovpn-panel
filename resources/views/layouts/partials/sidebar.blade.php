@@ -7,7 +7,7 @@
             Dashboard
         </x-nav-link>
 
-        <x-nav-link href="{{ route('vpn.monitor') }}" :active="request()->routeIs('vpn.monitor')" icon="o-chart-bar">
+        <x-nav-link href="{{ route('admin.vpn-dashboard') }}" :active="request()->routeIs('admin.vpn-dashboard')" icon="o-chart-bar">
             VPN Monitor
         </x-nav-link>
 
