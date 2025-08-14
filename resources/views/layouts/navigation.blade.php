@@ -14,8 +14,7 @@
                 <a href="{{ url('/') }}" class="flex items-center space-x-2">
                     <x-application-logo 
                         type="mark" 
-                        alt="AIO VPN Logo"
-                        class="!h-10 !w-auto" 
+                        alt="AIO VPN Logo" 
                     />
                     <span class="text-lg font-bold text-gray-800">AIO VPN</span>
                 </a>
