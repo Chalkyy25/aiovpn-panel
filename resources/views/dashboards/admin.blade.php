@@ -53,7 +53,11 @@
 
             {{-- SERVERS (put your tabs/filters here if you like) --}}
             <x-section-card title="Servers">
-                {{ $serverTabs ?? '' }}
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+    <x-stat-card title="Total Servers"  :value="$totalServers"  icon="o-server" />
+    <x-stat-card title="Online Servers" :value="$onlineServers" icon="o-bolt" hint="responding" />
+    <x-stat-card title="Offline Servers" :value="$offlineServers" icon="o-x-mark" hint="not reachable" />
+</div>
             </x-section-card>
 
             {{-- ACTIVE CONNECTIONS (if you render a table from Livewire or controller) --}}
