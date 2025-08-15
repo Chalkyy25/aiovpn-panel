@@ -1,168 +1,152 @@
-<div class="max-w-5xl mx-auto space-y-6" wire:poll.30s="refreshQuickFacts">
+{{-- ✏️ Editable Settings --}}
+<form wire:submit.prevent="save" class="space-y-6 mt-6">
 
-  {{-- Header --}}
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-[var(--aio-ink)]">Edit Server</h1>
-      <p class="text-sm text-[var(--aio-sub)]">ID #{{ $server->id }} • Last updated {{ optional($server->updated_at)->diffForHumans() }}</p>
-    </div>
+  <x-section-card title="Identity & Metadata" subtitle="Who / where is this node?">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Provider</label>
+        <input type="text" wire:model.defer="provider" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        @error('provider') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Region</label>
+        <input type="text" wire:model.defer="region" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="e.g. EU-West, UK-LON">
+        @error('region') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs text-[var(--aio-sub)] mb-1">Country</label>
+          <input type="text" wire:model.defer="country_code" maxlength="2" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 uppercase" placeholder="GB">
+          @error('country_code') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+        </div>
+        <div>
+          <label class="block text-xs text-[var(--aio-sub)] mb-1">City</label>
+          <input type="text" wire:model.defer="city" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+          @error('city') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+        </div>
+      </div>
 
-    <div class="flex items-center gap-2">
-      <x-button wire:click="testConnection" class="aio-pill pill-cya hover:shadow-glow">🔌 Test Connection</x-button>
-      <x-button wire:click="syncNow" class="aio-pill pill-pup hover:shadow-glow">🔁 Sync</x-button>
-      <a href="{{ route('admin.servers.show', $server->id) }}" class="aio-pill pill-neon hover:shadow-glow inline-flex items-center">🔍 View</a>
+      <div class="md:col-span-2">
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Tags (CSV)</label>
+        <input type="text" wire:model.defer="tags" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="premium, netflix, gaming">
+        @error('tags') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="enabled" wire:model.defer="enabled" class="h-4 w-4 rounded border-white/20 bg-white/5">
+        <label for="enabled" class="text-sm">Enabled</label>
+      </div>
     </div>
+  </x-section-card>
+
+  <x-section-card title="Network & SSH" subtitle="Connectivity and network behaviour.">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">SSH Port</label>
+        <input type="number" min="1" max="65535" wire:model.defer="ssh_port" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        @error('ssh_port') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">DNS (CSV)</label>
+        <input type="text" wire:model.defer="dns" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="1.1.1.1,8.8.8.8">
+        @error('dns') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">MTU</label>
+        <input type="number" min="576" max="9000" wire:model.defer="mtu" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        @error('mtu') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="ipv6_enabled" wire:model.defer="ipv6_enabled" class="h-4 w-4 rounded border-white/20 bg-white/5">
+        <label for="ipv6_enabled" class="text-sm">IPv6 Enabled</label>
+      </div>
+    </div>
+  </x-section-card>
+
+  <x-section-card title="Monitoring & Maintenance" subtitle="Agent/health settings.">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="md:col-span-2">
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">API Endpoint</label>
+        <input type="text" wire:model.defer="api_endpoint" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="https://node-agent:9000/">
+        @error('api_endpoint') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">API Token</label>
+        <input type="text" wire:model.defer="api_token" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="secret…">
+        @error('api_token') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Health Check Command</label>
+        <input type="text" wire:model.defer="health_check_cmd" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="systemctl is-active openvpn@server">
+        @error('health_check_cmd') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Install Branch</label>
+        <input type="text" wire:model.defer="install_branch" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="stable">
+        @error('install_branch') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="monitoring_enabled" wire:model.defer="monitoring_enabled" class="h-4 w-4 rounded border-white/20 bg-white/5">
+        <label for="monitoring_enabled" class="text-sm">Monitoring Enabled</label>
+      </div>
+    </div>
+  </x-section-card>
+
+  <x-section-card title="Protocol Options" subtitle="OpenVPN / WireGuard tuning.">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {{-- OpenVPN --}}
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">OpenVPN Cipher</label>
+        <input type="text" wire:model.defer="ovpn_cipher" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="AES-256-GCM">
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">OpenVPN Compression</label>
+        <input type="text" wire:model.defer="ovpn_compression" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="lz4-v2 / none">
+      </div>
+
+      {{-- WireGuard --}}
+      <div class="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-[var(--aio-sub)] mb-1">WG Public Key</label>
+          <textarea rows="2" wire:model.defer="wg_public_key" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs text-[var(--aio-sub)] mb-1">WG Private Key</label>
+          <textarea rows="2" wire:model.defer="wg_private_key" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs"></textarea>
+        </div>
+      </div>
+    </div>
+  </x-section-card>
+
+  <x-section-card title="Limits & Policy" subtitle="Protect capacity & shape traffic.">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Max Clients</label>
+        <input type="number" min="1" max="65000" wire:model.defer="max_clients" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        @error('max_clients') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Rate Limit (Mbps)</label>
+        <input type="number" min="1" max="10000" wire:model.defer="rate_limit_mbps" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        @error('rate_limit_mbps') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+      </div>
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="allow_split_tunnel" wire:model.defer="allow_split_tunnel" class="h-4 w-4 rounded border-white/20 bg-white/5">
+        <label for="allow_split_tunnel" class="text-sm">Allow Split Tunneling</label>
+      </div>
+    </div>
+  </x-section-card>
+
+  <x-section-card title="Notes">
+    <textarea rows="3" wire:model.defer="notes" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2"></textarea>
+  </x-section-card>
+
+  <div class="flex items-center justify-end gap-2">
+    <a href="{{ route('admin.servers.index') }}" class="aio-pill bg-white/10">Cancel</a>
+    <button type="submit" class="aio-pill pill-neon hover:shadow-glow">💾 Save Changes</button>
   </div>
 
-  {{-- Quick facts / status --}}
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-    <x-stat-card title="Status" :value="$server->status ? Str::upper($server->status) : 'N/A'" icon="o-signal" :variant="$server->status === 'online' ? 'neon' : 'mag'" compact />
-    <x-stat-card title="Protocol" :value="Str::upper($protocol)" icon="o-server" variant="cya" compact />
-    <x-stat-card title="Port" :value="$port" icon="o-arrow-right-circle" variant="pup" compact />
-  </div>
-
-  {{-- Form --}}
-  <form wire:submit.prevent="save" class="space-y-6">
-    {{-- Identity --}}
-    <x-section-card title="Identity" subtitle="How this server appears in your panel.">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <x-label for="name" value="Name" />
-          <input id="name" type="text" wire:model.defer="name"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 placeholder-[var(--aio-sub)] focus:outline-none focus:ring-2 focus:ring-[var(--aio-pup)]">
-          @error('name') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div>
-          <x-label for="region" value="Region/Tag (optional)" />
-          <input id="region" type="text" wire:model.defer="region"
-                 placeholder="e.g. UK-LON"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 placeholder-[var(--aio-sub)] focus:outline-none focus:ring-2 focus:ring-[var(--aio-pup)]">
-          @error('region') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-      </div>
-    </x-section-card>
-
-    {{-- Network --}}
-    <x-section-card title="Network" subtitle="How clients connect to this node.">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <x-label for="ip_address" value="Public IP / Host" />
-          <input id="ip_address" type="text" wire:model.defer="ip_address"
-                 placeholder="1.2.3.4 or host.example.com"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 placeholder-[var(--aio-sub)] focus:outline-none focus:ring-2 focus:ring-[var(--aio-cya)]">
-          @error('ip_address') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div>
-          <x-label for="protocol" value="Protocol" />
-          <select id="protocol" wire:model.live="protocol"
-                  class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--aio-cya)]">
-            <option value="openvpn">OpenVPN</option>
-            <option value="wireguard">WireGuard</option>
-          </select>
-          @error('protocol') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div>
-          <x-label for="port" value="Port" />
-          <input id="port" type="number" min="1" max="65535" wire:model.defer="port"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--aio-cya)]">
-          @error('port') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-      </div>
-    </x-section-card>
-
-    {{-- SSH --}}
-    <x-section-card title="SSH Access" subtitle="Used for provisioning, log reads, and health checks.">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <x-label for="ssh_user" value="SSH User" />
-          <input id="ssh_user" type="text" wire:model.defer="ssh_user"
-                 placeholder="root"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 placeholder-[var(--aio-sub)] focus:outline-none focus:ring-2 focus:ring-[var(--aio-mag)]">
-          @error('ssh_user') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div>
-          <x-label for="ssh_port" value="SSH Port" />
-          <input id="ssh_port" type="number" min="1" max="65535" wire:model.defer="ssh_port"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--aio-mag)]">
-          @error('ssh_port') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div x-data="{show:false}">
-          <x-label for="ssh_key" value="SSH Private Key" />
-          <div class="relative">
-            <textarea id="ssh_key" rows="4" wire:model.defer="ssh_key"
-                      :type="show ? 'text' : 'password'"
-                      class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[var(--aio-mag)]"
-                      placeholder="-----BEGIN OPENSSH PRIVATE KEY----- ..."></textarea>
-            <button type="button" @click="show=!show"
-                    class="absolute right-2 top-2 aio-pill bg-white/10 text-[var(--aio-ink)] text-[10px]">Toggle</button>
-          </div>
-          @error('ssh_key') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-      </div>
-      <p class="text-xs text-[var(--aio-sub)] mt-2">We strongly recommend key‑based auth. Password auth should be disabled in SSHD.</p>
-    </x-section-card>
-
-    {{-- Advanced --}}
-    <x-section-card title="Advanced" subtitle="Optional overrides & metadata.">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <x-label for="dns" value="DNS (CSV)" />
-          <input id="dns" type="text" wire:model.defer="dns"
-                 placeholder="1.1.1.1, 8.8.8.8"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 placeholder-[var(--aio-sub)] focus:outline-none focus:ring-2 focus:ring-[var(--aio-pup)]">
-          @error('dns') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div>
-          <x-label for="mtu" value="MTU" />
-          <input id="mtu" type="number" min="576" max="9000" wire:model.defer="mtu"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--aio-pup)]">
-          @error('mtu') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div>
-          <x-label for="notes" value="Notes" />
-          <input id="notes" type="text" wire:model.defer="notes"
-                 class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--aio-pup)]">
-          @error('notes') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-      </div>
-    </x-section-card>
-
-    {{-- Actions --}}
-    <div class="flex items-center justify-between">
-      <div class="text-xs text-[var(--aio-sub)]">Tip: <kbd class="aio-pill bg-white/10">Ctrl / Cmd + S</kbd> to save.</div>
-      <div class="flex gap-2">
-        <x-button type="button" wire:click="deployServer" class="aio-pill pill-neon hover:shadow-glow">🚀 Deploy</x-button>
-        <x-button type="submit" class="aio-pill pill-cya hover:shadow-glow">💾 Save Changes</x-button>
-      </div>
-    </div>
-
-    {{-- Danger Zone --}}
-    <x-section-card title="Danger Zone" subtitle="Irreversible actions." class="border-red-500/30">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm text-red-300">Delete will remove this node from your panel. Configs and users attached won’t be removed from devices.</p>
-        <x-button wire:click="deleteServer"
-                  onclick="return confirm('Are you sure? This cannot be undone.')"
-                  class="aio-pill bg-red-500/20 text-red-400 hover:shadow-glow">
-          🗑️ Delete Server
-        </x-button>
-      </div>
-    </x-section-card>
-  </form>
-
-  {{-- Save toast --}}
-  @if (session()->has('saved'))
-    <div class="fixed bottom-4 right-4 aio-pill pill-neon shadow-glow">{{ session('saved') }}</div>
-  @endif
-</div>
-
-@push('scripts')
-<script>
-document.addEventListener('keydown', (e) => {
-  const meta = e.ctrlKey || e.metaKey;
-  if (meta && e.key.toLowerCase() === 's') {
-    e.preventDefault();
-    window.Livewire?.find(@this.__instance.id)?.save();
-  }
-});
-</script>
-@endpush
+</form>
