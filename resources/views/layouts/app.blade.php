@@ -20,6 +20,9 @@
   @vite(['resources/css/app.css'])
   @livewireStyles
   @stack('styles')
+  @livewireScripts
+  @livewireStyles
+  @livewireScriptConfig
 
   <style>[x-cloak]{display:none!important}</style>
 </head>
