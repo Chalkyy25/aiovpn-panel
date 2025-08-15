@@ -109,6 +109,13 @@
               </label>
             @endforeach
           </div>
+          
+          <div class="p-3">
+  <button type="button" wire:click="$set('step', 2)" class="px-3 py-2 bg-green-600 text-white rounded">
+    Test wire:click → step=2
+  </button>
+  <div class="mt-2 text-sm">Current step: {{ $step }}</div>
+</div>
 
           <p class="form-help mt-2">You can select multiple servers.</p>
         </div>
