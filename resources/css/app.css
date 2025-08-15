@@ -4,137 +4,129 @@
 @tailwind utilities;
 
 /* Alpine helper */
-[x-cloak]{display:none!important}
+[x-cloak] { display: none !important; }
 
 /* =========================
    AIO brand (logo colors)
    ========================= */
-:root{
+:root {
   /* base surfaces */
-  --aio-bg:#0b0f1a;      /* page background (near‑black blue) */
-  --aio-card:#111827;    /* card surface (dark slate) */
-  --aio-ink:#e5e7eb;     /* primary text */
-  --aio-sub:#9ca3af;     /* secondary text */
+  --aio-bg:   #0b0f1a;  /* page background (near‑black blue) */
+  --aio-card: #111827;  /* card surface (dark slate) */
+  --aio-ink:  #e5e7eb;  /* primary text */
+  --aio-sub:  #9ca3af;  /* secondary text */
 
   /* brand accents from the logo */
-  --aio-neon:#3DFF7F;    /* neon green */
-  --aio-mag:#FF2FB9;     /* magenta */
-  --aio-pup:#7C4DFF;     /* electric purple */
-  --aio-cya:#3BA7F0;     /* cyan/blue */
+  --aio-neon: #3DFF7F;  /* neon green */
+  --aio-mag:  #FF2FB9;  /* magenta */
+  --aio-pup:  #7C4DFF;  /* electric purple */
+  --aio-cya:  #3BA7F0;  /* cyan/blue */
 }
 
 /* Global dark base (Tailwind dark mode) */
-@layer base{
-  html.dark body{ background-color:var(--aio-bg); color:var(--aio-ink); }
+@layer base {
+  html.dark body {
+    background-color: var(--aio-bg);
+    color: var(--aio-ink);
+  }
 }
 
 /* =========================
    Reusable components
    ========================= */
-@layer components{
-  /* === Form controls (dark themed) === */
-.aio-input {
-  @apply w-full rounded-lg px-4 py-2 text-sm outline-none;
-  background-color: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.12);
-  color: var(--aio-ink);
-}
-.aio-input::placeholder { color: var(--aio-sub); }
-.aio-input:focus {
-  border-color: rgba(61,255,127,.45);
-  box-shadow: 0 0 0 3px rgba(61,255,127,.18);
-}
+@layer components {
+  /* Surfaces */
+  .aio-card {
+    @apply rounded-xl border shadow-sm;
+    background-color: rgba(17, 24, 39, 0.90); /* var(--aio-card) */
+    border-color: rgba(255, 255, 255, 0.10);
+  }
 
-/* Selects */
-.aio-select {
-  @apply w-full rounded-lg px-4 py-2 text-sm appearance-none outline-none;
-  background-color: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.12);
-  color: var(--aio-ink);
-}
-.aio-select:focus {
-  border-color: rgba(124,77,255,.5);
-  box-shadow: 0 0 0 3px rgba(124,77,255,.18);
-}
+  .aio-header {
+    @apply rounded-xl border backdrop-blur;
+    background-color: rgba(17, 24, 39, 0.95);
+    border-color: rgba(255, 255, 255, 0.10);
+  }
 
-/* Checkbox / switch */
-.aio-check {
-  @apply h-4 w-4 rounded border cursor-pointer align-middle;
-  background-color: rgba(255,255,255,.04);
-  border-color: rgba(255,255,255,.25);
-}
-.aio-check:checked {
-  background-color: var(--aio-neon);
-  border-color: var(--aio-neon);
-}
+  .aio-divider { border-color: rgba(255, 255, 255, 0.10); }
 
-/* Labels & help */
-.aio-label { @apply text-sm font-medium mb-1; color: var(--aio-ink); }
-.aio-help  { @apply text-xs; color: var(--aio-sub); }
+  /* Small badge/pill */
+  .aio-pill {
+    @apply rounded-full text-xs font-semibold px-2.5 py-1;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--aio-ink);
+  }
 
-/* Buttons */
-.aio-btn {
-  @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition;
-  background-color: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.14);
-  color: var(--aio-ink);
-}
-.aio-btn:hover { background-color: rgba(255,255,255,.12); }
-.aio-btn-primary {
-  background: linear-gradient(90deg, var(--aio-pup), var(--aio-mag));
-  border: none;
-}
-.aio-btn-primary:hover { filter: brightness(1.05); }
-.aio-btn-danger {
-  background-color: rgba(239,68,68,.15);
-  border-color: rgba(239,68,68,.35);
-  color: #fecaca;
-}
+  /* Stat‑card helpers (stripe + icon pill colors) */
+  .accent-neon { background-color: var(--aio-neon); }
+  .accent-mag  { background-color: var(--aio-mag);  }
+  .accent-pup  { background-color: var(--aio-pup);  }
+  .accent-cya  { background-color: var(--aio-cya);  }
+
+  .pill-neon { color: var(--aio-neon); background-color: rgba(61, 255, 127, 0.15); }
+  .pill-mag  { color: var(--aio-mag);  background-color: rgba(255, 47, 185, 0.15); }
+  .pill-pup  { color: var(--aio-pup);  background-color: rgba(124, 77, 255, 0.15); }
+  .pill-cya  { color: var(--aio-cya);  background-color: rgba(59, 167, 240, 0.15); }
+
+  /* Soft neon glow (use on featured elements) */
+  .shadow-glow {
+    box-shadow:
+      0 0 8px rgba(61, 255, 127, 0.35),
+      0 0 18px rgba(124, 77, 255, 0.25);
   }
 
   /* =========================
      Pill cards (dashboard tiles)
      ========================= */
-  .pill-card{
+  .pill-card {
     @apply rounded-xl border;
-    background-color:rgba(17,24,39,.88);
-    border-color:rgba(255,255,255,.08);
-    transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    background-color: rgba(17, 24, 39, 0.88);
+    border-color: rgba(255, 255, 255, 0.08);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
   }
-  .pill-card:hover{
-    transform:translateY(-2px);
-    box-shadow:0 0 18px rgba(61,255,127,.20), 0 0 28px rgba(124,77,255,.15);
-    border-color:rgba(255,255,255,.14);
+  .pill-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 18px rgba(61, 255, 127, 0.20), 0 0 28px rgba(124, 77, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.14);
   }
 
-  /* Variant outlines (use alongside .pill-card if you want a quick color feel) */
-  .outline-neon{ box-shadow:0 0 0 1px rgba(61,255,127,.35) inset }
-  .outline-mag { box-shadow:0 0 0 1px rgba(255,47,185,.35) inset }
-  .outline-pup { box-shadow:0 0 0 1px rgba(124,77,255,.35) inset }
-  .outline-cya { box-shadow:0 0 0 1px rgba(59,167,240,.35) inset }
+  /* Variant outlines (use alongside .pill-card) */
+  .outline-neon { box-shadow: 0 0 0 1px rgba(61, 255, 127, 0.35) inset; }
+  .outline-mag  { box-shadow: 0 0 0 1px rgba(255, 47, 185, 0.35) inset; }
+  .outline-pup  { box-shadow: 0 0 0 1px rgba(124, 77, 255, 0.35) inset; }
+  .outline-cya  { box-shadow: 0 0 0 1px rgba(59, 167, 240, 0.35) inset; }
 
-  /* Sidebar link look (works with your <x-nav-link>) */
-  .side-link{
+  /* Sidebar link look */
+  .side-link {
     @apply flex items-center gap-3 px-3 py-2 rounded-md transition;
-    color:rgba(229,231,235,.75);
+    color: rgba(229, 231, 235, 0.75);
   }
-  .side-link:hover{ background-color:rgba(255,255,255,.06); color:#fff }
-  .side-link-active{
-    color:#fff;
-    background:
-      linear-gradient(90deg, rgba(124,77,255,.25), rgba(255,47,185,.18));
-    box-shadow:0 0 12px rgba(124,77,255,.30);
+  .side-link:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+  }
+  .side-link-active {
+    color: #ffffff;
+    background: linear-gradient(90deg, rgba(124, 77, 255, 0.25), rgba(255, 47, 185, 0.18));
+    box-shadow: 0 0 12px rgba(124, 77, 255, 0.30);
   }
 
   /* Tables (dark polish) */
   .table-dark { @apply min-w-full text-sm text-left; }
-  .table-dark thead tr{ border-bottom:1px solid rgba(255,255,255,.08) }
-  .table-dark tbody tr{ border-bottom:1px solid rgba(255,255,255,.06) }
-  .table-dark th, .table-dark td{ @apply px-4 py-2 }
-  .muted{ color:var(--aio-sub) }
+  .table-dark thead tr { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  .table-dark tbody tr { border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+  .table-dark th,
+  .table-dark td { @apply px-4 py-2; }
+
+  .muted { color: var(--aio-sub); }
 }
 
 /* Optional: logo size if you prefer CSS over Tailwind classes */
-.brand-logo{
-  height:32px; width:auto; max-height:32px; object-fit:contain; display:inline-block;
+.brand-logo {
+  height: 32px;
+  width: auto;
+  max-height: 32px;
+  object-fit: contain;
+  display: inline-block;
 }
