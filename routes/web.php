@@ -61,7 +61,6 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
         // ...keep your other admin routes here (vpn-dashboard, users, servers, etc.)
-    });
         // VPN Dashboard
         Route::get('/vpn-dashboard', VpnDashboard::class)->name('vpn-dashboard');
 
@@ -93,8 +92,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
         Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
 
-    );
-
+});
 
 // ============================
 // ✅ VPN Server Management
