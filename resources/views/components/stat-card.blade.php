@@ -6,23 +6,48 @@
   // neon | mag | pup | cya | slate
   'variant'  => 'pup',
   // extras
-  'href'     => null,          // make the whole card a link
-  'target'   => null,          // optional target for link
-  'compact'  => false,         // tighter padding/size
-  'stripe'   => true,          // show left accent bar
-  'delta'    => null,          // e.g. +12% or -5
-  'deltaUp'  => null,          // true/false; if null auto by sign of delta
-  'tooltip'  => null,          // title attr
-  'aria'     => null,          // aria-label override
+  'href'     => null,          
+  'target'   => null,          
+  'compact'  => false,         
+  'stripe'   => true,          
+  'delta'    => null,          
+  'deltaUp'  => null,          
+  'tooltip'  => null,          
+  'aria'     => null,          
 ])
 
 @php
 $map = [
-  'neon'  => ['pill'=>'pill-neon','accent'=>'accent-neon','ring'=>'ring-[rgba(61,255,127,.30)]','txt'=>'text-[var(--aio-neon)]'],
-  'mag'   => ['pill'=>'pill-mag', 'accent'=>'accent-mag', 'ring'=>'ring-[rgba(255,47,185,.30)]','txt'=>'text-[var(--aio-mag)]'],
-  'pup'   => ['pill'=>'pill-pup', 'accent'=>'accent-pup', 'ring'=>'ring-[rgba(124,77,255,.30)]','txt'=>'text-[var(--aio-pup)]'],
-  'cya'   => ['pill'=>'pill-cya', 'accent'=>'accent-cya', 'ring'=>'ring-[rgba(59,167,240,.30)]','txt'=>'text-[var(--aio-cya)]'],
-  'slate' => ['pill'=>'bg-white/10 text-[var(--aio-ink)]','accent'=>'bg-white/20','ring'=>'ring-white/10','txt'=>'text-[var(--aio-ink)]'],
+  'neon'  => [
+    'pill'=>'bg-gradient-to-r from-green-400/30 to-emerald-300/30 text-[var(--aio-neon)]',
+    'accent'=>'accent-neon',
+    'ring'=>'ring-[rgba(61,255,127,.30)]',
+    'txt'=>'text-[var(--aio-neon)]'
+  ],
+  'mag'   => [
+    'pill'=>'bg-gradient-to-r from-pink-400/30 to-rose-300/30 text-[var(--aio-mag)]',
+    'accent'=>'accent-mag',
+    'ring'=>'ring-[rgba(255,47,185,.30)]',
+    'txt'=>'text-[var(--aio-mag)]'
+  ],
+  'pup'   => [
+    'pill'=>'bg-gradient-to-r from-purple-400/30 to-indigo-300/30 text-[var(--aio-pup)]',
+    'accent'=>'accent-pup',
+    'ring'=>'ring-[rgba(124,77,255,.30)]',
+    'txt'=>'text-[var(--aio-pup)]'
+  ],
+  'cya'   => [
+    'pill'=>'bg-gradient-to-r from-cyan-400/30 to-sky-300/30 text-[var(--aio-cya)]',
+    'accent'=>'accent-cya',
+    'ring'=>'ring-[rgba(59,167,240,.30)]',
+    'txt'=>'text-[var(--aio-cya)]'
+  ],
+  'slate' => [
+    'pill'=>'bg-gradient-to-r from-white/10 to-white/5 text-[var(--aio-ink)]',
+    'accent'=>'bg-white/20',
+    'ring'=>'ring-white/10',
+    'txt'=>'text-[var(--aio-ink)]'
+  ],
 ];
 $c = $map[$variant] ?? $map['pup'];
 
