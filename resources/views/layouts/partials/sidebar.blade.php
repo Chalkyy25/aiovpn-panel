@@ -1,18 +1,18 @@
-{{-- Vertical sidebar navigation --}}
+{{-- Vertical sidebar navigation with AIO theme + glow --}}
 <nav class="px-2 pb-4 space-y-1 text-sm text-[var(--aio-ink)]" aria-label="Sidebar">
 
     {{-- MAIN --}}
     <x-nav-link href="{{ route('admin.dashboard') }}"
                 :active="request()->routeIs('admin.dashboard')"
                 icon="o-home"
-                class="aio-pill w-full justify-start">
+                class="aio-pill w-full justify-start hover:shadow-glow hover:pill-neon active:pill-pup">
         Dashboard
     </x-nav-link>
 
     <x-nav-link href="{{ route('admin.vpn-dashboard') }}"
                 :active="request()->routeIs('admin.vpn-dashboard')"
                 icon="o-chart-bar"
-                class="aio-pill w-full justify-start">
+                class="aio-pill w-full justify-start hover:shadow-glow hover:pill-neon active:pill-pup">
         VPN Monitor
     </x-nav-link>
 
@@ -20,7 +20,7 @@
     <x-nav-link href="{{ route('admin.servers.index') }}"
                 :active="request()->routeIs('admin.servers.*')"
                 icon="o-server"
-                class="aio-pill w-full justify-start">
+                class="aio-pill w-full justify-start hover:shadow-glow hover:pill-neon active:pill-pup">
         Servers
     </x-nav-link>
 
@@ -32,14 +32,14 @@
         <x-nav-link href="{{ route('admin.resellers.create') }}"
                     :active="request()->routeIs('admin.resellers.create')"
                     icon="o-plus"
-                    class="aio-pill w-full justify-start">
+                    class="aio-pill w-full justify-start hover:shadow-glow hover:pill-mag active:pill-pup">
             Add User
         </x-nav-link>
 
         <x-nav-link href="{{ route('admin.resellers.index') }}"
                     :active="request()->routeIs('admin.resellers.index')"
                     icon="o-user-group"
-                    class="aio-pill w-full justify-start">
+                    class="aio-pill w-full justify-start hover:shadow-glow hover:pill-mag active:pill-pup">
             Manage Users
         </x-nav-link>
     </div>
@@ -52,21 +52,21 @@
         <x-nav-link href="{{ route('admin.vpn-users.create') }}"
                     :active="request()->routeIs('admin.vpn-users.create')"
                     icon="o-plus-circle"
-                    class="aio-pill w-full justify-start">
+                    class="aio-pill w-full justify-start hover:shadow-glow hover:pill-cya active:pill-pup">
             Add Line
         </x-nav-link>
 
         <x-nav-link href="{{ route('admin.vpn-users.trial') }}"
                     :active="request()->routeIs('admin.vpn-users.trial')"
                     icon="o-clock"
-                    class="aio-pill w-full justify-start">
+                    class="aio-pill w-full justify-start hover:shadow-glow hover:pill-cya active:pill-pup">
             Generate Trial
         </x-nav-link>
 
         <x-nav-link href="{{ route('admin.vpn-users.index') }}"
                     :active="request()->routeIs('admin.vpn-users.index')"
                     icon="o-list-bullet"
-                    class="aio-pill w-full justify-start">
+                    class="aio-pill w-full justify-start hover:shadow-glow hover:pill-cya active:pill-pup">
             Manage Lines
         </x-nav-link>
     </div>
@@ -75,7 +75,7 @@
     <x-nav-link href="{{ route('admin.settings') }}"
                 :active="request()->routeIs('admin.settings')"
                 icon="o-cog-6-tooth"
-                class="aio-pill w-full justify-start">
+                class="aio-pill w-full justify-start hover:shadow-glow hover:pill-neon active:pill-pup">
         Settings
     </x-nav-link>
 
@@ -92,7 +92,7 @@
         @endphp
         @if ($isAdmin || $isReseller)
             <x-nav-link href="{{ $creditsUrl }}" icon="o-banknotes"
-                        class="aio-pill w-full justify-start">
+                        class="aio-pill w-full justify-start hover:shadow-glow hover:pill-neon active:pill-pup">
                 Credits: {{ $u->credits }}
             </x-nav-link>
         @endif
