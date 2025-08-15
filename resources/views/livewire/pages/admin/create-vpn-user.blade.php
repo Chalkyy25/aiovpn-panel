@@ -84,39 +84,42 @@
         </div>
 
         {{-- Servers --}}
-        <div class="md:col-span-2">
-          <label class="form-label">Assign to Servers</label>
+<div class="aio-section">
+  <div class="aio-section-title">Assign to Servers</div>
+  <p class="aio-section-sub">Pick one or more servers for this user.</p>
 
-          @error('selectedServers')
-            <div class="aio-pill bg-red-500/15 text-red-300 mb-2">{{ $message }}</div>
-          @enderror
+  @error('selectedServers')
+    <div class="mb-3 text-sm text-red-400">{{ $message }}</div>
+  @enderror
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            @foreach($servers as $server)
-              @php $cid = 'srv-'.$server->id; @endphp
-              <label for="{{ $cid }}" class="form-check aio-card p-3">
-                <input id="{{ $cid }}"
-                       name="selectedServers[]"
-                       class="form-checkbox"
-                       type="checkbox"
-                       value="{{ (string)$server->id }}"
-                       wire:model.live="selectedServers"
-                       wire:key="srv-{{ $server->id }}">
-                <span class="ml-1">
-                  {{ $server->name }}
-                  <span class="muted">({{ $server->ip_address }})</span>
-                </span>
-              </label>
-            @endforeach
-          </div>
-          
-         <div class="p-3 aio-section">
-  <button type="button"
-          wire:click="$set('step', 2)"
-          class="btn">
-    Test wire:click → step=2
-  </button>
-  <div class="mt-2 text-sm">Current step: {{ $step }}</div>
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    @foreach($servers as $server)
+      @php $cbId = 'srv-'.$server->id; $isOn = in_array($server->id, (array)$selectedServers, true); @endphp
+
+      <label for="{{ $cbId }}"
+             class="pill-card cursor-pointer flex items-center justify-between p-3
+                    {{ $isOn ? 'outline-neon' : 'hover:outline-cya' }}">
+        <div class="min-w-0">
+          <div class="font-medium truncate">{{ $server->name }}</div>
+          <div class="text-xs muted truncate">{{ $server->ip_address }}</div>
+        </div>
+
+        {{-- IMPORTANT: sr-only keeps it accessible but invisible; label drives the click --}}
+        <input id="{{ $cbId }}"
+               type="checkbox"
+               class="sr-only"
+               name="selectedServers[]"
+               value="{{ $server->id }}"
+               wire:model.defer="selectedServers"
+               wire:key="srv-{{ $server->id }}">
+        <div class="ml-3 h-5 w-5 rounded border"
+             style="border-color:rgba(255,255,255,.25); background: {{ $isOn ? 'var(--aio-neon)' : 'transparent' }}"></div>
+      </label>
+    @endforeach
+  </div>
+
+  {{-- Quick debug (optional): shows the bound array --}}
+  {{-- <pre class="mt-3 text-xs text-[var(--aio-sub)]">selectedServers: {{ json_encode($selectedServers) }}</pre> --}}
 </div>
 
           <p class="form-help mt-2">You can select multiple servers.</p>
