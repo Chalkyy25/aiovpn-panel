@@ -75,95 +75,100 @@ class ServerCreate extends Component
     public $notes               = null;
 
     public function create()
-    {
-        Log::info('🛠️ Server creation triggered', ['ip' => $this->ip]);
+{
+    // 1) Validate everything declared with #[Rule]
+    //    (Livewire v3 attribute rules run only when you call $this->validate())
+    $this->validate();
 
-        // Extra rule when using password auth
-        if ($this->sshType === 'password') {
-            $this->validate(['sshPassword' => 'required|string']);
-        }
-
-        // Build base data (fields that you *do* have today)
-        $data = [
-            'name'               => $this->name,
-            'ip_address'         => $this->ip,
-            'protocol'           => strtolower($this->protocol),   // db stores lowercase
-            'ssh_port'           => (int) $this->sshPort,
-            'ssh_user'           => $this->sshUsername,
-            'ssh_type'           => $this->sshType,
-            'ssh_password'       => $this->sshType === 'password' ? $this->sshPassword : null,
-            'ssh_key'            => $this->sshType === 'key' ? storage_path('app/ssh_keys/id_rsa') : null,
-            'port'               => $this->port ?: null,
-            'transport'          => $this->transport ?: null,
-            'dns'                => $this->dns ?: null,
-            'enable_ipv6'        => (bool) $this->enableIPv6,
-            'enable_logging'     => (bool) $this->enableLogging,
-            'enable_proxy'       => (bool) $this->enableProxy,
-            'header1'            => (bool) $this->header1,
-            'header2'            => (bool) $this->header2,
-            'deployment_status'  => 'queued',   // existing enum has queued|running|success|failed|succeeded
-            'deployment_log'     => '',
-            'status'             => 'pending',  // your table has a non-nullable status
-            // if you added a boolean is_deploying later, we’ll conditionally add it below
-        ];
-
-        // ===== Conditionally add future columns (safe on old schema) =====
-        $maybe = [
-            'provider'           => $this->provider,
-            'region'             => $this->region,
-            'country_code'       => $this->country_code,
-            'city'               => $this->city,
-            'enabled'            => (bool) $this->enabled,
-            'ipv6_enabled'       => $this->ipv6_enabled, // if you rename later
-            'mtu'                => $this->mtu ? (int) $this->mtu : null,
-            'api_endpoint'       => $this->api_endpoint,
-            'api_token'          => $this->api_token,
-            'monitoring_enabled' => (bool) $this->monitoring_enabled,
-            'health_check_cmd'   => $this->health_check_cmd,
-            'install_branch'     => $this->install_branch,
-            'max_clients'        => $this->max_clients ? (int) $this->max_clients : null,
-            'rate_limit_mbps'    => $this->rate_limit_mbps ? (int) $this->rate_limit_mbps : null,
-            'allow_split_tunnel' => (bool) $this->allow_split_tunnel,
-            'ovpn_cipher'        => $this->ovpn_cipher,
-            'ovpn_compression'   => $this->ovpn_compression,
-            'wg_public_key'      => $this->wg_public_key,
-            'wg_private_key'     => $this->wg_private_key,
-            'notes'              => $this->notes,
-            // alias: if your migration adds is_deploying
-            'is_deploying'       => false,
-        ];
-
-        // If tags column exists, store JSON array
-        if (Schema::hasColumn('vpn_servers', 'tags')) {
-            $maybe['tags'] = $this->normalizeTags($this->tags);
-        }
-
-        // If you want to override initial status and the column exists
-        if (!empty($this->statusOverride) && Schema::hasColumn('vpn_servers', 'status')) {
-            $maybe['status'] = $this->statusOverride;
-        }
-
-        // Filter $maybe to only existing columns to avoid SQL errors
-        foreach ($maybe as $column => $value) {
-            if (Schema::hasColumn('vpn_servers', $column)) {
-                $data[$column] = $value;
-            }
-        }
-
-        // Warn if SSH key file is missing (non-blocking)
-        if ($data['ssh_key'] && !file_exists($data['ssh_key'])) {
-            Log::warning("⚠️ SSH key path missing: {$data['ssh_key']}");
-            session()->flash('error', 'SSH key file not found (storage/app/ssh_keys/id_rsa). You can still save, but deployment may fail.');
-        }
-
-        $server = VpnServer::create($data);
-
-        // Dispatch deployment job if column exists OR just always (job reads model anyway)
-        Log::info("🚀 Dispatching DeployVpnServer job for server #{$server->id}");
-        dispatch(new DeployVpnServer($server));
-
-        return redirect()->route('admin.servers.install-status', $server);
+    // 1b) Extra rule when using password auth
+    if ($this->sshType === 'password') {
+        $this->validate(['sshPassword' => 'required|string']);
     }
+
+    // 1c) Belt-and-suspenders: trim + guard name
+    $this->name = trim((string) $this->name);
+    if ($this->name === '') {
+        // You can also return with an error instead, but this prevents null inserts.
+        $this->addError('name', 'The Server Name is required.');
+        return;
+    }
+
+    // 2) Build base data (current schema)
+    $data = [
+        'name'               => $this->name,
+        'ip_address'         => $this->ip,
+        'protocol'           => strtolower($this->protocol),
+        'ssh_port'           => (int) $this->sshPort,
+        'ssh_user'           => $this->sshUsername,
+        'ssh_type'           => $this->sshType,
+        'ssh_password'       => $this->sshType === 'password' ? $this->sshPassword : null,
+        'ssh_key'            => $this->sshType === 'key' ? storage_path('app/ssh_keys/id_rsa') : null,
+        'port'               => $this->port ?: null,
+        'transport'          => $this->transport ?: null,
+        'dns'                => $this->dns ?: null,
+        'enable_ipv6'        => (bool) $this->enableIPv6,
+        'enable_logging'     => (bool) $this->enableLogging,
+        'enable_proxy'       => (bool) $this->enableProxy,
+        'header1'            => (bool) $this->header1,
+        'header2'            => (bool) $this->header2,
+        'deployment_status'  => 'queued',
+        'deployment_log'     => '',
+        'status'             => 'pending',
+    ];
+
+    // 3) Add optional/future columns only if they exist
+    $maybe = [
+        'provider'           => $this->provider,
+        'region'             => $this->region,
+        'country_code'       => $this->country_code,
+        'city'               => $this->city,
+        'enabled'            => (bool) $this->enabled,
+        'ipv6_enabled'       => $this->ipv6_enabled,
+        'mtu'                => $this->mtu ? (int) $this->mtu : null,
+        'api_endpoint'       => $this->api_endpoint,
+        'api_token'          => $this->api_token,
+        'monitoring_enabled' => (bool) $this->monitoring_enabled,
+        'health_check_cmd'   => $this->health_check_cmd,
+        'install_branch'     => $this->install_branch,
+        'max_clients'        => $this->max_clients ? (int) $this->max_clients : null,
+        'rate_limit_mbps'    => $this->rate_limit_mbps ? (int) $this->rate_limit_mbps : null,
+        'allow_split_tunnel' => (bool) $this->allow_split_tunnel,
+        'ovpn_cipher'        => $this->ovpn_cipher,
+        'ovpn_compression'   => $this->ovpn_compression,
+        'wg_public_key'      => $this->wg_public_key,
+        'wg_private_key'     => $this->wg_private_key,
+        'notes'              => $this->notes,
+        'is_deploying'       => false,
+    ];
+
+    if (\Illuminate\Support\Facades\Schema::hasColumn('vpn_servers', 'tags')) {
+        $maybe['tags'] = $this->normalizeTags($this->tags);
+    }
+    if (!empty($this->statusOverride) && \Illuminate\Support\Facades\Schema::hasColumn('vpn_servers', 'status')) {
+        $maybe['status'] = $this->statusOverride;
+    }
+    foreach ($maybe as $column => $value) {
+        if (\Illuminate\Support\Facades\Schema::hasColumn('vpn_servers', $column)) {
+            $data[$column] = $value;
+        }
+    }
+
+    // 4) Warn if SSH key missing (non‑blocking)
+    if ($data['ssh_key'] && !file_exists($data['ssh_key'])) {
+        Log::warning("⚠️ SSH key path missing: {$data['ssh_key']}");
+        session()->flash('error', 'SSH key file not found (storage/app/ssh_keys/id_rsa). You can still save, but deployment may fail.');
+    }
+
+    // (Optional) One-time debug to verify 'name' is set
+    Log::info('Creating VpnServer with payload', ['name' => $data['name'], 'ip_address' => $data['ip_address']]);
+
+    $server = VpnServer::create($data);
+
+    Log::info("🚀 Dispatching DeployVpnServer job for server #{$server->id}");
+    dispatch(new DeployVpnServer($server));
+
+    return redirect()->route('admin.servers.install-status', $server);
+}
 
     public function render()
     {
