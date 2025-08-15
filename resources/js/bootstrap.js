@@ -12,9 +12,9 @@ window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 /**
  * Import Alpine.js and make it available globally
  */
-import Alpine from 'alpinejs';
-window.Alpine = Alpine;
-Alpine.start();
+//import Alpine from 'alpinejs';
+//window.Alpine = Alpine;
+//Alpine.start();
 
 /**
  * Echo exposes an expressive API for subscribing to channels and listening
