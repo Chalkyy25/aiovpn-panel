@@ -88,45 +88,57 @@
       </div>
     </section>
 
-    {{-- Section: Servers (NOT nested inside grid) --}}
-    <section class="aio-section">
-      <div class="aio-section-title"><span class="w-1.5 h-6 rounded accent-neon"></span> Assign to Servers</div>
-      <p class="aio-section-sub">Pick one or more servers for this user.</p>
+    {{-- Servers --}}
+<section class="aio-section">
+  <div class="aio-section-title">Assign to Servers</div>
+  <p class="aio-section-sub">Pick one or more servers for this user.</p>
 
-      @error('selectedServers')
-        <div class="mb-3 text-sm text-red-400">{{ $message }}</div>
-      @enderror
+  @error('selectedServers')
+    <div class="mb-3 text-sm text-red-400">{{ $message }}</div>
+  @enderror
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        @foreach($servers as $server)
-          @php
-            $cbId = 'srv-'.$server->id;
-            $isOn = in_array($server->id, (array)$selectedServers, true);
-          @endphp
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+    @foreach ($servers as $server)
+      @php $cbId = 'srv-'.$server->id; @endphp
 
-          <label for="{{ $cbId }}"
-                 class="pill-card cursor-pointer flex items-center justify-between p-3 {{ $isOn ? 'outline-neon' : 'hover:outline-cya' }}"
-                 wire:key="tile-{{ $server->id }}">
-            <div class="min-w-0">
-              <div class="font-medium truncate">{{ $server->name }}</div>
-              <div class="text-xs muted truncate">{{ $server->ip_address }}</div>
-            </div>
+      <label
+        wire:key="srv-{{ $server->id }}"
+        for="{{ $cbId }}"
+        class="pill-card cursor-pointer flex items-center justify-between p-3 hover:outline-cya"
+      >
+        <div class="min-w-0">
+          <div class="font-medium truncate">{{ $server->name }}</div>
+          <div class="text-xs muted truncate">{{ $server->ip_address }}</div>
+        </div>
 
-            {{-- Keep the input focusable (sr-only), and bind LIVE so the highlight updates immediately --}}
-            <input id="{{ $cbId }}"
-                   type="checkbox"
-                   class="sr-only"
-                   value="{{ $server->id }}"
-                   wire:model.live="selectedServers">
+        {{-- Hidden, but still focusable/accessible --}}
+        <input
+          id="{{ $cbId }}"
+          type="checkbox"
+          class="sr-only peer"
+          value="{{ (string) $server->id }}"
+          wire:model="selectedServers"  {{-- bind to array (no name="" needed) --}}
+        />
 
-            <div class="ml-3 h-5 w-5 rounded border"
-                 style="border-color:rgba(255,255,255,.25); background: {{ $isOn ? 'var(--aio-neon)' : 'transparent' }}"></div>
-          </label>
-        @endforeach
-      </div>
+        {{-- Visual tick box driven by the checkbox state --}}
+        <div
+          class="ml-3 h-5 w-5 rounded border"
+          style="border-color:rgba(255,255,255,.25)"
+        ></div>
+      </label>
 
-      <p class="form-help mt-2">You can select multiple servers.</p>
-    </section>
+      {{-- Add an outline when checked via peer selector (requires Tailwind) --}}
+      <style>
+        /* on checked: tint the mini box + add a subtle outline on the card */
+        #{{ $cbId }}:checked + div { background: var(--aio-neon); }
+        /* use :has if your Tailwind doesn't support peer on parent */
+        label[for="{{ $cbId }}"]:has(#{{ $cbId }}:checked) { box-shadow: inset 0 0 0 1px rgba(61,255,127,.35); }
+      </style>
+    @endforeach
+  </div>
+
+  <p class="form-help mt-3">You can select multiple servers.</p>
+</section>
 
     <div class="mt-6 text-right">
       <button type="button" class="btn-secondary mr-2" wire:click="$refresh" wire:loading.attr="disabled">Refresh</button>
