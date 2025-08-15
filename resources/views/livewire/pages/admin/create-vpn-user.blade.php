@@ -110,8 +110,10 @@
             @endforeach
           </div>
           
-          <div class="p-3">
-  <button type="button" wire:click="$set('step', 2)" class="px-3 py-2 bg-green-600 text-white rounded">
+         <div class="p-3 aio-section">
+  <button type="button"
+          wire:click="$set('step', 2)"
+          class="btn">
     Test wire:click → step=2
   </button>
   <div class="mt-2 text-sm">Current step: {{ $step }}</div>
