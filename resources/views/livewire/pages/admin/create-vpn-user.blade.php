@@ -23,9 +23,11 @@
   @php
     $canReview = filled($username) && count($selectedServers) > 0 && in_array($expiry,['1m','3m','6m','12m']) && $packageId;
     $canDone   = ($step === 3);
-    $tab = function($is,$enabled=true){ 
+    $tab = function($is,$enabled=true){
       return 'pb-2 -mb-px border-b-2 '.
-             ($is ? 'border-[var(--aio-pup)] text-white' : ($enabled ? 'border-transparent text-[var(--aio-sub)] hover:text-white' : 'border-transparent text-gray-500 cursor-not-allowed'));
+             ($is ? 'border-[var(--aio-pup)] text-white'
+                  : ($enabled ? 'border-transparent text-[var(--aio-sub)] hover:text-white'
+                              : 'border-transparent text-gray-500 cursor-not-allowed'));
     };
   @endphp
 
@@ -37,6 +39,7 @@
 
   {{-- STEP 1: DETAILS --}}
   @if ($step === 1)
+    {{-- Section: Details --}}
     <section class="aio-section">
       <h3 class="aio-section-title"><span class="w-1.5 h-6 rounded accent-cya"></span> Details</h3>
       <p class="aio-section-sub">Choose username, package & target servers.</p>
@@ -82,70 +85,59 @@
             @endif
           </div>
         </div>
-
-        {{-- Servers --}}
-<div class="aio-section">
-  <div class="aio-section-title">Assign to Servers</div>
-  <p class="aio-section-sub">Pick one or more servers for this user.</p>
-
-  @error('selectedServers')
-    <div class="mb-3 text-sm text-red-400">{{ $message }}</div>
-  @enderror
-
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-    @foreach($servers as $server)
-      @php $cbId = 'srv-'.$server->id; $isOn = in_array($server->id, (array)$selectedServers, true); @endphp
-
-      <label for="{{ $cbId }}"
-             class="pill-card cursor-pointer flex items-center justify-between p-3
-                    {{ $isOn ? 'outline-neon' : 'hover:outline-cya' }}">
-        <div class="min-w-0">
-          <div class="font-medium truncate">{{ $server->name }}</div>
-          <div class="text-xs muted truncate">{{ $server->ip_address }}</div>
-        </div>
-
-        {{-- IMPORTANT: sr-only keeps it accessible but invisible; label drives the click --}}
-        <input id="{{ $cbId }}"
-               type="checkbox"
-               class="sr-only"
-               name="selectedServers[]"
-               value="{{ $server->id }}"
-               wire:model.defer="selectedServers"
-               wire:key="srv-{{ $server->id }}">
-        <div class="ml-3 h-5 w-5 rounded border"
-             style="border-color:rgba(255,255,255,.25); background: {{ $isOn ? 'var(--aio-neon)' : 'transparent' }}"></div>
-      </label>
-    @endforeach
-  </div>
-
-  {{-- Quick debug (optional): shows the bound array --}}
-  {{-- <pre class="mt-3 text-xs text-[var(--aio-sub)]">selectedServers: {{ json_encode($selectedServers) }}</pre> --}}
-</div>
-
-          <p class="form-help mt-2">You can select multiple servers.</p>
-        </div>
-      </div>
-
-      <div class="mt-6 text-right">
-        <button type="button"
-                class="btn-secondary mr-2"
-                wire:click="$refresh"
-                wire:loading.attr="disabled">Refresh</button>
-
-        <button type="button"
-                class="btn"
-                wire:click="next"
-                wire:loading.attr="disabled">
-          Next
-        </button>
       </div>
     </section>
+
+    {{-- Section: Servers (NOT nested inside grid) --}}
+    <section class="aio-section">
+      <div class="aio-section-title"><span class="w-1.5 h-6 rounded accent-neon"></span> Assign to Servers</div>
+      <p class="aio-section-sub">Pick one or more servers for this user.</p>
+
+      @error('selectedServers')
+        <div class="mb-3 text-sm text-red-400">{{ $message }}</div>
+      @enderror
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        @foreach($servers as $server)
+          @php
+            $cbId = 'srv-'.$server->id;
+            $isOn = in_array($server->id, (array)$selectedServers, true);
+          @endphp
+
+          <label for="{{ $cbId }}"
+                 class="pill-card cursor-pointer flex items-center justify-between p-3 {{ $isOn ? 'outline-neon' : 'hover:outline-cya' }}"
+                 wire:key="tile-{{ $server->id }}">
+            <div class="min-w-0">
+              <div class="font-medium truncate">{{ $server->name }}</div>
+              <div class="text-xs muted truncate">{{ $server->ip_address }}</div>
+            </div>
+
+            {{-- Keep the input focusable (sr-only), and bind LIVE so the highlight updates immediately --}}
+            <input id="{{ $cbId }}"
+                   type="checkbox"
+                   class="sr-only"
+                   value="{{ $server->id }}"
+                   wire:model.live="selectedServers">
+
+            <div class="ml-3 h-5 w-5 rounded border"
+                 style="border-color:rgba(255,255,255,.25); background: {{ $isOn ? 'var(--aio-neon)' : 'transparent' }}"></div>
+          </label>
+        @endforeach
+      </div>
+
+      <p class="form-help mt-2">You can select multiple servers.</p>
+    </section>
+
+    <div class="mt-6 text-right">
+      <button type="button" class="btn-secondary mr-2" wire:click="$refresh" wire:loading.attr="disabled">Refresh</button>
+      <button type="button" class="btn" wire:click="next" wire:loading.attr="disabled">Next</button>
+    </div>
   @endif
 
   {{-- STEP 2: REVIEW --}}
   @if ($step === 2)
     <section class="aio-section">
-      <h3 class="aio-section-title"><span class="w-1.5 h-6 rounded accent-pup"></span>Review</h3>
+      <h3 class="aio-section-title"><span class="w-1.5 h-6 rounded accent-pup"></span> Review</h3>
       <p class="aio-section-sub">Confirm details before purchase.</p>
 
       <div class="grid md:grid-cols-2 gap-6">
@@ -153,7 +145,8 @@
           <h4 class="font-semibold mb-3">Summary</h4>
           <dl class="text-sm space-y-2">
             <div class="flex justify-between"><dt class="muted">Username</dt><dd class="font-mono">{{ $username }}</dd></div>
-            <div class="flex justify-between"><dt class="muted">Duration</dt>
+            <div class="flex justify-between">
+              <dt class="muted">Duration</dt>
               <dd>
                 @switch($expiry)
                   @case('1m') 1 Month @break
@@ -219,7 +212,7 @@
       <h3 class="text-xl font-semibold mb-2">VPN user created</h3>
       @if (session()->has('success'))
         <p class="muted">{{ session('success') }}</p>
-      @endif>
+      @endif
 
       <div class="mt-6 flex items-center justify-center gap-3">
         <a href="{{ route('admin.vpn-users.index') }}" class="btn-secondary">View All Users</a>
