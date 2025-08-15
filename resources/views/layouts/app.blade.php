@@ -1,18 +1,26 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_','-',app()->getLocale()) }}"
-      x-data
-      x-init="
-        const v = localStorage.getItem('theme') ?? 'dark';
-        if (v === 'dark') document.documentElement.classList.add('dark')
-      ">
+<html lang="{{ str_replace('_','-',app()->getLocale()) }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{{ config('app.name','AIO VPN') }}</title>
 
-  @vite(['resources/css/app.css','resources/js/app.js'])
+  {{-- Apply dark theme ASAP (no Alpine needed up here) --}}
+  <script>
+    (function () {
+      try {
+        const v = localStorage.getItem('theme') ?? 'dark';
+        if (v === 'dark') document.documentElement.classList.add('dark');
+      } catch (e) {}
+    })();
+  </script>
+
+  {{-- Styles first --}}
+  @vite(['resources/css/app.css'])
   @livewireStyles
+  @stack('styles')
+
   <style>[x-cloak]{display:none!important}</style>
 </head>
 
@@ -20,7 +28,6 @@
       x-data="panelLayout()" x-init="init()">
 
   <div class="min-h-screen flex">
-
     {{-- ===== Left sidebar (desktop: collapsible) ===== --}}
     <aside class="hidden md:flex md:flex-col aio-card border-r transition-[width] duration-200"
            :class="sidebarCollapsed ? 'md:w-20' : 'md:w-64'"
@@ -77,8 +84,7 @@
 
         <div class="flex items-center gap-3">
           @auth
-            <a href="{{ route('admin.credits') }}"
-               class="aio-pill inline-flex items-center gap-1.5">
+            <a href="{{ route('admin.credits') }}" class="aio-pill inline-flex items-center gap-1.5">
               <x-icon name="o-currency-dollar" class="w-4 h-4"/>
               {{ auth()->user()->credits ?? 0 }}
             </a>
@@ -105,7 +111,12 @@
     </div>
   </div>
 
+  {{-- JS LAST, in this order --}}
+  @vite(['resources/js/app.js'])
   @livewireScripts
+  @livewireScriptConfig
+  @stack('scripts')
+
   <script>
     function panelLayout(){
       return {
