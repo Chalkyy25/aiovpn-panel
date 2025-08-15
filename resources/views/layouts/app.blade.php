@@ -55,7 +55,7 @@
 
     {{-- ===== Mobile drawer ===== --}}
     <div class="md:hidden" x-show="sidebarOpen" x-cloak>
-      <div class="fixed inset-0 z-100">
+      <div class="fixed inset-0 bg-gray-900 z-50">
         <div class="absolute inset-0 bg-black/30" @click="sidebarOpen=false"></div>
         <aside class="absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3">
           <div class="h-14 flex items-center justify-between">
