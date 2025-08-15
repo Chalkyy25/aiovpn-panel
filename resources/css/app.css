@@ -34,47 +34,85 @@
 /* =========================
    Reusable components
    ========================= */
+/* ===== AIO Form Kit ===== */
 @layer components {
-  /* Surfaces */
-  .aio-card {
-    @apply rounded-xl border shadow-sm;
-    background-color: rgba(17, 24, 39, 0.90); /* var(--aio-card) */
-    border-color: rgba(255, 255, 255, 0.10);
+  .aio-section{
+    @apply rounded-2xl border p-5 md:p-6;
+    background-color: rgba(17,24,39,.92);
+    border-color: rgba(255,255,255,.08);
   }
+  .aio-section + .aio-section{ @apply mt-6; }
 
-  .aio-header {
-    @apply rounded-xl border backdrop-blur;
-    background-color: rgba(17, 24, 39, 0.95);
-    border-color: rgba(255, 255, 255, 0.10);
-  }
-
-  .aio-divider { border-color: rgba(255, 255, 255, 0.10); }
-
-  /* Small badge/pill */
-  .aio-pill {
-    @apply rounded-full text-xs font-semibold px-2.5 py-1;
-    background-color: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+  .aio-section-title{
+    @apply flex items-center gap-2 text-lg font-semibold mb-1;
     color: var(--aio-ink);
   }
+  .aio-section-sub{ @apply text-sm mb-4; color: var(--aio-sub); }
 
-  /* Stat‑card helpers (stripe + icon pill colors) */
-  .accent-neon { background-color: var(--aio-neon); }
-  .accent-mag  { background-color: var(--aio-mag);  }
-  .accent-pup  { background-color: var(--aio-pup);  }
-  .accent-cya  { background-color: var(--aio-cya);  }
+  .form-grid{ @apply grid gap-4; grid-template-columns: 1fr; }
+  @media (min-width: 768px){ .form-grid{ grid-template-columns: 1fr 1fr; } }
 
-  .pill-neon { color: var(--aio-neon); background-color: rgba(61, 255, 127, 0.15); }
-  .pill-mag  { color: var(--aio-mag);  background-color: rgba(255, 47, 185, 0.15); }
-  .pill-pup  { color: var(--aio-pup);  background-color: rgba(124, 77, 255, 0.15); }
-  .pill-cya  { color: var(--aio-cya);  background-color: rgba(59, 167, 240, 0.15); }
+  .form-group{ @apply flex flex-col gap-1.5; }
+  .form-label{ @apply text-sm font-medium; color: var(--aio-ink); }
+  .form-help { @apply text-xs; color: var(--aio-sub); }
 
-  /* Soft neon glow (use on featured elements) */
-  .shadow-glow {
-    box-shadow:
-      0 0 8px rgba(61, 255, 127, 0.35),
-      0 0 18px rgba(124, 77, 255, 0.25);
+  /* Inputs / selects */
+  .form-input, .form-select, .form-textarea{
+    @apply w-full rounded-lg border px-3 py-2.5 outline-none transition;
+    background: rgba(255,255,255,.04);
+    border-color: rgba(255,255,255,.12);
+    color: var(--aio-ink);
   }
+  .form-textarea{ @apply min-h-[110px] resize-vertical; }
+  .form-input::placeholder, .form-textarea::placeholder{ color: rgba(229,231,235,.45); }
+
+  .form-input:focus, .form-select:focus, .form-textarea:focus{
+    border-color: rgba(124,77,255,.55);
+    box-shadow: 0 0 0 3px rgba(124,77,255,.25), 0 0 0 1px rgba(124,77,255,.35) inset;
+  }
+
+  /* Select chevron */
+  .form-select{
+    appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--aio-ink) 50%),
+      linear-gradient(135deg, var(--aio-ink) 50%, transparent 50%);
+    background-position: calc(100% - 22px) calc(1.05em), calc(100% - 16px) calc(1.05em);
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+    padding-right: 2.5rem;
+  }
+
+  /* Checkboxes */
+  .form-check{
+    @apply inline-flex items-center gap-2 text-sm;
+    color: var(--aio-ink);
+  }
+  .form-check input[type="checkbox"]{
+    @apply h-4 w-4 rounded border;
+    background: rgba(255,255,255,.04);
+    border-color: rgba(255,255,255,.18);
+    accent-color: var(--aio-neon);
+  }
+
+  /* Buttons */
+  .btn{
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold transition;
+    color: #0a0f18;
+    background: var(--aio-neon);
+  }
+  .btn:hover{ filter: brightness(1.05); }
+  .btn-secondary{
+    @apply rounded-lg px-4 py-2.5 font-semibold;
+    color: var(--aio-ink);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+  }
+  .btn-danger{
+    color: #fff;
+    background: #ef4444;
+  }
+}
 
   /* =========================
      Pill cards (dashboard tiles)
