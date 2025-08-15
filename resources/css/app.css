@@ -168,3 +168,27 @@
   object-fit: contain;
   display: inline-block;
 }
+
+/* Click safety: make sure nothing new blocks pointer events */
+.aio-section, .pill-card { pointer-events: auto; }
+
+/* Button states */
+.btn:disabled,
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  opacity: .6;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.btn-secondary:disabled,
+.btn-secondary[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+/* Utility if you ever overlay things */
+.aio-overlay {
+  position: relative;
+}
+.aio-overlay > * { pointer-events: auto; }
