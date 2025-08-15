@@ -4,15 +4,76 @@
 @tailwind utilities;
 
 /* Alpine.js helper — hide until Alpine is ready */
-[x-cloak] {
-    display: none !important;
+[x-cloak] { display: none !important; }
+
+/* === AIO brand palette (no Tailwind config required) === */
+:root{
+  --aio-bg:   #0b0f1a;  /* page background (near-black blue) */
+  --aio-card: #111827;  /* card surface (dark slate) */
+  --aio-ink:  #e5e7eb;  /* primary text */
+  --aio-sub:  #9ca3af;  /* secondary text */
+
+  --aio-neon: #3DFF7F;  /* neon green (eyes) */
+  --aio-mag:  #FF2FB9;  /* magenta */
+  --aio-pup:  #7C4DFF;  /* electric purple */
+  --aio-cya:  #3BA7F0;  /* cyan/blue */
 }
 
-/* Optional: keep if you want logo size set via CSS instead of inline classes */
+/* Global dark */
+@layer base {
+  html.dark body {
+    background-color: var(--aio-bg);
+    color: var(--aio-ink);
+  }
+}
+
+/* Reusable surfaces + utilities */
+@layer components {
+  .aio-card {
+    @apply rounded-xl border shadow-sm;
+    background-color: rgba(17, 24, 39, 0.90); /* var(--aio-card) @ 90% */
+    border-color: rgba(255, 255, 255, 0.10);
+  }
+
+  .aio-header {
+    @apply rounded-xl border backdrop-blur;
+    background-color: rgba(17, 24, 39, 0.95);
+    border-color: rgba(255, 255, 255, 0.10);
+  }
+
+  .aio-divider { border-color: rgba(255,255,255,0.10); }
+
+  .aio-pill {
+    @apply rounded-full text-xs font-semibold px-2.5 py-1;
+    background-color: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--aio-ink);
+  }
+
+  /* Optional glow for featured elements */
+  .shadow-glow {
+    box-shadow:
+      0 0 8px rgba(61, 255, 127, 0.35),
+      0 0 18px rgba(124, 77, 255, 0.25);
+  }
+
+  /* Stat‑card accent helpers (use in your component if you want a left stripe/pill color) */
+  .accent-neon { background-color: var(--aio-neon); }
+  .accent-mag  { background-color: var(--aio-mag);  }
+  .accent-pup  { background-color: var(--aio-pup);  }
+  .accent-cya  { background-color: var(--aio-cya);  }
+
+  .pill-neon { color: var(--aio-neon); background-color: rgba(61,255,127,0.15); }
+  .pill-mag  { color: var(--aio-mag);  background-color: rgba(255,47,185,0.15); }
+  .pill-pup  { color: var(--aio-pup);  background-color: rgba(124,77,255,0.15); }
+  .pill-cya  { color: var(--aio-cya);  background-color: rgba(59,167,240,0.15); }
+}
+
+/* Optional: logo size if you don't want to use Tailwind classes */
 .brand-logo {
-    height: 32px;
-    width: auto;
-    max-height: 32px;
-    object-fit: contain;
-    display: inline-block;
+  height: 32px;
+  width: auto;
+  max-height: 32px;
+  object-fit: contain;
+  display: inline-block;
 }
