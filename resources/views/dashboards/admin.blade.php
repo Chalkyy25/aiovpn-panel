@@ -38,17 +38,15 @@
                 <x-stat-card title="Active VPN Users" :value="$m['activeVpnUsers']" icon="o-bolt" hint="live" variant="mag" />
             </div>
 
-            {{-- SERVERS (row 2) --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                <x-stat-card title="Servers (Total)"  :value="$m['totalServers']"   icon="o-server"         variant="pup"  />
-                <x-stat-card title="Online Servers"   :value="$m['onlineServers']"  icon="o-check-circle"   variant="neon" hint="responding" />
-                <x-stat-card title="Offline Servers"  :value="$m['offlineServers']" icon="o-x-circle"       variant="mag"  hint="not reachable" />
-                {{-- (optional) add average time/throughput here --}}
-            </div>
-
             {{-- SERVERS SECTION (content/tabs go here) --}}
             <x-section-card title="Servers">
-                {{ $serverTabs ?? '' }}
+                {{-- SERVERS (row 2) --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                <x-stat-card title="Servers (Total)"  :value="$m['totalServers']"   icon="o-server"         variant="pup"  />
+                <x-stat-card title="Online Servers"   :value="$m['onlineServers']"  icon="o-check-circle"   variant="neon" hint="Online" />
+                <x-stat-card title="Offline Servers"  :value="$m['offlineServers']" icon="o-x-circle"       variant="mag"  hint="No Users Connected" />
+                {{-- (optional) add average time/throughput here --}}
+            </div>
             </x-section-card>
 
             {{-- ACTIVE CONNECTIONS (if provided) --}}
