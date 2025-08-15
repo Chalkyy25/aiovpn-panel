@@ -1,17 +1,21 @@
 @php
     use App\Models\VpnUser;
-    use App\Models\VpnServer;
 
-    // The route passes:
-    // totalUsers, activeUsers, totalVpnUsers, totalResellers, totalClients, activeVpnUsers
-    // Provide safe defaults if any key is missing.
+    // Values expected from controller/route:
+    // totalUsers, activeUsers, totalVpnUsers, activeVpnUsers, totalResellers, totalClients
+    // + totalServers, onlineServers, offlineServers
     $m = [
-        'totalUsers'     => $totalUsers     ?? 0,
-        'activeUsers'    => $activeUsers    ?? 0,
-        'totalVpnUsers'  => $totalVpnUsers  ?? 0,
-        'activeVpnUsers' => $activeVpnUsers ?? 0,
-        'totalResellers' => $totalResellers ?? 0,
-        'totalClients'   => $totalClients   ?? 0,
+        'totalUsers'      => $totalUsers      ?? 0,
+        'activeUsers'     => $activeUsers     ?? 0,
+        'totalVpnUsers'   => $totalVpnUsers   ?? 0,
+        'activeVpnUsers'  => $activeVpnUsers  ?? 0,
+        'totalResellers'  => $totalResellers  ?? 0,
+        'totalClients'    => $totalClients    ?? 0,
+
+        // NEW server metrics (ensure your controller/route passes these)
+        'totalServers'    => $totalServers    ?? 0,
+        'onlineServers'   => $onlineServers   ?? 0,
+        'offlineServers'  => $offlineServers  ?? 0,
     ];
 @endphp
 
@@ -31,19 +35,21 @@
     <div class="py-6">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
 
-            {{-- STAT CARDS (circled style) --}}
+            {{-- STAT CARDS — USERS (row 1) --}}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                <x-stat-card title="Users (Total)"       :value="$m['totalUsers']"     icon="o-user-group" />
-                <x-stat-card title="Active Users"        :value="$m['activeUsers']"    icon="o-rectangle-stack" />
-                <x-stat-card title="VPN Users"           :value="$m['totalVpnUsers']"  icon="o-server" />
-                <x-stat-card title="Active VPN Users"    :value="$m['activeVpnUsers']" icon="o-bolt" hint="have servers" />
+                <x-stat-card title="Users (Total)"        :value="$m['totalUsers']"      icon="o-user-group" />
+                <x-stat-card title="Active Users"         :value="$m['activeUsers']"     icon="o-rectangle-stack" />
+                <x-stat-card title="VPN Users"            :value="$m['totalVpnUsers']"   icon="o-server" />
+                <x-stat-card title="Active VPN Users"     :value="$m['activeVpnUsers']"  icon="o-bolt" hint="live" />
             </div>
 
-            {{-- OPTIONAL: a second row (uncomment if you want 6 stats visible) --}}
-             {{-- <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                <x-stat-card title="Resellers" :value="$m['totalResellers']" icon="o-briefcase" />
-                <x-stat-card title="Clients"   :value="$m['totalClients']"   icon="o-user" />
-            </div> --}}
+            {{-- STAT CARDS — SERVERS (row 2) --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                <x-stat-card title="Servers (Total)"      :value="$m['totalServers']"    icon="o-server" />
+                <x-stat-card title="Online Servers"       :value="$m['onlineServers']"   icon="o-check-circle" hint="responding" />
+                <x-stat-card title="Offline Servers"      :value="$m['offlineServers']"  icon="o-x-circle" hint="not reachable" />
+                {{-- leave 4th slot free or add another metric (e.g., Avg Conn. Time) --}}
+            </div>
 
             {{-- SERVERS (put your tabs/filters here if you like) --}}
             <x-section-card title="Servers">
