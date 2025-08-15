@@ -1,66 +1,73 @@
 @php use Illuminate\Support\Str; @endphp
 
 <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
-    <h2 class="text-xl font-semibold text-gray-800">
+    <h2 class="text-xl font-semibold text-[var(--aio-ink)]">
         Server Status: {{ $vpnServer->name }}
     </h2>
     <div class="flex flex-wrap gap-2">
         <x-button
             wire:click="deployServer"
             onclick="return confirm('Are you sure you want to redeploy this server?')"
-            class="bg-blue-600 text-white"
+            class="aio-pill pill-cya hover:shadow-glow"
         >🚀 Install / Re-Deploy</x-button>
+
         <x-button
             wire:click="restartVpn"
             onclick="return confirm('Are you sure you want to restart the VPN?')"
-            class="bg-yellow-500 text-white"
+            class="aio-pill pill-mag hover:shadow-glow"
         >🔁 Restart VPN</x-button>
+
         <x-button
             wire:click="deleteServer"
             onclick="return confirm('Are you sure you want to DELETE this server? This cannot be undone.')"
-            class="bg-red-600 text-white"
+            class="aio-pill bg-red-500/20 text-red-400 hover:shadow-glow"
         >🗑️ Delete</x-button>
+
         <x-button
             wire:click="generateConfig"
-            class="bg-black text-white"
+            class="aio-pill pill-neon hover:shadow-glow"
         >📅 Client Config</x-button>
     </div>
 </div>
 
 {{-- 📝 Basic details --}}
-<div class="bg-white p-4 sm:p-6 rounded shadow">
+<div class="aio-card p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-bold mb-4">Details</h3>
-    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-y-1 text-sm">
-        <dt class="font-medium text-gray-600">IP:</dt>
-        <dd>{{ $vpnServer->ip_address }}</dd>
-        <dt class="font-medium text-gray-600">Protocol:</dt>
-        <dd class="capitalize">{{ $vpnServer->protocol }}</dd>
-        <dt class="font-medium text-gray-600">SSH User:</dt>
-        <dd>{{ $vpnServer->ssh_user }}</dd>
-        <dt class="font-medium text-gray-600">VPN Port:</dt>
-        <dd>{{ $vpnServer->port }}</dd>
-        <dt class="font-medium text-gray-600">Status:</dt>
+    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-y-2 text-sm">
+        <dt class="font-medium text-[var(--aio-sub)]">IP:</dt>
+        <dd class="text-[var(--aio-ink)]">{{ $vpnServer->ip_address }}</dd>
+
+        <dt class="font-medium text-[var(--aio-sub)]">Protocol:</dt>
+        <dd class="capitalize text-[var(--aio-ink)]">{{ $vpnServer->protocol }}</dd>
+
+        <dt class="font-medium text-[var(--aio-sub)]">SSH User:</dt>
+        <dd class="text-[var(--aio-ink)]">{{ $vpnServer->ssh_user }}</dd>
+
+        <dt class="font-medium text-[var(--aio-sub)]">VPN Port:</dt>
+        <dd class="text-[var(--aio-ink)]">{{ $vpnServer->port }}</dd>
+
+        <dt class="font-medium text-[var(--aio-sub)]">Status:</dt>
         <dd>
             @php
                 $colour = [
-                    'queued'    => 'bg-gray-200 text-gray-700',
-                    'running'   => 'bg-yellow-200 text-yellow-800',
-                    'succeeded' => 'bg-green-200 text-green-800',
-                    'failed'    => 'bg-red-200 text-red-800',
-                ][$vpnServer->deployment_status] ?? 'bg-gray-200 text-gray-700';
+                    'queued'    => 'aio-pill bg-white/10 text-[var(--aio-sub)]',
+                    'running'   => 'aio-pill pill-mag',
+                    'succeeded' => 'aio-pill pill-neon',
+                    'failed'    => 'aio-pill bg-red-500/20 text-red-400',
+                ][$vpnServer->deployment_status] ?? 'aio-pill bg-white/10 text-[var(--aio-sub)]';
             @endphp
-            <span class="px-2 py-0.5 rounded text-xs {{ $colour }}">
+            <span class="{{ $colour }}">
                 {{ ucfirst($vpnServer->deployment_status) }}
             </span>
         </dd>
     </dl>
 </div>
 
-{{-- 📦 Deployment log with live polling --}}
-<div wire:poll.3s="refresh" class="bg-white p-4 sm:p-6 rounded shadow">
+{{-- 📦 Deployment log --}}
+<div wire:poll.3s="refresh" class="aio-card p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-bold mb-4">Deployment Logs</h3>
     <div id="deploy-log"
-         style="max-height: 300px; overflow-y: auto; background: #181818; color: #eee; font-family: monospace; padding: 1em; border-radius: 8px;"
+         style="max-height: 300px; overflow-y: auto; background: #0b0f1a; color: var(--aio-ink); font-family: monospace; padding: 1em; border-radius: 8px;"
          class="overflow-x-auto text-xs">
         @foreach($this->filteredLog as $entry)
             <div class="{{ $entry['color'] }}">{{ $entry['text'] }}</div>
@@ -78,25 +85,27 @@
 </script>
 
 {{-- 📊 Live monitoring --}}
-<div class="bg-white p-4 sm:p-6 rounded shadow">
+<div class="aio-card p-4 sm:p-6">
     <h3 class="text-lg font-bold mb-4">Live Monitoring</h3>
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        
         {{-- Uptime --}}
-        <div class="bg-blue-50 rounded p-3">
-            <span class="text-blue-600">🕒</span>
-            <span class="font-medium text-gray-700">Uptime:</span>
-            <div class="mt-1 text-gray-800">
+        <div class="aio-card p-3">
+            <span class="text-[var(--aio-cya)]">🕒</span>
+            <span class="font-medium text-[var(--aio-ink)]">Uptime:</span>
+            <div class="mt-1 text-[var(--aio-ink)]">
                 {{ trim(Str::before($uptime, 'load average')) ?: 'No data' }}
             </div>
-            <div class="text-xs text-gray-500">
+            <div class="text-xs text-[var(--aio-sub)]">
                 Load: {{ trim(Str::after($uptime, 'load average:')) ?: 'No data' }}
             </div>
         </div>
+
         {{-- CPU --}}
-        <div class="bg-purple-50 rounded p-3">
-            <span class="text-purple-600">🧠</span>
-            <span class="font-medium text-gray-700">CPU:</span>
-            <div class="mt-1 text-gray-800">
+        <div class="aio-card p-3">
+            <span class="text-[var(--aio-mag)]">🧠</span>
+            <span class="font-medium text-[var(--aio-ink)]">CPU:</span>
+            <div class="mt-1 text-[var(--aio-ink)]">
                 @php
                     preg_match('/([\d\.]+) us, ([\d\.]+) sy, [\d\.]+ ni, ([\d\.]+) id/', $cpu, $matches);
                 @endphp
@@ -106,11 +115,12 @@
                 <span class="font-semibold">{{ $matches[3] ?? '?' }}%</span> idle
             </div>
         </div>
+
         {{-- Memory --}}
-        <div class="bg-indigo-50 rounded p-3">
-            <span class="text-indigo-600">📀</span>
-            <span class="font-medium text-gray-700">Memory:</span>
-            <div class="mt-1 text-gray-800">
+        <div class="aio-card p-3">
+            <span class="text-[var(--aio-pup)]">📀</span>
+            <span class="font-medium text-[var(--aio-ink)]">Memory:</span>
+            <div class="mt-1 text-[var(--aio-ink)]">
                 @php
                     preg_match('/Mem:\s*([\d\.]+\w*)\s*([\d\.]+\w*)\s*([\d\.]+\w*)/', $memory, $mem);
                 @endphp
@@ -119,11 +129,12 @@
                 Free: <span class="font-semibold">{{ $mem[3] ?? '?' }}</span>
             </div>
         </div>
+
         {{-- Bandwidth --}}
-        <div class="bg-teal-50 rounded p-3">
-            <span class="text-teal-600">🌐</span>
-            <span class="font-medium text-gray-700">Bandwidth:</span>
-            <div class="mt-1 text-gray-800">
+        <div class="aio-card p-3">
+            <span class="text-[var(--aio-neon)]">🌐</span>
+            <span class="font-medium text-[var(--aio-ink)]">Bandwidth:</span>
+            <div class="mt-1 text-[var(--aio-ink)]">
                 @php
                     $bw = explode(';', str_replace([',', "\n"], ['.', ''], $bandwidth));
                 @endphp
