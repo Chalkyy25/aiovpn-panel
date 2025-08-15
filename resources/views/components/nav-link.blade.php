@@ -1,17 +1,15 @@
+@props(['active' => false, 'icon' => null])
+
 @php
+$base = 'group flex items-center gap-3 px-3 py-2 rounded-md transition';
 $classes = $active
-    ? 'group flex items-center gap-3 px-3 py-2 rounded-md bg-blue-50 text-blue-700 font-medium'
-    : 'group flex items-center gap-3 px-3 py-2 rounded-md text-gray-700 hover:bg-gray-50';
+    ? $base.' bg-white/10 text-white shadow-glow'
+    : $base.' text-[var(--aio-ink)]/70 hover:text-white hover:bg-white/10';
 @endphp
 
 <a {{ $attributes->merge(['class' => $classes]) }}>
-    @if(!empty($icon))
-        <x-icon :name="$icon"
-                class="w-5 h-5 shrink-0 {{ $active ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-700' }}" />
-    @endif
-
-    {{-- Hide label when the parent layout is collapsed --}}
-    <span class="truncate" x-show="!$root.sidebarCollapsed">
-        {{ $slot }}
-    </span>
+  @if($icon)
+    <x-icon :name="$icon" class="w-5 h-5 shrink-0 {{ $active ? 'text-[var(--aio-neon)]' : 'text-[var(--aio-sub)] group-hover:text-[var(--aio-cya)]' }}" />
+  @endif
+  <span class="truncate">{{ $slot }}</span>
 </a>
