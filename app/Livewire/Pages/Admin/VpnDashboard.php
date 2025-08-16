@@ -16,6 +16,7 @@ class VpnDashboard extends Component
 {
     public $selectedServerId = null;
     public $showAllServers = true;
+    public int $hoursPerDay = 3;
 
     public function mount()
     {
