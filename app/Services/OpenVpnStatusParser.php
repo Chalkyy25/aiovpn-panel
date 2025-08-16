@@ -2,99 +2,225 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
 use phpseclib3\Net\SSH2;
 
 class OpenVpnStatusParser
 {
-    public static function fetchRawStatus(SSH2 $ssh, ?string $path = null): string
+    /**
+     * Fetch raw status file contents over an existing SSH session.
+     */
+    public static function fetchRawStatus(SSH2 $ssh, string $path = '/var/log/openvpn-status.log'): string
     {
-        $candidates = array_values(array_unique(array_filter([
-            $path,
-            '/var/log/openvpn-status.log',          // your server
-            '/etc/openvpn/openvpn-status.log',
-            '/etc/openvpn/server/openvpn-status.log',
-            '/run/openvpn/server.status',
-            '/var/log/openvpn/openvpn-status.log',
-        ])));
-
-        foreach ($candidates as $p) {
-            $out = $ssh->exec("test -r '$p' && cat '$p' 2>/dev/null || echo __MISSING__");
-            if ($out && trim($out) !== '__MISSING__') return $out;
-        }
-        throw new \RuntimeException('OpenVPN status file not found in common locations.');
+        $out = $ssh->exec("cat " . escapeshellarg($path));
+        return is_string($out) ? $out : '';
     }
 
+    /**
+     * Parse either status-version 2 (CSV) or 3 (TSV) automatically.
+     * Returns:
+     *  [
+     *    'updated_at' => int epoch,
+     *    'clients' => [
+     *       ['username'=>..., 'client_ip'=>..., 'virtual_ip'=>..., 'bytes_received'=>int, 'bytes_sent'=>int, 'connected_at'=>int|null],
+     *    ],
+     *    'totals' => ['recv'=>int, 'sent'=>int],
+     *  ]
+     */
     public static function parse(string $raw): array
     {
-        $clients = []; $totRecv = 0; $totSent = 0; $updated = time();
-        $clientHeaderMap = null;
+        $raw = trim($raw ?? '');
+        if ($raw === '') {
+            return self::emptyResult();
+        }
 
-        foreach (preg_split("/\r\n|\n|\r/", trim($raw)) as $line) {
-            $line = trim($line); if ($line === '' || $line[0] === '#') continue;
+        // Heuristics to detect v3 vs v2
+        // v3 has TAB-separated lines and looks like: "HEADER\tCLIENT_LIST\tCommon Name\t..."
+        $isV3 = str_contains($raw, "HEADER\tCLIENT_LIST") || (
+            // Some v3 files don’t include HEADER line in the head snippet; fallback:
+            str_contains($raw, "\tCLIENT_LIST\t") || (str_contains($raw, "\tTIME\t"))
+        );
 
-            if (str_starts_with($line, 'HEADER,CLIENT_LIST,')) {
-                $cols = array_slice(explode(',', $line), 2);
-                $clientHeaderMap = [];
-                foreach ($cols as $i => $c) $clientHeaderMap[self::norm($c)] = $i;
-                continue;
-            }
+        // v2 is comma-separated "HEADER,CLIENT_LIST,..."
+        $isV2 = str_contains($raw, 'HEADER,CLIENT_LIST') || str_contains($raw, 'CLIENT_LIST,');
 
+        if ($isV3 && !$isV2) {
+            return self::parseV3($raw);
+        }
+
+        if ($isV2 && !$isV3) {
+            return self::parseV2($raw);
+        }
+
+        // Tie-breaker: prefer v3 if tabs dominate, otherwise v2.
+        $tabCount   = substr_count($raw, "\t");
+        $commaCount = substr_count($raw, ",");
+
+        return $tabCount >= $commaCount ? self::parseV3($raw) : self::parseV2($raw);
+    }
+
+    /* ----------------------------- v2 (CSV) ----------------------------- */
+
+    protected static function parseV2(string $raw): array
+    {
+        $lines = preg_split("/\r\n|\r|\n/", $raw);
+        $clients = [];
+        $totalRecv = 0;
+        $totalSent = 0;
+        $updatedAt = null; // epoch if possible
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') continue;
+
+            // TIME,YYYY-mm-dd HH:MM:SS,epoch
             if (str_starts_with($line, 'TIME,')) {
-                $p = explode(',', $line);
-                $updated = isset($p[2]) && is_numeric($p[2]) ? (int)$p[2] : (strtotime($p[1] ?? '') ?: $updated);
-                continue;
-            }
-            if (str_starts_with($line, 'Updated,')) {
-                $p = explode(',', $line);
-                $updated = strtotime($p[1] ?? '') ?: $updated;
-                continue;
-            }
-
-            if (str_starts_with($line, 'CLIENT_LIST,')) {
-                $p = explode(',', $line);
-
-                if ($clientHeaderMap) {
-                    $vals = array_slice($p, 1);
-                    $get = function (string $name, $def = null) use ($vals, $clientHeaderMap) {
-                        $k = self::norm($name);
-                        return array_key_exists($k, $clientHeaderMap) ? ($vals[$clientHeaderMap[$k]] ?? $def) : $def;
-                    };
-                    $name      = (string)$get('Common Name', $get('Username',''));
-                    $real      = (string)$get('Real Address', '');
-                    $bytesRecv = (int)$get('Bytes Received', 0);
-                    $bytesSent = (int)$get('Bytes Sent', 0);
-                    $sinceStr  = (string)$get('Connected Since', '');
+                $parts = explode(',', $line);
+                // usually: [TIME, Y-m-d H:i:s, epoch]
+                $epoch = $parts[2] ?? null;
+                if (ctype_digit((string)$epoch)) {
+                    $updatedAt = (int)$epoch;
                 } else {
-                    if (count($p) < 7) continue;
-                    $name      = $p[1] ?? '';
-                    $real      = $p[2] ?? '';
-                    $bytesRecv = (int)($p[4] ?? 0);
-                    $bytesSent = (int)($p[5] ?? 0);
-                    $sinceStr  = $p[6] ?? '';
+                    $dt = $parts[1] ?? null;
+                    $updatedAt = $dt ? self::toEpoch($dt) : null;
+                }
+                continue;
+            }
+
+            // CLIENT_LIST,<Common Name>,<Real Address>,<Virtual Address>,<Virtual IPv6 Address>,<Bytes Received>,<Bytes Sent>,<Connected Since>,<Connected Since (time_t)>,<Username>,<Client ID>,<Peer ID>,<Data Channel Cipher>
+            if (str_starts_with($line, 'CLIENT_LIST,')) {
+                $parts = explode(',', $line);
+
+                // Defensive checks for indices (OpenVPN sometimes adds columns)
+                $commonName      = $parts[1]  ?? '';
+                $realAddress     = $parts[2]  ?? '';
+                $virtualAddress  = $parts[3]  ?? '';
+                $bytesReceived   = (int) ($parts[5]  ?? 0);
+                $bytesSent       = (int) ($parts[6]  ?? 0);
+                $connectedSince  = $parts[7]  ?? null; // string
+                $connectedEpoch  = $parts[8]  ?? null; // epoch if provided
+                $usernameCol     = $parts[9]  ?? '';   // present when username-as-common-name
+
+                $clientIp = explode(':', $realAddress)[0] ?? '';
+                $username = $usernameCol !== '' ? $usernameCol : $commonName;
+
+                $connectedAt = null;
+                if (ctype_digit((string)$connectedEpoch)) {
+                    $connectedAt = (int)$connectedEpoch;
+                } elseif (!empty($connectedSince)) {
+                    $connectedAt = self::toEpoch($connectedSince);
                 }
 
-                $sinceTs = strtotime($sinceStr) ?: time();
                 $clients[] = [
-                    'name'       => $name,
-                    'real'       => $real,
-                    'bytes_recv' => $bytesRecv, // client→server (server download)
-                    'bytes_sent' => $bytesSent, // server→client (server upload)
-                    'since'      => $sinceTs,
+                    'username'       => $username,
+                    'client_ip'      => $clientIp,
+                    'virtual_ip'     => $virtualAddress,
+                    'bytes_received' => $bytesReceived,
+                    'bytes_sent'     => $bytesSent,
+                    'connected_at'   => $connectedAt,
                 ];
-                $totRecv += $bytesRecv;
-                $totSent += $bytesSent;
+
+                $totalRecv += $bytesReceived;
+                $totalSent += $bytesSent;
             }
         }
 
         return [
+            'updated_at' => $updatedAt ?? time(),
             'clients'    => $clients,
-            'totals'     => ['recv' => $totRecv, 'sent' => $totSent],
-            'updated_at' => $updated,
+            'totals'     => ['recv' => $totalRecv, 'sent' => $totalSent],
         ];
     }
 
-    private static function norm(string $s): string
+    /* ----------------------------- v3 (TSV) ----------------------------- */
+
+    protected static function parseV3(string $raw): array
     {
-        return preg_replace('/[\s\-\_\(\)]+/u', '', mb_strtolower($s));
+        $lines = preg_split("/\r\n|\r|\n/", $raw);
+        $clients = [];
+        $totalRecv = 0;
+        $totalSent = 0;
+        $updatedAt = null;
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') continue;
+
+            // TIME \t 2025-08-16 23:38:16 \t 1755387496
+            if (str_starts_with($line, "TIME\t")) {
+                $parts = explode("\t", $line);
+                // parts[1] datetime, parts[2] epoch (sometimes present)
+                $epoch = $parts[2] ?? null;
+                if (ctype_digit((string)$epoch)) {
+                    $updatedAt = (int)$epoch;
+                } else {
+                    $dt = $parts[1] ?? null;
+                    $updatedAt = $dt ? self::toEpoch($dt) : null;
+                }
+                continue;
+            }
+
+            // CLIENT_LIST \t CommonName \t RealAddr \t VirtIP \t VirtIPv6 \t BytesRecv \t BytesSent \t ConnectedSince \t ConnectedEpoch \t Username ...
+            if (str_starts_with($line, "CLIENT_LIST\t")) {
+                $parts = explode("\t", $line);
+
+                $commonName      = $parts[1]  ?? '';
+                $realAddress     = $parts[2]  ?? '';
+                $virtualAddress  = $parts[3]  ?? '';
+                $bytesReceived   = (int) ($parts[5]  ?? 0);
+                $bytesSent       = (int) ($parts[6]  ?? 0);
+                $connectedSince  = $parts[7]  ?? null;
+                $connectedEpoch  = $parts[8]  ?? null;
+                $usernameCol     = $parts[9]  ?? '';
+
+                $clientIp = explode(':', $realAddress)[0] ?? '';
+                $username = $usernameCol !== '' ? $usernameCol : $commonName;
+
+                $connectedAt = null;
+                if (ctype_digit((string)$connectedEpoch)) {
+                    $connectedAt = (int)$connectedEpoch;
+                } elseif (!empty($connectedSince)) {
+                    $connectedAt = self::toEpoch($connectedSince);
+                }
+
+                $clients[] = [
+                    'username'       => $username,
+                    'client_ip'      => $clientIp,
+                    'virtual_ip'     => $virtualAddress,
+                    'bytes_received' => $bytesReceived,
+                    'bytes_sent'     => $bytesSent,
+                    'connected_at'   => $connectedAt,
+                ];
+
+                $totalRecv += $bytesReceived;
+                $totalSent += $bytesSent;
+            }
+        }
+
+        return [
+            'updated_at' => $updatedAt ?? time(),
+            'clients'    => $clients,
+            'totals'     => ['recv' => $totalRecv, 'sent' => $totalSent],
+        ];
+    }
+
+    /* ----------------------------- helpers ----------------------------- */
+
+    protected static function toEpoch(string $dt): ?int
+    {
+        try {
+            return Carbon::parse($dt)->timestamp;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    protected static function emptyResult(): array
+    {
+        return [
+            'updated_at' => time(),
+            'clients'    => [],
+            'totals'     => ['recv' => 0, 'sent' => 0],
+        ];
     }
 }
