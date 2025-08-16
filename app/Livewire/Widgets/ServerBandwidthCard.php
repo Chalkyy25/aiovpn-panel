@@ -41,35 +41,61 @@ class ServerBandwidthCard extends Component
         $prev = Cache::get($prevKey);
 
         try {
-            // ---- Resolve SSH host (uses ip_address, falls back to ip/hostname)
-            $host = $this->server->ip_address
-                ?: ($this->server->ip ?? null)
-                ?: ($this->server->hostname ?? null);
+            // ---- Resolve SSH host/port/user from your schema
+            $host = $this->server->ip_address ?? null;
+            if (empty($host)) throw new \RuntimeException("No SSH host set for server {$this->server->name}");
 
-            if (empty($host)) {
-                throw new \RuntimeException("No SSH host set for server {$this->server->name}");
-            }
+            $port = (int)($this->server->ssh_port ?? 22);
+            $user = $this->server->ssh_user ?: 'root';
 
-            $ssh = new SSH2($host, (int)($this->server->ssh_port ?? 22));
+            $ssh = new SSH2($host, $port);
             $ssh->setTimeout(5);
 
-            if ($this->server->ssh_login_type === 'key') {
-                $keyPath = $this->server->ssh_key_path ?: '/root/.ssh/id_rsa';
-                if (!is_readable($keyPath)) {
-                    throw new \RuntimeException("SSH key not readable at {$keyPath}");
+            // ---- AUTH: prefer key, fallback to password — using your columns
+            $loggedIn = false;
+
+            $sshType = $this->server->ssh_type; // 'key' | 'password' | null
+            $sshKey  = $this->server->ssh_key;  // path OR raw key text
+            $sshPwd  = $this->server->ssh_password ?? '';
+
+            // Try KEY if type says key OR if a key value is present
+            if ($sshType === 'key' || (!empty($sshKey))) {
+                $keyMaterial = null;
+                if (!empty($sshKey)) {
+                    if (is_string($sshKey) && is_file($sshKey) && is_readable($sshKey)) {
+                        // it's a path on disk
+                        $keyMaterial = file_get_contents($sshKey);
+                    } else {
+                        // treat as raw private key content stored in DB
+                        $keyMaterial = $sshKey;
+                    }
+                } else {
+                    // last resort default path
+                    $defaultPath = '/root/.ssh/id_rsa';
+                    if (is_readable($defaultPath)) $keyMaterial = file_get_contents($defaultPath);
                 }
-                $key = PublicKeyLoader::load(file_get_contents($keyPath));
-                if (!$ssh->login($this->server->ssh_username ?? 'root', $key)) {
-                    throw new \RuntimeException('SSH key login failed');
-                }
-            } else {
-                if (!$ssh->login($this->server->ssh_username ?? 'root', $this->server->ssh_password ?? '')) {
-                    throw new \RuntimeException('SSH password login failed');
+
+                if (!empty($keyMaterial)) {
+                    try {
+                        $key = PublicKeyLoader::load($keyMaterial);
+                        $loggedIn = $ssh->login($user, $key);
+                    } catch (\Throwable $e) {
+                        // fall through to password if key fails to parse/login
+                    }
                 }
             }
 
-            // ---- Read + parse OpenVPN status (auto-detects path; supports v2 headers)
-            $raw  = OpenVpnStatusParser::fetchRawStatus($ssh, $this->server->ovpn_status_path ?: null);
+            // Fallback to PASSWORD if not logged in yet
+            if (!$loggedIn) {
+                $loggedIn = $ssh->login($user, $sshPwd);
+            }
+
+            if (!$loggedIn) {
+                throw new \RuntimeException('SSH login failed: key and password both rejected');
+            }
+
+            // ---- Read + parse OpenVPN status (auto-detect path; supports v2 headers)
+            $raw  = OpenVpnStatusParser::fetchRawStatus($ssh, $this->server->ovpn_status_path ?? null);
             $data = OpenVpnStatusParser::parse($raw);
 
             $now = [
@@ -77,7 +103,6 @@ class ServerBandwidthCard extends Component
                 'recv' => $data['totals']['recv'], // bytes client→server
                 'sent' => $data['totals']['sent'], // bytes server→client
             ];
-
             $this->active_clients = count($data['clients']);
 
             // Save current totals so next poll can compute deltas
