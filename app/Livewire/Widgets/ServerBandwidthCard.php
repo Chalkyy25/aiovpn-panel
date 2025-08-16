@@ -41,38 +41,43 @@ class ServerBandwidthCard extends Component
         $prev = Cache::get($prevKey);
 
         try {
-            // ---- Resolve SSH host/port/user from your schema
+            // ---- Host / port / user (your schema)
             $host = $this->server->ip_address ?? null;
-            if (empty($host)) throw new \RuntimeException("No SSH host set for server {$this->server->name}");
-
+            if (empty($host)) {
+                throw new \RuntimeException("No SSH host set for server {$this->server->name}");
+            }
             $port = (int)($this->server->ssh_port ?? 22);
             $user = $this->server->ssh_user ?: 'root';
 
+            // ---- SSH
             $ssh = new SSH2($host, $port);
             $ssh->setTimeout(5);
 
-            // ---- AUTH: prefer key, fallback to password — using your columns
+            // ---- AUTH: try KEY first, then PASSWORD (path or inline key supported)
             $loggedIn = false;
+            $sshType  = $this->server->ssh_type;   // 'key' | 'password' | null
+            $sshKey   = $this->server->ssh_key;    // path OR inline private key text
+            $sshPwd   = $this->server->ssh_password ?? '';
 
-            $sshType = $this->server->ssh_type; // 'key' | 'password' | null
-            $sshKey  = $this->server->ssh_key;  // path OR raw key text
-            $sshPwd  = $this->server->ssh_password ?? '';
-
-            // Try KEY if type says key OR if a key value is present
-            if ($sshType === 'key' || (!empty($sshKey))) {
+            // Try key if type says key OR if any key value exists
+            if ($sshType === 'key' || !empty($sshKey)) {
                 $keyMaterial = null;
+
                 if (!empty($sshKey)) {
                     if (is_string($sshKey) && is_file($sshKey) && is_readable($sshKey)) {
-                        // it's a path on disk
+                        // Treat as filesystem path
                         $keyMaterial = file_get_contents($sshKey);
                     } else {
-                        // treat as raw private key content stored in DB
-                        $keyMaterial = $sshKey;
+                        // Treat as inline key content; normalize newlines in case it's escaped
+                        $keyMaterial = str_replace(["\\r\\n", "\\n"], "\n", (string)$sshKey);
+                        $keyMaterial = preg_replace("/\r\n|\r|\n/", "\n", $keyMaterial);
                     }
                 } else {
-                    // last resort default path
+                    // Last resort: common default path
                     $defaultPath = '/root/.ssh/id_rsa';
-                    if (is_readable($defaultPath)) $keyMaterial = file_get_contents($defaultPath);
+                    if (is_readable($defaultPath)) {
+                        $keyMaterial = file_get_contents($defaultPath);
+                    }
                 }
 
                 if (!empty($keyMaterial)) {
@@ -80,12 +85,11 @@ class ServerBandwidthCard extends Component
                         $key = PublicKeyLoader::load($keyMaterial);
                         $loggedIn = $ssh->login($user, $key);
                     } catch (\Throwable $e) {
-                        // fall through to password if key fails to parse/login
+                        // fall through to password
                     }
                 }
             }
 
-            // Fallback to PASSWORD if not logged in yet
             if (!$loggedIn) {
                 $loggedIn = $ssh->login($user, $sshPwd);
             }
@@ -94,8 +98,8 @@ class ServerBandwidthCard extends Component
                 throw new \RuntimeException('SSH login failed: key and password both rejected');
             }
 
-            // ---- Read + parse OpenVPN status (auto-detect path; supports v2 headers)
-            $raw  = OpenVpnStatusParser::fetchRawStatus($ssh, $this->server->ovpn_status_path ?? null);
+            // ---- Read + parse OpenVPN status (hardcode your known-good path)
+            $raw  = OpenVpnStatusParser::fetchRawStatus($ssh, '/var/log/openvpn-status.log');
             $data = OpenVpnStatusParser::parse($raw);
 
             $now = [
@@ -114,9 +118,9 @@ class ServerBandwidthCard extends Component
                 return;
             }
 
-            $dt    = max(1, $now['t']   - ($prev['t']   ?? $now['t']));     // seconds
-            $dRecv = max(0, $now['recv']- ($prev['recv']?? $now['recv']));  // bytes
-            $dSent = max(0, $now['sent']- ($prev['sent']?? $now['sent']));  // bytes
+            $dt    = max(1, ($now['t'] ?? 0)   - ($prev['t']   ?? 0));     // seconds
+            $dRecv = max(0, ($now['recv'] ?? 0)- ($prev['recv']?? 0));     // bytes
+            $dSent = max(0, ($now['sent'] ?? 0)- ($prev['sent']?? 0));     // bytes
 
             // bytes/sec → bits/sec → Mbps (SI)
             $this->mbps_down = round(($dRecv * 8 / $dt) / 1_000_000, 2);
