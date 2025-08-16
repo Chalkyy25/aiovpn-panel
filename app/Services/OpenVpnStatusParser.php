@@ -6,12 +6,22 @@ use phpseclib3\Net\SSH2;
 
 class OpenVpnStatusParser
 {
-    public static function fetchRawStatus(SSH2 $ssh, string $path = '/etc/openvpn/openvpn-status.log'): string
-    {
-        $out = $ssh->exec("sudo cat $path 2>/dev/null");
-        if (!$out) throw new \RuntimeException("Unable to read $path");
-        return $out;
+    public static function fetchRawStatus(SSH2 $ssh, string $path = null): string
+{
+    $candidates = array_filter([
+        $path,
+        '/var/log/openvpn-status.log',          // <-- your server uses this
+        '/etc/openvpn/openvpn-status.log',
+        '/etc/openvpn/server/openvpn-status.log',
+        '/run/openvpn/server.status',
+    ]);
+
+    foreach ($candidates as $p) {
+        $out = $ssh->exec("test -r $p && cat $p 2>/dev/null || echo __MISSING__");
+        if ($out && trim($out) !== '__MISSING__') return $out;
     }
+    throw new \RuntimeException('OpenVPN status file not found.');
+}
 
     /**
      * Returns:
@@ -30,45 +40,67 @@ class OpenVpnStatusParser
      * ]
      */
     public static function parse(string $raw): array
-    {
-        $clients = [];
-        $totRecv = 0; $totSent = 0; $updated = time();
+{
+    $clients = [];
+    $totRecv = 0; $totSent = 0; $updated = time();
 
-        foreach (explode("\n", trim($raw)) as $line) {
-            // CLIENT_LIST,Name,Real Address,Virtual Address,Bytes Received,Bytes Sent,Connected Since
-            if (str_starts_with($line, 'CLIENT_LIST,')) {
-                $parts = explode(',', $line);
-                // guard – OpenVPN can append extra fields; we need first 7
-                if (count($parts) >= 7) {
-                    $name       = $parts[1];
-                    $real       = $parts[2];
-                    $bytesRecv  = (int)$parts[4];
-                    $bytesSent  = (int)$parts[5];
-                    $sinceStr   = $parts[6];
-                    $sinceTs    = strtotime($sinceStr) ?: time();
+    foreach (explode("\n", trim($raw)) as $line) {
+        $line = trim($line);
+        if ($line === '' || $line[0] === '#') continue;
 
-                    $clients[] = [
-                        'name' => $name,
-                        'real' => $real,
-                        'bytes_recv' => $bytesRecv,
-                        'bytes_sent' => $bytesSent,
-                        'since' => $sinceTs,
-                    ];
-                    $totRecv += $bytesRecv;
-                    $totSent += $bytesSent;
-                }
+        if (str_starts_with($line, 'CLIENT_LIST,')) {
+            $p = explode(',', $line);
+
+            // status-version 2 layout (has IPv6 + more fields)
+            // CLIENT_LIST,Name,Real,Virtual,Virtual6,BytesRecv,BytesSent,Since,Since_t,Username,ClientID,PeerID,Cipher
+            if (count($p) >= 12) {
+                $name      = $p[1];
+                $real      = $p[2];
+                $bytesRecv = (int)$p[5];
+                $bytesSent = (int)$p[6];
+                $sinceStr  = $p[7];
             }
-            if (str_starts_with($line, 'Updated,') || str_starts_with($line, 'TIME,')) {
-                // Updated,2024-01-01 12:34:56 or TIME,1734034302
-                $parts = explode(',', $line);
-                $updated = is_numeric($parts[1] ?? null) ? (int)$parts[1] : (strtotime($parts[1] ?? '') ?: time());
+            // older layout (no IPv6 column)
+            // CLIENT_LIST,Name,Real,Virtual,BytesRecv,BytesSent,Since
+            elseif (count($p) >= 7) {
+                $name      = $p[1];
+                $real      = $p[2];
+                $bytesRecv = (int)$p[4];
+                $bytesSent = (int)$p[5];
+                $sinceStr  = $p[6];
+            } else {
+                continue; // unexpected layout
             }
+
+            $sinceTs = strtotime($sinceStr) ?: time();
+            $clients[] = [
+                'name'        => $name,
+                'real'        => $real,
+                'bytes_recv'  => $bytesRecv,
+                'bytes_sent'  => $bytesSent,
+                'since'       => $sinceTs,
+            ];
+            $totRecv += $bytesRecv;
+            $totSent += $bytesSent;
         }
 
-        return [
-            'clients'    => $clients,
-            'totals'     => ['recv' => $totRecv, 'sent' => $totSent],
-            'updated_at' => $updated,
-        ];
+        if (str_starts_with($line, 'TIME,')) {
+            $parts = explode(',', $line);
+            // e.g. TIME,2025-08-16 03:27:18,1755314838
+            $updated = isset($parts[2]) && is_numeric($parts[2])
+                ? (int)$parts[2]
+                : (strtotime($parts[1] ?? '') ?: time());
+        }
+        if (str_starts_with($line, 'Updated,')) {
+            $parts = explode(',', $line);
+            $updated = strtotime($parts[1] ?? '') ?: $updated;
+        }
     }
+
+    return [
+        'clients'    => $clients,
+        'totals'     => ['recv' => $totRecv, 'sent' => $totSent],
+        'updated_at' => $updated,
+    ];
+}
 }
