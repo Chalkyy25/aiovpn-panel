@@ -63,6 +63,38 @@
       </div>
     </div>
   </div>
+  
+  {{-- Live Bandwidth --}}
+<div class="aio-card p-5 space-y-4">
+  <div class="flex items-center justify-between">
+    <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Bandwidth (Live)</h3>
+
+    {{-- Optional: change projection hours on the fly --}}
+    <div class="flex items-center gap-2 text-sm">
+      <span class="muted">Projection:</span>
+      <select wire:model="hoursPerDay" class="aio-pill bg-white/5 px-3 py-1 rounded">
+        <option value="2">2 h/day</option>
+        <option value="3">3 h/day</option>
+        <option value="4">4 h/day</option>
+        <option value="6">6 h/day</option>
+      </select>
+    </div>
+  </div>
+
+  {{-- Fleet totals --}}
+  <livewire:widgets.bandwidth-totals :hoursPerDay="$hoursPerDay" />
+
+  {{-- Per-server cards (respect server filter) --}}
+  <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    @foreach(($showAllServers ? $servers : $servers->where('id', $selectedServerId)) as $server)
+      <livewire:widgets.server-bandwidth-card
+        :server="$server"
+        :hoursPerDay="$hoursPerDay"
+        :key="'bw-'.$server->id"
+      />
+    @endforeach
+  </div>
+</div>
 
   {{-- Server filter --}}
   <div class="aio-card p-5">
