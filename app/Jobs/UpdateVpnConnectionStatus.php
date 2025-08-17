@@ -70,21 +70,30 @@ class UpdateVpnConnectionStatus implements ShouldQueue
      * Fetch OpenVPN status log from server.
      */
     protected function fetchOpenVpnStatusLog(VpnServer $server): string
-    {
-        $statusPath = '/var/log/openvpn-status.log';
+{
+    // Try v3 default then v2 legacy
+    $candidates = [
+        '/run/openvpn/server.status',   // systemd default
+        '/var/log/openvpn-status.log',  // older setups
+    ];
 
+    foreach ($candidates as $path) {
         $result = $this->executeRemoteCommand(
             $server->ip_address,
-            "cat $statusPath"
+            'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"'
         );
 
-        if ($result['status'] !== 0) {
-            Log::error("❌ Failed to fetch status log from {$server->name}: " . implode("\n", $result['output']));
-            return '';
+        if (($result['status'] ?? 1) === 0) {
+            $out = implode("\n", $result['output'] ?? []);
+            if (strpos($out, '__NOFILE__') === false && trim($out) !== '') {
+                // Found a readable status file
+                return $out;
+            }
         }
-
-        return implode("\n", $result['output']);
     }
+
+    return '';
+}
 
     /**
      * Parse OpenVPN status log to extract connected users.
