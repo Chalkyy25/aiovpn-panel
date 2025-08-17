@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
+use App\Services\OpenVpnStatusParser;
 use App\Traits\ExecutesRemoteCommands;
 use Carbon\Carbon;
 use Exception;
@@ -45,27 +46,34 @@ class UpdateVpnConnectionStatus implements ShouldQueue
      * Update connections for a specific server.
      */
     protected function updateServerConnections(VpnServer $server): void
-    {
-        Log::info("🔍 Checking connections for server: {$server->name} ({$server->ip_address})");
+{
+    try {
+        $raw = $this->fetchOpenVpnStatusLog($server);
 
-        try {
-            $statusLog = $this->fetchOpenVpnStatusLog($server);
-
-            if (empty($statusLog)) {
-                Log::warning("⚠️ Could not fetch status log from {$server->name}");
-                $this->markAllUsersDisconnected($server);
-                return;
-            }
-
-            $connectedUsers = $this->parseStatusLog($statusLog);
-            $this->updateConnectionsInDatabase($server, $connectedUsers);
-
-        } catch (Exception $e) {
-            Log::error("❌ Error updating connections for {$server->name}: " . $e->getMessage());
+        if ($raw === '') {
+            \Log::warning("⚠️ No status file found on {$server->name}");
             $this->markAllUsersDisconnected($server);
+            return;
         }
-    }
 
+        $parsed = OpenVpnStatusParser::parse($raw); // auto v2/v3
+        $connectedUsers = [];
+
+        foreach ($parsed['clients'] as $c) {
+            $connectedUsers[$c['username']] = [
+                'client_ip'      => $c['client_ip'] ?? null,
+                'bytes_received' => (int)($c['bytes_received'] ?? 0),
+                'bytes_sent'     => (int)($c['bytes_sent'] ?? 0),
+                'connected_at'   => isset($c['connected_at']) ? \Carbon\Carbon::createFromTimestamp($c['connected_at']) : null,
+            ];
+        }
+
+        $this->updateConnectionsInDatabase($server, $connectedUsers);
+    } catch (\Throwable $e) {
+        \Log::error("❌ Error updating {$server->name}: ".$e->getMessage());
+        $this->markAllUsersDisconnected($server);
+    }
+}
     /**
      * Fetch OpenVPN status log from server.
      */
