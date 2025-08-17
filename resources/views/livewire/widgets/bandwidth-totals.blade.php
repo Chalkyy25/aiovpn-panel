@@ -1,3 +1,5 @@
+@php $hours_per_day = $hours_per_day ?? 24; @endphp
+
 <div wire:poll.10s class="aio-card p-4">
   <div class="flex items-center justify-between mb-3">
     <h3 class="text-sm font-semibold text-[var(--aio-ink)]">
