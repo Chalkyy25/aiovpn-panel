@@ -111,7 +111,7 @@ class ServerBandwidthCard extends Component
             }
 
             // ---------------- Fetch + parse OpenVPN status ----------------
-            $raw  = OpenVpnStatusParser::fetchRawStatus($ssh, '/var/log/openvpn-status.log');
+            $raw  = OpenVpnStatusParser::fetchRawStatus($ssh, '/run/openvpn/server.status');
             $data = OpenVpnStatusParser::parse($raw);
 
             // Expect:
