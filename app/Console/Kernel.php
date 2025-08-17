@@ -10,17 +10,16 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        // ========== HOUSEKEEPING ==========
-        // Disable trials & paid lines that have expired
+        // ===== Housekeeping (queued job) =====
+        // NOTE: Do NOT runInBackground() on jobs.
         $schedule->job(DisableExpiredVpnUsers::class)
             ->everyMinute()
             ->onOneServer()
             ->withoutOverlapping()
-            ->runInBackground()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        // ========== VPN FLEET TASKS ==========
-        // 1) Update per-server connection status (fast/light)
+        // ===== VPN fleet (artisan commands) =====
+        // 1) Fast status — every minute
         $schedule->command('vpn:update-status')
             ->everyMinute()
             ->onOneServer()
@@ -28,41 +27,29 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        // 2) Sync users to servers (slightly heavier) – staggered
+        // 2) Sync users — every 2 minutes on ODD minutes (1,3,5,…)
         $schedule->command('vpn:sync-users')
-            ->everyTwoMinutes()
+            ->cron('1-59/2 * * * *')
             ->onOneServer()
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        // 3) Pull active connections (heavier) – further staggered
+        // 3) Sync active connections — every 2 minutes on EVEN minutes (0,2,4,…)
         $schedule->command('vpn:sync-connections')
-            ->everyTwoMinutes()
+            ->cron('*/2 * * * *')
             ->onOneServer()
             ->withoutOverlapping()
             ->runInBackground()
-            ->appendOutputTo(storage_path('logs/scheduler.log'))
-            ->delay(now()->addSeconds(30)); // slight offset to avoid clashing with :00/:02 ticks
+            ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        // 4) Optional: general sync/maintenance pass (less frequent)
+        // 4) General maintenance — every 5 minutes
         $schedule->command('vpn:sync')
             ->everyFiveMinutes()
             ->onOneServer()
             ->withoutOverlapping()
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
-
-        // ========== HEALTH / PINGS (optional) ==========
-        // if you use an uptime service, uncomment:
-        // $schedule->command('queue:monitor database --max=5')
-        //     ->everyFiveMinutes()
-        //     ->onOneServer()
-        //     ->runInBackground()
-        //     ->appendOutputTo(storage_path('logs/scheduler.log'));
-        //
-        // $schedule->pingUrl(env('HEALTHCHECK_SCHEDULE_PING'))
-        //     ->everyFiveMinutes();
     }
 
     protected function commands(): void
