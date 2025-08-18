@@ -246,7 +246,8 @@ $this->vpnServer->update([
 ]);
 
 Log::info("✅ DeployVpnServer: done for #{$this->vpnServer->id} (exit={$exitCode})");
-
+}
+}
     public function failed(Throwable $e): void
     {
         $this->failWith('❌ Job failed with exception: ' . $e->getMessage(), $e);
