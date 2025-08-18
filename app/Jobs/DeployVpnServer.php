@@ -39,12 +39,12 @@ class DeployVpnServer implements ShouldQueue
             return;
         }
 
-        // === Panel config (Option 4) ===
+        // === Panel config (Option 4 via config/services.php) ===
         $panelUrl   = rtrim((string) config('services.panel.base'), '/');
         $panelToken = (string) config('services.panel.token');
 
         if ($panelUrl === '' || $panelToken === '') {
-            $this->failWith('❌ PANEL config missing: set PANEL_BASE_URL and PANEL_TOKEN in .env (and config:cache)');
+            $this->failWith('❌ PANEL config missing: set PANEL_BASE_URL and PANEL_TOKEN in .env (then php artisan config:cache)');
             return;
         }
 
@@ -61,7 +61,7 @@ class DeployVpnServer implements ShouldQueue
 
         // Optional VPN/mgmt values (fallbacks)
         $vpnPort  = (int) ($this->vpnServer->port ?: 1194);
-        $vpnProto = (string) ($this->vpnServer->protocol ?: 'udp');
+        $vpnProto = (string) ($this->vpnServer->protocol ?: 'udp'); // keep your model’s value
         $mgmtHost = '127.0.0.1';
         $mgmtPort = 7505;
         $wgPort   = 51820;
@@ -74,7 +74,7 @@ class DeployVpnServer implements ShouldQueue
         }
         $script = file_get_contents($scriptPath);
 
-        // === Choose credentials for seeding ===
+        // === Seed/OpenVPN credentials ===
         $vpnUser = 'admin';
         $vpnPass = substr(bin2hex(random_bytes(16)), 0, 16);
 
@@ -117,7 +117,7 @@ class DeployVpnServer implements ShouldQueue
                     return;
                 }
                 $sshCmdBase = 'sshpass -p ' . escapeshellarg($sshPass)
-                    . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+                            . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
             } else {
                 // Key auth
                 $keyValue = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
@@ -132,7 +132,7 @@ class DeployVpnServer implements ShouldQueue
                 @chmod($keyPath, 0600);
 
                 $sshCmdBase = 'ssh -i ' . escapeshellarg($keyPath)
-                    . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+                            . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
             }
 
             // Sanity SSH test
@@ -145,7 +145,7 @@ class DeployVpnServer implements ShouldQueue
             }
             Log::info("✅ SSH test OK for {$ip}");
 
-            // --- Build the env we want on the REMOTE host ---
+            // --- Build env for REMOTE host (export before running bash) ---
             $env = [
                 'PANEL_URL'   => $panelUrl,
                 'PANEL_TOKEN' => $panelToken,
@@ -158,75 +158,75 @@ class DeployVpnServer implements ShouldQueue
                 'VPN_PASS'    => $vpnPass,
                 'WG_PORT'     => (string) $wgPort,
             ];
-            
-            // turn into: export KEY='val' KEY2='val2' ...
+
+            // export KEY='val' KEY2='val2' …
             $remoteAssigns = implode(' ', array_map(
                 fn ($k, $v) => $k . '=' . escapeshellarg($v),
                 array_keys($env),
                 array_values($env)
             ));
-            
-            // don’t log secrets
-            $maskedAssigns = str_replace(
-                [$panelToken, $vpnPass],
-                ['***TOKEN***', '***PASS***'],
-                $remoteAssigns
-            );
-            
-            // IMPORTANT: assign **on the remote** before running bash
+
+            // masked string for Laravel logs
+            $maskedAssigns = $this->maskSecrets($remoteAssigns, $panelToken, $vpnPass);
+
+            // Command that runs on the remote host
             $remoteCmd = $sshCmdBase
                 . " 'export {$remoteAssigns}; bash -se < /dev/stdin ; echo EXIT_CODE:\$?'";
-            
+
             Log::info('🔧 Remote deploy cmd: export ' . $maskedAssigns . ' [ssh …]');
-            
-            // Stream the script
-            $proc = proc_open(
-                $remoteCmd,
-                [
-                    0 => ['pipe', 'r'], // stdin (send script)
-                    1 => ['pipe', 'w'], // stdout
-                    2 => ['pipe', 'w'], // stderr
-                ],
-                $pipes,
-                base_path()
-            );
-            
+
+            // Stream the script to the remote host
+            $descriptors = [
+                0 => ['pipe', 'r'], // stdin
+                1 => ['pipe', 'w'], // stdout
+                2 => ['pipe', 'w'], // stderr
+            ];
+
+            $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
             if (!is_resource($proc)) {
                 $this->failWith('❌ Failed to open SSH process');
                 return;
             }
-            
+
+            // Send script body
             fwrite($pipes[0], $script);
             fclose($pipes[0]);
-            
+
             $out = '';
             $err = '';
             $streams = [$pipes[1], $pipes[2]];
-            $map = [(int)$pipes[1] => 'OUT', (int)$pipes[2] => 'ERR'];
-            
+            $map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
+
             while (!empty($streams)) {
                 $read = $streams; $write = $except = null;
-                if (stream_select($read, $write, $except, 10) === false) break;
+                if (stream_select($read, $write, $except, 10) === false) {
+                    break;
+                }
+
                 foreach ($read as $r) {
                     $line = fgets($r);
-                    if ($line === false) { fclose($r); unset($streams[array_search($r, $streams, true)]); continue; }
+                    if ($line === false) {
+                        fclose($r);
+                        unset($streams[array_search($r, $streams, true)]);
+                        continue;
+                    }
+
                     $clean = rtrim($line, "\r\n");
-                    $this->vpnServer->appendLog($clean);
-                    if ($map[(int)$r] === 'OUT') { $out .= $line; } else { $err .= $line; }
+                    // prevent secrets from leaking into DB logs
+                    $cleanMasked = $this->maskSecrets($clean, $panelToken, $vpnPass);
+                    $this->vpnServer->appendLog($cleanMasked);
+
+                    if ($map[(int) $r] === 'OUT') {
+                        $out .= $line;
+                    } else {
+                        $err .= $line;
+                    }
                 }
             }
-            
-            $exitCode = proc_close($proc);
-            
-            // prefer explicit marker if present
-            $combined = $this->vpnServer->deployment_log . $out . $err;
-            if (preg_match('/EXIT_CODE:(\d+)/', $combined, $m)) {
-                $exitCode = (int)$m[1];
-            }
-            
+
             $exitCode = proc_close($proc);
 
-            // Parse explicit EXIT_CODE if present
+            // Prefer explicit EXIT_CODE marker if present
             $combined = ($this->vpnServer->deployment_log ?? '') . $out . $err;
             if (preg_match('/EXIT_CODE:(\d+)/', $combined, $m)) {
                 $exitCode = (int) $m[1];
@@ -238,14 +238,14 @@ class DeployVpnServer implements ShouldQueue
             if ($exitCode === 0) {
                 $finalLog .= "\n✅ Deployment succeeded";
 
-                // Auto-assign existing active users
+                // Auto‑assign existing active users
                 $existingUsers = VpnUser::where('is_active', true)->get();
                 if ($existingUsers->isNotEmpty()) {
                     $this->vpnServer->vpnUsers()->syncWithoutDetaching($existingUsers->pluck('id')->all());
-                    $finalLog .= "\n👥 Auto-assigned {$existingUsers->count()} existing users to server";
+                    $finalLog .= "\n👥 Auto‑assigned {$existingUsers->count()} existing users to server";
                 }
 
-                // Kick credentials sync
+                // Trigger credentials sync
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
             } else {
                 $finalLog .= "\n❌ Deployment failed (exit code: {$exitCode})";
