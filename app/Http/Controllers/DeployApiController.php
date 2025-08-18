@@ -14,6 +14,26 @@ class DeployApiController extends Controller
      * POST /api/servers/{server}/deploy/events
      * Body: { "status": "running|succeeded|failed|info", "message": "text" }
      */
+    
+    public function facts(Request $req, \App\Models\VpnServer $server)
+{
+    $data = $req->validate([
+        'iface'      => 'nullable|string',
+        'mgmt_port'  => 'nullable|integer',
+        'vpn_port'   => 'nullable|integer',
+        'proto'      => 'nullable|string',
+        'ip_forward' => 'nullable|boolean',
+    ]);
+    $server->fill([
+        'iface' => $data['iface'] ?? $server->iface,
+        'port'  => $data['vpn_port'] ?? $server->port,
+        'protocol' => $data['proto'] ?? $server->protocol,
+    ])->save();
+
+    Log::info("📡 DeployFacts #{$server->id}", $data);
+    return response()->json(['ok' => true]);
+}
+    
     public function event(Request $request, $server)
     {
         $data = $request->validate([
