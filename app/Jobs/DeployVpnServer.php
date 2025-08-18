@@ -155,85 +155,97 @@ class DeployVpnServer implements ShouldQueue
                 'WG_PORT'     => (string) $wgPort,
             ];
 
-            // export KEY='val' … && bash -se …
-            $assigns = implode(' ', array_map(
-                fn ($k, $v) => $k . '=' . escapeshellarg($v),
-                array_keys($env),
-                array_values($env)
-            ));
-            $maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
+            // --- Build "KEY='val' ..." assignments (no 'export' yet) ---
+$assigns = implode(' ', array_map(
+    fn ($k, $v) => $k . '=' . escapeshellarg($v),
+    array_keys($env),
+    array_values($env)
+));
 
-            $remoteCmd = $sshCmdBase . " 'export {$assigns}; bash -se <<\"SCRIPT_EOF\"\n{$script}\nSCRIPT_EOF\necho EXIT_CODE:\$?'";
-            Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' export PANEL_URL PANEL_TOKEN SERVER_ID MGMT_HOST MGMT_PORT VPN_PORT VPN_PROTO VPN_USER VPN_PASS WG_PORT [ssh …]');
+// Mask for logs only
+$maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
+Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' export PANEL_URL PANEL_TOKEN SERVER_ID MGMT_HOST MGMT_PORT VPN_PORT VPN_PROTO VPN_USER VPN_PASS WG_PORT [ssh …]');
 
-            // Run
-            $descriptors = [
-                0 => ['pipe', 'r'],
-                1 => ['pipe', 'w'],
-                2 => ['pipe', 'w'],
-            ];
-            $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
+// Build ONE remote bash command string and pass it to `bash -lc`.
+// Using bash -lc ensures a bash parser (not /bin/sh) and a clean environment.
+$remoteBash = <<<BASH
+set -e
+export {$assigns}
+bash -se <<'SCRIPT_EOF'
+{$script}
+SCRIPT_EOF
+echo EXIT_CODE:$?
+BASH;
 
-            if (!is_resource($proc)) {
-                $this->failWith('❌ Failed to open SSH process');
-                return;
-            }
-            // We already embedded the script via HEREDOC; just close stdin
-            fclose($pipes[0]);
+// SSH base + run bash -lc '<our string>'
+$remoteCmd = $sshCmdBase . ' ' . escapeshellarg('bash -lc ' . escapeshellarg($remoteBash));
 
-            $out = '';
-            $err = '';
-            $streams = [$pipes[1], $pipes[2]];
-            $map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
+// Run
+$descriptors = [
+    0 => ['pipe', 'r'],
+    1 => ['pipe', 'w'],
+    2 => ['pipe', 'w'],
+];
+$proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
 
-            while (!empty($streams)) {
-                $read = $streams; $write = $except = null;
-                if (stream_select($read, $write, $except, 10) === false) break;
-                foreach ($read as $r) {
-                    $line = fgets($r);
-                    if ($line === false) { fclose($r); unset($streams[array_search($r, $streams, true)]); continue; }
-                    $clean = rtrim($line, "\r\n");
-                    $this->vpnServer->appendLog($clean);
-                    if ($map[(int)$r] === 'OUT') $out .= $line; else $err .= $line;
-                }
-            }
+if (!is_resource($proc)) {
+    $this->failWith('❌ Failed to open SSH process');
+    return;
+}
 
-            $exitCode = proc_close($proc);
+// Nothing to send on STDIN (script is embedded via HEREDOC); close it
+fclose($pipes[0]);
 
-            $combined = ($this->vpnServer->deployment_log ?? '') . $out . $err;
-            if (preg_match('/EXIT_CODE:(\d+)/', $combined, $m)) {
-                $exitCode = (int) $m[1];
-            }
+$out = '';
+$err = '';
+$streams = [$pipes[1], $pipes[2]];
+$map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
 
-            $status   = $exitCode === 0 ? 'succeeded' : 'failed';
-            $finalLog = $this->stripNoise($combined);
-
-            if ($exitCode === 0) {
-                $finalLog .= "\n✅ Deployment succeeded";
-
-                $existingUsers = VpnUser::where('is_active', true)->get();
-                if ($existingUsers->isNotEmpty()) {
-                    $this->vpnServer->vpnUsers()->syncWithoutDetaching($existingUsers->pluck('id')->all());
-                    $finalLog .= "\n👥 Auto-assigned {$existingUsers->count()} existing users to server";
-                }
-
-                SyncOpenVPNCredentials::dispatch($this->vpnServer);
-            } else {
-                $finalLog .= "\n❌ Deployment failed (exit code: {$exitCode})";
-            }
-
-            $this->vpnServer->update([
-                'is_deploying'      => false,
-                'deployment_status' => $status,
-                'deployment_log'    => $finalLog,
-                'status'            => $exitCode === 0 ? 'online' : 'offline',
-            ]);
-
-            Log::info("✅ DeployVpnServer: done for #{$this->vpnServer->id} (exit={$exitCode})");
-        } catch (Throwable $e) {
-            $this->failWith('❌ Exception during deployment: ' . $e->getMessage(), $e);
-        }
+while (!empty($streams)) {
+    $read = $streams; $write = $except = null;
+    if (stream_select($read, $write, $except, 10) === false) break;
+    foreach ($read as $r) {
+        $line = fgets($r);
+        if ($line === false) { fclose($r); unset($streams[array_search($r, $streams, true)]); continue; }
+        $clean = rtrim($line, "\r\n");
+        $this->vpnServer->appendLog($clean);
+        if ($map[(int)$r] === 'OUT') $out .= $line; else $err .= $line;
     }
+}
+
+$exitCode = proc_close($proc);
+
+// Prefer explicit marker if present
+$combined = ($this->vpnServer->deployment_log ?? '') . $out . $err;
+if (preg_match('/EXIT_CODE:(\d+)/', $combined, $m)) {
+    $exitCode = (int) $m[1];
+}
+
+$status   = $exitCode === 0 ? 'succeeded' : 'failed';
+$finalLog = $this->stripNoise($combined);
+
+if ($exitCode === 0) {
+    $finalLog .= "\n✅ Deployment succeeded";
+
+    $existingUsers = VpnUser::where('is_active', true)->get();
+    if ($existingUsers->isNotEmpty()) {
+        $this->vpnServer->vpnUsers()->syncWithoutDetaching($existingUsers->pluck('id')->all());
+        $finalLog .= "\n👥 Auto-assigned {$existingUsers->count()} existing users to server";
+    }
+
+    SyncOpenVPNCredentials::dispatch($this->vpnServer);
+} else {
+    $finalLog .= "\n❌ Deployment failed (exit code: {$exitCode})";
+}
+
+$this->vpnServer->update([
+    'is_deploying'      => false,
+    'deployment_status' => $status,
+    'deployment_log'    => $finalLog,
+    'status'            => $exitCode === 0 ? 'online' : 'offline',
+]);
+
+Log::info("✅ DeployVpnServer: done for #{$this->vpnServer->id} (exit={$exitCode})");
 
     public function failed(Throwable $e): void
     {
