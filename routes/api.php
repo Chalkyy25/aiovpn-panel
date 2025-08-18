@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProvisioningController;
+use App\Http\Controllers\DeployApiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,13 +17,16 @@ use App\Http\Controllers\ProvisioningController;
 */
 
 Route::middleware('auth.panel-token')->group(function () {
-    // script → panel: status updates (optional but nice)
-    Route::post('/servers/{server}/provision/start',   [ProvisioningController::class, 'start']);
-    Route::post('/servers/{server}/provision/update',  [ProvisioningController::class, 'update']);
-    Route::post('/servers/{server}/provision/finish',  [ProvisioningController::class, 'finish']);
+    // (Optional) provisioning status pings from script
+    Route::post('/servers/{server}/provision/start',  [ProvisioningController::class, 'start']);
+    Route::post('/servers/{server}/provision/update', [ProvisioningController::class, 'update']);
+    Route::post('/servers/{server}/provision/finish', [ProvisioningController::class, 'finish']);
 
-    // script → panel: get current OpenVPN password file for this server
-    Route::get('/servers/{server}/openvpn/psw-file',   [ProvisioningController::class, 'passwordFile']);
+    // script ↔ panel (what your deploy script calls)
+    Route::post('/servers/{server}/deploy/events', [DeployApiController::class, 'event']);
+    Route::post('/servers/{server}/deploy/logs',   [DeployApiController::class, 'log']);
+    Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
+    Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
