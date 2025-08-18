@@ -13,6 +13,12 @@ return [
     | a conventional file to locate the various service credentials.
     |
     */
+    
+    'panel' => [
+        'base'  => env('PANEL_BASE_URL', 'https://aiovpn.co.uk'),
+        'token' => env('PANEL_TOKEN'),
+    ],
+
 
     'mailgun' => [
         'domain' => env('MAILGUN_DOMAIN'),
