@@ -27,6 +27,7 @@ Route::middleware('auth.panel-token')->group(function () {
     Route::post('/servers/{server}/deploy/logs',   [DeployApiController::class, 'log']);
     Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
     Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
+    Route::post('/servers/{server}/deploy/facts', [DeployApiController::class, 'facts']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
