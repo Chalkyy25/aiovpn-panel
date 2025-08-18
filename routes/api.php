@@ -25,8 +25,12 @@ Route::middleware('auth.panel-token')->group(function () {
     Route::get('/servers/{server}/openvpn/psw-file',   [ProvisioningController::class, 'passwordFile']);
 });
 
-Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
-    return $request->user();
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/servers/{server}/deploy/events', [DeployApiController::class, 'event']);
+    Route::post('/servers/{server}/deploy/logs', [DeployApiController::class, 'log']);
+    Route::get('/servers/{server}/authfile', [DeployApiController::class, 'authFile']);
+    Route::post('/servers/{server}/authfile', [DeployApiController::class, 'uploadAuthFile']);
+    // ...any other endpoints
 });
 
 Route::post('/device/register', function (Request $request) {
