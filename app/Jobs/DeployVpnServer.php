@@ -145,7 +145,7 @@ class DeployVpnServer implements ShouldQueue
             }
             Log::info("✅ SSH test OK for {$ip}");
 
-            // Remote env (export inline)
+            // --- Build the env we want on the REMOTE host ---
             $env = [
                 'PANEL_URL'   => $panelUrl,
                 'PANEL_TOKEN' => $panelToken,
@@ -158,79 +158,72 @@ class DeployVpnServer implements ShouldQueue
                 'VPN_PASS'    => $vpnPass,
                 'WG_PORT'     => (string) $wgPort,
             ];
-
-            $envExport = implode(' ', array_map(
+            
+            // turn into: export KEY='val' KEY2='val2' ...
+            $remoteAssigns = implode(' ', array_map(
                 fn ($k, $v) => $k . '=' . escapeshellarg($v),
                 array_keys($env),
                 array_values($env)
             ));
-
-            // Important: do NOT log secrets in plain text
-            $maskedEnvForLog = str_replace(
+            
+            // don’t log secrets
+            $maskedAssigns = str_replace(
                 [$panelToken, $vpnPass],
                 ['***TOKEN***', '***PASS***'],
-                $envExport
+                $remoteAssigns
             );
-
-            $remoteCmd = $envExport . ' ' . $sshCmdBase . " 'bash -se < /dev/stdin ; echo EXIT_CODE:\$?'";
-            Log::info('🔧 Remote deploy cmd: ' . $maskedEnvForLog . ' [ssh …]');
-
+            
+            // IMPORTANT: assign **on the remote** before running bash
+            $remoteCmd = $sshCmdBase
+                . " 'export {$remoteAssigns}; bash -se < /dev/stdin ; echo EXIT_CODE:\$?'";
+            
+            Log::info('🔧 Remote deploy cmd: export ' . $maskedAssigns . ' [ssh …]');
+            
             // Stream the script
             $proc = proc_open(
                 $remoteCmd,
                 [
-                    0 => ['pipe', 'r'], // stdin (we send script)
+                    0 => ['pipe', 'r'], // stdin (send script)
                     1 => ['pipe', 'w'], // stdout
                     2 => ['pipe', 'w'], // stderr
                 ],
                 $pipes,
                 base_path()
             );
-
+            
             if (!is_resource($proc)) {
                 $this->failWith('❌ Failed to open SSH process');
                 return;
             }
-
-            // Send script to remote stdin
+            
             fwrite($pipes[0], $script);
             fclose($pipes[0]);
-
+            
             $out = '';
             $err = '';
             $streams = [$pipes[1], $pipes[2]];
-            $map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
-
+            $map = [(int)$pipes[1] => 'OUT', (int)$pipes[2] => 'ERR'];
+            
             while (!empty($streams)) {
-                $read = $streams;
-                $write = $except = null;
-
-                if (stream_select($read, $write, $except, 10) === false) {
-                    break;
-                }
-
+                $read = $streams; $write = $except = null;
+                if (stream_select($read, $write, $except, 10) === false) break;
                 foreach ($read as $r) {
                     $line = fgets($r);
-                    if ($line === false) {
-                        fclose($r);
-                        unset($streams[array_search($r, $streams, true)]);
-                        continue;
-                    }
-
+                    if ($line === false) { fclose($r); unset($streams[array_search($r, $streams, true)]); continue; }
                     $clean = rtrim($line, "\r\n");
-                    $cleanMasked = $this->maskSecrets($clean, $panelToken, $vpnPass);
-
-                    // Append to DB log
-                    $this->vpnServer->appendLog($cleanMasked);
-
-                    if ($map[(int) $r] === 'OUT') {
-                        $out .= $cleanMasked . "\n";
-                    } else {
-                        $err .= $cleanMasked . "\n";
-                    }
+                    $this->vpnServer->appendLog($clean);
+                    if ($map[(int)$r] === 'OUT') { $out .= $line; } else { $err .= $line; }
                 }
             }
-
+            
+            $exitCode = proc_close($proc);
+            
+            // prefer explicit marker if present
+            $combined = $this->vpnServer->deployment_log . $out . $err;
+            if (preg_match('/EXIT_CODE:(\d+)/', $combined, $m)) {
+                $exitCode = (int)$m[1];
+            }
+            
             $exitCode = proc_close($proc);
 
             // Parse explicit EXIT_CODE if present
