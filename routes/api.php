@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ProvisioningController;
 
 /*
 |--------------------------------------------------------------------------
@@ -13,6 +14,16 @@ use Illuminate\Support\Facades\Route;
 | is assigned the "api" middleware group. Enjoy building your API!
 |
 */
+
+Route::middleware('auth.panel-token')->group(function () {
+    // script → panel: status updates (optional but nice)
+    Route::post('/servers/{server}/provision/start',   [ProvisioningController::class, 'start']);
+    Route::post('/servers/{server}/provision/update',  [ProvisioningController::class, 'update']);
+    Route::post('/servers/{server}/provision/finish',  [ProvisioningController::class, 'finish']);
+
+    // script → panel: get current OpenVPN password file for this server
+    Route::get('/servers/{server}/openvpn/psw-file',   [ProvisioningController::class, 'passwordFile']);
+});
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
