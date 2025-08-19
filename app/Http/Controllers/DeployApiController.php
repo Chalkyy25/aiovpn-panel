@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Carbon;
+use App\Events\ServerMgmtUpdated;
 
 class DeployApiController extends Controller
 {
@@ -132,6 +134,31 @@ private function match(string $pattern, string $subject): ?string
      *
      * Your deployment script can post snapshots here every N seconds or on changes.
      */
+    public function pushMgmtSnapshot(Request $req, \App\Models\VpnServer $server)
+{
+    $data = $req->validate([
+        'online_count' => 'required|integer|min:0',
+        'online_users' => 'array',      // optional, names only
+        'source'       => 'nullable|string',  // file|mgmt (debug)
+        'ts'           => 'nullable|string',  // ISO-8601 from agent
+    ]);
+
+    $server->online_count = (int) $data['online_count'];
+    if (isset($data['online_users'])) {
+        $server->online_users = array_values(array_filter($data['online_users'], 'strlen'));
+    }
+    $server->last_mgmt_at = Carbon::parse($data['ts'] ?? now());
+    $server->save();
+
+    // Broadcast to the per-server and the dashboard channels
+    ServerMgmtUpdated::dispatch($server);
+
+    // (Optional) keep a single terse line in deployment_log if you want
+    // $server->appendLog(sprintf('[mgmt] %d online', $server->online_count));
+
+    return response()->json(['ok' => true]);
+}
+    
     public function pushMgmt(Request $request, VpnServer $server)
     {
         $payload = $request->validate([
