@@ -12,7 +12,7 @@ class ServerMgmtEvent implements ShouldBroadcastNow
         public string $ts,
         public int    $clients,
         public string $cnList,   // comma-separated common names
-        public string $raw       // whole “status 2” line if you want it
+        public string $raw       // entire “status” line if you want it
     ) {}
 
     public function broadcastOn()
