@@ -248,11 +248,13 @@ Unit=aiovpn-auth-sync.service
 WantedBy=timers.target
 TIM
 
-# ===== Management "pusher" (no cron) =====
+# ===== Management "pusher" (file-first, no cron) =====
 logchunk "Install OpenVPN management pusher"
 cat >/usr/local/lib/aiovpn/mgmt-pusher.sh <<'PUSH'
 #!/bin/bash
 set -euo pipefail
+
+# ---- env from systemd ----
 PANEL_URL="${PANEL_URL:?}"
 PANEL_TOKEN="${PANEL_TOKEN:?}"
 SERVER_ID="${SERVER_ID:?}"
@@ -261,10 +263,11 @@ MGMT_PORT="${MGMT_PORT:-7505}"
 INTERVAL="${PUSH_INTERVAL:-5}"
 PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"
 
-json_escape(){ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+STATUS_FILE="/run/openvpn/server.status"   # from server.conf
+JSON_ESC(){ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 post_event(){ # $1=message
   [[ "$PANEL_CALLBACKS" = "1" ]] || return 0
-  local msg; msg="$(printf '%s' "$1" | json_escape)"
+  local msg; msg="$(printf '%s' "$1" | JSON_ESC)"
   curl -fsS -X POST \
     -H "Authorization: Bearer $PANEL_TOKEN" \
     -H "Content-Type: application/json" \
@@ -272,13 +275,38 @@ post_event(){ # $1=message
     "${PANEL_URL%/}/api/servers/$SERVER_ID/deploy/events" >/dev/null || true
 }
 
+read_from_file() {
+  [[ -r "$STATUS_FILE" ]] || return 1
+  local COUNT CN_LIST
+  COUNT="$(awk -F'\t' '$1=="CLIENT_LIST"{c++} END{print c+0}' "$STATUS_FILE")"
+  CN_LIST="$(awk -F'\t' '$1=="CLIENT_LIST"{print $2}' "$STATUS_FILE" | paste -sd, -)"
+  printf '%s\t%s\n' "$COUNT" "$CN_LIST"
+  return 0
+}
+
+read_from_mgmt() {
+  command -v nc >/dev/null || return 1
+  local OUT
+  OUT="$(printf 'status 3\nquit\n' | nc -w 3 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)"
+  [[ -n "$OUT" ]] || return 1
+  local COUNT CN_LIST
+  COUNT="$(printf '%s\n' "$OUT" | awk -F'\t' '/^CLIENT_LIST/{c++} END{print c+0}')"
+  CN_LIST="$(printf '%s\n' "$OUT" | awk -F'\t' '/^CLIENT_LIST/{print $2}' | paste -sd, -)"
+  printf '%s\t%s\n' "$COUNT" "$CN_LIST"
+  return 0
+}
+
 while true; do
-  OUT="$(printf 'status 2\nquit\n' | nc -w 3 "$MGMT_HOST" "$MGMT_PORT" || true)"
-  # Count clients & list common names
-  COUNT="$(printf '%s\n' "$OUT" | awk '/^CLIENT_LIST/{c++} END{print c+0}')"
-  CN_LIST="$(printf '%s\n' "$OUT" | awk -F '\t' '/^CLIENT_LIST/{print $2}' | paste -sd, -)"
   TS="$(date -u +%FT%TZ)"
-  post_event "ts=$TS clients=${COUNT} [${CN_LIST}]"
+  if DATA="$(read_from_file)"; then
+    COUNT="${DATA%%$'\t'*}"; CN_LIST="${DATA#*$'\t'}"
+    post_event "ts=$TS source=file clients=${COUNT} [${CN_LIST}]"
+  elif DATA="$(read_from_mgmt)"; then
+    COUNT="${DATA%%$'\t'*}"; CN_LIST="${DATA#*$'\t'}"
+    post_event "ts=$TS source=mgmt clients=${COUNT} [${CN_LIST}]"
+  else
+    post_event "ts=$TS source=none clients=0 []"
+  fi
   sleep "$INTERVAL"
 done
 PUSH
@@ -289,6 +317,7 @@ cat >/etc/systemd/system/aiovpn-mgmt-pusher.service <<SVC2
 Description=AIOVPN OpenVPN management pusher
 After=openvpn@server.service network-online.target
 Wants=network-online.target
+
 [Service]
 Type=simple
 Environment=PANEL_URL=$PANEL_URL
@@ -304,13 +333,13 @@ RestartSec=2
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
+
 [Install]
 WantedBy=multi-user.target
 SVC2
 
 systemctl daemon-reload
-systemctl enable --now aiovpn-auth-sync.timer
-if [[ "$PUSH_MGMT" = "1" ]]; then
+if [[ "${PUSH_MGMT:-1}" = "1" ]]; then
   systemctl enable --now aiovpn-mgmt-pusher.service
 else
   systemctl disable --now aiovpn-mgmt-pusher.service 2>/dev/null || true
