@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\VpnServer;
+use App\Events\ServerMgmtEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -39,41 +40,54 @@ class DeployApiController extends Controller
      * POST /api/servers/{server}/deploy/events
      * Body: { "status": "queued|running|succeeded|failed|info", "message": "text" }
      */
-    public function event(Request $request, VpnServer $server)
-    {
-        $data = $request->validate([
-            'status'  => 'required|string|in:queued,running,succeeded,failed,info',
-            'message' => 'required|string',
-        ]);
+    public function event(Request $request, $server)
+{
+    $data = $request->validate([
+        'status'  => 'required|string|in:queued,running,succeeded,failed,info,mgmt',
+        'message' => 'required|string',
+    ]);
 
-        // Keep status unless this is an informational ping
-        if ($data['status'] !== 'info') {
-            $server->deployment_status = $data['status'];
-        }
+    /** @var VpnServer $vpn */
+    $vpn = VpnServer::findOrFail($server);
 
-        $server->appendLog(sprintf(
-            '[%s] %s: %s',
-            now()->toDateTimeString(),
-            strtoupper($data['status']),
-            $data['message']
+    if ($data['status'] === 'mgmt') {
+        // Expect: "ts=2025-08-18T23:33:37Z clients=2 [alice,bob]"
+        $msg = $data['message'];
+
+        $ts      = ($this->match('/ts=([^\s]+)/', $msg) ?: now()->toIso8601String());
+        $clients = (int)($this->match('/clients=(\d+)/', $msg) ?: 0);
+
+        // Grab names inside [ ... ]
+        $cnList  = $this->match('/\[(.*)\]/', $msg) ?: '';
+        $cnList  = trim($cnList);
+        // Optional: store a short log line (or skip if you don’t want log spam)
+        $vpn->appendLog("[mgmt] {$clients} online: [{$cnList}]");
+        $vpn->save();
+
+        broadcast(new ServerMgmtEvent(
+            serverId: $vpn->id,
+            ts: $ts,
+            clients: $clients,
+            cnList: $cnList,
+            raw: $msg
         ));
-        $server->save();
-
-        Log::info("📡 DeployEvent #{$server->id}", $data);
-
-        // Light broadcast hook your dashboard can listen to (optional)
-        try {
-            broadcast_event('deploy.event', [
-                'server_id' => $server->id,
-                'status'    => $data['status'],
-                'message'   => $data['message'],
-            ]);
-        } catch (\Throwable $e) {
-            // broadcasting is optional; don’t fail the request
-        }
 
         return response()->json(['ok' => true]);
     }
+
+    // existing deployment events flow…
+    $vpn->deployment_status = $data['status'] === 'info' ? $vpn->deployment_status : $data['status'];
+    $vpn->appendLog(sprintf('[%s] %s: %s', now()->toDateTimeString(), strtoupper($data['status']), $data['message']));
+    $vpn->save();
+
+    return response()->json(['ok' => true]);
+}
+
+/** Tiny helper to regex match first group */
+private function match(string $pattern, string $subject): ?string
+{
+    return preg_match($pattern, $subject, $m) ? ($m[1] ?? null) : null;
+}
 
     /**
      * POST /api/servers/{server}/deploy/logs
