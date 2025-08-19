@@ -25,44 +25,32 @@ window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
  *   VITE_PUSHER_SCHEME=https         # or http
  */
 
+// resources/js/bootstrap.js
+
 import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
 
-// Make Pusher available to Echo
-window.Pusher = Pusher;
+// ---- Reverb (first‑party websockets) ----
+// Vite exposes these from your .env as VITE_REVERB_*
+const REVERB_KEY     = import.meta.env.VITE_REVERB_APP_KEY;
+const REVERB_HOST    = import.meta.env.VITE_REVERB_HOST;     // e.g. reverb.aiovpn.co.uk
+const REVERB_PORT    = Number(import.meta.env.VITE_REVERB_PORT ?? 443);
+const REVERB_SCHEME  = (import.meta.env.VITE_REVERB_SCHEME ?? 'https').toLowerCase();
+const FORCE_TLS      = REVERB_SCHEME === 'https';
 
-// Read env (Vite injects `import.meta.env.*`)
-const PUSHER_KEY      = import.meta.env.VITE_PUSHER_APP_KEY;
-const PUSHER_CLUSTER  = import.meta.env.VITE_PUSHER_APP_CLUSTER ?? 'mt1';
-const PUSHER_HOST     = import.meta.env.VITE_PUSHER_HOST || ''; // if set → self-host
-const PUSHER_PORT     = Number(import.meta.env.VITE_PUSHER_PORT ?? (location.protocol === 'https:' ? 443 : 6001));
-const PUSHER_SCHEME   = (import.meta.env.VITE_PUSHER_SCHEME ?? (location.protocol === 'https:' ? 'https' : 'http')).toLowerCase();
-const USE_TLS         = PUSHER_SCHEME === 'https';
-
-// Decide config depending on whether you set VITE_PUSHER_HOST
-const echoConfig = {
-  broadcaster: 'pusher',
-  key: PUSHER_KEY,
-  cluster: PUSHER_CLUSTER,
-  forceTLS: USE_TLS,
+window.Echo = new Echo({
+  broadcaster: 'reverb',
+  key: REVERB_KEY,
+  wsHost: REVERB_HOST,
+  wsPort: REVERB_PORT,     // used for ws://
+  wssPort: REVERB_PORT,    // used for wss://
+  forceTLS: FORCE_TLS,
   enabledTransports: ['ws', 'wss'],
-  disableStats: true,
-};
+});
 
-// If no host → assume Pusher Cloud defaults
-if (!PUSHER_HOST) {
-  echoConfig.wsHost  = `ws-${PUSHER_CLUSTER}.pusher.com`;
-  echoConfig.wsPort  = 80;
-  echoConfig.wssPort = 443;
-} else {
-  // Self-hosted laravel-websockets
-  echoConfig.wsHost  = PUSHER_HOST;
-  echoConfig.wsPort  = PUSHER_PORT;
-  echoConfig.wssPort = PUSHER_PORT;
-}
-
-// Initialize Echo
-window.Echo = new Echo(echoConfig);
+// Optional: tiny helper to see connection state in the console
+window.Echo.connector.pusher.connection.bind('state_change', (s) => {
+  console.log('[Reverb] state:', s.previous, '→', s.current);
+});
 
 /**
  * Small helper so your dashboard components can easily listen to server events.
