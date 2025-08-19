@@ -1,23 +1,22 @@
 #!/bin/bash
 set -euo pipefail
 
-# ===== Env =====
+# ===== Required env =====
 : "${PANEL_URL:?set PANEL_URL, e.g. https://aiovpn.co.uk}"
 : "${PANEL_TOKEN:?set PANEL_TOKEN (Bearer token)}"
 : "${SERVER_ID:?set SERVER_ID (panel id for this server)}"
 
-# API posting (set to 0 to silence all callbacks)
-PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"
+# ===== Optional toggles =====
+PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"   # 1=POST back to panel, 0=quiet
+PUSH_MGMT="${PUSH_MGMT:-1}"               # 1=enable mgmt pusher, 0=disable
+PUSH_INTERVAL="${PUSH_INTERVAL:-5}"       # seconds between mgmt polls
+PUSH_HEARTBEAT="${PUSH_HEARTBEAT:-60}"    # always send at least once per N seconds
 
-# MGMT "pusher" (WebSocket-ish via HTTP posts)
-PUSH_MGMT="${PUSH_MGMT:-1}"          # 1=enable, 0=disable
-PUSH_INTERVAL="${PUSH_INTERVAL:-5}"  # seconds between polls
-
-# VPN bits
+# ===== VPN defaults =====
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 VPN_PORT="${VPN_PORT:-1194}"
-VPN_PROTO="${VPN_PROTO:-udp}"         # udp|tcp
+VPN_PROTO="${VPN_PROTO:-udp}"             # udp|tcp
 DNS1="${DNS1:-1.1.1.1}"
 DNS2="${DNS2:-8.8.8.8}"
 VPN_USER="${VPN_USER:-admin}"
@@ -30,47 +29,68 @@ exec > >(tee -i "$LOG_FILE")
 exec 2>&1
 echo -e "\n=======================================\nSTART $(date)\n======================================="
 
-# ===== Tiny JSON helpers (no jq needed for events/logs) =====
+# ===== Helpers =====
 json_escape() { sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 json_kv() { printf '"%s":"%s"' "$1" "$(printf '%s' "$2" | json_escape)"; }
 
-# ===== Panel helpers =====
+curl_json() {
+  # curl_json <METHOD> <URL> <JSON_STRING>
+  local m="$1" u="$2" d="$3"
+  curl --retry 3 --retry-delay 2 -fsS -X "$m" \
+    -H "Authorization: Bearer $PANEL_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$d" "$u"
+}
+
 panel() {
+  # panel <METHOD> <PATH> [--data json | --file path]
   local method="$1"; shift
   local path="$1"; shift
   local url="${PANEL_URL%/}${path}"
+
   if [[ "${1-}" == "--file" ]]; then
     [[ "$PANEL_CALLBACKS" = "1" ]] || return 0
-    curl -fsS -X "$method" -H "Authorization: Bearer $PANEL_TOKEN" -F "file=@$2" "$url"
+    curl --retry 3 --retry-delay 2 -fsS -X "$method" \
+      -H "Authorization: Bearer $PANEL_TOKEN" \
+      -F "file=@$2" "$url"
     return
   fi
+
   local data=""
   if [[ "${1-}" == "--data" ]]; then data="$2"; fi
   if [[ "$PANEL_CALLBACKS" = "1" ]]; then
-    curl -fsS -X "$method" -H "Authorization: Bearer $PANEL_TOKEN" -H "Content-Type: application/json" -d "$data" "$url"
-  else
-    return 0
+    curl_json "$method" "$url" "$data"
   fi
 }
 
-announce() { # announce <status> <message>
-  panel POST "/api/servers/$SERVER_ID/deploy/events" \
-    --data "{ $(json_kv status "$1"), $(json_kv message "$2") }" || true
-}
-logchunk() { # logchunk <line>
-  panel POST "/api/servers/$SERVER_ID/deploy/logs" \
-    --data "{ $(json_kv line "$1") }" >/dev/null || true
-}
+announce() { panel POST "/api/servers/$SERVER_ID/deploy/events" \
+  --data "{ $(json_kv status "$1"), $(json_kv message "$2") }" || true; }
+logchunk() { panel POST "/api/servers/$SERVER_ID/deploy/logs" \
+  --data "{ $(json_kv line "$1") }" >/dev/null || true; }
 
+fail() { announce failed "$1"; exit 1; }
 trap 'rc=$?; announce "failed" "Deployment failed (exit=$rc)"; exit $rc' ERR
 announce running "Starting deployment"
 
 # ===== System checks =====
-[[ $EUID -eq 0 ]] || { announce failed "Run as root"; exit 1; }
-[[ -c /dev/net/tun ]] || { announce failed "TUN missing"; exit 1; }
-for c in apt-get systemctl iptables ip curl nc; do
-  command -v "$c" >/dev/null || { announce failed "Missing command: $c"; exit 1; }
+[[ $EUID -eq 0 ]] || fail "Run as root"
+[[ -c /dev/net/tun ]] || fail "TUN missing"
+for c in apt-get systemctl iptables ip curl; do
+  command -v "$c" >/dev/null || fail "Missing command: $c"
 done
+
+# ===== apt with retries =====
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a   # avoid interactive restarts
+apt_try() {
+  local tries=3
+  local i=1
+  until "$@"; do
+    if (( i >= tries )); then return 1; fi
+    sleep $((i*2))
+    ((i++))
+  done
+}
 
 # ===== Pre-clean =====
 logchunk "Pre-clean"
@@ -79,11 +99,11 @@ rm -f /var/lib/dpkg/lock* /var/cache/debconf/*.dat
 dpkg --configure -a || true
 
 # ===== Install deps =====
-export DEBIAN_FRONTEND=noninteractive
 logchunk "Installing packages"
-apt-get update -y
-apt-get install -y openvpn easy-rsa wireguard iproute2 iptables-persistent curl ca-certificates python3 jq netcat-openbsd || \
-apt-get install -y openvpn easy-rsa wireguard iproute2 iptables-persistent curl ca-certificates python3 jq
+apt_try apt-get update -y
+apt_try apt-get install -y \
+  openvpn easy-rsa wireguard iproute2 iptables-persistent curl \
+  ca-certificates python3 jq netcat-openbsd
 
 # ===== OpenVPN PKI/config =====
 logchunk "OpenVPN PKI/config"
@@ -104,17 +124,18 @@ if [[ ! -d pki ]]; then
   install -m 0644 pki/dh.pem /etc/openvpn/dh.pem
 fi
 
-# Auth dir + fetch panel auth file
+# ===== Auth file =====
 install -d -m 0700 /etc/openvpn/auth
 if panel GET "/api/servers/$SERVER_ID/authfile" >/tmp/panel-auth 2>/dev/null && [[ -s /tmp/panel-auth ]]; then
   install -m 0600 /tmp/panel-auth /etc/openvpn/auth/psw-file
 else
+  umask 077
   printf '%s %s\n' "$VPN_USER" "$VPN_PASS" >/etc/openvpn/auth/psw-file
   chmod 600 /etc/openvpn/auth/psw-file
 fi
 rm -f /tmp/panel-auth
 
-# Password checker
+# ===== Password checker =====
 cat >/etc/openvpn/auth/checkpsw.sh <<'SH'
 #!/bin/sh
 set -eu
@@ -136,7 +157,7 @@ echo "$TS: FAIL $USERNAME" >>"$LOG_FILE"; exit 1
 SH
 chmod 0755 /etc/openvpn/auth/checkpsw.sh
 
-# Server config (includes management socket)
+# ===== Server config (management + status v3) =====
 cat >/etc/openvpn/server.conf <<CONF
 port $VPN_PORT
 proto $VPN_PROTO
@@ -179,7 +200,7 @@ iptables -C INPUT -p udp --dport "$WG_PORT" -j ACCEPT 2>/dev/null || iptables -A
 iptables-save >/etc/iptables/rules.v4 || true
 netfilter-persistent save || true
 
-# ===== WireGuard =====
+# ===== WireGuard (optional) =====
 logchunk "WireGuard setup"
 install -d -m 0700 /etc/wireguard
 if [[ ! -f /etc/wireguard/server_private_key ]]; then
@@ -199,9 +220,9 @@ systemctl enable --now wg-quick@wg0
 logchunk "Start OpenVPN"
 systemctl enable openvpn@server
 systemctl restart openvpn@server
-systemctl is-active --quiet openvpn@server || { announce failed "OpenVPN failed to start"; exit 1; }
+systemctl is-active --quiet openvpn@server || fail "OpenVPN failed to start"
 
-# ===== Facts + auth mirror (optional) =====
+# ===== Facts + auth mirror =====
 panel POST "/api/servers/$SERVER_ID/deploy/facts" \
   --data "{ $(json_kv iface "$DEF_IFACE"), $(json_kv proto "$VPN_PROTO"), \"mgmt_port\": $MGMT_PORT, \"vpn_port\": $VPN_PORT, \"ip_forward\": 1 }" >/dev/null || true
 panel POST "/api/servers/$SERVER_ID/authfile" --file /etc/openvpn/auth/psw-file >/dev/null || true
@@ -212,9 +233,11 @@ install -d -m 0755 /usr/local/lib/aiovpn
 cat >/usr/local/lib/aiovpn/pull-auth.sh <<SYNC
 #!/bin/bash
 set -euo pipefail
-[[ "${PANEL_CALLBACKS:-1}" = "1" ]] || exit 0
+[[ "\${PANEL_CALLBACKS:-1}" = "1" ]] || exit 0
 TMP=\$(mktemp)
-curl -fsS -H "Authorization: Bearer $PANEL_TOKEN" "${PANEL_URL%/}/api/servers/$SERVER_ID/authfile" -o "\$TMP" || exit 0
+curl --retry 3 --retry-delay 2 -fsS \
+  -H "Authorization: Bearer $PANEL_TOKEN" \
+  "${PANEL_URL%/}/api/servers/$SERVER_ID/authfile" -o "\$TMP" || exit 0
 [ -s "\$TMP" ] || exit 0
 install -m 0600 "\$TMP" /etc/openvpn/auth/psw-file
 rm -f "\$TMP"
@@ -222,7 +245,7 @@ rm -f "\$TMP"
 SYNC
 chmod 0750 /usr/local/lib/aiovpn/pull-auth.sh
 
-cat >/etc/systemd/system/aiovpn-auth-sync.service <<SVC
+cat >/etc/systemd/system/aiovpn-auth-sync.service <<'SVC'
 [Unit]
 Description=AIOVPN pull authfile from panel
 After=network-online.target
@@ -237,7 +260,7 @@ ProtectHome=true
 NoNewPrivileges=true
 SVC
 
-cat >/etc/systemd/system/aiovpn-auth-sync.timer <<TIM
+cat >/etc/systemd/system/aiovpn-auth-sync.timer <<'TIM'
 [Unit]
 Description=Run auth sync every minute
 [Timer]
@@ -248,65 +271,77 @@ Unit=aiovpn-auth-sync.service
 WantedBy=timers.target
 TIM
 
-# ===== Management "pusher" (file-first, no cron) =====
+systemctl daemon-reload
+systemctl enable --now aiovpn-auth-sync.timer
+
+# ===== Management "pusher" (file-first, dedup, robust) =====
 logchunk "Install OpenVPN management pusher"
 cat >/usr/local/lib/aiovpn/mgmt-pusher.sh <<'PUSH'
 #!/bin/bash
 set -euo pipefail
 
-# ---- env from systemd ----
 PANEL_URL="${PANEL_URL:?}"
 PANEL_TOKEN="${PANEL_TOKEN:?}"
 SERVER_ID="${SERVER_ID:?}"
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 INTERVAL="${PUSH_INTERVAL:-5}"
+HEARTBEAT="${PUSH_HEARTBEAT:-60}"
 PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"
+STATUS_FILE="/run/openvpn/server.status"
 
-STATUS_FILE="/run/openvpn/server.status"   # from server.conf
 JSON_ESC(){ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 post_event(){ # $1=message
   [[ "$PANEL_CALLBACKS" = "1" ]] || return 0
   local msg; msg="$(printf '%s' "$1" | JSON_ESC)"
-  curl -fsS -X POST \
+  curl --retry 2 --retry-delay 2 -fsS -X POST \
     -H "Authorization: Bearer $PANEL_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"status\":\"mgmt\",\"message\":\"$msg\"}" \
     "${PANEL_URL%/}/api/servers/$SERVER_ID/deploy/events" >/dev/null || true
 }
 
-read_from_file() {
+from_file() {
   [[ -r "$STATUS_FILE" ]] || return 1
   local COUNT CN_LIST
   COUNT="$(awk -F'\t' '$1=="CLIENT_LIST"{c++} END{print c+0}' "$STATUS_FILE")"
   CN_LIST="$(awk -F'\t' '$1=="CLIENT_LIST"{print $2}' "$STATUS_FILE" | paste -sd, -)"
   printf '%s\t%s\n' "$COUNT" "$CN_LIST"
-  return 0
 }
 
-read_from_mgmt() {
+from_mgmt() {
   command -v nc >/dev/null || return 1
+  # avoid SIGPIPE noise under -e: wrap pipeline, discard printf stderr
   local OUT
-  OUT="$(printf 'status 3\nquit\n' | nc -w 3 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)"
+  OUT="$( { { printf 'status 3\r\n'; printf 'quit\r\n'; } 2>/dev/null | nc -w 3 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null; } || true )"
   [[ -n "$OUT" ]] || return 1
   local COUNT CN_LIST
   COUNT="$(printf '%s\n' "$OUT" | awk -F'\t' '/^CLIENT_LIST/{c++} END{print c+0}')"
   CN_LIST="$(printf '%s\n' "$OUT" | awk -F'\t' '/^CLIENT_LIST/{print $2}' | paste -sd, -)"
   printf '%s\t%s\n' "$COUNT" "$CN_LIST"
-  return 0
 }
 
+LAST_PAYLOAD=""; LAST_TS=0
 while true; do
   TS="$(date -u +%FT%TZ)"
-  if DATA="$(read_from_file)"; then
+  PAYLOAD=""
+  if DATA="$(from_file)"; then
     COUNT="${DATA%%$'\t'*}"; CN_LIST="${DATA#*$'\t'}"
-    post_event "ts=$TS source=file clients=${COUNT} [${CN_LIST}]"
-  elif DATA="$(read_from_mgmt)"; then
+    PAYLOAD="source=file clients=${COUNT} [${CN_LIST}]"
+  elif DATA="$(from_mgmt)"; then
     COUNT="${DATA%%$'\t'*}"; CN_LIST="${DATA#*$'\t'}"
-    post_event "ts=$TS source=mgmt clients=${COUNT} [${CN_LIST}]"
+    PAYLOAD="source=mgmt clients=${COUNT} [${CN_LIST}]"
   else
-    post_event "ts=$TS source=none clients=0 []"
+    PAYLOAD="source=none clients=0 []"
   fi
+
+  NOW=$(date +%s)
+  if [[ "$PAYLOAD" != "$LAST_PAYLOAD" ]] || (( NOW - LAST_TS >= HEARTBEAT )); then
+    post_event "ts=$TS $PAYLOAD"
+    LAST_PAYLOAD="$PAYLOAD"
+    LAST_TS=$NOW
+  fi
+
   sleep "$INTERVAL"
 done
 PUSH
@@ -317,7 +352,6 @@ cat >/etc/systemd/system/aiovpn-mgmt-pusher.service <<SVC2
 Description=AIOVPN OpenVPN management pusher
 After=openvpn@server.service network-online.target
 Wants=network-online.target
-
 [Service]
 Type=simple
 Environment=PANEL_URL=$PANEL_URL
@@ -326,6 +360,7 @@ Environment=SERVER_ID=$SERVER_ID
 Environment=MGMT_HOST=$MGMT_HOST
 Environment=MGMT_PORT=$MGMT_PORT
 Environment=PUSH_INTERVAL=$PUSH_INTERVAL
+Environment=PUSH_HEARTBEAT=$PUSH_HEARTBEAT
 Environment=PANEL_CALLBACKS=$PANEL_CALLBACKS
 ExecStart=/usr/local/lib/aiovpn/mgmt-pusher.sh
 Restart=always
@@ -333,7 +368,6 @@ RestartSec=2
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
-
 [Install]
 WantedBy=multi-user.target
 SVC2
