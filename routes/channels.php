@@ -17,8 +17,7 @@ use App\Models\User;
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
     
-    Broadcast::channel('servers.{serverId}', function (User $user, int $serverId) {
-    // Basic: any logged-in user can see. Tighten as needed.
-    return $user !== null;
 });
-});
+
+Broadcast::channel('servers.{serverId}', fn ($user = null, $serverId) => true);
+Broadcast::channel('servers.dashboard', fn ($user = null) => true);
