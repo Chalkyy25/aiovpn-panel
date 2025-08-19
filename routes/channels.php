@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Broadcast;
+use App\Models\User;
 
 /*
 |--------------------------------------------------------------------------
@@ -15,4 +16,9 @@ use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
+    
+    Broadcast::channel('servers.{serverId}', function (User $user, int $serverId) {
+    // Basic: any logged-in user can see. Tighten as needed.
+    return $user !== null;
+});
 });
