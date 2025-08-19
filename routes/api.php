@@ -25,6 +25,7 @@ Route::middleware('auth.panel-token')->group(function () {
 
     // Management status push (script -> panel; JSON with status/clients)
     Route::post('/servers/{server}/mgmt/push',     [DeployApiController::class, 'pushMgmt']);
+    Route::post('/servers/{server}/mgmt/snapshot', [DeployApiController::class, 'pushMgmtSnapshot']);
 
     // Facts the script reports after install (iface, ports, proto, etc.)
     Route::post('/servers/{server}/deploy/facts',  [DeployApiController::class, 'facts']);
