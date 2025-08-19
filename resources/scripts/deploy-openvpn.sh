@@ -6,28 +6,35 @@ set -euo pipefail
 : "${PANEL_TOKEN:?set PANEL_TOKEN (Bearer token)}"
 : "${SERVER_ID:?set SERVER_ID (panel id for this server)}"
 
-PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"   # set to 0 to silence API posts until routes exist
+# API posting (set to 0 to silence all callbacks)
+PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"
 
+# MGMT "pusher" (WebSocket-ish via HTTP posts)
+PUSH_MGMT="${PUSH_MGMT:-1}"          # 1=enable, 0=disable
+PUSH_INTERVAL="${PUSH_INTERVAL:-5}"  # seconds between polls
+
+# VPN bits
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 VPN_PORT="${VPN_PORT:-1194}"
-VPN_PROTO="${VPN_PROTO:-udp}"             # must be udp|tcp
+VPN_PROTO="${VPN_PROTO:-udp}"         # udp|tcp
 DNS1="${DNS1:-1.1.1.1}"
 DNS2="${DNS2:-8.8.8.8}"
 VPN_USER="${VPN_USER:-admin}"
 VPN_PASS="${VPN_PASS:-$(openssl rand -base64 18)}"
 WG_PORT="${WG_PORT:-51820}"
 
+# ===== Logging =====
 LOG_FILE="/root/vpn-deploy.log"
 exec > >(tee -i "$LOG_FILE")
 exec 2>&1
 echo -e "\n=======================================\nSTART $(date)\n======================================="
 
-# ===== Tiny JSON (no jq needed) =====
+# ===== Tiny JSON helpers (no jq needed for events/logs) =====
 json_escape() { sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 json_kv() { printf '"%s":"%s"' "$1" "$(printf '%s' "$2" | json_escape)"; }
 
-# ===== Panel helpers (tolerate missing routes) =====
+# ===== Panel helpers =====
 panel() {
   local method="$1"; shift
   local path="$1"; shift
@@ -46,15 +53,13 @@ panel() {
   fi
 }
 
-announce() {
-  local status="$1"; shift; local msg="$*"
+announce() { # announce <status> <message>
   panel POST "/api/servers/$SERVER_ID/deploy/events" \
-    --data "{ $(json_kv status "$status"), $(json_kv message "$msg") }" || true
+    --data "{ $(json_kv status "$1"), $(json_kv message "$2") }" || true
 }
-logchunk() {
-  local line="$*"
+logchunk() { # logchunk <line>
   panel POST "/api/servers/$SERVER_ID/deploy/logs" \
-    --data "{ $(json_kv line "$line") }" >/dev/null || true
+    --data "{ $(json_kv line "$1") }" >/dev/null || true
 }
 
 trap 'rc=$?; announce "failed" "Deployment failed (exit=$rc)"; exit $rc' ERR
@@ -63,7 +68,7 @@ announce running "Starting deployment"
 # ===== System checks =====
 [[ $EUID -eq 0 ]] || { announce failed "Run as root"; exit 1; }
 [[ -c /dev/net/tun ]] || { announce failed "TUN missing"; exit 1; }
-for c in apt-get systemctl iptables ip curl; do
+for c in apt-get systemctl iptables ip curl nc; do
   command -v "$c" >/dev/null || { announce failed "Missing command: $c"; exit 1; }
 done
 
@@ -77,8 +82,8 @@ dpkg --configure -a || true
 export DEBIAN_FRONTEND=noninteractive
 logchunk "Installing packages"
 apt-get update -y
-apt-get install -y openvpn easy-rsa wireguard iproute2 iptables-persistent curl ca-certificates python3 jq || \
-apt-get install -y openvpn easy-rsa wireguard iproute2 iptables-persistent curl ca-certificates python3
+apt-get install -y openvpn easy-rsa wireguard iproute2 iptables-persistent curl ca-certificates python3 jq netcat-openbsd || \
+apt-get install -y openvpn easy-rsa wireguard iproute2 iptables-persistent curl ca-certificates python3 jq
 
 # ===== OpenVPN PKI/config =====
 logchunk "OpenVPN PKI/config"
@@ -109,6 +114,7 @@ else
 fi
 rm -f /tmp/panel-auth
 
+# Password checker
 cat >/etc/openvpn/auth/checkpsw.sh <<'SH'
 #!/bin/sh
 set -eu
@@ -130,6 +136,7 @@ echo "$TS: FAIL $USERNAME" >>"$LOG_FILE"; exit 1
 SH
 chmod 0755 /etc/openvpn/auth/checkpsw.sh
 
+# Server config (includes management socket)
 cat >/etc/openvpn/server.conf <<CONF
 port $VPN_PORT
 proto $VPN_PROTO
@@ -220,7 +227,6 @@ cat >/etc/systemd/system/aiovpn-auth-sync.service <<SVC
 Description=AIOVPN pull authfile from panel
 After=network-online.target
 Wants=network-online.target
-
 [Service]
 Type=oneshot
 ExecStart=/usr/local/lib/aiovpn/pull-auth.sh
@@ -242,8 +248,73 @@ Unit=aiovpn-auth-sync.service
 WantedBy=timers.target
 TIM
 
+# ===== Management "pusher" (no cron) =====
+logchunk "Install OpenVPN management pusher"
+cat >/usr/local/lib/aiovpn/mgmt-pusher.sh <<'PUSH'
+#!/bin/bash
+set -euo pipefail
+PANEL_URL="${PANEL_URL:?}"
+PANEL_TOKEN="${PANEL_TOKEN:?}"
+SERVER_ID="${SERVER_ID:?}"
+MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
+MGMT_PORT="${MGMT_PORT:-7505}"
+INTERVAL="${PUSH_INTERVAL:-5}"
+PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"
+
+json_escape(){ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+post_event(){ # $1=message
+  [[ "$PANEL_CALLBACKS" = "1" ]] || return 0
+  local msg; msg="$(printf '%s' "$1" | json_escape)"
+  curl -fsS -X POST \
+    -H "Authorization: Bearer $PANEL_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"status\":\"mgmt\",\"message\":\"$msg\"}" \
+    "${PANEL_URL%/}/api/servers/$SERVER_ID/deploy/events" >/dev/null || true
+}
+
+while true; do
+  OUT="$(printf 'status 2\nquit\n' | nc -w 3 "$MGMT_HOST" "$MGMT_PORT" || true)"
+  # Count clients & list common names
+  COUNT="$(printf '%s\n' "$OUT" | awk '/^CLIENT_LIST/{c++} END{print c+0}')"
+  CN_LIST="$(printf '%s\n' "$OUT" | awk -F '\t' '/^CLIENT_LIST/{print $2}' | paste -sd, -)"
+  TS="$(date -u +%FT%TZ)"
+  post_event "ts=$TS clients=${COUNT} [${CN_LIST}]"
+  sleep "$INTERVAL"
+done
+PUSH
+chmod 0755 /usr/local/lib/aiovpn/mgmt-pusher.sh
+
+cat >/etc/systemd/system/aiovpn-mgmt-pusher.service <<SVC2
+[Unit]
+Description=AIOVPN OpenVPN management pusher
+After=openvpn@server.service network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+Environment=PANEL_URL=$PANEL_URL
+Environment=PANEL_TOKEN=$PANEL_TOKEN
+Environment=SERVER_ID=$SERVER_ID
+Environment=MGMT_HOST=$MGMT_HOST
+Environment=MGMT_PORT=$MGMT_PORT
+Environment=PUSH_INTERVAL=$PUSH_INTERVAL
+Environment=PANEL_CALLBACKS=$PANEL_CALLBACKS
+ExecStart=/usr/local/lib/aiovpn/mgmt-pusher.sh
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+[Install]
+WantedBy=multi-user.target
+SVC2
+
 systemctl daemon-reload
 systemctl enable --now aiovpn-auth-sync.timer
+if [[ "$PUSH_MGMT" = "1" ]]; then
+  systemctl enable --now aiovpn-mgmt-pusher.service
+else
+  systemctl disable --now aiovpn-mgmt-pusher.service 2>/dev/null || true
+fi
 
 announce succeeded "Deployment complete"
 echo -e "\n✅ Done @ $(date)"
