@@ -10,24 +10,35 @@ return [
     ssl_certificate     /etc/letsencrypt/live/reverb.aiovpn.co.uk/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/reverb.aiovpn.co.uk/privkey.pem;
 
+    # Proxy all /app requests to Reverb
     location /app/ {
         proxy_pass         http://127.0.0.1:8080;
         proxy_http_version 1.1;
+
         proxy_set_header   Host $host;
         proxy_set_header   X-Real-IP $remote_addr;
         proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
 
-        proxy_read_timeout 60;
-        proxy_connect_timeout 60;
-        proxy_send_timeout 60;
+        proxy_read_timeout     90;
+        proxy_connect_timeout  90;
+        proxy_send_timeout     90;
 
-        chunked_transfer_encoding off;
+        # Required for WebSocket
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 
+    # (optional) block everything else
     location / {
         return 404;
     }
+}
+
+server {
+    listen 80;
+    server_name reverb.aiovpn.co.uk;
+    return 301 https://$host$request_uri;
 }
 
     'apps' => [
