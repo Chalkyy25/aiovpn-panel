@@ -1,4 +1,4 @@
-<div wire:poll.5s class="space-y-6">
+<div wire:poll.1s class="space-y-6">
   {{-- Header --}}
   <div class="flex justify-between items-center">
     <div>

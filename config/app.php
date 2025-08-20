@@ -166,7 +166,7 @@ return [
         App\Providers\AuthServiceProvider::class,
         App\Providers\BroadcastServiceProvider::class,
         App\Providers\EventServiceProvider::class,
-        App\Providers\HorizonServiceProvider::class,
+        App\Providers\HorizonServiceProvider::class, // Temporarily disabled
         App\Providers\RouteServiceProvider::class,
 	App\Providers\FortifyServiceProvider::class,
     ])->toArray(),
