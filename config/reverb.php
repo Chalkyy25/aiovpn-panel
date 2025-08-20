@@ -39,17 +39,23 @@ return [
     | Each app must have a unique id, key, and secret.
     */
     'apps' => [
+    'provider' => 'config',
+
+    'apps' => [
         [
-            'id' => env('REVERB_APP_ID', '1'),
-            'key' => env('REVERB_APP_KEY', 'localkey'),
+            'key'    => env('REVERB_APP_KEY', 'localkey'),
             'secret' => env('REVERB_APP_SECRET', 'localsecret'),
+            'app_id' => env('REVERB_APP_ID', '1'),
             'options' => [
-                'host' => env('REVERB_HOST', 'reverb.aiovpn.co.uk'),
-                'port' => env('REVERB_PORT', 443),
+                'host'   => env('REVERB_HOST', 'reverb.aiovpn.co.uk'),
+                'port'   => env('REVERB_PORT', 443),
                 'scheme' => env('REVERB_SCHEME', 'https'),
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
             ],
-            'allowed_origins' => ['*'],
+            'allowed_origins'  => ['*'],
+            'ping_interval'    => 60,
+            'activity_timeout' => 30,
+            'max_message_size' => 10000,
         ],
     ],
-];
+],
