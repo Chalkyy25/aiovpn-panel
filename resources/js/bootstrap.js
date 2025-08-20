@@ -25,19 +25,19 @@ window.Echo = new Echo({
 window.AIOEcho = {
   onServer(serverId, handler) {
     const name = `servers.${serverId}`;
-    const ch = window.Echo.channel(name);
-    ch.listen('.mgmt.update', e => handler('mgmt.update', e));
-    ch.listen('.DeployEvent', e => handler('DeployEvent', e));
-    ch.listen('.DeployLogLine', e => handler('DeployLogLine', e));
+    const ch = window.Echo.private(name);
+    ch.listen('.mgmt.update',  e => handler('mgmt.update', e))
+      .listen('.DeployEvent',   e => handler('DeployEvent', e))
+      .listen('.DeployLogLine', e => handler('DeployLogLine', e));
     return { stop: () => window.Echo.leaveChannel(name) };
   },
   onDashboard(handler) {
     const name = 'servers.dashboard';
-    const ch = window.Echo.channel(name);
-    ch.listen('.ServerCreated', e => handler('ServerCreated', e));
-    ch.listen('.ServerUpdated', e => handler('ServerUpdated', e));
-    ch.listen('.ServerDeleted', e => handler('ServerDeleted', e));
-    ch.listen('.mgmt.update',  e => handler('mgmt.update', e));
+    const ch = window.Echo.private(name);
+    ch.listen('.ServerCreated', e => handler('ServerCreated', e))
+      .listen('.ServerUpdated', e => handler('ServerUpdated', e))
+      .listen('.ServerDeleted', e => handler('ServerDeleted', e))
+      .listen('.mgmt.update',   e => handler('mgmt.update', e));
     return { stop: () => window.Echo.leaveChannel(name) };
   }
 };
