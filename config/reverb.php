@@ -3,43 +3,16 @@
 return [
     'default' => env('REVERB_SERVER', 'reverb'),
 
-    server {
-    listen 443 ssl http2;
-    server_name reverb.aiovpn.co.uk;
-
-    ssl_certificate     /etc/letsencrypt/live/reverb.aiovpn.co.uk/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/reverb.aiovpn.co.uk/privkey.pem;
-
-    # Proxy all /app requests to Reverb
-    location /app/ {
-        proxy_pass         http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-
-        proxy_read_timeout     90;
-        proxy_connect_timeout  90;
-        proxy_send_timeout     90;
-
-        # Required for WebSocket
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-
-    # (optional) block everything else
-    location / {
-        return 404;
-    }
-}
-
-server {
-    listen 80;
-    server_name reverb.aiovpn.co.uk;
-    return 301 https://$host$request_uri;
-}
+    'servers' => [
+        'reverb' => [
+            'host' => env('REVERB_SERVER_HOST', '127.0.0.1'),
+            'port' => env('REVERB_SERVER_PORT', 8080),
+            'hostname' => env('REVERB_HOST', 'reverb.aiovpn.co.uk'),
+            'options' => [
+                'tls' => [],
+            ],
+        ],
+    ],
 
     'apps' => [
         [
@@ -52,10 +25,6 @@ server {
                 'scheme' => env('REVERB_SCHEME', 'https'),
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
             ],
-            'allowed_origins' => ['*'],
-            'ping_interval' => 60,
-            'activity_timeout' => 30,
-            'max_message_size' => 10000,
         ],
     ],
 ];
