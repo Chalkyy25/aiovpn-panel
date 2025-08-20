@@ -2,48 +2,48 @@
 import axios from 'axios';
 window.axios = axios;
 window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+window.axios.defaults.headers.common['X-CSRF-TOKEN'] =
+  document.querySelector('meta[name="csrf-token"]')?.content || '';
 
 // ---- Echo / Reverb ----
 import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+import Pusher from 'pusher-js';         // Reverb speaks Pusher protocol
+window.Pusher = Pusher;                 // must be global
 
-// Reverb uses the Pusher protocol — make global
-window.Pusher = Pusher;
+const KEY    = import.meta.env.VITE_REVERB_APP_KEY;
+const HOST   = import.meta.env.VITE_REVERB_HOST;              // reverb.aiovpn.co.uk
+const PORT   = Number(import.meta.env.VITE_REVERB_PORT ?? 443);
+const SCHEME = (import.meta.env.VITE_REVERB_SCHEME ?? 'https').toLowerCase();
 
-const REVERB_KEY    = import.meta.env.VITE_REVERB_APP_KEY;
-const REVERB_HOST   = import.meta.env.VITE_REVERB_HOST;
-const REVERB_PORT   = Number(import.meta.env.VITE_REVERB_PORT ?? 443);
-const REVERB_SCHEME = (import.meta.env.VITE_REVERB_SCHEME ?? 'https').toLowerCase();
+const echo = new Echo({
+  broadcaster: 'reverb',
+  key: KEY,
+  wsHost: HOST,
+  wsPort:  SCHEME === 'http'  ? PORT : 80,
+  wssPort: SCHEME === 'https' ? PORT : 443,
+  forceTLS: SCHEME === 'https',
+  enabledTransports: ['ws', 'wss'],
+});
 
-try {
-    // Real Echo instance
-    window.AIOEcho = new Echo({
-        broadcaster: 'reverb',
-        key: REVERB_KEY,
-        wsHost: REVERB_HOST,
-        wsPort: REVERB_SCHEME === 'http' ? REVERB_PORT : 80,
-        wssPort: REVERB_SCHEME === 'https' ? REVERB_PORT : 443,
-        forceTLS: REVERB_SCHEME === 'https',
-        enabledTransports: ['ws', 'wss'],
-    });
+// handy debug
+echo.connector.pusher.connection.bind('state_change', ({ previous, current }) => {
+  console.info('[Echo] state:', previous, '→', current);
+});
 
-    // Debug connection state
-    window.AIOEcho.connector.pusher.connection.bind('state_change', s => {
-        console.info('[Echo] state:', s.previous, '→', s.current);
-    });
+window.Echo = echo;        // <-- give yourself the classic alias
+window.AIOEcho = echo;     //     keep your custom name too
 
-    // Helper wrapper for server mgmt events
-    window.AIOEchoHelper = {
-        onServer(id, cb) {
-            const ch = window.AIOEcho.private(`servers.${id}`);
-            ch.listen('.mgmt.update',   e => cb('mgmt.update', e));
-            ch.listen('.DeployEvent',   e => cb('DeployEvent', e));
-            ch.listen('.DeployLogLine', e => cb('DeployLogLine', e));
-            return { stop: () => window.AIOEcho.leave(`private-servers.${id}`) };
-        }
-    };
+// tiny helper
+window.AIOEchoHelper = {
+  onServer(id, cb) {
+    const ch = echo.private(`servers.${id}`);
+    ch.subscribed(() => console.log(`✅ subscribed to private-servers.${id}`))
+      .error(e => console.error('❌ subscription error', e))
+      .listen('.mgmt.update',   e => cb('mgmt.update', e))
+      .listen('.DeployEvent',   e => cb('DeployEvent', e))
+      .listen('.DeployLogLine', e => cb('DeployLogLine', e));
+    return { stop: () => echo.leave(`private-servers.${id}`) };
+  }
+};
 
-    console.info('[Echo] Reverb initialised');
-} catch (e) {
-    console.error('[Echo] init failed:', e);
-}
+console.info('[Echo] Reverb initialised');
