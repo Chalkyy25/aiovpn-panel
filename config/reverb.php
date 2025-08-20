@@ -26,20 +26,20 @@ return [
 
     // 👇 THIS should just be the list, no "provider" wrapper
     'apps' => [
-        [
-            'app_id' => env('REVERB_APP_ID', '1'),
-            'key'    => env('REVERB_APP_KEY', 'localkey'),
-            'secret' => env('REVERB_APP_SECRET', 'localsecret'),
-            'options' => [
-                'host'   => env('REVERB_HOST', 'reverb.aiovpn.co.uk'),
-                'port'   => env('REVERB_PORT', 443),
-                'scheme' => env('REVERB_SCHEME', 'https'),
-                'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
-            ],
-            'allowed_origins' => ['*'],
-            'ping_interval'   => 60,
-            'activity_timeout'=> 30,
-            'max_message_size'=> 10000,
+    'provider' => 'config',
+    'apps' => [[
+        'app_id' => '1',
+        'key'    => 'localkey',
+        'secret' => 'localsecret',
+        'options' => [
+            'host'   => env('REVERB_HOST', 'reverb.aiovpn.co.uk'),
+            'port'   => env('REVERB_PORT', 443),
+            'scheme' => env('REVERB_SCHEME', 'https'),
+            'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
         ],
-    ],
-];
+        'allowed_origins' => ['*'],
+        'ping_interval' => 60,
+        'activity_timeout' => 30,
+        'max_message_size' => 10000,
+    ]],
+],
