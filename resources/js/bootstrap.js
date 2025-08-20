@@ -1,3 +1,6 @@
+// make the global namespace *before* anything else
+window.AIO = window.AIO || {};
+
 // ---- Axios ----
 import axios from 'axios';
 window.axios = axios;
