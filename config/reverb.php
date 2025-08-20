@@ -43,3 +43,4 @@ return [
         'max_message_size' => 10000,
     ]],
 ],
+];
