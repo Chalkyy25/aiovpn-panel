@@ -3,29 +3,32 @@
 return [
     'default' => env('REVERB_SERVER', 'reverb'),
 
-    'servers' => [
-        'reverb' => [
-            'host' => env('REVERB_SERVER_HOST', '127.0.0.1'),
-            'port' => env('REVERB_SERVER_PORT', 8080),
-            'path' => env('REVERB_SERVER_PATH', ''), // keep empty
-            'hostname' => env('REVERB_HOST', 'reverb.aiovpn.co.uk'),
-            'options' => ['tls' => []],
-            'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 10000),
-            'scaling' => [
-                'enabled' => env('REVERB_SCALING_ENABLED', false),
-                'channel' => env('REVERB_SCALING_CHANNEL', 'reverb'),
-                'server' => [
-                    'host' => env('REDIS_HOST', '127.0.0.1'),
-                    'port' => env('REDIS_PORT', 6379),
-                    'password' => env('REDIS_PASSWORD'),
-                    'database' => env('REDIS_DB', 0),
-                    'timeout' => env('REDIS_TIMEOUT', 60),
-                ],
-            ],
-            'pulse_ingest_interval' => 15,
-            'telescope_ingest_interval' => 15,
-        ],
-    ],
+    server {
+    listen 443 ssl http2;
+    server_name reverb.aiovpn.co.uk;
+
+    ssl_certificate     /etc/letsencrypt/live/reverb.aiovpn.co.uk/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/reverb.aiovpn.co.uk/privkey.pem;
+
+    location /app/ {
+        proxy_pass         http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 60;
+        proxy_connect_timeout 60;
+        proxy_send_timeout 60;
+
+        chunked_transfer_encoding off;
+    }
+
+    location / {
+        return 404;
+    }
+}
 
     'apps' => [
         [
