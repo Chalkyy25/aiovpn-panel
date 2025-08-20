@@ -49,42 +49,74 @@ class DeployApiController extends Controller
         'message' => 'required|string',
     ]);
 
-    /** @var VpnServer $vpn */
-    $vpn = VpnServer::findOrFail($server);
+    /** @var \App\Models\VpnServer $vpn */
+    $vpn = \App\Models\VpnServer::findOrFail($server);
 
+    // ---- Special handling for management snapshots ----
     if ($data['status'] === 'mgmt') {
-        // Expect: "ts=2025-08-18T23:33:37Z clients=2 [alice,bob]"
-        $msg = $data['message'];
+        $raw = $data['message'];
+        $ts  = now()->toIso8601String();
 
-        $ts      = ($this->match('/ts=([^\s]+)/', $msg) ?: now()->toIso8601String());
-        $clients = (int)($this->match('/clients=(\d+)/', $msg) ?: 0);
+        // Parse both formats we’ve used:
+        //  1) "ts=... source=... clients=1 [name1,name2]"
+        //  2) "[mgmt] 1 online: [name1, name2]"
+        $clients = 0; $cnList = '';
 
-        // Grab names inside [ ... ]
-        $cnList  = $this->match('/\[(.*)\]/', $msg) ?: '';
-        $cnList  = trim($cnList);
-        // Optional: store a short log line (or skip if you don’t want log spam)
-        $vpn->appendLog("[mgmt] {$clients} online: [{$cnList}]");
-        $vpn->save();
+        if (preg_match('/clients=(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
+            $clients = (int) $m[1];
+            $cnList  = trim($m[2] ?? '');
+        } elseif (preg_match('/\[mgmt\]\s*(\d+)\s*online:\s*\[([^\]]*)\]/i', $raw, $m)) {
+            $clients = (int) $m[1];
+            $cnList  = trim($m[2] ?? '');
+        }
 
-        broadcast(new ServerMgmtEvent(
+        // Normalise comma list: allow empty -> ''
+        $cnList = preg_replace('/\s+/', '', $cnList ?? '');
+        if ($cnList === '[]') $cnList = '';
+        // Cache a 5‑minute TTL so Livewire/pages can read a baseline
+        cache()->put("servers:{$vpn->id}:clients", $clients, 300);
+        cache()->put("servers:{$vpn->id}:cn_list", $cnList, 300);
+        cache()->put("servers:{$vpn->id}:mgmt_last_seen", $ts, 300);
+
+        // Throttle log noise: only log mgmt when value changes or once per 60s
+        $lastKey   = "servers:{$vpn->id}:mgmt_last_log";
+        $lastState = cache()->get("servers:{$vpn->id}:mgmt_state");
+        $state     = "{$clients}|{$cnList}";
+        $shouldLog = false;
+
+        if ($state !== $lastState) {
+            $shouldLog = true;
+            cache()->put("servers:{$vpn->id}:mgmt_state", $state, 300);
+        } elseif (!cache()->has($lastKey)) {
+            $shouldLog = true;
+        }
+
+        if ($shouldLog) {
+            $vpn->appendLog(sprintf('[mgmt] %d online: [%s]', $clients, $cnList));
+            cache()->put($lastKey, 1, 60);
+        }
+
+        // Broadcast to your private channel (ServerMgmtEvent you posted)
+        event(new \App\Events\ServerMgmtEvent(
             serverId: $vpn->id,
             ts: $ts,
             clients: $clients,
             cnList: $cnList,
-            raw: $msg
+            raw: $raw
         ));
 
         return response()->json(['ok' => true]);
     }
 
-    // existing deployment events flow…
+    // ---- Default (non‑mgmt) path: preserve your current behaviour ----
     $vpn->deployment_status = $data['status'] === 'info' ? $vpn->deployment_status : $data['status'];
     $vpn->appendLog(sprintf('[%s] %s: %s', now()->toDateTimeString(), strtoupper($data['status']), $data['message']));
     $vpn->save();
 
+    Log::info("📡 DeployEvent #{$vpn->id}", $data);
+
     return response()->json(['ok' => true]);
 }
-
 /** Tiny helper to regex match first group */
 private function match(string $pattern, string $subject): ?string
 {
