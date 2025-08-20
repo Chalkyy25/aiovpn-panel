@@ -63,7 +63,7 @@
       </div>
     </div>
   </div>
-  
+
   {{-- Live Bandwidth --}}
 <div class="aio-card p-5 space-y-4">
   <div class="flex items-center justify-between">
@@ -234,4 +234,117 @@
       </div>
     </div>
   @endif
+
+  {{-- Live Server Logs --}}
+  <div class="aio-card overflow-hidden">
+    <div class="px-5 py-3 border-b aio-divider">
+      <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Live Server Logs</h3>
+      <p class="text-xs muted mt-1">Real-time management events from deployment scripts</p>
+    </div>
+    <div class="p-5">
+      <div id="live-logs" class="bg-black/20 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+        <div class="text-[var(--aio-sub)] text-center py-8">
+          Waiting for live logs...
+        </div>
+      </div>
+      <div class="mt-3 flex justify-between items-center text-xs muted">
+        <span>Auto-scroll: <span id="auto-scroll-status" class="text-[var(--aio-neon)]">ON</span></span>
+        <button id="clear-logs" class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow">Clear Logs</button>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const logsContainer = document.getElementById('live-logs');
+    const autoScrollStatus = document.getElementById('auto-scroll-status');
+    const clearLogsBtn = document.getElementById('clear-logs');
+    let autoScroll = true;
+    let maxLogs = 100;
+
+    // Initialize Echo for broadcasting
+    if (typeof window.Echo !== 'undefined') {
+        // Subscribe to dashboard channel for general events
+        window.Echo.private('servers.dashboard')
+            .listen('.mgmt.update', (e) => {
+                addLogEntry(e, 'dashboard');
+            });
+
+        // Subscribe to individual server channels if we have servers
+        @foreach($servers as $server)
+            window.Echo.private('servers.{{ $server->id }}')
+                .listen('.mgmt.update', (e) => {
+                    addLogEntry(e, '{{ $server->name }}');
+                });
+        @endforeach
+    }
+
+    function addLogEntry(data, source) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.className = 'mb-2 p-2 rounded bg-white/5 border-l-2 border-[var(--aio-neon)]';
+
+        logEntry.innerHTML = `
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <span class="text-[var(--aio-neon)]">[${timestamp}]</span>
+                    <span class="text-[var(--aio-pup)] ml-2">${source}</span>
+                    <span class="text-[var(--aio-ink)] ml-2">Clients: ${data.clients}</span>
+                </div>
+                <span class="text-xs text-[var(--aio-sub)]">Server #${data.server_id}</span>
+            </div>
+            <div class="mt-1 text-[var(--aio-sub)] text-xs">
+                Connected users: [${data.cn_list || 'none'}]
+            </div>
+            ${data.raw ? `<div class="mt-1 text-[var(--aio-sub)] text-xs opacity-70">Raw: ${data.raw}</div>` : ''}
+        `;
+
+        // Remove "waiting" message if it exists
+        const waitingMsg = logsContainer.querySelector('.text-center');
+        if (waitingMsg) {
+            waitingMsg.remove();
+        }
+
+        logsContainer.appendChild(logEntry);
+
+        // Limit number of log entries
+        const logEntries = logsContainer.querySelectorAll('.mb-2');
+        if (logEntries.length > maxLogs) {
+            logEntries[0].remove();
+        }
+
+        // Auto-scroll to bottom
+        if (autoScroll) {
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+    }
+
+    // Toggle auto-scroll when user scrolls manually
+    logsContainer.addEventListener('scroll', function() {
+        autoScroll = logsContainer.scrollTop + logsContainer.clientHeight >= logsContainer.scrollHeight - 5;
+        autoScrollStatus.textContent = autoScroll ? 'ON' : 'OFF';
+        autoScrollStatus.className = autoScroll ? 'text-[var(--aio-neon)]' : 'text-[var(--aio-sub)]';
+    });
+
+    // Clear logs button
+    clearLogsBtn.addEventListener('click', function() {
+        logsContainer.innerHTML = '<div class="text-[var(--aio-sub)] text-center py-8">Logs cleared. Waiting for new events...</div>';
+        autoScroll = true;
+        autoScrollStatus.textContent = 'ON';
+        autoScrollStatus.className = 'text-[var(--aio-neon)]';
+    });
+
+    // Add a test log entry to show the format (remove in production)
+    setTimeout(() => {
+        if (logsContainer.querySelector('.text-center')) {
+            addLogEntry({
+                server_id: 1,
+                clients: 2,
+                cn_list: 'alice,bob',
+                raw: 'ts=2025-08-20T08:56:00Z clients=2 [alice,bob]'
+            }, 'Test Server');
+        }
+    }, 2000);
+});
+</script>
