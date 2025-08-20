@@ -13,7 +13,6 @@ return [
             ],
             'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 10000),
 
-            // 👇 REQUIRED, even if you don’t use scaling
             'scaling' => [
                 'enabled' => env('REVERB_SCALING_ENABLED', false),
                 'channel' => env('REVERB_SCALING_CHANNEL', 'reverb'),
@@ -31,8 +30,10 @@ return [
         ],
     ],
 
+    // 👇 fixed structure: must include provider + apps
     'apps' => [
-        [
+        'provider' => 'config',
+        'apps' => [[
             'app_id' => env('REVERB_APP_ID', '1'),
             'key'    => env('REVERB_APP_KEY', 'localkey'),
             'secret' => env('REVERB_APP_SECRET', 'localsecret'),
@@ -46,6 +47,6 @@ return [
             'ping_interval' => 60,
             'activity_timeout' => 30,
             'max_message_size' => 10000,
-        ],
+        ]],
     ],
 ];
