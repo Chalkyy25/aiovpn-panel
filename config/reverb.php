@@ -8,11 +8,8 @@ return [
             'host' => env('REVERB_SERVER_HOST', '127.0.0.1'),
             'port' => env('REVERB_SERVER_PORT', 8080),
             'hostname' => env('REVERB_HOST', 'reverb.aiovpn.co.uk'),
-            'options' => [
-                'tls' => [],
-            ],
+            'options' => ['tls' => []],
             'max_request_size' => env('REVERB_MAX_REQUEST_SIZE', 10000),
-
             'scaling' => [
                 'enabled' => env('REVERB_SCALING_ENABLED', false),
                 'channel' => env('REVERB_SCALING_CHANNEL', 'reverb'),
@@ -24,16 +21,12 @@ return [
                     'timeout' => env('REDIS_TIMEOUT', 60),
                 ],
             ],
-
-            'pulse_ingest_interval' => 15,
-            'telescope_ingest_interval' => 15,
         ],
     ],
 
-    // 👇 fixed structure: must include provider + apps
+    // 👇 THIS should just be the list, no "provider" wrapper
     'apps' => [
-        'provider' => 'config',
-        'apps' => [[
+        [
             'app_id' => env('REVERB_APP_ID', '1'),
             'key'    => env('REVERB_APP_KEY', 'localkey'),
             'secret' => env('REVERB_APP_SECRET', 'localsecret'),
@@ -44,9 +37,9 @@ return [
                 'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
             ],
             'allowed_origins' => ['*'],
-            'ping_interval' => 60,
-            'activity_timeout' => 30,
-            'max_message_size' => 10000,
-        ]],
+            'ping_interval'   => 60,
+            'activity_timeout'=> 30,
+            'max_message_size'=> 10000,
+        ],
     ],
 ];
