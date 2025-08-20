@@ -15,16 +15,5 @@ use App\Models\User;
 |
 */
 
-Broadcast::channel('servers.{server}', function ($user, VpnServer $server) {
-    // Allow if the user is logged-in and either an admin or linked to this server
-    return $user
-        && (
-            ($user->is_admin ?? false)
-            || $user->vpnServers()->whereKey($server->id)->exists()
-        );
-});
-
-Broadcast::channel('servers.dashboard', function ($user) {
-    // Any authenticated user can listen to dashboard stream
-    return (bool) $user;
-});
+Broadcast::channel('servers.{serverId}', fn ($user = null, $serverId) => true);
+Broadcast::channel('servers.dashboard', fn ($user = null) => true);
