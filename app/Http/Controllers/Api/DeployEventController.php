@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Server; // or VpnServer if you named it differently
+use App\Models\VpnServer; // or VpnServer if you named it differently
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use App\Events\ServerMgmtEvent;
