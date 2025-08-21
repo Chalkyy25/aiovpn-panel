@@ -33,11 +33,11 @@ try {
   // Helper you can call from the console
   window.AIOEcho = {
     onServer(id, cb){
-      const ch = window.Echo.channel(`servers.${id}`);
+      const ch = window.Echo.private(`servers.${id}`);
       ch.listen('.mgmt.update',   e => cb('mgmt.update', e));
       ch.listen('.DeployEvent',   e => cb('DeployEvent', e));
       ch.listen('.DeployLogLine', e => cb('DeployLogLine', e));
-      return { stop: () => window.Echo.leaveChannel(`servers.${id}`) };
+      return { stop: () => window.Echo.leaveChannel(`private-servers.${id}`) };
     }
   };
 
