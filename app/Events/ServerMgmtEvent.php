@@ -4,37 +4,47 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class ServerMgmtEvent implements ShouldBroadcast
+class ServerMgmtEvent implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public int $serverId;
-    public string $timestamp;
-    public int $status;
-    public string $connectionName;
-    public string $trigger;
+    public string $ts;
+    public int $clients;
+    public string $cnList;
+    public string $raw;
 
-    public function __construct(int $serverId, string $timestamp, int $status, string $connectionName, string $trigger)
+    public function __construct(int $serverId, string $ts, int $clients, string $cnList, string $raw)
     {
         $this->serverId = $serverId;
-        $this->timestamp = $timestamp;
-        $this->status = $status;
-        $this->connectionName = $connectionName;
-        $this->trigger = $trigger;
+        $this->ts = $ts;
+        $this->clients = $clients;
+        $this->cnList = $cnList;
+        $this->raw = $raw;
     }
 
-    public function broadcastOn(): Channel
+    public function broadcastOn(): PrivateChannel
     {
-        // frontend listens to channel `servers.{id}`
-        return new [PrivateChannel("servers.{$this->serverId}")];
+        return new PrivateChannel("servers.{$this->serverId}");
     }
 
     public function broadcastAs(): string
     {
         return 'mgmt.update';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'server_id' => $this->serverId,
+            'ts' => $this->ts,
+            'clients' => $this->clients,
+            'cn_list' => $this->cnList,
+            'raw' => $this->raw,
+        ];
     }
 }
