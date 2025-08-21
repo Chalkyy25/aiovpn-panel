@@ -1,22 +1,13 @@
-// make the global namespace *before* anything else
-window.AIO = window.AIO || {};
-
-// ---- Axios ----
-import axios from 'axios';
-window.axios = axios;
-window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
-window.axios.defaults.headers.common['X-CSRF-TOKEN'] =
-  document.querySelector('meta[name="csrf-token"]')?.content || '';
-
 // ---- Echo / Reverb ----
 import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';         // Reverb speaks Pusher protocol
-window.Pusher = Pusher;                 // must be global
+import Pusher from 'pusher-js';
+window.Pusher = Pusher;
 
 const KEY    = import.meta.env.VITE_REVERB_APP_KEY;
-const HOST   = import.meta.env.VITE_REVERB_HOST;              // reverb.aiovpn.co.uk
+const HOST   = import.meta.env.VITE_REVERB_HOST;
 const PORT   = Number(import.meta.env.VITE_REVERB_PORT ?? 443);
 const SCHEME = (import.meta.env.VITE_REVERB_SCHEME ?? 'https').toLowerCase();
+const CSRF   = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
 const echo = new Echo({
   broadcaster: 'reverb',
@@ -26,17 +17,27 @@ const echo = new Echo({
   wssPort: SCHEME === 'https' ? PORT : 443,
   forceTLS: SCHEME === 'https',
   enabledTransports: ['ws', 'wss'],
+
+  // 🔐 make private channel auth work
+  authEndpoint: '/broadcasting/auth',
+  withCredentials: true,
+  auth: {
+    headers: {
+      'X-CSRF-TOKEN': CSRF,
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+  },
 });
 
-// handy debug
-echo.connector.pusher.connection.bind('state_change', ({ previous, current }) => {
-  console.info('[Echo] state:', previous, '→', current);
-});
+// debug
+echo.connector.pusher.connection.bind('state_change', ({ previous, current }) =>
+  console.info('[Echo] state:', previous, '→', current)
+);
 
-window.Echo = echo;        // <-- give yourself the classic alias
-window.AIOEcho = echo;     //     keep your custom name too
+window.Echo   = echo;   // classic alias
+window.AIOEcho = echo;  // your alias
 
-// tiny helper
+// helper (unchanged)
 window.AIOEchoHelper = {
   onServer(id, cb) {
     const ch = echo.private(`servers.${id}`);
