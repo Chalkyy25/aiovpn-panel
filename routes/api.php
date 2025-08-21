@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
+use App\Http\Controllers\Api\DeployEventController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,6 +34,8 @@ Route::middleware('auth.panel-token')->group(function () {
     // Password file for OpenVPN (script pulls + can mirror back)
     Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
     Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
+    
+    Route::post('/servers/{server}/deploy/events', [DeployEventController::class, 'store']);
 });
 
 /*
