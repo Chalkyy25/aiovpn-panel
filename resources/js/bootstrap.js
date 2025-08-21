@@ -13,8 +13,8 @@ const echo = new Echo({
   broadcaster: 'reverb',
   key: KEY,
   wsHost: HOST,
-  wsPort:  SCHEME === 'http'  ? PORT : 80,
-  wssPort: SCHEME === 'https' ? PORT : 443,
+  wsPort: PORT,
+  wssPort: PORT,
   forceTLS: SCHEME === 'https',
   enabledTransports: ['ws', 'wss'],
 
