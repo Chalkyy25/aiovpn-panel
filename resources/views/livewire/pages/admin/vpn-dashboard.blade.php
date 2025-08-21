@@ -415,3 +415,25 @@ function vpnDashboard() {
   }
 }
 </script>
+{{-- at the bottom of your vpn-dashboard Blade (or in a stacked script) --}}
+<script type="module">
+  window.addEventListener('livewire:load', () => {
+    // choose which server id you want by default; or loop servers and attach
+    const serverId = {{ $selectedServerId ?? 'null' }} ?? {{ $servers->first()->id ?? 0 }};
+    if (!serverId) return;
+
+    // requires your bootstrap.js to have set window.AIOEcho / AIO helpers
+    if (!window.AIO || !window.AIO.listen) {
+      console.warn('[AIO] helpers missing; not subscribing');
+      return;
+    }
+
+    // keep a handle so we can leave on teardown
+    window.__aioSub = window.AIO.listen(serverId);
+  });
+
+  // optional: clean up if the component/page is torn down
+  window.addEventListener('beforeunload', () => {
+    try { window.__aioSub?.stop(); } catch(_) {}
+  });
+</script>
