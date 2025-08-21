@@ -15,5 +15,10 @@ use App\Models\User;
 |
 */
 
-Broadcast::channel('servers.{serverId}', fn ($user = null, $serverId) => true);
-Broadcast::channel('servers.dashboard', fn ($user = null) => true);
+Broadcast::channel('servers.{serverId}', function ($user, $serverId) {
+    return true; // lock down later
+});
+
+Broadcast::channel('servers.dashboard', function ($user) {
+    return true;
+});
