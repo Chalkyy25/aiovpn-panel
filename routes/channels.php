@@ -15,8 +15,8 @@ use App\Models\User;
 |
 */
 
-Broadcast::channel('servers.{serverId}', function ($user, $serverId) {
-    return true; // lock down later
+Broadcast::channel('servers.{serverId}', function ($user, int $serverId) {
+    return true; // (you can add real auth later)
 });
 
 Broadcast::channel('servers.dashboard', function ($user) {
