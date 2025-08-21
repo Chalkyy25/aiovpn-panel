@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -30,7 +30,7 @@ class ServerMgmtEvent implements ShouldBroadcast
     public function broadcastOn(): Channel
     {
         // frontend listens to channel `servers.{id}`
-        return new Channel("servers.{$this->serverId}");
+        return new [PrivateChannel("servers.{$this->serverId}")];
     }
 
     public function broadcastAs(): string
