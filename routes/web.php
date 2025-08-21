@@ -47,6 +47,13 @@ Route::get('/', fn () => view('welcome'));
 Route::get('/dashboard', fn () => view('dashboard'))
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
+    
+Route::get('/debug/reverb', function () {
+    return response()->json([
+        'apps'    => config('reverb.apps'),
+        'servers' => config('reverb.servers'),
+    ]);
+});
 
 
 // ======================

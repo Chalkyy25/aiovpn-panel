@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
+use App\Http\Controllers\Api\DeployEventController;
 
 /*
 |--------------------------------------------------------------------------
@@ -33,19 +34,13 @@ Route::middleware('auth.panel-token')->group(function () {
     // Password file for OpenVPN (script pulls + can mirror back)
     Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
     Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
+    
 });
 
-/*
-| If you ALSO want a browser/client to hit these with Sanctum, you can
-| keep a second group below. Otherwise, remove it to avoid duplicates.
-|
-| Route::middleware('auth:sanctum')->group(function () {
-|     Route::post('/servers/{server}/deploy/events', [DeployApiController::class, 'event']);
-|     Route::post('/servers/{server}/deploy/logs',   [DeployApiController::class, 'log']);
-|     Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
-|     Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
-| });
-*/
+
+Route::middleware('auth:sanctum')
+    ->post('servers/{server}/deploy/events', [DeployEventController::class, 'store']);
+
 
 Route::post('/device/register', function (Request $request) {
     $request->validate([

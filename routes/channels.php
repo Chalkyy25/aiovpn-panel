@@ -15,5 +15,10 @@ use App\Models\User;
 |
 */
 
-Broadcast::channel('servers.{serverId}', fn ($user = null, $serverId) => true);
-Broadcast::channel('servers.dashboard', fn ($user = null) => true);
+Broadcast::channel('servers.{serverId}', function ($user, int $serverId) {
+    return true; // (you can add real auth later)
+});
+
+Broadcast::channel('servers.dashboard', function ($user) {
+    return true;
+});
