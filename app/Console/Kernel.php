@@ -2,54 +2,41 @@
 
 namespace App\Console;
 
-use App\Jobs\DisableExpiredVpnUsers;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+
+use App\Jobs\UpdateVpnConnectionStatus;
+use App\Jobs\DisableExpiredVpnUsers;
 
 class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        // ===== Housekeeping (queued job) =====
-        // NOTE: Do NOT runInBackground() on jobs.
-        $schedule->job(DisableExpiredVpnUsers::class)
+        // --- Live snapshot -> DB + Reverb (hybrid) ---
+        // Queue name is optional; use one Horizon is watching (e.g. "realtime").
+        $schedule->job((new UpdateVpnConnectionStatus)->onQueue('realtime'))
             ->everyMinute()
             ->onOneServer()
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        // ===== VPN fleet (artisan commands) =====
-        // 1) Fast status — every minute
-        $schedule->command('vpn:update-status')
-            ->everyMinute()
-            ->onOneServer()
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo(storage_path('logs/scheduler.log'));
-
-        // 2) Sync users — every 2 minutes on ODD minutes (1,3,5,…)
-        $schedule->command('vpn:sync-users')
-            ->cron('1-59/2 * * * *')
-            ->onOneServer()
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo(storage_path('logs/scheduler.log'));
-
-        // 3) Sync active connections — every 2 minutes on EVEN minutes (0,2,4,…)
-        $schedule->command('vpn:sync-connections')
-            ->cron('*/2 * * * *')
-            ->onOneServer()
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo(storage_path('logs/scheduler.log'));
-
-        // 4) General maintenance — every 5 minutes
-        $schedule->command('vpn:sync')
+        // --- Housekeeping: disable/lock expired users ---
+        $schedule->job((new DisableExpiredVpnUsers)->onQueue('default'))
             ->everyFiveMinutes()
             ->onOneServer()
             ->withoutOverlapping()
-            ->runInBackground()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
+
+        // Optional: Horizon metrics snapshots (nice to have)
+        // $schedule->command('horizon:snapshot')
+        //     ->everyFiveMinutes()
+        //     ->appendOutputTo(storage_path('logs/scheduler.log'));
+
+        // ⛔️ Legacy command-based syncs replaced by the job above:
+        // $schedule->command('vpn:update-status')...
+        // $schedule->command('vpn:sync-users')...
+        // $schedule->command('vpn:sync-connections')...
+        // $schedule->command('vpn:sync')...
     }
 
     protected function commands(): void
