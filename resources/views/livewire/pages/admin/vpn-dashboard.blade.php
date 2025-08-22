@@ -1,7 +1,6 @@
-{{-- Live-only VPN dashboard (no cron/supervisor logs), Reverb/Echo driven --}}
+{{-- Live-only VPN dashboard (Reverb/Echo driven) --}}
 @php
-    // Seed from backend so UI shows instantly (even before first broadcast)
-    // Build per-server user snapshot from $activeConnections
+    // seed data for instant UI
     $seedUsersByServer = $activeConnections->groupBy('vpn_server_id')->map(function ($group) {
         return $group->map(function ($c) {
             return [
@@ -26,14 +25,14 @@
 @endphp
 
 <div x-data="vpnDashboard()"
-     x-init="init(@json($seedServerMeta), @json($seedUsersByServer), @json($seedTotals))"
+     x-init="init(@js($seedServerMeta), @js($seedUsersByServer), @js($seedTotals))"
      class="space-y-6">
 
   {{-- Header --}}
   <div class="flex justify-between items-center">
     <div>
       <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
-      <p class="text-sm text-[var(--aio-sub)]">Real‑time monitoring of VPN connections</p>
+      <p class="text-sm text-[var(--aio-sub)]">Real-time monitoring of VPN connections</p>
     </div>
     <div class="text-sm text-[var(--aio-sub)]">
       Last updated: <span x-text="lastUpdated"></span>
@@ -84,7 +83,6 @@
         <div class="h-10 w-10 rounded-full pill-mag flex items-center justify-center">⏱️</div>
         <div>
           <div class="text-sm muted">Avg. Connection Time</div>
-          {{-- Keep old calc as snapshot; optional to make this live later --}}
           <div class="text-2xl font-semibold text-[var(--aio-ink)]">
             @if($activeConnections->count() > 0)
               {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
@@ -95,7 +93,7 @@
     </div>
   </div>
 
-  {{-- Server filter (live badge counts) --}}
+  {{-- Server filter --}}
   <div class="aio-card p-5">
     <h3 class="text-lg font-semibold text-[var(--aio-ink)] mb-3">Servers</h3>
 
@@ -107,14 +105,14 @@
       </button>
 
       @foreach($servers as $server)
-      <button @click="selectServer({{ $server->id }})"
-              class="aio-pill"
-              :class="selectedServerId==={{ $server->id }} ? 'pill-pup shadow-glow' : ''">
-        {{ $server->name }}
-        <span class="aio-pill ml-1"
-              :class="(serverUsersCount({{ $server->id }})>0) ? 'pill-neon' : ''"
-              x-text="serverUsersCount({{ $server->id }})"></span>
-      </button>
+        <button @click="selectServer({{ $server->id }})"
+                class="aio-pill"
+                :class="selectedServerId==={{ $server->id }} ? 'pill-pup shadow-glow' : ''">
+          {{ $server->name }}
+          <span class="aio-pill ml-1"
+                :class="(serverUsersCount({{ $server->id }})>0) ? 'pill-neon' : ''"
+                x-text="serverUsersCount({{ $server->id }})"></span>
+        </button>
       @endforeach
     </div>
   </div>
@@ -144,7 +142,6 @@
           </tr>
         </thead>
         <tbody id="active-rows">
-          <!-- Rows rendered by Alpine from live store -->
           <template x-for="row in activeRows()" :key="row.key">
             <tr>
               <td class="py-3">
@@ -212,7 +209,7 @@
     </div>
   </div>
 
-  {{-- Recently Disconnected (kept as snapshot) --}}
+  {{-- Recently Disconnected --}}
   @if($recentlyDisconnected->count() > 0)
     <div class="aio-card overflow-hidden">
       <div class="px-5 py-3 border-b aio-divider">
@@ -231,24 +228,24 @@
           </thead>
           <tbody>
             @foreach($recentlyDisconnected as $connection)
-            <tr>
-              <td class="py-3">
-                <div class="flex items-center">
-                  <span class="h-2 w-2 rounded-full bg-white/30"></span>
-                  <div class="ml-3 text-sm text-[var(--aio-ink)] font-medium">
-                    {{ $connection->vpnUser->username }}
+              <tr>
+                <td class="py-3">
+                  <div class="flex items-center">
+                    <span class="h-2 w-2 rounded-full bg-white/30"></span>
+                    <div class="ml-3 text-sm text-[var(--aio-ink)] font-medium">
+                      {{ $connection->vpnUser->username }}
+                    </div>
                   </div>
-                </div>
-              </td>
-              <td class="text-sm text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</td>
-              <td class="text-sm text-[var(--aio-ink)]">{{ $connection->client_ip ?? 'N/A' }}</td>
-              <td class="text-sm text-[var(--aio-ink)]">{{ $connection->disconnected_at->diffForHumans() }}</td>
-              <td class="text-sm text-[var(--aio-ink)]">
-                @if($connection->connected_at && $connection->disconnected_at)
-                  {{ $connection->connected_at->diffInMinutes($connection->disconnected_at) }}m
-                @else N/A @endif
-              </td>
-            </tr>
+                </td>
+                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</td>
+                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->client_ip ?? 'N/A' }}</td>
+                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->disconnected_at->diffForHumans() }}</td>
+                <td class="text-sm text-[var(--aio-ink)]">
+                  @if($connection->connected_at && $connection->disconnected_at)
+                    {{ $connection->connected_at->diffInMinutes($connection->disconnected_at) }}m
+                  @else N/A @endif
+                </td>
+              </tr>
             @endforeach
           </tbody>
         </table>
@@ -257,12 +254,12 @@
   @endif
 </div>
 
-{{-- Scripts (pure Echo; no optional chaining) --}}
+{{-- Alpine controller (GLOBAL, not module) --}}
 <script>
-function vpnDashboard() {
+window.vpnDashboard = function () {
   return {
     serverMeta: {},
-    usersByServer: {}, // { serverId: [ {username, ...} ] }
+    usersByServer: {},
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
@@ -270,170 +267,103 @@ function vpnDashboard() {
     init(meta, seedUsersByServer, seedTotals) {
       this.serverMeta = meta || {};
       this.usersByServer = {};
-      for (const sid in seedUsersByServer) {
-        this.usersByServer[Number(sid)] = seedUsersByServer[sid] || [];
+      if (seedUsersByServer) {
+        for (const k in seedUsersByServer) this.usersByServer[+k] = seedUsersByServer[k] || [];
       }
       this.totals = seedTotals || this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
-      // Subscribe after seed
-      if (typeof window.Echo !== 'undefined') {
-        // Fleet channel
-        window.Echo.private('servers.dashboard')
-          .listen('.ServerUpdated', (e) => this.handleEvent(e))
-          .listen('ServerUpdated',  (e) => this.handleEvent(e))
-          .listen('App\\Events\\ServerUpdated', (e) => this.handleEvent(e))
-          .listen('.mgmt.update',   (e) => this.handleEvent(e));
-
-        // Per-server channels
-        Object.keys(this.serverMeta).forEach((sid) => {
-          window.Echo.private('servers.' + sid)
-            .listen('.ServerUpdated', (e) => this.handleEvent(e))
-            .listen('ServerUpdated',  (e) => this.handleEvent(e))
-            .listen('App\\Events\\ServerUpdated', (e) => this.handleEvent(e))
-            .listen('.mgmt.update',   (e) => this.handleEvent(e));
-        });
-      } else {
-        console.warn('Echo not found. Ensure @vite(["resources/js/app.js"]) is loaded.');
-      }
+      this._waitForEcho().then(() => {
+        this._subscribeFleet();
+        this._subscribePerServer();
+      }).catch(() => console.warn('[VPN] Echo not available'));
     },
 
-    selectServer(id) { this.selectedServerId = id; },
+    _waitForEcho() {
+      return new Promise((resolve, reject) => {
+        const t = setInterval(() => { if (window.Echo) { clearInterval(t); resolve(); } }, 150);
+        setTimeout(() => { clearInterval(t); if (!window.Echo) reject(); }, 5000);
+      });
+    },
 
-    normalizeUsers(payload, fallbackServerId) {
-      // Accept users: ['alice', ...] OR users: [{ username, ... }]
-      let arr = [];
-      if (Array.isArray(payload.users)) {
-        if (payload.users.length && typeof payload.users[0] === 'string') {
-          arr = payload.users.map(u => ({ username: String(u) }));
-        } else {
-          arr = payload.users;
-        }
-      } else if (typeof payload.cn_list === 'string') {
-        arr = payload.cn_list.split(',').map(s => ({ username: s.trim() })).filter(u => u.username);
-      }
+    _subscribeFleet() {
+      try {
+        window.Echo.private('servers.dashboard')
+          .subscribed(() => console.log('✅ subscribed servers.dashboard'))
+          .listen('.mgmt.update', e => this.handleEvent(e))
+          .listen('mgmt.update',  e => this.handleEvent(e));
+      } catch (e) { console.error('subscribe servers.dashboard failed', e); }
+    },
 
-      // Enrich basics
-      return arr.map(u => {
-        const sname = payload.server_name || (this.serverMeta[fallbackServerId]?.name) || 'Server ' + fallbackServerId;
-        const connectedAt = u.connected_at ? new Date(u.connected_at) : null;
-        return {
-          username: u.username || 'unknown',
-          client_ip: u.client_ip || null,
-          virtual_ip: u.virtual_ip || null,
-          connected_at: connectedAt ? connectedAt.toISOString() : null,
-          connected_human: connectedAt ? this.human(connectedAt) : null,
-          connected_fmt: connectedAt ? connectedAt.toLocaleString() : null,
-          bytes_in: u.bytes_in || null,
-          bytes_out: u.bytes_out || null,
-          down_mb: u.bytes_in ? (u.bytes_in/1024/1024).toFixed(2) : '0.00',
-          up_mb: u.bytes_out ? (u.bytes_out/1024/1024).toFixed(2) : '0.00',
-          formatted_bytes: (u.bytes_in || u.bytes_out) ? this.prettyBytes((u.bytes_in||0)+(u.bytes_out||0)) : null,
-          server_name: sname,
-        };
+    _subscribePerServer() {
+      Object.keys(this.serverMeta).forEach(sid => {
+        try {
+          window.Echo.private(`servers.${sid}`)
+            .subscribed(() => console.log(`✅ subscribed servers.${sid}`))
+            .listen('.mgmt.update', e => this.handleEvent(e))
+            .listen('mgmt.update',  e => this.handleEvent(e));
+        } catch (e) { console.error(`subscribe servers.${sid} failed`, e); }
       });
     },
 
     handleEvent(e) {
-      var sid = (typeof e.server_id !== 'undefined') ? Number(e.server_id) : null;
-      if (sid === null) return;
+      const sid = Number(e.server_id ?? e.serverId ?? 0);
+      if (!sid) return;
 
-      const users = this.normalizeUsers(e, sid);
+      // users: ['alice'] OR [{ username:'alice' }] OR cn_list: "alice,bob"
+      let users = [];
+      if (Array.isArray(e.users)) {
+        users = (typeof e.users[0] === 'string') ? e.users.map(u => ({ username: String(u) })) : e.users;
+      } else if (typeof e.cn_list === 'string') {
+        users = e.cn_list.split(',').map(s => ({ username: s.trim() })).filter(u => u.username);
+      }
 
-      // Treat payload.users / cn_list as snapshot; merge only if explicit incremental events later
       this.usersByServer[sid] = users;
-
-      // Update totals + time
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
 
     computeTotals() {
-      let totalUsers = 0;
-      let totalConns = 0;
-      let activeServers = 0;
-      for (const sid in this.serverMeta) {
+      let totalUsers = 0, totalConns = 0, activeServers = 0;
+      for (const sid of Object.keys(this.serverMeta)) {
         const arr = this.usersByServer[sid] || [];
-        if (arr.length > 0) activeServers++;
+        if (arr.length) activeServers++;
         totalUsers += new Set(arr.map(u => u.username)).size;
         totalConns += arr.length;
       }
       return {
         online_users: totalUsers,
         active_connections: totalConns,
-        active_servers: activeServers || Object.keys(this.serverMeta).length, // show fleet count if none active
+        active_servers: activeServers || Object.keys(this.serverMeta).length,
       };
     },
 
     serverUsersCount(id) { return (this.usersByServer[id] || []).length; },
 
     activeRows() {
+      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
       const rows = [];
-      const ids = (this.selectedServerId===null)
-        ? Object.keys(this.serverMeta)
-        : [String(this.selectedServerId)];
-
-      ids.forEach((sid) => {
-        (this.usersByServer[sid] || []).forEach((u) => {
+      ids.forEach(sid => {
+        (this.usersByServer[sid] || []).forEach(u => {
           rows.push({
-            key: (sid + ':' + u.username),
-            server_name: this.serverMeta[sid]?.name || ('Server ' + sid),
-            username: u.username,
-            client_ip: u.client_ip,
-            virtual_ip: u.virtual_ip,
-            connected_human: u.connected_human,
-            connected_fmt: u.connected_fmt,
-            formatted_bytes: u.formatted_bytes,
-            down_mb: u.down_mb,
-            up_mb: u.up_mb,
+            key: `${sid}:${u.username}`,
+            server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
+            username: u.username ?? 'unknown',
+            client_ip: u.client_ip ?? null,
+            virtual_ip: u.virtual_ip ?? null,
+            connected_human: u.connected_human ?? null,
+            connected_fmt: u.connected_fmt ?? null,
+            formatted_bytes: u.formatted_bytes ?? null,
+            down_mb: u.down_mb ?? null,
+            up_mb: u.up_mb ?? null,
           });
         });
       });
       return rows;
     },
 
-    prettyBytes(b) {
-      const units = ['B','KB','MB','GB','TB']; let i = 0;
-      while (b >= 1024 && i < units.length-1) { b /= 1024; i++; }
-      return (Math.round(b*100)/100) + units[i];
-    },
-
-    human(d) {
-      const diff = (Date.now() - d.getTime())/1000; // seconds
-      if (diff < 60) return 'just now';
-      const mins = Math.floor(diff/60);
-      if (mins < 60) return mins + ' minute' + (mins===1?'':'s') + ' ago';
-      const hrs = Math.floor(mins/60);
-      return hrs + ' hour' + (hrs===1?'':'s') + ' ago';
-    },
-
-    disconnect(row) {
-      // Optional: wire this up to a Livewire action or API call
-      // window.Livewire?.dispatch('disconnect-user', { username: row.username, server: row.server_name });
-      alert('Disconnect not wired yet for ' + row.username);
-    },
-  }
-}
-</script>
-{{-- at the bottom of your vpn-dashboard Blade (or in a stacked script) --}}
-<script type="module">
-  window.addEventListener('livewire:load', () => {
-    // choose which server id you want by default; or loop servers and attach
-    const serverId = {{ $selectedServerId ?? 'null' }} ?? {{ $servers->first()->id ?? 0 }};
-    if (!serverId) return;
-
-    // requires your bootstrap.js to have set window.AIOEcho / AIO helpers
-    if (!window.AIO || !window.AIO.listen) {
-      console.warn('[AIO] helpers missing; not subscribing');
-      return;
-    }
-
-    // keep a handle so we can leave on teardown
-    window.__aioSub = window.AIO.listen(serverId);
-  });
-
-  // optional: clean up if the component/page is torn down
-  window.addEventListener('beforeunload', () => {
-    try { window.__aioSub?.stop(); } catch(_) {}
-  });
+    selectServer(id) { this.selectedServerId = id; },
+    disconnect(row) { alert('Disconnect not wired yet for ' + row.username); },
+  };
+};
 </script>
