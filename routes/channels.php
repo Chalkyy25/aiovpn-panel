@@ -1,24 +1,24 @@
 <?php
 
 use Illuminate\Support\Facades\Broadcast;
-use App\Models\VpnServer;
-use App\Models\User;
 
 /*
 |--------------------------------------------------------------------------
 | Broadcast Channels
 |--------------------------------------------------------------------------
 |
-| Here you may register all of the event broadcasting channels that your
-| application supports. The given channel authorization callbacks are
-| used to check if an authenticated user can listen to the channel.
+| Here you register all event broadcasting channels your app supports.
+| The given callbacks determine if the authenticated user can listen.
 |
 */
 
+// VPN Server private channels
 Broadcast::channel('servers.{serverId}', function ($user, int $serverId) {
-    return true; // (you can add real auth later)
+    // 🔒 for now allow all, later check if $user can access $serverId
+    return true;
 });
 
+// Global dashboard channel (if you want to push global stats)
 Broadcast::channel('servers.dashboard', function ($user) {
     return true;
 });

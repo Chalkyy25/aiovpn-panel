@@ -55,6 +55,10 @@ Route::get('/debug/reverb', function () {
     ]);
 });
 
+Route::get('/debug-db', function () {
+    return config('database.connections.mysql');
+});
+
 
 // ======================
 // ✅ Admin Routes
