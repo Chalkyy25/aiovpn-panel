@@ -143,7 +143,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     {
         DB::transaction(function () use ($server, $connected) {
             $connectedUsernames = array_keys($connected);
-            $serverUsers = $server->vpnUsers()->get(['id', 'username']);
+            $serverUsers = $server->vpnUsers()->get(['vpn_users.id', 'vpn_users.username']);
 
             foreach ($serverUsers as $user) {
                 $row = VpnUserConnection::firstOrCreate([
