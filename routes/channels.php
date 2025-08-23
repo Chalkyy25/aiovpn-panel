@@ -13,8 +13,7 @@ use Illuminate\Support\Facades\Broadcast;
 */
 
 // VPN Server private channels
-Broadcast::channel('servers.{serverId}', function ($user, int $serverId) {
-    // 🔒 for now allow all, later check if $user can access $serverId
+Broadcast::channel('servers.{serverId}', function ($user, $serverId) {
     return true;
 });
 
