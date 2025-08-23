@@ -15,7 +15,6 @@ const CSRF   = document.querySelector('meta[name="csrf-token"]')?.content || '';
  * Echo instance
  */
 const echo = new Echo({
-<<<<<<< HEAD
   broadcaster: 'reverb',
   key: KEY,
   wsHost: HOST,
@@ -23,7 +22,6 @@ const echo = new Echo({
   wssPort: PORT,
   forceTLS: SCHEME === 'https',
   enabledTransports: ['ws', 'wss'],
-=======
 
     authEndpoint: '/broadcasting/auth',
     withCredentials: true,
@@ -65,4 +63,4 @@ window.AIOEchoHelper = {
 };
 
 console.info('[Echo] Reverb initialised ✅');
->>>>>>> 4db82cd (random changes)
+
