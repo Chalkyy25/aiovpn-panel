@@ -138,55 +138,65 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     /**
      * Persist connections snapshot to DB (idempotent).
      */
-    protected function upsertConnections(VpnServer $server, array $connected): void
-    {
-        DB::transaction(function () use ($server, $connected) {
-            // Index for quick lookups
-            $connectedUsernames = array_keys($connected);
+    /**
+ * Persist connections snapshot to DB (idempotent).
+ */
+protected function upsertConnections(VpnServer $server, array $connected): void
+{
+    DB::transaction(function () use ($server, $connected) {
+        // Normalise connected usernames: lowercase + trim
+        $connectedNormalised = [];
+        foreach ($connected as $name => $details) {
+            $key = strtolower(trim($name));
+            $connectedNormalised[$key] = $details;
+        }
 
-            // All known users on this server (through relation)
-            $serverUsers = $server->vpnUsers()->get(['id', 'username']);
+        // All known users on this server (through relation)
+        $serverUsers = $server->vpnUsers()->get(['id', 'username']);
 
-            foreach ($serverUsers as $user) {
-                $row = VpnUserConnection::firstOrCreate([
-                    'vpn_user_id'   => $user->id,
-                    'vpn_server_id' => $server->id,
-                ]);
+        foreach ($serverUsers as $user) {
+            $row = VpnUserConnection::firstOrCreate([
+                'vpn_user_id'   => $user->id,
+                'vpn_server_id' => $server->id,
+            ]);
 
-                if (in_array($user->username, $connectedUsernames, true)) {
-                    $u = $connected[$user->username];
+            // Normalise DB username
+            $dbKey = strtolower(trim($user->username));
 
-                    // Flip online + update metrics
-                    if (!$row->is_connected) {
-                        $row->connected_at    = $u['connected_at'] ?? now();
-                        $row->disconnected_at = null;
-                    }
+            if (isset($connectedNormalised[$dbKey])) {
+                $u = $connectedNormalised[$dbKey];
 
-                    $row->is_connected   = true;
-                    $row->client_ip      = $u['client_ip']      ?? $row->client_ip;
-                    $row->bytes_received = $u['bytes_received'] ?? $row->bytes_received;
-                    $row->bytes_sent     = $u['bytes_sent']     ?? $row->bytes_sent;
-                    $row->save();
-
-                    // user flags
-                    $user->forceFill([
-                        'is_online' => true,
-                        'last_ip'   => $row->client_ip,
-                    ])->save();
-
-                } else {
-                    // Not present in snapshot -> mark this connection offline if needed
-                    if ($row->is_connected) {
-                        $row->is_connected    = false;
-                        $row->disconnected_at = now();
-                        $row->save();
-                    }
-
-                    VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($user->id);
+                // Flip online + update metrics
+                if (!$row->is_connected) {
+                    $row->connected_at    = $u['connected_at'] ?? now();
+                    $row->disconnected_at = null;
                 }
+
+                $row->is_connected   = true;
+                $row->client_ip      = $u['client_ip']      ?? $row->client_ip;
+                $row->bytes_received = $u['bytes_received'] ?? $row->bytes_received;
+                $row->bytes_sent     = $u['bytes_sent']     ?? $row->bytes_sent;
+                $row->save();
+
+                // Update user flags
+                $user->forceFill([
+                    'is_online' => true,
+                    'last_ip'   => $row->client_ip,
+                ])->save();
+
+            } else {
+                // Not present in snapshot → mark this connection offline if needed
+                if ($row->is_connected) {
+                    $row->is_connected    = false;
+                    $row->disconnected_at = now();
+                    $row->save();
+                }
+
+                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($user->id);
             }
-        });
-    }
+        }
+    });
+}
 
     /**
      * Hard mark everything offline for a server (used only in strict mode / errors).
