@@ -119,30 +119,23 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
     protected function fetchOpenVpnStatusLog(VpnServer $server): string
 {
-    $candidates = [
-        '/var/log/openvpn-status.log',
-        '/run/openvpn/server.status',
-        '/etc/openvpn/openvpn-status.log',
-        '/etc/openvpn/server/openvpn-status.log',
-    ];
+    $path = '/var/log/openvpn-status.log';
 
-    foreach ($candidates as $path) {
-        $cmd = 'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"';
-        $res = $this->executeRemoteCommand($server->ip_address, $cmd);
+    $cmd = 'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"';
+    $res = $this->executeRemoteCommand($server->ip_address, $cmd);
 
-        if (($res['status'] ?? 1) !== 0) {
-            Log::warning("⚠️ {$server->name}: SSH error when checking {$path}");
-            continue;
-        }
-
-        $out = trim(implode("\n", $res['output'] ?? []));
-        if ($out !== '' && $out !== '__NOFILE__') {
-            Log::info("📄 {$server->name}: using {$path}");
-            return $out;
-        }
+    if (($res['status'] ?? 1) !== 0) {
+        Log::warning("⚠️ {$server->name}: SSH error when checking {$path}");
+        return '';
     }
 
-    Log::warning("⚠️ {$server->name}: no usable status file found.");
+    $out = trim(implode("\n", $res['output'] ?? []));
+    if ($out !== '' && $out !== '__NOFILE__') {
+        Log::info("📄 {$server->name}: using {$path}");
+        return $out;
+    }
+
+    Log::warning("⚠️ {$server->name}: {$path} not found or empty");
     return '';
 }
 
