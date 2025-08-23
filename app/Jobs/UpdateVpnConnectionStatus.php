@@ -22,23 +22,38 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ExecutesRemoteCommands;
 
     /**
-     * How we behave if we cannot read a status file this run.
-     * - true  = mark everyone offline (strict)
-     * - false = skip updates this server to avoid false negatives
+     * Optional server ID to restrict the sync to.
+     */
+    protected ?int $serverId;
+
+    /**
+     * Should we mark everyone offline if status file missing?
      */
     protected bool $strictOfflineOnMissing = false;
 
+    /**
+     * @param int|null $serverId
+     */
+    public function __construct(?int $serverId = null)
+    {
+        $this->serverId = $serverId;
+    }
+
     public function handle(): void
     {
-        Log::info('🔄 Hybrid sync: updating VPN connection status');
+        Log::info('🔄 Hybrid sync: updating VPN connection status'
+            . ($this->serverId ? " (server {$this->serverId})" : ' (fleet)'));
 
         /** @var Collection<int,VpnServer> $servers */
         $servers = VpnServer::query()
             ->where('deployment_status', 'succeeded')
+            ->when($this->serverId, fn ($q) => $q->where('id', $this->serverId))
             ->get();
 
         if ($servers->isEmpty()) {
-            Log::info('⚠️ No succeeded VPN servers found.');
+            Log::warning($this->serverId
+                ? "⚠️ No VPN server found with ID {$this->serverId}"
+                : "⚠️ No succeeded VPN servers found.");
             return;
         }
 
@@ -60,19 +75,16 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                     $this->markAllUsersDisconnected($server);
                     $this->broadcastSnapshot($server->id, now(), []);
                 }
-                // not strict: do nothing, keep last snapshot to avoid flapping
                 return;
             }
 
-            // Auto-detect v2/v3 via your service (falls back to manual parser if needed)
             $parsed = OpenVpnStatusParser::parse($raw);
-            $connected = []; // username => details
+            $connected = [];
 
             foreach ($parsed['clients'] as $c) {
                 $username = (string)($c['username'] ?? '');
-                if ($username === '') {
-                    continue;
-                }
+                if ($username === '') continue;
+
                 $connected[$username] = [
                     'client_ip'      => $c['client_ip'] ?? null,
                     'bytes_received' => (int)($c['bytes_received'] ?? 0),
@@ -83,20 +95,17 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 ];
             }
 
-            // Persist snapshot in DB
             $this->upsertConnections($server, $connected);
 
-            // Optional server counters (if these columns exist)
             try {
                 $server->forceFill([
                     'online_users' => count($connected),
                     'last_sync_at' => now(),
                 ])->saveQuietly();
-            } catch (\Throwable $e) {
-                // counters are optional – ignore if columns not present
+            } catch (\Throwable) {
+                // optional columns – ignore
             }
 
-            // Broadcast snapshot for Reverb/Echo
             $this->broadcastSnapshot($server->id, now(), array_keys($connected));
 
         } catch (\Throwable $e) {
@@ -108,23 +117,18 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    /**
-     * Read OpenVPN status (tries common v3/v2 paths over SSH).
-     */
     protected function fetchOpenVpnStatusLog(VpnServer $server): string
     {
         $candidates = [
-            '/run/openvpn/server.status',   // systemd (v3)
-            '/var/log/openvpn-status.log',  // classic (v2)
+            '/run/openvpn/server.status',
+            '/var/log/openvpn-status.log',
         ];
 
         foreach ($candidates as $path) {
             $cmd = 'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"';
             $res = $this->executeRemoteCommand($server->ip_address, $cmd);
 
-            if (($res['status'] ?? 1) !== 0) {
-                continue;
-            }
+            if (($res['status'] ?? 1) !== 0) continue;
 
             $out = trim(implode("\n", $res['output'] ?? []));
             if ($out !== '' && $out !== '__NOFILE__') {
@@ -135,72 +139,50 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         return '';
     }
 
-    /**
-     * Persist connections snapshot to DB (idempotent).
-     */
-    /**
- * Persist connections snapshot to DB (idempotent).
- */
-protected function upsertConnections(VpnServer $server, array $connected): void
-{
-    DB::transaction(function () use ($server, $connected) {
-        // Normalise connected usernames: lowercase + trim
-        $connectedNormalised = [];
-        foreach ($connected as $name => $details) {
-            $key = strtolower(trim($name));
-            $connectedNormalised[$key] = $details;
-        }
+    protected function upsertConnections(VpnServer $server, array $connected): void
+    {
+        DB::transaction(function () use ($server, $connected) {
+            $connectedUsernames = array_keys($connected);
+            $serverUsers = $server->vpnUsers()->get(['id', 'username']);
 
-        // All known users on this server (through relation)
-        $serverUsers = $server->vpnUsers()->get(['id', 'username']);
+            foreach ($serverUsers as $user) {
+                $row = VpnUserConnection::firstOrCreate([
+                    'vpn_user_id'   => $user->id,
+                    'vpn_server_id' => $server->id,
+                ]);
 
-        foreach ($serverUsers as $user) {
-            $row = VpnUserConnection::firstOrCreate([
-                'vpn_user_id'   => $user->id,
-                'vpn_server_id' => $server->id,
-            ]);
+                if (in_array($user->username, $connectedUsernames, true)) {
+                    $u = $connected[$user->username];
 
-            // Normalise DB username
-            $dbKey = strtolower(trim($user->username));
+                    if (!$row->is_connected) {
+                        $row->connected_at    = $u['connected_at'] ?? now();
+                        $row->disconnected_at = null;
+                    }
 
-            if (isset($connectedNormalised[$dbKey])) {
-                $u = $connectedNormalised[$dbKey];
-
-                // Flip online + update metrics
-                if (!$row->is_connected) {
-                    $row->connected_at    = $u['connected_at'] ?? now();
-                    $row->disconnected_at = null;
-                }
-
-                $row->is_connected   = true;
-                $row->client_ip      = $u['client_ip']      ?? $row->client_ip;
-                $row->bytes_received = $u['bytes_received'] ?? $row->bytes_received;
-                $row->bytes_sent     = $u['bytes_sent']     ?? $row->bytes_sent;
-                $row->save();
-
-                // Update user flags
-                $user->forceFill([
-                    'is_online' => true,
-                    'last_ip'   => $row->client_ip,
-                ])->save();
-
-            } else {
-                // Not present in snapshot → mark this connection offline if needed
-                if ($row->is_connected) {
-                    $row->is_connected    = false;
-                    $row->disconnected_at = now();
+                    $row->is_connected   = true;
+                    $row->client_ip      = $u['client_ip']      ?? $row->client_ip;
+                    $row->bytes_received = $u['bytes_received'] ?? $row->bytes_received;
+                    $row->bytes_sent     = $u['bytes_sent']     ?? $row->bytes_sent;
                     $row->save();
+
+                    $user->forceFill([
+                        'is_online' => true,
+                        'last_ip'   => $row->client_ip,
+                    ])->save();
+
+                } else {
+                    if ($row->is_connected) {
+                        $row->is_connected    = false;
+                        $row->disconnected_at = now();
+                        $row->save();
+                    }
+
+                    VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($user->id);
                 }
-
-                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($user->id);
             }
-        }
-    });
-}
+        });
+    }
 
-    /**
-     * Hard mark everything offline for a server (used only in strict mode / errors).
-     */
     protected function markAllUsersDisconnected(VpnServer $server): void
     {
         $conns = VpnUserConnection::where('vpn_server_id', $server->id)
@@ -217,13 +199,8 @@ protected function upsertConnections(VpnServer $server, array $connected): void
         }
     }
 
-    /**
-     * Emit a compact snapshot to the private channel the UI is listening on.
-     * Front-end accepts either `users: []` (strings) or `cn_list: "a,b"`.
-     */
     protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
     {
-        // Your ServerMgmtEvent -> broadcastAs('mgmt.update') on channel "servers.{id}"
         broadcast(new ServerMgmtEvent(
             $serverId,
             $ts->format(DATE_ATOM),
