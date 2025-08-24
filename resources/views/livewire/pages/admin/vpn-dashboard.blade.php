@@ -321,8 +321,8 @@ window.vpnDashboard = function () {
       // Calls Livewire method getLiveStats() every 5s
       if (this._pollTimer) clearInterval(this._pollTimer);
       this._pollTimer = setInterval(() => {
-        if (!$wire?.getLiveStats) return;
-        $wire.getLiveStats().then(res => {
+        if (!window.$wire?.getLiveStats) return;
+        window.$wire.getLiveStats().then(res => {
           if (!res) return;
           this.usersByServer = res.usersByServer || {};
           this.totals = res.totals || this.computeTotals();
@@ -394,41 +394,22 @@ window.vpnDashboard = function () {
     selectServer(id) { this.selectedServerId = id; },
 
     async disconnect(row) {
-  if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
-
-  try {
-    const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
-      method: 'POST',
-      headers: {
-        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username: row.username, server_id: row.server_id }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Disconnect failed');
-
-    alert(data.message);
-  } catch (e) {
-    console.error(e);
-    alert('Error disconnecting user.');
-  }
-}
-
-      // Fallback: call a controller route that issues an OpenVPN mgmt client-kill by username
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
+
       try {
-        const res = await fetch('{{ url('/admin/vpn/disconnect') }}', {
+        const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
           method: 'POST',
           headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
           },
           body: JSON.stringify({ username: row.username, server_id: row.server_id }),
         });
+
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Disconnect failed');
+
         alert(data.message || 'Disconnected.');
       } catch (e) {
         console.error(e);
