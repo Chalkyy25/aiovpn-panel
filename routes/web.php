@@ -8,6 +8,7 @@ use App\Models\VpnUser;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\VpnUserController;
+use App\Http\Controllers\VpnDisconnectController;
 use App\Http\Controllers\VpnServerController;
 use App\Http\Controllers\VpnConfigController;
 use App\Http\Controllers\ClientAuthController;
