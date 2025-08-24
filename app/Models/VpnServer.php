@@ -173,7 +173,6 @@ class VpnServer extends Model
 }
 
 /**
- * Returns details so the controller can show meaningful errors.
  * @return array{ok:bool,status:int,output:array<string>}
  */
 public function killClientDetailed(string $username): array
@@ -182,30 +181,43 @@ public function killClientDetailed(string $username): array
     $mgmtHost = '127.0.0.1';
     $mgmtPort = 7505;
 
-    // One SSH command:
-    // 1) Get STATUS v3
-    // 2) Extract first matching CID for CN==username (field 2 is CN, field 11 is CID in v3)
-    // 3) Issue client-kill CN CID
-    // 4) Echo mgmt reply so we can check for SUCCESS
-    $cmd = <<<BASH
+    // v3 fields: CLIENT_LIST, CN(2), RealAddr, VirtIP, VirtIPv6, BytesRecv, BytesSent,
+    // ConnectedSince, ConnectedEpoch, Username, ClientID(11), PeerID, Cipher
+    $cmd = <<<'BASH'
 bash -lc "
-OUT=\$({ printf 'status 3\\nquit\\n'; } | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
-CN=\"{$u}\"
-CID=\$(printf '%s\\n' \"\$OUT\" | awk -F '\\t' -v cn=\"\$CN\" '\$1==\"CLIENT_LIST\" && \$2==cn {print \$11; exit}')
-if [ -z \"\$CID\" ]; then
-  echo 'ERR: no CID for CN: '\"\$CN\"
+OUT=$({ printf 'status 3\nquit\n'; } | nc -w 3 __MGMT_HOST__ __MGMT_PORT__ 2>/dev/null)
+CN=\"__CN__\"
+
+# Trim CRs and match CN robustly; extract first CID
+CID=$(printf '%s\n' \"$OUT\" \
+  | awk -F '\t' -v cn=\"$CN\" '
+      $1==\"CLIENT_LIST\" {
+        g=$2; sub(/\r$/,\"\",g);
+        if (g==cn) { print $11; exit }
+      }')
+
+if [ -z \"$CID\" ]; then
+  echo \"ERR: no CID for CN: $CN\"
   exit 2
 fi
-RES=\$(printf 'client-kill %s %s\\nquit\\n' \"\$CN\" \"\$CID\" | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
-echo \"REPLY: \$RES\"
-case \"\$RES\" in
-  *SUCCESS*|*kill*success*|*client-kill*) exit 0 ;;
+
+RES=$(printf 'client-kill %s %s\nquit\n' \"$CN\" \"$CID\" | nc -w 3 __MGMT_HOST__ __MGMT_PORT__ 2>/dev/null)
+echo \"REPLY: $RES\"
+
+case \"$RES\" in
+  *SUCCESS*|*success*) exit 0 ;;
   *) exit 3 ;;
 esac
 "
 BASH;
 
-    // Executes via your trait (expects VpnServer + string)
+    // fill placeholders safely
+    $cmd = str_replace(
+        ['__MGMT_HOST__','__MGMT_PORT__','__CN__'],
+        [$mgmtHost, $mgmtPort, $u],
+        $cmd
+    );
+
     $res = $this->executeRemoteCommand($this, $cmd);
 
     return [
