@@ -177,16 +177,14 @@ class VpnServer extends Model
  */
 public function killClientDetailed(string $username): array
 {
-    $mgmtHost = '127.0.0.1';
-    $mgmtPort = 7505;
-
-    // If you added a per-server path, use it; otherwise default:
+    $mgmtHost   = '127.0.0.1';
+    $mgmtPort   = 7505;
     $statusFile = $this->status_log_path ?: '/run/openvpn/server.status';
 
-    // Safe to embed in double-quoted bash
+    // Safe embed for bash -lc
     $needle = addcslashes($username, "\\\"`$");
 
-    // NOTE: no single quotes anywhere below
+    // NOTE: awk uses \$N so Bash doesn't expand $N before awk runs.
     $script = <<<'BASH'
 NEEDLE="__NEEDLE__"
 STATUS="__STATUS__"
@@ -194,63 +192,48 @@ MGMT_HOST="__MGMT_HOST__"
 MGMT_PORT="__MGMT_PORT__"
 
 find_cid_from_file() {
-  if [ ! -r "$STATUS" ]; then
-    return 2
-  fi
-  # v3 columns: 2=CN, 10=Username, 11=CID
-  PAIR=$(awk -F "\\t" -v q="$NEEDLE" "$1==\"CLIENT_LIST\"{ cn=$2; sub(/\\r$/, \"\", cn); user=$10; sub(/\\r$/, \"\", user); if(cn==q || user==q){ print cn \"\\t\" $11; exit } }" "$STATUS")
+  [ -r "$STATUS" ] || return 2
+  PAIR=$(awk -F "\\t" -v q="$NEEDLE" '$1=="CLIENT_LIST"{ cn=\$2; sub(/\r$/, "", cn); user=\$10; sub(/\r$/, "", user); if(cn==q || user==q){ print cn "\t" \$11; exit } }' "$STATUS")
   CN=$(printf "%s" "$PAIR" | cut -f1)
   CID=$(printf "%s" "$PAIR" | cut -f2)
   [ -n "$CID" ] || return 3
   printf "%s\t%s\n" "$CN" "$CID"
-  return 0
 }
 
 find_cid_from_mgmt() {
-  # ask mgmt for status v3 (tiny delay helps with flush)
-  OUT=$({ printf "status 3\\r\\n"; sleep 0.3; printf "quit\\r\\n"; } | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null)
+  OUT=$({ printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null)
   [ -n "$OUT" ] || return 4
-  PAIR=$(printf "%s\n" "$OUT" | awk -F "\\t" -v q="$NEEDLE" "$1==\"CLIENT_LIST\"{ cn=$2; sub(/\\r$/, \"\", cn); user=$10; sub(/\\r$/, \"\", user); if(cn==q || user==q){ print cn \"\\t\" $11; exit } }")
+  PAIR=$(printf "%s\n" "$OUT" | awk -F "\\t" -v q="$NEEDLE" '$1=="CLIENT_LIST"{ cn=\$2; sub(/\r$/, "", cn); user=\$10; sub(/\r$/, "", user); if(cn==q || user==q){ print cn "\t" \$11; exit } }')
   CN=$(printf "%s" "$PAIR" | cut -f1)
   CID=$(printf "%s" "$PAIR" | cut -f2)
   [ -n "$CID" ] || return 5
   printf "%s\t%s\n" "$CN" "$CID"
-  return 0
 }
 
-# Resolve CN + CID (file first, then mgmt)
 PAIR=$(find_cid_from_file || true)
-if [ -z "$PAIR" ]; then
-  PAIR=$(find_cid_from_mgmt || true)
-fi
+[ -n "$PAIR" ] || PAIR=$(find_cid_from_mgmt || true)
 
 CN=$(printf "%s" "$PAIR" | cut -f1)
 CID=$(printf "%s" "$PAIR" | cut -f2)
 
 if [ -z "$CID" ]; then
   echo "ERR: no CID for user/CN: $NEEDLE"
-  if [ -r "$STATUS" ]; then
-    awk -F "\\t" "$1==\"CLIENT_LIST\"{ printf(\"%s|%s|%s\\n\", $2, $10, $11) }" "$STATUS" | head -n 5
-  fi
+  [ -r "$STATUS" ] && awk -F "\\t" '$1=="CLIENT_LIST"{ printf("%s|%s|%s\n", $2, $10, $11) }' "$STATUS" | head -n 5
   exit 2
 fi
 
-# Send mgmt command; your build accepts CID-only first
 send_cmd() {
-  # $1 = command (no CRLF), $2 = label
-  RES=$({ printf "%s\\r\\n" "$1"; sleep 0.3; printf "quit\\r\\n"; } \
-        | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)
+  # $1=cmd (no CRLF), $2=label
+  RES=$({ printf "%s\r\n" "$1"; sleep 0.3; printf "quit\r\n"; } | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)
   echo "$2: $RES"
   case "$RES" in *SUCCESS*|*success*) return 0 ;; esac
   return 1
 }
 
+# Your OpenVPN accepted CID-only; try that first.
 send_cmd "client-kill $CID"     "REPLY1" || \
 send_cmd "client-kill $CN $CID" "REPLY2" || \
-send_cmd "kill $CID"            "REPLY3" || {
-  echo "ERR: mgmt did not return SUCCESS"
-  exit 3
-}
+send_cmd "kill $CID"            "REPLY3" || { echo "ERR: mgmt did not return SUCCESS"; exit 3; }
 BASH;
 
     $script = str_replace(
@@ -259,8 +242,10 @@ BASH;
         $script
     );
 
-    // Your ExecutesRemoteCommands expects the model as first arg
-    $res = $this->executeRemoteCommand($this, "bash -lc " . escapeshellarg($script));
+    $cmd = 'bash -lc ' . escapeshellarg($script);
+
+    // IMPORTANT: trait now expects the VpnServer model + a fully quoted command
+    $res = $this->executeRemoteCommand($this, $cmd);
 
     return [
         'ok'     => (int)($res['status'] ?? 1) === 0,
