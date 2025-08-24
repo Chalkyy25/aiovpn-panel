@@ -36,6 +36,7 @@ class VpnServer extends Model
         'deployment_status',
         'deployment_log',
         'status',
+        'status_log_path',
     ];
 
     // ─── Relationships ──────────────────────────────────────────────
