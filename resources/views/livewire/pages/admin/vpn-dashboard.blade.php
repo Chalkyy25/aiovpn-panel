@@ -1,21 +1,26 @@
-{{-- Live-only VPN dashboard (Reverb/Echo driven) --}}
+{{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
+{{-- Real-time VPN dashboard (Reverb/Echo + Alpine) with 5s fallback polling + working Disconnect --}}
+
 @php
-    // seed data for instant UI
+    // Seed: group connections by server, include connection_id so Livewire disconnect works
     $seedUsersByServer = $activeConnections->groupBy('vpn_server_id')->map(function ($group) {
         return $group->map(function ($c) {
             return [
-                'username'     => optional($c->vpnUser)->username ?? 'unknown',
-                'client_ip'    => $c->client_ip,
-                'virtual_ip'   => $c->virtual_ip,
-                'connected_at' => optional($c->connected_at)?->toIso8601String(),
-                'bytes_in'     => $c->bytes_received,
-                'bytes_out'    => $c->bytes_sent,
-                'server_name'  => optional($c->vpnServer)->name,
+                'connection_id' => $c->id, // 👈 needed for Livewire disconnectUser
+                'username'      => optional($c->vpnUser)->username ?? 'unknown',
+                'client_ip'     => $c->client_ip,
+                'virtual_ip'    => $c->virtual_ip,
+                'connected_at'  => optional($c->connected_at)?->toIso8601String(),
+                'bytes_in'      => (int) $c->bytes_received,
+                'bytes_out'     => (int) $c->bytes_sent,
+                'server_name'   => optional($c->vpnServer)->name,
             ];
         })->values();
     })->toArray();
 
-    $seedServerMeta = $servers->mapWithKeys(fn($s) => [$s->id => ['id'=>$s->id,'name'=>$s->name]])->toArray();
+    $seedServerMeta = $servers->mapWithKeys(fn($s) => [
+        $s->id => ['id' => $s->id, 'name' => $s->name]
+    ])->toArray();
 
     $seedTotals = [
         'active_servers'      => $servers->count(),
@@ -24,10 +29,11 @@
     ];
 @endphp
 
-<div x-data="vpnDashboard()"
-     x-init="init(@js($seedServerMeta), @js($seedUsersByServer), @js($seedTotals))"
-     class="space-y-6">
-
+<div
+    x-data="vpnDashboard()"
+    x-init="init(@js($seedServerMeta), @js($seedUsersByServer), @js($seedTotals))"
+    class="space-y-6"
+>
   {{-- Header --}}
   <div class="flex justify-between items-center">
     <div>
@@ -263,6 +269,7 @@ window.vpnDashboard = function () {
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
+    _pollTimer: null,
 
     init(meta, seedUsersByServer, seedTotals) {
       this.serverMeta = meta || {};
@@ -273,10 +280,14 @@ window.vpnDashboard = function () {
       this.totals = seedTotals || this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
+      // Try realtime first; if Echo isn’t ready, start 5s Livewire polling.
       this._waitForEcho().then(() => {
         this._subscribeFleet();
         this._subscribePerServer();
-      }).catch(() => console.warn('[VPN] Echo not available'));
+      }).catch(() => {
+        console.warn('[VPN] Echo not available — starting 5s polling fallback');
+        this._startPolling();
+      });
     },
 
     _waitForEcho() {
@@ -306,14 +317,30 @@ window.vpnDashboard = function () {
       });
     },
 
+    _startPolling() {
+      // Calls Livewire method getLiveStats() every 5s
+      if (this._pollTimer) clearInterval(this._pollTimer);
+      this._pollTimer = setInterval(() => {
+        if (!$wire?.getLiveStats) return;
+        $wire.getLiveStats().then(res => {
+          if (!res) return;
+          this.usersByServer = res.usersByServer || {};
+          this.totals = res.totals || this.computeTotals();
+          this.lastUpdated = new Date().toLocaleTimeString();
+        }).catch(() => {});
+      }, 5000);
+    },
+
     handleEvent(e) {
       const sid = Number(e.server_id ?? e.serverId ?? 0);
       if (!sid) return;
 
-      // users: ['alice'] OR [{ username:'alice' }] OR cn_list: "alice,bob"
+      // users can be ['alice'] or [{ username:'alice', connection_id:123, ... }] or cn_list:"alice,bob"
       let users = [];
       if (Array.isArray(e.users)) {
-        users = (typeof e.users[0] === 'string') ? e.users.map(u => ({ username: String(u) })) : e.users;
+        users = (typeof e.users[0] === 'string')
+          ? e.users.map(u => ({ username: String(u) }))
+          : e.users;
       } else if (typeof e.cn_list === 'string') {
         users = e.cn_list.split(',').map(s => ({ username: s.trim() })).filter(u => u.username);
       }
@@ -347,6 +374,8 @@ window.vpnDashboard = function () {
         (this.usersByServer[sid] || []).forEach(u => {
           rows.push({
             key: `${sid}:${u.username}`,
+            connection_id: u.connection_id ?? null,
+            server_id: Number(sid),
             server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
             username: u.username ?? 'unknown',
             client_ip: u.client_ip ?? null,
@@ -363,7 +392,39 @@ window.vpnDashboard = function () {
     },
 
     selectServer(id) { this.selectedServerId = id; },
-    disconnect(row) { alert('Disconnect not wired yet for ' + row.username); },
+
+    async disconnect(row) {
+      // Prefer Livewire DB-backed disconnect when we have the connection_id
+      if (row.connection_id && $wire?.disconnectUser) {
+        if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
+        try {
+          await $wire.disconnectUser(row.connection_id);
+        } catch (e) {
+          console.error(e);
+          alert('Failed to disconnect via Livewire.');
+        }
+        return;
+      }
+
+      // Fallback: call a controller route that issues an OpenVPN mgmt client-kill by username
+      if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
+      try {
+        const res = await fetch('{{ url('/admin/vpn/disconnect') }}', {
+          method: 'POST',
+          headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username: row.username, server_id: row.server_id }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Disconnect failed');
+        alert(data.message || 'Disconnected.');
+      } catch (e) {
+        console.error(e);
+        alert('Error disconnecting user.');
+      }
+    },
   };
 };
 </script>
