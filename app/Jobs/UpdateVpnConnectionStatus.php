@@ -117,11 +117,19 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    protected function fetchOpenVpnStatusLog(VpnServer $server): string
+    protected function fetchOpenVpnStatusLog(VpnServer|string $server): string
 {
-    $path = '/var/log/openvpn-status.log';
+    if (is_string($server)) {
+        $server = \App\Models\VpnServer::where('ip_address', $server)->first();
+        if (!$server) {
+            Log::error("❌ fetchOpenVpnStatusLog: Server not found for IP: $server");
+            return '';
+        }
+    }
 
+    $path = '/var/log/openvpn-status.log';
     $cmd = 'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"';
+
     $res = $this->executeRemoteCommand($server->ip_address, $cmd);
 
     if (($res['status'] ?? 1) !== 0) {
