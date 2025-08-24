@@ -177,48 +177,36 @@ class VpnServer extends Model
  */
 public function killClientDetailed(string $username): array
 {
-    $u = addcslashes($username, "\\\"`$"); // safe inside double quotes
     $mgmtHost = '127.0.0.1';
     $mgmtPort = 7505;
 
-    // v3 fields: CLIENT_LIST, CN(2), RealAddr, VirtIP, VirtIPv6, BytesRecv, BytesSent,
-    // ConnectedSince, ConnectedEpoch, Username, ClientID(11), PeerID, Cipher
-    $cmd = <<<'BASH'
-bash -lc "
-OUT=$({ printf 'status 3\nquit\n'; } | nc -w 3 __MGMT_HOST__ __MGMT_PORT__ 2>/dev/null)
-CN=\"__CN__\"
+    // Safely inject the CN into a double-quoted script
+    $cn = addcslashes($username, "\\\"`$");
 
-# Trim CRs and match CN robustly; extract first CID
-CID=$(printf '%s\n' \"$OUT\" \
-  | awk -F '\t' -v cn=\"$CN\" '
-      $1==\"CLIENT_LIST\" {
-        g=$2; sub(/\r$/,\"\",g);
-        if (g==cn) { print $11; exit }
-      }')
+    // IMPORTANT: No single quotes anywhere inside this script.
+    $script = "
+OUT=\$({ printf \"status 3\\r\\n\"; printf \"quit\\r\\n\"; } | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
+CN=\"{$cn}\"
 
-if [ -z \"$CID\" ]; then
-  echo \"ERR: no CID for CN: $CN\"
+# Extract first matching CID for this CN from status v3
+CID=\$(printf \"%s\\n\" \"\$OUT\" | awk -F \"\\\\t\" -v cn=\"\$CN\" \"(\\\$1==\\\"CLIENT_LIST\\\"){ g=\\\$2; sub(/\\r\$/, \\\"\\\", g); if (g==cn){ print \\\$11; exit } }\")
+
+if [ -z \"\$CID\" ]; then
+  echo \"ERR: no CID for CN: \$CN\"
   exit 2
 fi
 
-RES=$(printf 'client-kill %s %s\nquit\n' \"$CN\" \"$CID\" | nc -w 3 __MGMT_HOST__ __MGMT_PORT__ 2>/dev/null)
-echo \"REPLY: $RES\"
+RES=\$(printf \"client-kill %s %s\\r\\nquit\\r\\n\" \"\$CN\" \"\$CID\" | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
+echo \"REPLY: \$RES\"
 
-case \"$RES\" in
+case \"\$RES\" in
   *SUCCESS*|*success*) exit 0 ;;
   *) exit 3 ;;
 esac
-"
-BASH;
+";
 
-    // fill placeholders safely
-    $cmd = str_replace(
-        ['__MGMT_HOST__','__MGMT_PORT__','__CN__'],
-        [$mgmtHost, $mgmtPort, $u],
-        $cmd
-    );
-
-    $res = $this->executeRemoteCommand($this, $cmd);
+    // Run via your trait (expects the model instance + command string)
+    $res = $this->executeRemoteCommand($this, "bash -lc " . escapeshellarg($script));
 
     return [
         'ok'     => (int)($res['status'] ?? 1) === 0,
