@@ -157,14 +157,49 @@ class VpnServer extends Model
         return $this->deployment_status === 'succeeded';
     }
     public function killClient(string $username): bool
-    {
-        // OpenVPN mgmt listens on 127.0.0.1:7505 by default (set in your server.conf)
-        $cmd = "echo 'client-kill $username' | nc 127.0.0.1 7505";
+{
+    $res = $this->killClientDetailed($username);
 
-        [$out, $status] = $this->runRemote($cmd);
+    Log::info(sprintf(
+        '🔌 killClient %s@%s -> status=%s out=%s',
+        $username,
+        $this->name,
+        $res['status'],
+        implode(' | ', $res['output'] ?? [])
+    ));
 
-        return $status === 0;
-    }
+    return $res['ok'];
+}
+
+/**
+ * Same as killClient() but returns details for debugging.
+ * @return array{ok:bool,status:int,output:array<string>}
+ */
+public function killClientDetailed(string $username): array
+{
+    // Escape for double-quoted context used below
+    $u = addcslashes($username, "\\\"`$"); // escapes \ " ` $
+
+    // If you later store per-server mgmt host/port, read them here.
+    $mgmtHost = '127.0.0.1';
+    $mgmtPort = 7505;
+
+    // IMPORTANT:
+    // - executeRemoteCommand() wraps the whole $command in single quotes.
+    // - So we only use double quotes inside, which is safe.
+    $cmd = "bash -lc \"printf 'client-kill %s\\nquit\\n' '$u' | nc -w 3 {$mgmtHost} {$mgmtPort}\"";
+
+    // Trait method signature: executeRemoteCommand(VpnServer $server, string $command)
+    $res = $this->executeRemoteCommand($this, $cmd);
+
+    $status = (int)($res['status'] ?? 1);
+
+    return [
+        'ok'     => $status === 0,
+        'status' => $status,
+        'output' => $res['output'] ?? [],
+    ];
+}
 
     // ─── Status Scopes ──────────────────────────────────────────────
 
