@@ -75,7 +75,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // ...keep your other admin routes here (vpn-dashboard, users, servers, etc.)
         // VPN Dashboard
         Route::get('/vpn-dashboard', VpnDashboard::class)->name('vpn-dashboard');
-        Route::post('/vpn/disconnect', VpnDisconnectController::class)->name('admin.vpn.disconnect');
+        Route::post('/vpn/disconnect', VpnDisconnectController::class)->name('vpn.disconnect');
 
         // Users
         Route::get('/users', UserList::class)->name('users.index');
