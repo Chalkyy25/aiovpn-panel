@@ -55,6 +55,19 @@ class OpenVpnStatusParser
      *   'totals' => ['recv' => int, 'sent' => int],
      * ]
      */
+    
+    public function getConnectedUsernames(string $statusFilePath = '/run/openvpn/server.status'): array
+{
+    if (!file_exists($statusFilePath)) {
+        return [];
+    }
+
+    $raw = file_get_contents($statusFilePath);
+    $parsed = self::parse($raw);
+
+    return collect($parsed['clients'])->pluck('username')->unique()->values()->all();
+    }
+
     public static function parse(string $raw): array
     {
         $raw = trim($raw ?? '');
