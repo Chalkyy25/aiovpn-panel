@@ -180,33 +180,28 @@ public function killClientDetailed(string $username): array
     $mgmtHost = '127.0.0.1';
     $mgmtPort = 7505;
 
-    // Safe for inclusion in a double-quoted bash string
+    // Safe for embedding in a double-quoted bash string; the whole script is single-quoted by escapeshellarg().
     $needle = addcslashes($username, "\\\"`$");
 
-    // NOTE: No single quotes inside this script.
+    // IMPORTANT: no single quotes anywhere in this heredoc string.
     $script = "
 OUT=\$({ printf \"status 3\\r\\n\"; printf \"quit\\r\\n\"; } | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
 NEEDLE=\"{$needle}\"
 
-# Find by CN (col 2) OR Username (col 10). Output: CN<TAB>CID
-PAIR=\$(printf \"%s\\n\" \"\$OUT\" | awk -F \"\\t\" -v q=\"\$NEEDLE\" '
-  \$1==\"CLIENT_LIST\" {
-    cn=\$2; gsub(/\\r\$/, \"\", cn);
-    user=\$10; gsub(/\\r\$/, \"\", user);
-    if (cn==q || user==q) { print cn \"\\t\" \$11; exit }
-  }')
+# Find first match by CN (col 2) OR Username (col 10). Output: CN<TAB>CID
+PAIR=\$(printf \"%s\\n\" \"\$OUT\" | awk -F \"\\t\" -v q=\"\$NEEDLE\" \"\$1==\\\"CLIENT_LIST\\\"{cn=\$2; gsub(/\\r\$/,\\\"\\\",cn); user=\$10; gsub(/\\r\$/,\\\"\\\",user); if(cn==q || user==q){print cn \\\"\\t\\\" \$11; exit}}\")
 
 CN=\$(printf \"%s\" \"\$PAIR\" | cut -f1)
 CID=\$(printf \"%s\" \"\$PAIR\" | cut -f2)
 
 if [ -z \"\$CID\" ]; then
   echo \"ERR: no CID for user/CN: \$NEEDLE\"
-  # Helpful dump for debugging (first few CLIENT_LIST lines)
-  printf \"%s\\n\" \"\$OUT\" | awk -F\"\\t\" '\$1==\"CLIENT_LIST\"{print \$2 \"|\" \$10 \"|\" \$11}' | head -n 5
+  # Debug first few client rows: CN|USER|CID
+  printf \"%s\\n\" \"\$OUT\" | awk -F\"\\t\" \"\$1==\\\"CLIENT_LIST\\\"{print \$2 \\\"|\\\" \$10 \\\"|\\\" \$11}\" | head -n 5
   exit 2
 fi
 
-# Try CN+CID first (preferred)
+# Try CN+CID (preferred)
 RES=\$(printf \"client-kill %s %s\\r\\nquit\\r\\n\" \"\$CN\" \"\$CID\" | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
 echo \"REPLY1: \$RES\"
 case \"\$RES\" in *SUCCESS*|*success*) exit 0 ;; esac
@@ -224,7 +219,7 @@ case \"\$RES\" in *SUCCESS*|*success*) exit 0 ;; esac
 exit 3
 ";
 
-    // Run on the box via your trait (note: your trait expects the model instance first)
+    // Run via your trait (expects the model instance first)
     $res = $this->executeRemoteCommand($this, "bash -lc " . escapeshellarg($script));
 
     return [
