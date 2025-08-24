@@ -28,7 +28,7 @@ trait ExecutesRemoteCommands
         }
 
         // Build final command
-        $sshCommand = "$sshBaseCommand '$command' 2>&1";
+        $sshCommand = $sshBaseCommand . ' ' . $command . ' 2>&1';
 
         // Use proc_open for better error handling
         $descriptorspec = [
