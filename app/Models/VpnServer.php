@@ -177,49 +177,69 @@ class VpnServer extends Model
  */
 public function killClientDetailed(string $username): array
 {
-    $mgmtHost = '127.0.0.1';
-    $mgmtPort = 7505;
+    $mgmtHost   = '127.0.0.1';
+    $mgmtPort   = 7505;
+    $statusFile = '/run/openvpn/server.status';
 
-    // Safe for embedding in a double-quoted bash string; the whole script is single-quoted by escapeshellarg().
+    // Safe to embed in double-quoted bash
     $needle = addcslashes($username, "\\\"`$");
 
-    // IMPORTANT: no single quotes anywhere in this heredoc string.
-    $script = "
-OUT=\$({ printf \"status 3\\r\\n\"; printf \"quit\\r\\n\"; } | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
-NEEDLE=\"{$needle}\"
+    $script = <<<'BASH'
+NEEDLE="__NEEDLE__"
+STATUS="__STATUS__"
+MGMT_HOST="__MGMT_HOST__"
+MGMT_PORT="__MGMT_PORT__"
 
-# Find first match by CN (col 2) OR Username (col 10). Output: CN<TAB>CID
-PAIR=\$(printf \"%s\\n\" \"\$OUT\" | awk -F \"\\t\" -v q=\"\$NEEDLE\" \"\$1==\\\"CLIENT_LIST\\\"{cn=\$2; gsub(/\\r\$/,\\\"\\\",cn); user=\$10; gsub(/\\r\$/,\\\"\\\",user); if(cn==q || user==q){print cn \\\"\\t\\\" \$11; exit}}\")
+# 1) Find CN + CID from status v3 file
+if [ ! -r "$STATUS" ]; then
+  echo "ERR: status file not readable: $STATUS"
+  exit 4
+fi
 
-CN=\$(printf \"%s\" \"\$PAIR\" | cut -f1)
-CID=\$(printf \"%s\" \"\$PAIR\" | cut -f2)
+# v3 columns: 2=CN, 10=Username, 11=CID
+PAIR=$(awk -F "\t" -v q="$NEEDLE" '
+  $1=="CLIENT_LIST" {
+    cn=$2; sub(/\r$/, "", cn);
+    user=$10; sub(/\r$/, "", user);
+    if (cn==q || user==q) { print cn "\t" $11; exit }
+  }' "$STATUS")
 
-if [ -z \"\$CID\" ]; then
-  echo \"ERR: no CID for user/CN: \$NEEDLE\"
-  # Debug first few client rows: CN|USER|CID
-  printf \"%s\\n\" \"\$OUT\" | awk -F\"\\t\" \"\$1==\\\"CLIENT_LIST\\\"{print \$2 \\\"|\\\" \$10 \\\"|\\\" \$11}\" | head -n 5
+CN=$(printf "%s" "$PAIR" | cut -f1)
+CID=$(printf "%s" "$PAIR" | cut -f2)
+
+if [ -z "$CID" ]; then
+  echo "ERR: no CID for user/CN: $NEEDLE"
+  # Debug a few rows (CN|USER|CID)
+  awk -F "\t" '$1=="CLIENT_LIST"{print $2 "|" $10 "|" $11}' "$STATUS" | head -n 5
   exit 2
 fi
 
-# Try CN+CID (preferred)
-RES=\$(printf \"client-kill %s %s\\r\\nquit\\r\\n\" \"\$CN\" \"\$CID\" | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
-echo \"REPLY1: \$RES\"
-case \"\$RES\" in *SUCCESS*|*success*) exit 0 ;; esac
+# 2) Send mgmt command with tiny delay so reply flushes
+send_cmd() {
+  # $1 = command (no CRLF), $2 = label
+  RES=$({ printf "%s\r\n" "$1"; sleep 0.3; printf "quit\r\n"; } \
+        | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)
+  echo "$2: $RES"
+  case "$RES" in *SUCCESS*|*success*) return 0 ;; esac
+  return 1
+}
 
-# Fallback: some builds accept just CID
-RES=\$(printf \"client-kill %s\\r\\nquit\\r\\n\" \"\$CID\" | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
-echo \"REPLY2: \$RES\"
-case \"\$RES\" in *SUCCESS*|*success*) exit 0 ;; esac
+# Your daemon accepts CID-only — try that FIRST, then others
+send_cmd "client-kill $CID"     "REPLY1" || \
+send_cmd "client-kill $CN $CID" "REPLY2" || \
+send_cmd "kill $CID"            "REPLY3" || {
+  echo "ERR: mgmt did not return SUCCESS"
+  exit 3
+}
+BASH;
 
-# Older fallback
-RES=\$(printf \"kill %s\\r\\nquit\\r\\n\" \"\$CID\" | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
-echo \"REPLY3: \$RES\"
-case \"\$RES\" in *SUCCESS*|*success*) exit 0 ;; esac
+    $script = str_replace(
+        ['__NEEDLE__', '__STATUS__', '__MGMT_HOST__', '__MGMT_PORT__'],
+        [$needle, $statusFile, $mgmtHost, $mgmtPort],
+        $script
+    );
 
-exit 3
-";
-
-    // Run via your trait (expects the model instance first)
+    // IMPORTANT: your ExecutesRemoteCommands expects the model as the first arg
     $res = $this->executeRemoteCommand($this, "bash -lc " . escapeshellarg($script));
 
     return [
