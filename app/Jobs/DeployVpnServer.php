@@ -201,15 +201,45 @@ $err = '';
 $streams = [$pipes[1], $pipes[2]];
 $map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
 
+$start = time();
+$maxDuration = 180; // Max loop duration in seconds
+
 while (!empty($streams)) {
+    // Timeout safety to prevent infinite loop
+    if ((time() - $start) > $maxDuration) {
+        $this->failWith("❌ Timeout while reading deployment output");
+        foreach ($streams as $s) fclose($s);
+        proc_terminate($proc);
+        return;
+    }
+
     $read = $streams; $write = $except = null;
-    if (stream_select($read, $write, $except, 10) === false) break;
+    $select = @stream_select($read, $write, $except, 10);
+
+    if ($select === false) {
+        $this->failWith("❌ stream_select() failed during SSH session");
+        foreach ($streams as $s) fclose($s);
+        proc_terminate($proc);
+        return;
+    }
+
     foreach ($read as $r) {
         $line = fgets($r);
-        if ($line === false) { fclose($r); unset($streams[array_search($r, $streams, true)]); continue; }
+
+        if ($line === false) {
+            fclose($r);
+            unset($streams[array_search($r, $streams, true)]);
+            continue;
+        }
+
         $clean = rtrim($line, "\r\n");
         $this->vpnServer->appendLog($clean);
-        if ($map[(int)$r] === 'OUT') $out .= $line; else $err .= $line;
+
+        if ($map[(int) $r] === 'OUT') {
+            $out .= $line;
+        } else {
+            $err .= $line;
+        }
     }
 }
 
