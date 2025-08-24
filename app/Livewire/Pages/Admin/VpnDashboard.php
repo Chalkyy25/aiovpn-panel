@@ -10,6 +10,8 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Application;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use App\Services\OpenVpnStatusParser;
+use phpseclib3\Net\SSH2;
 
 #[Layout('layouts.app')]
 class VpnDashboard extends Component
@@ -88,6 +90,31 @@ class VpnDashboard extends Component
             session()->flash('message', "User {$connection->vpnUser->username} has been disconnected from {$connection->vpnServer->name}");
         }
     }
+    
+    public function getLiveClientsProperty(): array
+{
+    if (!$this->selectedServerId) return [];
+
+    $server = VpnServer::find($this->selectedServerId);
+
+    if (!$server || !$server->ip_address || !$server->ssh_user || !$server->ssh_password) {
+        return [];
+    }
+
+    try {
+        $ssh = new SSH2($server->ip_address);
+        if (!$ssh->login($server->ssh_user, $server->ssh_password)) {
+            return [];
+        }
+
+        $raw = OpenVpnStatusParser::fetchAnyStatus($ssh);
+        $parsed = OpenVpnStatusParser::parse($raw);
+
+        return $parsed['clients'] ?? [];
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
 
     public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
     {
