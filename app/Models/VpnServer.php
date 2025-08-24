@@ -161,9 +161,10 @@ class VpnServer extends Model
     $res = $this->killClientDetailed($username);
 
     Log::info(sprintf(
-        '🔌 killClient %s@%s -> status=%s out=%s',
+        '🔌 killClient %s@%s -> ok=%s status=%s out=%s',
         $username,
         $this->name,
+        $res['ok'] ? '1' : '0',
         $res['status'],
         implode(' | ', $res['output'] ?? [])
     ));
@@ -172,31 +173,44 @@ class VpnServer extends Model
 }
 
 /**
- * Same as killClient() but returns details for debugging.
+ * Returns details so the controller can show meaningful errors.
  * @return array{ok:bool,status:int,output:array<string>}
  */
 public function killClientDetailed(string $username): array
 {
-    // Escape for double-quoted context used below
-    $u = addcslashes($username, "\\\"`$"); // escapes \ " ` $
-
-    // If you later store per-server mgmt host/port, read them here.
+    $u = addcslashes($username, "\\\"`$"); // safe inside double quotes
     $mgmtHost = '127.0.0.1';
     $mgmtPort = 7505;
 
-    // IMPORTANT:
-    // - executeRemoteCommand() wraps the whole $command in single quotes.
-    // - So we only use double quotes inside, which is safe.
-    $cmd = "bash -lc \"printf 'client-kill %s\\nquit\\n' '$u' | nc -w 3 {$mgmtHost} {$mgmtPort}\"";
+    // One SSH command:
+    // 1) Get STATUS v3
+    // 2) Extract first matching CID for CN==username (field 2 is CN, field 11 is CID in v3)
+    // 3) Issue client-kill CN CID
+    // 4) Echo mgmt reply so we can check for SUCCESS
+    $cmd = <<<BASH
+bash -lc "
+OUT=\$({ printf 'status 3\\nquit\\n'; } | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
+CN=\"{$u}\"
+CID=\$(printf '%s\\n' \"\$OUT\" | awk -F '\\t' -v cn=\"\$CN\" '\$1==\"CLIENT_LIST\" && \$2==cn {print \$11; exit}')
+if [ -z \"\$CID\" ]; then
+  echo 'ERR: no CID for CN: '\"\$CN\"
+  exit 2
+fi
+RES=\$(printf 'client-kill %s %s\\nquit\\n' \"\$CN\" \"\$CID\" | nc -w 3 {$mgmtHost} {$mgmtPort} 2>/dev/null)
+echo \"REPLY: \$RES\"
+case \"\$RES\" in
+  *SUCCESS*|*kill*success*|*client-kill*) exit 0 ;;
+  *) exit 3 ;;
+esac
+"
+BASH;
 
-    // Trait method signature: executeRemoteCommand(VpnServer $server, string $command)
+    // Executes via your trait (expects VpnServer + string)
     $res = $this->executeRemoteCommand($this, $cmd);
 
-    $status = (int)($res['status'] ?? 1);
-
     return [
-        'ok'     => $status === 0,
-        'status' => $status,
+        'ok'     => (int)($res['status'] ?? 1) === 0,
+        'status' => (int)($res['status'] ?? 1),
         'output' => $res['output'] ?? [],
     ];
 }
