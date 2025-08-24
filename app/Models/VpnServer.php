@@ -96,10 +96,10 @@ class VpnServer extends Model
         try {
             // Count client lines between "Common Name" and "ROUTING TABLE"
             $result = $this->executeRemoteCommand(
-                $this->ip_address,
-                "awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l"
-            );
-
+            $this,
+            "awk '/Common Name/{flag=1;next}/ROUTING TABLE/{flag=0}flag' $statusPath | wc -l"
+        );
+        
             if ($result['status'] === 0 && isset($result['output'][0])) {
                 return (int) trim($result['output'][0]);
             }
