@@ -127,7 +127,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    $path = '/var/log/openvpn-status.log';
+    $path = '/run/log/openvpn-status.log';
     $cmd = 'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"';
 
     $res = $this->executeRemoteCommand($server, $cmd);
