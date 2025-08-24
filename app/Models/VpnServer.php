@@ -91,7 +91,7 @@ class VpnServer extends Model
             return 0;
         }
 
-        $statusPath = '/run/log/openvpn-status.log'; // Updated to match deployment script configuration
+        $statusPath = '/run/openvpn/server.status'; // Updated to match deployment script configuration
 
         try {
             // Count client lines between "Common Name" and "ROUTING TABLE"
