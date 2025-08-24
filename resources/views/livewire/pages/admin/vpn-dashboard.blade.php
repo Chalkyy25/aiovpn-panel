@@ -394,17 +394,27 @@ window.vpnDashboard = function () {
     selectServer(id) { this.selectedServerId = id; },
 
     async disconnect(row) {
-      // Prefer Livewire DB-backed disconnect when we have the connection_id
-      if (row.connection_id && $wire?.disconnectUser) {
-        if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
-        try {
-          await $wire.disconnectUser(row.connection_id);
-        } catch (e) {
-          console.error(e);
-          alert('Failed to disconnect via Livewire.');
-        }
-        return;
-      }
+  if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
+
+  try {
+    const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username: row.username, server_id: row.server_id }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Disconnect failed');
+
+    alert(data.message);
+  } catch (e) {
+    console.error(e);
+    alert('Error disconnecting user.');
+  }
+}
 
       // Fallback: call a controller route that issues an OpenVPN mgmt client-kill by username
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
