@@ -1,5 +1,7 @@
 <?php
 
+// app/Http/Controllers/VpnDisconnectController.php
+
 namespace App\Http\Controllers;
 
 use App\Models\VpnServer;
@@ -16,12 +18,18 @@ class VpnDisconnectController extends Controller
 
         $server = VpnServer::findOrFail($data['server_id']);
 
-        if ($server->killClient($data['username'])) {
+        $res = $server->killClientDetailed($data['username']);
+
+        if ($res['ok']) {
             return response()->json([
-                'message' => "✅ User {$data['username']} disconnected from {$server->name}"
+                'message' => "✅ Disconnected {$data['username']} from {$server->name}",
             ]);
         }
 
-        return response()->json(['message' => '❌ Failed to disconnect user'], 500);
+        return response()->json([
+            'message' => '❌ Disconnect failed',
+            'status'  => $res['status'],
+            'output'  => $res['output'],
+        ], 500);
     }
 }
