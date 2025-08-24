@@ -139,5 +139,21 @@
       }
     }
   </script>
+<script>
+document.addEventListener("livewire:navigated", () => {
+    const root = document.querySelector('[wire\\:id]');
+    if (root) {
+        const comp = Livewire.find(root.getAttribute('wire:id'));
+        window.$wire = new Proxy({}, {
+            get(_, method) {
+                return (...args) => comp.call(method, ...args);
+            }
+        });
+        console.log("✅ $wire proxy attached to", comp);
+    } else {
+        console.warn("⚠️ No Livewire root component found for $wire proxy");
+    }
+});
+</script>
 </body>
 </html>
