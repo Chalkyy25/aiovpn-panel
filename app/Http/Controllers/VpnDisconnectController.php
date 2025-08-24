@@ -17,7 +17,6 @@ class VpnDisconnectController extends Controller
         ]);
 
         $server = VpnServer::findOrFail($data['server_id']);
-
         $res = $server->killClientDetailed($data['username']);
 
         if ($res['ok']) {
@@ -26,6 +25,7 @@ class VpnDisconnectController extends Controller
             ]);
         }
 
+        // include remote output for quick diagnosis
         return response()->json([
             'message' => '❌ Disconnect failed',
             'status'  => $res['status'],
