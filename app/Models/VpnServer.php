@@ -177,32 +177,30 @@ class VpnServer extends Model
  */
 public function killClientDetailed(string $username): array
 {
-    $mgmtHost   = '127.0.0.1';
-    $mgmtPort   = 7505;
-    $statusFile = '/run/openvpn/server.status';
+    $mgmtHost = '127.0.0.1';
+    $mgmtPort = 7505;
 
-    // Safe to embed in double-quoted bash
+    // If you have a per-server column, use it; otherwise default:
+    $statusFile = $this->status_log_path ?: '/run/openvpn/server.status';
+
+    // Safe to embed into double-quoted bash
     $needle = addcslashes($username, "\\\"`$");
 
+    // IMPORTANT: this script contains NO single quotes.
     $script = <<<'BASH'
 NEEDLE="__NEEDLE__"
 STATUS="__STATUS__"
 MGMT_HOST="__MGMT_HOST__"
 MGMT_PORT="__MGMT_PORT__"
 
-# 1) Find CN + CID from status v3 file
+# 1) Find CN + CID from status v3 file (TAB-separated)
 if [ ! -r "$STATUS" ]; then
   echo "ERR: status file not readable: $STATUS"
   exit 4
 fi
 
 # v3 columns: 2=CN, 10=Username, 11=CID
-PAIR=$(awk -F "\t" -v q="$NEEDLE" '
-  $1=="CLIENT_LIST" {
-    cn=$2; sub(/\r$/, "", cn);
-    user=$10; sub(/\r$/, "", user);
-    if (cn==q || user==q) { print cn "\t" $11; exit }
-  }' "$STATUS")
+PAIR=$(awk -F "\\t" -v q="$NEEDLE" "$1==\"CLIENT_LIST\"{ cn=$2; sub(/\\r$/, \"\", cn); user=$10; sub(/\\r$/, \"\", user); if(cn==q || user==q){ print cn \"\\t\" $11; exit } }" "$STATUS")
 
 CN=$(printf "%s" "$PAIR" | cut -f1)
 CID=$(printf "%s" "$PAIR" | cut -f2)
@@ -210,14 +208,14 @@ CID=$(printf "%s" "$PAIR" | cut -f2)
 if [ -z "$CID" ]; then
   echo "ERR: no CID for user/CN: $NEEDLE"
   # Debug a few rows (CN|USER|CID)
-  awk -F "\t" '$1=="CLIENT_LIST"{print $2 "|" $10 "|" $11}' "$STATUS" | head -n 5
+  awk -F "\\t" "$1==\"CLIENT_LIST\"{ printf(\"%s|%s|%s\\n\", $2, $10, $11) }" "$STATUS" | head -n 5
   exit 2
 fi
 
-# 2) Send mgmt command with tiny delay so reply flushes
+# 2) Send mgmt command with a tiny delay so reply flushes
 send_cmd() {
   # $1 = command (no CRLF), $2 = label
-  RES=$({ printf "%s\r\n" "$1"; sleep 0.3; printf "quit\r\n"; } \
+  RES=$({ printf "%s\\r\\n" "$1"; sleep 0.3; printf "quit\\r\\n"; } \
         | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)
   echo "$2: $RES"
   case "$RES" in *SUCCESS*|*success*) return 0 ;; esac
@@ -233,13 +231,14 @@ send_cmd "kill $CID"            "REPLY3" || {
 }
 BASH;
 
+    // Inject values
     $script = str_replace(
         ['__NEEDLE__', '__STATUS__', '__MGMT_HOST__', '__MGMT_PORT__'],
         [$needle, $statusFile, $mgmtHost, $mgmtPort],
         $script
     );
 
-    // IMPORTANT: your ExecutesRemoteCommands expects the model as the first arg
+    // ExecutesRemoteCommands requires the model instance as arg #1
     $res = $this->executeRemoteCommand($this, "bash -lc " . escapeshellarg($script));
 
     return [
