@@ -6,7 +6,7 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{{ config('app.name','AIO VPN') }}</title>
 
-  {{-- Apply dark theme ASAP (no Alpine needed up here) --}}
+  {{-- Force dark theme ASAP (no Alpine needed) --}}
   <script>
     (function () {
       try {
@@ -16,12 +16,10 @@
     })();
   </script>
 
-  {{-- Styles first --}}
+  {{-- Styles FIRST --}}
   @vite(['resources/css/app.css'])
   @livewireStyles
   @stack('styles')
-  @livewireScripts
-  @livewireScriptConfig
 
   <style>[x-cloak]{display:none!important}</style>
 </head>
@@ -42,10 +40,11 @@
         <button class="hidden md:inline-flex p-2 rounded hover:bg-white/10"
                 @click="toggleCollapse()" :aria-expanded="!sidebarCollapsed"
                 :title="sidebarCollapsed ? 'Expand' : 'Collapse'">
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                   :d="sidebarCollapsed ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'"/>
           </svg>
+          <span class="sr-only">Toggle sidebar</span>
         </button>
       </div>
 
@@ -55,12 +54,12 @@
     {{-- ===== Mobile drawer ===== --}}
     <div class="md:hidden" x-show="sidebarOpen" x-cloak>
       <div class="fixed inset-0 bg-gray-900/95">
-        <div class="absolute inset-0 bg-black/30" @click="sidebarOpen=false"></div>
-        <aside class="absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3">
+        <div class="absolute inset-0 bg-black/30" @click="sidebarOpen=false" aria-hidden="true"></div>
+        <aside class="absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3" role="dialog" aria-modal="true">
           <div class="h-14 flex items-center justify-between">
             <span class="font-semibold">AIO VPN</span>
             <button class="p-2 rounded hover:bg-white/10" @click="sidebarOpen=false" aria-label="Close">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
@@ -76,7 +75,7 @@
         <div class="flex items-center gap-2">
           <button class="md:hidden p-2 rounded hover:bg-white/10"
                   @click="sidebarOpen=true" aria-label="Open menu">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M4 6h16M4 12h16M4 18h16"/>
             </svg>
@@ -113,9 +112,13 @@
     </div>
   </div>
 
-  {{-- JS LAST, in this order --}}
+  {{-- JS LAST — your app JS first, then Livewire scripts --}}
   @vite(['resources/js/app.js'])
   @stack('scripts')
+
+  {{-- Livewire v3 scripts MUST be after your app.js --}}
+  @livewireScripts
+  @livewireScriptConfig
 
   <script>
     function panelLayout(){
