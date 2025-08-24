@@ -397,24 +397,26 @@ window.vpnDashboard = function () {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
       try {
-        const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({ username: row.username, server_id: row.server_id }),
-        });
+  const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
+    method: 'POST',
+    headers: {
+      'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ username: row.username, server_id: row.server_id }),
+  });
 
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Disconnect failed');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const details = Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error');
+    throw new Error(details);
+  }
 
-        alert(data.message || 'Disconnected.');
-      } catch (e) {
-        console.error(e);
-        alert('Error disconnecting user.');
-      }
+  alert(data.message || 'Disconnected.');
+} catch (e) {
+  console.error(e);
+  alert('Error disconnecting user.\n\n' + (e.message || ''));
+}
     },
   };
 };
