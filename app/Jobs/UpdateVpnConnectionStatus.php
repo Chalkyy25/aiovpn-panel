@@ -130,7 +130,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     $path = '/var/log/openvpn-status.log';
     $cmd = 'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"';
 
-    $res = $this->executeRemoteCommand($server->ip_address, $cmd);
+    $res = $this->executeRemoteCommand($server, $cmd);
 
     if (($res['status'] ?? 1) !== 0) {
         Log::warning("⚠️ {$server->name}: SSH error when checking {$path}");
