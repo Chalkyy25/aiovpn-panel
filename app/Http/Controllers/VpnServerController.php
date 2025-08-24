@@ -14,20 +14,31 @@ class VpnServerController extends Controller
     }
 
     public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'ip' => 'required|ip',
-            'protocol' => 'required|in:openvpn,wireguard',
-        ]);
+{
+    $validated = $request->validate([
+        'name'      => 'required|string|max:255',
+        'ip_address'=> 'required|ip',
+        'protocol'  => 'required|in:openvpn,wireguard',
+    ]);
 
-        $server = VpnServer::create($validated);
+    $server = \App\Models\VpnServer::create([
+        'name'        => $validated['name'],
+        'ip_address'  => $validated['ip_address'],
+        'protocol'    => $validated['protocol'],
+        // optional sane defaults:
+        'ssh_port'    => 22,
+        'ssh_user'    => 'root',
+        'ssh_type'    => 'key',
+        'deployment_status' => 'queued',
+        'status'      => 'pending',
+    ]);
 
-        DeployVpnServer::dispatch($server);
+    \App\Jobs\DeployVpnServer::dispatch($server);
 
-        return redirect()->route('admin.servers.show', $server->id)
-            ->with('success', 'Server created and deployment started.');
-    }
+    return redirect()
+        ->route('admin.servers.show', $server->id)
+        ->with('success', 'Server created and deployment started.');
+}
 
     public function show($id)
     {
