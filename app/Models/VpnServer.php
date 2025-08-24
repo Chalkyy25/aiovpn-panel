@@ -156,6 +156,15 @@ class VpnServer extends Model
         // (swap this logic later to a health-check flag if you want)
         return $this->deployment_status === 'succeeded';
     }
+    public function killClient(string $username): bool
+    {
+        // OpenVPN mgmt listens on 127.0.0.1:7505 by default (set in your server.conf)
+        $cmd = "echo 'client-kill $username' | nc 127.0.0.1 7505";
+
+        [$out, $status] = $this->runRemote($cmd);
+
+        return $status === 0;
+    }
 
     // ─── Status Scopes ──────────────────────────────────────────────
 
