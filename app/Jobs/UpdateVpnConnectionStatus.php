@@ -91,6 +91,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
             // Push snapshot to API (DB + Echo handled there)
             $this->pushSnapshot($server->id, now(), $usernames);
+            Log::info("📤 pushSnapshot →", ['server' => $serverId, 'users' => $usernames]);
 
         } catch (\Throwable $e) {
             Log::error("❌ {$server->name}: sync failed – {$e->getMessage()}");
