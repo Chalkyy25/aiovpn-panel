@@ -17,6 +17,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class UpdateVpnConnectionStatus implements ShouldQueue
 {
@@ -255,25 +256,27 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
+protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
 {
-    // Helpful log so you can see the broadcast attempt in laravel.log
-    Log::info('🔊 broadcasting mgmt.update', [
+    Log::info('🔊 pushing mgmt.update via API', [
         'server' => $serverId,
         'ts'     => $ts->format(DATE_ATOM),
         'count'  => count($usernames),
         'users'  => $usernames,
-        'source' => 'sync-job',
     ]);
 
-    // IMPORTANT: pass the usernames ARRAY as the 3rd arg so the Event
-    // fills `users[]`, `clients` and derives `cn_list` for the UI.
-    broadcast(new ServerMgmtEvent(
-        $serverId,
-        $ts->format(DATE_ATOM),
-        $usernames,   // 👈 array, not count
-        null,         // let the event derive cn_list
-        'sync-job'
-    ));
+    try {
+        Http::withToken(config('services.panel.token'))
+            ->acceptJson()
+            ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
+                'status' => 'mgmt',
+                'ts'     => $ts->format(DATE_ATOM),
+                'users'  => array_map(fn($u) => ['username' => $u], $usernames),
+            ])
+            ->throw();
+    } catch (\Throwable $e) {
+        Log::error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
+    }
+}
 }
 }
