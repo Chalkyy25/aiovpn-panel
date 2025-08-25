@@ -60,43 +60,43 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     protected function syncOneServer(VpnServer $server): void
 {
     try {
-        [$raw, $source] = $this->fetchStatusWithSource($server);
+        Log::info("🟢 ENTERED syncOneServer for {$server->name}");
 
-        if ($raw === '') {
-            Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
-            if ($this->strictOfflineOnMissing) {
-                $this->pushSnapshot($server->id, now(), []);
-            }
-            return;
-        }
+[$raw, $source] = $this->fetchStatusWithSource($server);
 
-        // 🔎 log the first 200 chars of raw
-        Log::info("DEBUG: raw mgmt output", [
-            'server' => $server->id,
-            'len'    => strlen($raw),
-            'head'   => substr($raw, 0, 200),
-        ]);
+Log::info("🟢 After fetchStatusWithSource", [
+    'raw_len' => strlen($raw),
+    'src'     => $source,
+]);
 
-        $parsed = OpenVpnStatusParser::parse($raw);
+if ($raw === '') {
+    Log::info("🟡 {$server->name}: RAW EMPTY, skipping");
+    return;
+}
 
-        // 🔎 log parse result summary
-        Log::info("DEBUG: parsed result", [
-            'server' => $server->id,
-            'clients_count' => count($parsed['clients'] ?? []),
-            'first_client'  => $parsed['clients'][0] ?? null,
-        ]);
+$parsed = OpenVpnStatusParser::parse($raw);
 
-        $usernames = [];
-        foreach ($parsed['clients'] as $c) {
-            $username = (string)($c['username'] ?? '');
-            if ($username !== '') $usernames[] = $username;
-        }
+Log::info("🟢 After parse", [
+    'clients_count' => count($parsed['clients'] ?? []),
+    'first_client'  => $parsed['clients'][0] ?? null,
+]);
 
-        // 🔎 always log what we collected, even if empty
-        Log::info("DEBUG: collected usernames", [
-            'server' => $server->id,
-            'usernames' => $usernames,
-        ]);
+$usernames = [];
+foreach ($parsed['clients'] as $c) {
+    $usernames[] = $c['username'] ?? '??';
+}
+
+Log::info("🟢 Collected usernames", [
+    'count' => count($usernames),
+    'names' => $usernames,
+    'verboseFlag' => $this->verboseMgmtLog,
+]);
+
+Log::info("APPEND_LOG: forced line regardless of flag", [
+    'server' => $server->id,
+    'ts'     => now()->toIso8601String(),
+    'names'  => $usernames,
+]);
 
         if ($this->verboseMgmtLog) {
             Log::info(sprintf(
