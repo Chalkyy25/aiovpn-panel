@@ -187,6 +187,18 @@ Route::prefix('client')->name('client.')->group(function () {
     });
 });
 
+// routes/web.php (remove after testing)
+Route::get('/debug/ping/{id}', function (int $id) {
+    broadcast(new \App\Events\ServerMgmtEvent(
+        $id,
+        now()->toIso8601String(),
+        ['alice','bob'],
+        null,
+        'debug-route'
+    ));
+    return 'ok';
+});
+
 
 // ============================
 // ✅ Profile Settings
