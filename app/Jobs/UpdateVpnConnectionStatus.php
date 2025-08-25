@@ -128,7 +128,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    // 1) Try common status-file paths first
+    // 1) Try status files first (several common locations)
     $candidates = array_values(array_unique(array_filter([
         $server->status_log_path ?? null,
         '/run/openvpn/server.status',
@@ -141,40 +141,49 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         $cmd = 'bash -lc ' . escapeshellarg(
             'test -s ' . escapeshellarg($path) . ' && cat ' . escapeshellarg($path) . ' || echo "__NOFILE__"'
         );
+
         $res = $this->executeRemoteCommand($server, $cmd);
+
         if (($res['status'] ?? 1) === 0) {
             $out = trim(implode("\n", $res['output'] ?? []));
             if ($out !== '' && $out !== '__NOFILE__') {
                 Log::info("📄 {$server->name}: using {$path}");
                 return $out;
-            } else {
-                Log::warning("⚠️ {$server->name}: {$path} not found or empty");
             }
+            Log::warning("⚠️ {$server->name}: {$path} not found or empty");
         } else {
             Log::warning("⚠️ {$server->name}: SSH error when reading {$path}");
         }
     }
 
-    // 2) Fallback to mgmt socket (the command you tested manually)
+    // 2) Fallback to management socket (CRLF + tiny sleep + -w 2; keep output!)
     $mgmtPort = (int)($server->mgmt_port ?? 7505);
-    $mgmtCmd = 'bash -lc ' . escapeshellarg(
-        '{ printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } '
-      . '| nc -w 2 127.0.0.1 ' . $mgmtPort . ' 2>/dev/null'
-    );
+
+    $mgmtCmd = 'bash -lc ' . escapeshellarg(implode(' && ', [
+        // ensure pipeline failures are not masked
+        'set -o pipefail',
+        // do the exact nc dance that works on your box
+        '{ printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; }'
+        . ' | nc -w 2 127.0.0.1 ' . $mgmtPort
+    ]));
 
     $res = $this->executeRemoteCommand($server, $mgmtCmd);
-    if (($res['status'] ?? 1) === 0) {
-        $out = trim(implode("\n", $res['output'] ?? []));
-        if ($out !== '' && str_contains($out, 'OpenVPN Management Interface')) {
+
+    $out = trim(implode("\n", $res['output'] ?? []));
+    if (($res['status'] ?? 1) === 0 && $out !== '') {
+        // sanity: should include the mgmt banner
+        if (str_contains($out, 'OpenVPN Management Interface') || str_contains($out, "\tCLIENT_LIST\t")) {
             Log::info("📡 {$server->name}: read status via mgmt :{$mgmtPort}");
             return $out;
         }
     }
-    Log::warning("⚠️ {$server->name}: mgmt socket read failed");
+
+    // TEMP: add one-line debug so we can see what came back
+    Log::warning("⚠️ {$server->name}: mgmt socket read failed" . ($out ? " (got ".min(80, strlen($out))." bytes)" : ' (no output)'));
+
     Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
     return '';
 }
-
     protected function upsertConnections(VpnServer $server, array $connected): void
     {
         DB::transaction(function () use ($server, $connected) {
