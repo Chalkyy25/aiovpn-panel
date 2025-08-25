@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Events\ServerMgmtEvent;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
@@ -25,8 +24,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
     protected ?int $serverId;
     protected bool $strictOfflineOnMissing = false;
-
-    /** Toggle noisy per-tick mgmt log line. Also controllable via VPN_LOG_VERBOSE=true */
     protected bool $verboseMgmtLog;
 
     public function __construct(?int $serverId = null)
@@ -96,7 +93,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 ];
             }
 
-            // 🔊 live mgmt log line (compact)
             if ($this->verboseMgmtLog) {
                 $names = implode(',', array_keys($connectedByUsername));
                 Log::info(sprintf(
@@ -111,7 +107,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             // Persist + prune stale rows
             $connectedIds = $this->upsertConnectionsByUsername($server->id, $connectedByUsername);
 
-            // Optional counters (ignore if columns missing)
+            // Optional counters
             try {
                 $server->forceFill([
                     'online_users' => count($connectedIds),
@@ -119,7 +115,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 ])->saveQuietly();
             } catch (\Throwable) {}
 
-            // Broadcast names-only snapshot (keeps Alpine the same)
+            // Snapshot → API → DB + Echo stay consistent
             $this->broadcastSnapshot($server->id, now(), array_keys($connectedByUsername));
 
         } catch (\Throwable $e) {
@@ -131,9 +127,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    /**
-     * Get status and tell where it came from: ['raw' => string, 'source' => 'mgmt:PORT'|'/path'|'none']
-     */
     protected function fetchStatusWithSource(VpnServer $server): array
     {
         $mgmtPort = (int)($server->mgmt_port ?? 7505);
@@ -150,7 +143,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             return [$out, "mgmt:{$mgmtPort}"];
         }
 
-        // 2) File paths (v3 first, then v2)
+        // 2) Fallback status files
         $candidates = array_values(array_unique(array_filter([
             $server->status_log_path ?? null,
             '/run/openvpn/server.status',
@@ -164,24 +157,17 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 'test -s ' . escapeshellarg($path) . ' && cat ' . escapeshellarg($path) . ' || echo "__NOFILE__"'
             );
             $res = $this->executeRemoteCommand($server, $cmd);
-            if (($res['status'] ?? 1) !== 0) {
-                Log::warning("⚠️ {$server->name}: {$path} not found or empty");
-                continue;
-            }
+            if (($res['status'] ?? 1) !== 0) continue;
             $data = trim(implode("\n", $res['output'] ?? []));
             if ($data !== '' && $data !== '__NOFILE__') {
                 Log::info("📄 {$server->name}: using {$path}");
                 return [$data, $path];
             }
-            Log::warning("⚠️ {$server->name}: {$path} not found or empty");
         }
 
         return ['', 'none'];
     }
 
-    /**
-     * Upsert current connections by username and disconnect everything else on this server.
-     */
     protected function upsertConnectionsByUsername(int $serverId, array $connectedByUsername): array
     {
         return DB::transaction(function () use ($serverId, $connectedByUsername) {
@@ -197,7 +183,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
                 $connectedIds[] = $uid;
 
-                /** @var VpnUserConnection $row */
                 $row = VpnUserConnection::firstOrCreate([
                     'vpn_user_id'   => $uid,
                     'vpn_server_id' => $serverId,
@@ -256,27 +241,29 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
-{
-    Log::info('🔊 pushing mgmt.update via API', [
-        'server' => $serverId,
-        'ts'     => $ts->format(DATE_ATOM),
-        'count'  => count($usernames),
-        'users'  => $usernames,
-    ]);
+    /**
+     * Push snapshot to API instead of direct broadcast()
+     */
+    protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
+    {
+        Log::info('🔊 pushing mgmt.update via API', [
+            'server' => $serverId,
+            'ts'     => $ts->format(DATE_ATOM),
+            'count'  => count($usernames),
+            'users'  => $usernames,
+        ]);
 
-    try {
-        Http::withToken(config('services.panel.token'))
-            ->acceptJson()
-            ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
-                'status' => 'mgmt',
-                'ts'     => $ts->format(DATE_ATOM),
-                'users'  => array_map(fn($u) => ['username' => $u], $usernames),
-            ])
-            ->throw();
-    } catch (\Throwable $e) {
-        Log::error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
+        try {
+            Http::withToken(config('services.panel.token'))
+                ->acceptJson()
+                ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
+                    'status' => 'mgmt',
+                    'ts'     => $ts->format(DATE_ATOM),
+                    'users'  => array_map(fn($u) => ['username' => $u], $usernames),
+                ])
+                ->throw();
+        } catch (\Throwable $e) {
+            Log::error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
+        }
     }
-}
-}
 }
