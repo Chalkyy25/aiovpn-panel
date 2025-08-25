@@ -123,12 +123,28 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     if (is_string($server)) {
         $server = \App\Models\VpnServer::where('ip_address', $server)->first();
         if (!$server) {
-            Log::error("❌ fetchOpenVpnStatusLog: Server not found for IP: {$server}");
+            Log::error("❌ fetchOpenVpnStatusLog: Server not found for IP: $server");
             return '';
         }
     }
 
-    // 1) Try status files first (several common locations)
+    $mgmtPort = (int)($server->mgmt_port ?? 7505);
+
+    // === 1) Try Management Socket First ===
+    $mgmtCmd = 'bash -lc ' . escapeshellarg(
+        'set -o pipefail; { printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } | nc -w 2 127.0.0.1 '.$mgmtPort
+    );
+
+    $res = $this->executeRemoteCommand($server, $mgmtCmd);
+    $out = trim(implode("\n", $res['output'] ?? []));
+
+    if (($res['status'] ?? 1) === 0 && $out !== '' &&
+        (str_contains($out, 'OpenVPN Management Interface') || str_contains($out, "\tCLIENT_LIST\t"))) {
+        Log::info("📡 {$server->name}: read status via mgmt :{$mgmtPort}");
+        return $out;
+    }
+
+    // === 2) Fall Back to Status File Locations ===
     $candidates = array_values(array_unique(array_filter([
         $server->status_log_path ?? null,
         '/run/openvpn/server.status',
@@ -139,35 +155,22 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
     foreach ($candidates as $path) {
         $cmd = 'bash -lc ' . escapeshellarg(
-            'test -s ' . escapeshellarg($path) . ' && cat ' . escapeshellarg($path) . ' || echo "__NOFILE__"'
+            'test -s '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"'
         );
-
         $res = $this->executeRemoteCommand($server, $cmd);
 
         if (($res['status'] ?? 1) === 0) {
-            $out = trim(implode("\n", $res['output'] ?? []));
-            if ($out !== '' && $out !== '__NOFILE__') {
+            $data = trim(implode("\n", $res['output'] ?? []));
+            if ($data !== '' && $data !== '__NOFILE__') {
                 Log::info("📄 {$server->name}: using {$path}");
-                return $out;
+                return $data;
             }
-            Log::warning("⚠️ {$server->name}: {$path} not found or empty");
-        } else {
-            Log::warning("⚠️ {$server->name}: SSH error when reading {$path}");
         }
     }
 
-    // 2) Fallback to management socket (CRLF + tiny sleep + -w 2; keep output!)
-    // 1) MANAGEMENT FIRST
-$mgmtPort = (int)($server->mgmt_port ?? 7505);
-$mgmtCmd = 'bash -lc ' . escapeshellarg(
-    'set -o pipefail; { printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } | nc -w 2 127.0.0.1 '.$mgmtPort
-);
-$res = $this->executeRemoteCommand($server, $mgmtCmd);
-$out = trim(implode("\n", $res['output'] ?? []));
-if (($res['status'] ?? 1) === 0 && $out !== '' &&
-    (str_contains($out, 'OpenVPN Management Interface') || str_contains($out, "\tCLIENT_LIST\t"))) {
-    Log::info("📡 {$server->name}: read status via mgmt :{$mgmtPort}");
-    return $out;
+    // === 3) Nothing worked ===
+    Log::warning("⚠️ {$server->name}: status not readable from mgmt or file.");
+    return '';
 }
 
 // 2) FALL BACK TO FILE LOCATIONS (only if mgmt didn’t work)
