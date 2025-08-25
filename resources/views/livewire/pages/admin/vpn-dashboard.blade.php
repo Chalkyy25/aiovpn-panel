@@ -264,37 +264,44 @@
 window.vpnDashboard = function () {
   return {
     serverMeta: {},
-    usersByServer: {},         // { [serverId]: [ { username, client_ip, virtual_ip, ... } ] }
+    usersByServer: {},   // { [serverId]: [ { username, …, __key } ] }
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
     _pollTimer: null,
+    _subscribed: false,  // ← guard against re-subscribes
 
-    init(meta, seedUsersByServer /* ignore seedTotals to avoid mismatches */) {
+    init(meta, seedUsersByServer) {
       this.serverMeta = meta || {};
       this.usersByServer = {};
 
-      // Seed rows if you have them; then ALWAYS compute totals from rows
+      // ensure every server has an array (prevents undefined errors in x-for)
+      Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
+
+      // optional seed
       if (seedUsersByServer) {
-        for (const k in seedUsersByServer) this.usersByServer[+k] = seedUsersByServer[k] || [];
+        for (const k in seedUsersByServer) {
+          this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
+        }
       }
+
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
-      // Subscribe + also keep a gentle polling even when Echo is up
       this._waitForEcho()
         .then(() => { this._subscribeFleet(); this._subscribePerServer(); })
-        .finally(() => { this._startPolling(15000); }); // 15s refresh to reconcile staleness
+        .finally(() => { this._startPolling(15000); });
     },
 
     _waitForEcho() {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         const t = setInterval(() => { if (window.Echo) { clearInterval(t); resolve(); } }, 150);
-        setTimeout(() => { clearInterval(t); window.Echo ? resolve() : reject(); }, 3000);
+        setTimeout(() => { clearInterval(t); resolve(); }, 3000);
       });
     },
 
     _subscribeFleet() {
+      if (this._subscribed) return;
       try {
         window.Echo.private('servers.dashboard')
           .subscribed(() => console.log('✅ subscribed servers.dashboard'))
@@ -304,6 +311,7 @@ window.vpnDashboard = function () {
     },
 
     _subscribePerServer() {
+      if (this._subscribed) return;
       Object.keys(this.serverMeta).forEach(sid => {
         try {
           window.Echo.private(`servers.${sid}`)
@@ -312,6 +320,7 @@ window.vpnDashboard = function () {
             .listen('mgmt.update',   e => this.handleEvent(e));
         } catch (e) { console.error(`subscribe servers.${sid} failed`, e); }
       });
+      this._subscribed = true;              // ← mark subscribed once
     },
 
     _startPolling(ms = 15000) {
@@ -319,25 +328,12 @@ window.vpnDashboard = function () {
       this._pollTimer = setInterval(() => {
         if (!window.$wire?.getLiveStats) return;
         window.$wire.getLiveStats().then(res => {
-          if (!res) return;
-
-          // Normalize shape
-          const incoming = res.usersByServer || {};
+          const incoming = res?.usersByServer || {};
           const norm = {};
           for (const k in this.serverMeta) {
             const sid = +k;
-            norm[sid] = (incoming[sid] || []).map(u => ({
-              username: u.username ?? 'unknown',
-              client_ip: u.client_ip ?? null,
-              virtual_ip: u.virtual_ip ?? null,
-              connected_human: u.connected_human ?? null,
-              connected_fmt: u.connected_fmt ?? null,
-              formatted_bytes: u.formatted_bytes ?? null,
-              down_mb: u.down_mb ?? null,
-              up_mb: u.up_mb ?? null,
-            }));
+            norm[sid] = this._normaliseUsers(sid, incoming[sid] || []);
           }
-
           this.usersByServer = norm;
           this.totals = this.computeTotals();
           this.lastUpdated = new Date().toLocaleTimeString();
@@ -345,70 +341,66 @@ window.vpnDashboard = function () {
       }, ms);
     },
 
+    /* ---- unify / dedupe users + add stable keys ---- */
+    _normaliseUsers(serverId, list) {
+      // allow ['alice','bob'] or [{username:'alice'}]
+      const arr = Array.isArray(list) ? list : [];
+      const mapped = arr.map(u =>
+        (typeof u === 'string') ? { username: u } : { ...u }
+      ).map(u => {
+        const name = u.username ?? u.cn ?? 'unknown';
+        return {
+          ...u,
+          username: name,
+          __key: `${serverId}:${name}`,  // stable key per server
+        };
+      });
+
+      const seen = new Set();
+      return mapped.filter(u => (seen.has(u.__key) ? false : (seen.add(u.__key), true)));
+    },
+
     handleEvent(e) {
       const sid = Number(e.server_id ?? e.serverId ?? 0);
       if (!sid) return;
 
-      // If your event includes a rich `users` array, prefer that
+      let list = [];
       if (Array.isArray(e.users) && e.users.length) {
-        this.usersByServer[sid] = e.users.map(u => ({
-          username: u.username ?? 'unknown',
-          client_ip: u.client_ip ?? null,
-          virtual_ip: u.virtual_ip ?? null,
-          connected_human: u.connected_human ?? null,
-          connected_fmt: u.connected_fmt ?? null,
-          formatted_bytes: u.formatted_bytes ?? null,
-          down_mb: u.bytes_in_mb ?? u.down_mb ?? null, // accept multiple keys
-          up_mb:   u.bytes_out_mb ?? u.up_mb ?? null,
-        }));
+        list = e.users;                       // rich array from backend
       } else if (typeof e.cn_list === 'string') {
-        // legacy: just names
-        this.usersByServer[sid] = e.cn_list
-          .split(',').map(s => s.trim()).filter(Boolean)
-          .map(name => ({ username: name }));
+        list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean);
       } else if (Array.isArray(e.users)) {
-        // legacy: array of strings
-        this.usersByServer[sid] = e.users.map(name => ({ username: String(name) }));
+        list = e.users;                       // legacy string array
       }
 
+      this.usersByServer[sid] = this._normaliseUsers(sid, list);
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
 
     computeTotals() {
-      let uniqueUsers = new Set();
-      let totalConns = 0;
-
+      const unique = new Set();
+      let conns = 0;
       Object.keys(this.serverMeta).forEach(sid => {
         const arr = this.usersByServer[sid] || [];
-        totalConns += arr.length;
-        arr.forEach(u => uniqueUsers.add(u.username));
+        conns += arr.length;
+        arr.forEach(u => unique.add(u.username));
       });
-
       const activeServers = Object.keys(this.serverMeta)
         .filter(sid => (this.usersByServer[sid] || []).length > 0).length;
-
-      return {
-        online_users: uniqueUsers.size,     // ← always from rows
-        active_connections: totalConns,     // ← always from rows
-        active_servers: activeServers,      // ← no “fallback to total servers”
-      };
+      return { online_users: unique.size, active_connections: conns, active_servers: activeServers };
     },
 
-    serverUsersCount(id) {
-      return (this.usersByServer[id] || []).length;
-    },
+    serverUsersCount(id) { return (this.usersByServer[id] || []).length; },
 
     activeRows() {
-      const ids = this.selectedServerId == null
-        ? Object.keys(this.serverMeta)
-        : [String(this.selectedServerId)];
-
+      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta)
+                                                : [String(this.selectedServerId)];
       const rows = [];
       ids.forEach(sid => {
         (this.usersByServer[sid] || []).forEach(u => {
           rows.push({
-            key: `${sid}:${u.username}`,
+            key: u.__key,                          // ← use stable key
             connection_id: u.connection_id ?? null,
             server_id: Number(sid),
             server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
@@ -430,7 +422,6 @@ window.vpnDashboard = function () {
 
     async disconnect(row) {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
-
       try {
         const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
           method: 'POST',
@@ -441,25 +432,16 @@ window.vpnDashboard = function () {
           body: JSON.stringify({ username: row.username, server_id: row.server_id }),
         });
 
-        let data;
-        try { data = await res.json(); }
-        catch { data = { message: await res.text() }; }
+        let data; try { data = await res.json(); } catch { data = { message: await res.text() }; }
+        if (!res.ok) throw new Error(Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error'));
 
-        if (!res.ok) {
-          const details = Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error');
-          throw new Error(details);
-        }
-
-        // Optimistic UI: remove row immediately; cron/Echo will re-add if needed
+        // optimistic UI
         this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || [])
           .filter(u => u.username !== row.username);
         this.totals = this.computeTotals();
 
         alert(data.message || `Disconnected ${row.username}`);
-      } catch (e) {
-        console.error(e);
-        alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
-      }
+      } catch (e) { console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue')); }
     },
   };
 };
