@@ -137,7 +137,10 @@ BASH;
     /**
      * Minimal runner that returns [exitCode, lines[]].
      */
-    private function run(string $cmd): array
+        /**
+     * Minimal runner that returns [exitCode, lines[]].
+     */
+    protected function runCmd(string $cmd): array
     {
         $desc = [
             0 => ['pipe', 'r'],
