@@ -58,76 +58,66 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     /* ───────────────────────────────────────────────────────────── */
 
     protected function syncOneServer(VpnServer $server): void
-    {
-        try {
-            [$raw, $source] = $this->fetchStatusWithSource($server);
-Log::info("DEBUG: entered syncOneServer for {$server->id}");
+{
+    try {
+        [$raw, $source] = $this->fetchStatusWithSource($server);
 
-[$raw, $source] = $this->fetchStatusWithSource($server);
-Log::info("DEBUG: fetchStatusWithSource", [
-    'server' => $server->id,
-    'source' => $source,
-    'raw_len' => strlen($raw),
-]);
-            if ($raw === '') {
-                Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
-                if ($this->strictOfflineOnMissing) {
-                    $this->pushSnapshot($server->id, now(), []);
-                }
-                return;
-            }
-
-            $parsed = OpenVpnStatusParser::parse($raw);
-
-            // Collect connected usernames
-            $usernames = [];
-            foreach ($parsed['clients'] as $c) {
-                $username = (string)($c['username'] ?? '');
-                if ($username !== '') $usernames[] = $username;
-            }
-
-            Log::info('DEBUG: parsed snapshot', [
-                'server' => $server->id,
-                'clients_raw_count' => count($parsed['clients'] ?? []),
-                'first_client' => $parsed['clients'][0] ?? null,
-            ]);
-Log::info("DEBUG: about to log APPEND_LOG", [
-    'server' => $server->id,
-    'client_count' => count($usernames),
-    'usernames' => $usernames,
-    'raw_len' => strlen($raw),
-    'source' => $source,
-]);
-
-if ($this->verboseMgmtLog) {
-    Log::info(sprintf(
-        'APPEND_LOG: [mgmt] ts=%s source=%s clients=%d [%s]',
-        now()->toIso8601String(),
-        $source,
-        count($usernames),
-        implode(',', $usernames)
-    ));
-}
-            if ($this->verboseMgmtLog) {
-                Log::info(sprintf(
-                    'APPEND_LOG: [mgmt] ts=%s source=%s clients=%d [%s]',
-                    now()->toIso8601String(),
-                    $source,
-                    count($usernames),
-                    implode(',', $usernames)
-                ));
-            }
-
-            // Push snapshot to API (DB + Echo handled there)
-            $this->pushSnapshot($server->id, now(), $usernames);
-
-        } catch (\Throwable $e) {
-            Log::error("❌ {$server->name}: sync failed – {$e->getMessage()}");
+        if ($raw === '') {
+            Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
             if ($this->strictOfflineOnMissing) {
                 $this->pushSnapshot($server->id, now(), []);
             }
+            return;
+        }
+
+        // 🔎 log the first 200 chars of raw
+        Log::info("DEBUG: raw mgmt output", [
+            'server' => $server->id,
+            'len'    => strlen($raw),
+            'head'   => substr($raw, 0, 200),
+        ]);
+
+        $parsed = OpenVpnStatusParser::parse($raw);
+
+        // 🔎 log parse result summary
+        Log::info("DEBUG: parsed result", [
+            'server' => $server->id,
+            'clients_count' => count($parsed['clients'] ?? []),
+            'first_client'  => $parsed['clients'][0] ?? null,
+        ]);
+
+        $usernames = [];
+        foreach ($parsed['clients'] as $c) {
+            $username = (string)($c['username'] ?? '');
+            if ($username !== '') $usernames[] = $username;
+        }
+
+        // 🔎 always log what we collected, even if empty
+        Log::info("DEBUG: collected usernames", [
+            'server' => $server->id,
+            'usernames' => $usernames,
+        ]);
+
+        if ($this->verboseMgmtLog) {
+            Log::info(sprintf(
+                'APPEND_LOG: [mgmt] ts=%s source=%s clients=%d [%s]',
+                now()->toIso8601String(),
+                $source,
+                count($usernames),
+                implode(',', $usernames)
+            ));
+        }
+
+        // snapshot → API
+        $this->pushSnapshot($server->id, now(), $usernames);
+
+    } catch (\Throwable $e) {
+        Log::error("❌ {$server->name}: sync failed – {$e->getMessage()}");
+        if ($this->strictOfflineOnMissing) {
+            $this->pushSnapshot($server->id, now(), []);
         }
     }
+}
 
     protected function fetchStatusWithSource(VpnServer $server): array
     {
