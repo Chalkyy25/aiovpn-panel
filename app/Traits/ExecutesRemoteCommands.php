@@ -10,74 +10,51 @@ trait ExecutesRemoteCommands
     /**
      * Execute a command on a remote server via SSH.
      *
-     * @param \App\Models\VpnServer $server
-     * @param string $command
-     * @return array{status:int,output:array<string>}
+     * Uses baked-in defaults for UpCloud: root + /root/.ssh/id_rsa
      */
     private function executeRemoteCommand(VpnServer $server, string $command): array
     {
-        // Always prefer the server model’s own SSH builder
-        try {
-            $sshBaseCommand = $server->getSshCommand();
-        } catch (\Throwable $e) {
-            Log::error("❌ getSshCommand() failed for server {$server->name}: ".$e->getMessage());
-            return [
-                'status' => 255,
-                'output' => ["getSshCommand() failed: ".$e->getMessage()],
-            ];
-        }
+        $user = $server->ssh_username ?? 'root';
+        $key  = $server->ssh_key_path ?? '/root/.ssh/id_rsa';
+        $port = $server->ssh_port ?? 22;
+        $ip   = $server->ip_address;
 
-        // Build final command
-        $sshCommand = $sshBaseCommand . ' ' . $command . ' 2>&1';
+        // Build SSH command
+        $sshCommand = sprintf(
+            'ssh -o StrictHostKeyChecking=no -i %s -p %d %s@%s %s 2>&1',
+            escapeshellarg($key),
+            $port,
+            escapeshellarg($user),
+            escapeshellarg($ip),
+            $command
+        );
 
-        // Use proc_open for better error handling
         $descriptorspec = [
-            0 => ["pipe", "r"], // stdin
-            1 => ["pipe", "w"], // stdout
-            2 => ["pipe", "w"], // stderr
+            0 => ["pipe", "r"],
+            1 => ["pipe", "w"],
+            2 => ["pipe", "w"],
         ];
 
         $process = proc_open($sshCommand, $descriptorspec, $pipes);
 
         if (!is_resource($process)) {
-            return [
-                'status' => 255,
-                'output' => ['Failed to execute SSH command: could not start process'],
-            ];
+            return ['status' => 255, 'output' => ['Failed to start SSH process']];
         }
 
-        // Close stdin
         fclose($pipes[0]);
-
-        // Read stdout and stderr
-        $output = stream_get_contents($pipes[1]);
-        fclose($pipes[1]);
-
-        $stderr = stream_get_contents($pipes[2]);
-        fclose($pipes[2]);
-
+        $stdout = stream_get_contents($pipes[1]); fclose($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]); fclose($pipes[2]);
         $status = proc_close($process);
 
-        // Build output array
-        $outputArray = [];
-        if (!empty($output)) {
-            $outputArray = explode("\n", trim($output));
-        }
-        if (!empty($stderr)) {
-            $outputArray[] = "STDERR: ".$stderr;
-        }
+        $output = [];
+        if ($stdout) $output = array_merge($output, explode("\n", trim($stdout)));
+        if ($stderr) $output[] = "STDERR: " . trim($stderr);
 
         if ($status !== 0) {
-            if (empty($outputArray)) {
-                $outputArray[] = "SSH command failed with status code $status.";
-            }
-            $redactedCommand = preg_replace('/-i\s+\S+/', '-i [REDACTED]', $sshCommand);
-            $outputArray[] = "Command attempted: $redactedCommand";
+            $redacted = preg_replace('/-i\s+\S+/', '-i [REDACTED]', $sshCommand);
+            $output[] = "SSH failed with status $status. Command: $redacted";
         }
 
-        return [
-            'status' => $status,
-            'output' => $outputArray,
-        ];
+        return ['status' => $status, 'output' => $output];
     }
 }
