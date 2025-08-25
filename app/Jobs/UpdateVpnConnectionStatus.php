@@ -2,11 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Events\ServerMgmtEvent;
 use App\Models\VpnServer;
 use App\Models\VpnUserConnection;
 use App\Services\OpenVpnStatusParser;
 use App\Traits\ExecutesRemoteCommands;
-use App\Events\ServerMgmtEvent;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -27,13 +27,10 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     protected ?int $serverId;
 
     /**
-     * Should we mark everyone offline if status file missing?
+     * Should we mark everyone offline if status file/mgmt is missing?
      */
     protected bool $strictOfflineOnMissing = false;
 
-    /**
-     * @param int|null $serverId
-     */
     public function __construct(?int $serverId = null)
     {
         $this->serverId = $serverId;
@@ -64,13 +61,15 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         Log::info('✅ Hybrid sync completed');
     }
 
+    /* ───────────────────────────────────────────────────────────── */
+
     protected function syncOneServer(VpnServer $server): void
     {
         try {
             $raw = $this->fetchOpenVpnStatusLog($server);
 
             if ($raw === '') {
-                Log::warning("⚠️ {$server->name}: status file not readable this run.");
+                Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
                 if ($this->strictOfflineOnMissing) {
                     $this->markAllUsersDisconnected($server);
                     $this->broadcastSnapshot($server->id, now(), []);
@@ -97,14 +96,13 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
             $this->upsertConnections($server, $connected);
 
+            // Optional columns (ignore if not present)
             try {
                 $server->forceFill([
                     'online_users' => count($connected),
                     'last_sync_at' => now(),
                 ])->saveQuietly();
-            } catch (\Throwable) {
-                // optional columns – ignore
-            }
+            } catch (\Throwable) {}
 
             $this->broadcastSnapshot($server->id, now(), array_keys($connected));
 
@@ -117,35 +115,54 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    protected function fetchOpenVpnStatusLog(VpnServer|string $server): string
-{
-    if (is_string($server)) {
-        $server = \App\Models\VpnServer::where('ip_address', $server)->first();
-        if (!$server) {
-            Log::error("❌ fetchOpenVpnStatusLog: Server not found for IP: $server");
-            return '';
+    /**
+     * Try file (v3 path), then fall back to mgmt socket `status 3`.
+     */
+    protected function fetchOpenVpnStatusLog(VpnServer $server): string
+    {
+        $path = $server->status_log_path ?: '/run/openvpn/server.status';
+
+        // 1) Try status file
+        $cmdFile = 'bash -lc ' . escapeshellarg(
+            'test -r ' . escapeshellarg($path) .
+            ' && cat ' . escapeshellarg($path) .
+            ' || echo "__NOFILE__"'
+        );
+
+        $resFile = $this->executeRemoteCommand($server, $cmdFile);
+
+        if (($resFile['status'] ?? 1) === 0) {
+            $out = trim(implode("\n", $resFile['output'] ?? []));
+            if ($out !== '' && $out !== '__NOFILE__') {
+                Log::info("📄 {$server->name}: using {$path}");
+                return $out;
+            }
+            Log::warning("⚠️ {$server->name}: {$path} not found or empty");
+        } else {
+            Log::warning("⚠️ {$server->name}: SSH error when checking {$path}");
         }
-    }
 
-    $path = $server->status_log_path ?? '/run/openvpn/server.status';
-    $cmd = 'test -r '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"';
+        // 2) Fallback to mgmt socket (v3)
+        // We send 'status 3' then a short sleep then 'quit' to flush output reliably
+        $cmdMgmt = 'bash -lc ' . escapeshellarg(
+            '{ printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } ' .
+            '| nc -w 2 127.0.0.1 7505 2>/dev/null'
+        );
 
-    $res = $this->executeRemoteCommand($server, $cmd);
+        $resMgmt = $this->executeRemoteCommand($server, $cmdMgmt);
 
-    if (($res['status'] ?? 1) !== 0) {
-        Log::warning("⚠️ {$server->name}: SSH error when checking {$path}");
+        if (($resMgmt['status'] ?? 1) === 0) {
+            $raw = trim(implode("\n", $resMgmt['output'] ?? []));
+            if ($raw !== '' && str_contains($raw, "CLIENT_LIST")) {
+                Log::info("📡 {$server->name}: using mgmt status (fallback)");
+                return $raw;
+            }
+        } else {
+            Log::warning("⚠️ {$server->name}: mgmt socket read failed");
+        }
+
         return '';
     }
-
-    $out = trim(implode("\n", $res['output'] ?? []));
-    if ($out !== '' && $out !== '__NOFILE__') {
-        Log::info("📄 {$server->name}: using {$path}");
-        return $out;
-    }
-
-    Log::warning("⚠️ {$server->name}: {$path} not found or empty");
-    return '';
-}
 
     protected function upsertConnections(VpnServer $server, array $connected): void
     {
