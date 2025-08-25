@@ -17,16 +17,17 @@ class DeployEventController extends Controller
     public function store(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
-            'status'   => 'required|string',
+            'status'   => 'required|string',   // e.g. "mgmt"
             'message'  => 'nullable|string',
             'ts'       => 'nullable|string',
-            'users'    => 'nullable|array',
-            'cn_list'  => 'nullable|string',
+            'users'    => 'nullable|array',    // [{ username: "alice" }]
+            'cn_list'  => 'nullable|string',   // "alice,bob"
             'clients'  => 'nullable|integer',
         ]);
 
         $status  = strtolower($data['status']);
         $message = (string) ($data['message'] ?? '');
+        $ts      = $data['ts'] ?? now()->toAtomString();
 
         Log::info("APPEND_LOG: [{$status}] {$message}");
 
@@ -34,42 +35,32 @@ class DeployEventController extends Controller
             return response()->json(['ok' => true]);
         }
 
-        // ── Build usernames ────────────────────────────────
-        $names = [];
+        // ── Parse users from payload ─────────────────────────────
+        $usernames = [];
 
-        if (!empty($data['users']) && is_array($data['users'])) {
+        if (!empty($data['users'])) {
             foreach ($data['users'] as $u) {
                 $name = $u['username'] ?? $u['cn'] ?? null;
-                if (is_string($name) && $name !== '') {
-                    $names[] = $name;
-                }
+                if ($name) $usernames[] = $name;
+            }
+        } elseif (!empty($data['cn_list'])) {
+            $usernames = array_filter(array_map('trim', explode(',', $data['cn_list'])));
+        } elseif ($message !== '') {
+            if (preg_match('/clients\s*=\s*\d+\s*\[([^\]]*)\]/i', $message, $m)) {
+                $usernames = array_filter(array_map('trim', explode(',', $m[1] ?? '')));
             }
         }
 
-        if (!$names && !empty($data['cn_list'])) {
-            $names = array_values(array_filter(array_map('trim', explode(',', $data['cn_list']))));
-        }
+        $clients = count($usernames);
 
-        if (!$names && $message !== '') {
-            if (preg_match('/clients\s*=\s*(\d+)\s*\[([^\]]*)\]/i', $message, $m)) {
-                $list = trim($m[2] ?? '');
-                $names = $list !== '' ? array_values(array_filter(array_map('trim', explode(',', $list)))) : [];
-            }
-        }
-
-        $ts      = (string) ($data['ts'] ?? now()->toAtomString());
-        $clients = isset($data['clients']) ? (int) $data['clients'] : count($names);
-        $cnList  = implode(',', $names);
-        $raw     = $message !== '' ? $message : 'mgmt';
-
-        // ── Sync DB with this snapshot ─────────────────────
-        DB::transaction(function () use ($server, $names) {
+        // ── Sync DB state ───────────────────────────────────────
+        DB::transaction(function () use ($server, $usernames) {
             $now = now();
-            $userIds = VpnUser::whereIn('username', $names)->pluck('id', 'username');
+            $idByUsername = VpnUser::whereIn('username', $usernames)->pluck('id', 'username');
             $connectedIds = [];
 
-            foreach ($names as $username) {
-                $uid = $userIds[$username] ?? null;
+            foreach ($usernames as $name) {
+                $uid = $idByUsername[$name] ?? null;
                 if (!$uid) continue;
 
                 $connectedIds[] = $uid;
@@ -80,7 +71,7 @@ class DeployEventController extends Controller
                 ]);
 
                 if (!$row->is_connected) {
-                    $row->connected_at = $now;
+                    $row->connected_at    = $now;
                     $row->disconnected_at = null;
                 }
 
@@ -93,31 +84,36 @@ class DeployEventController extends Controller
                 ]);
             }
 
-            // Mark others offline
-            VpnUserConnection::query()
+            // Disconnect everyone else
+            $toDisconnect = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
                 ->when(!empty($connectedIds), fn($q) => $q->whereNotIn('vpn_user_id', $connectedIds))
-                ->update([
+                ->get();
+
+            foreach ($toDisconnect as $row) {
+                $row->update([
                     'is_connected'    => false,
                     'disconnected_at' => $now,
                 ]);
+                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
+            }
         });
 
-        // ── Broadcast realtime event ───────────────────────
+        // ── Broadcast to dashboard ──────────────────────────────
         broadcast(new ServerMgmtEvent(
             $server->id,
             $ts,
-            $names,    // array → Event will derive clients + cnList
+            array_map(fn($u) => ['username' => $u], $usernames), // users[]
             null,
-            $raw
+            $message ?: 'mgmt'
         ))->toOthers();
 
         return response()->json([
             'ok'        => true,
             'server_id' => $server->id,
             'clients'   => $clients,
-            'cn_list'   => $cnList,
+            'cn_list'   => implode(',', $usernames),
         ]);
     }
 }
