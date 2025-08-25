@@ -83,7 +83,7 @@ BASH;
 
         $cmd = $ssh . " bash -s <<'BASH'\n" . $script . "\nBASH";
 
-        [$status, $out] = $this->run($cmd);
+        [$status, $out] = $this->runCmd($cmd);
         if ($status !== 0) {
             Log::warning("⚠️ {$server->name}: mgmt socket read failed");
             return '';
@@ -116,7 +116,7 @@ BASH;
             $remote = 'test -r ' . escapeshellarg($path) . ' && cat ' . escapeshellarg($path) . ' || echo "__NOFILE__"';
             $cmd    = $ssh . ' ' . $remote;
 
-            [$status, $out] = $this->run($cmd);
+            [$status, $out] = $this->runCmd($cmd);
             if ($status !== 0) {
                 Log::warning("⚠️ {$server->name}: {$path} not found or empty");
                 continue;
