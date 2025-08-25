@@ -397,7 +397,7 @@ window.vpnDashboard = function () {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
       try {
-  const res = await fetch('{{ route('vpn.disconnect') }}', {
+  const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
     method: 'POST',
     headers: {
       'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
