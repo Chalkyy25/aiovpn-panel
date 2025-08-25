@@ -18,58 +18,69 @@ class DeployEventController extends Controller
     public function store(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
-            'status'   => 'required|string',    // e.g. "mgmt"
-            'message'  => 'nullable|string',    // optional raw line
-            'ts'       => 'nullable|string',    // ISO8601 timestamp
-            'users'    => 'nullable|array',     // [{ username: "alice" }]
-            'cn_list'  => 'nullable|string',    // "alice,bob"
-            'clients'  => 'nullable|integer',   // explicit override
+            'status'   => 'required|string',     // e.g. "mgmt"
+            'message'  => 'nullable|string',     // optional raw line
+            'ts'       => 'nullable|string',     // ISO8601 timestamp
+            'users'    => 'nullable|array',      // [{ username: "alice" }]
+            'cn_list'  => 'nullable|string',     // "alice,bob"
+            'clients'  => 'nullable|integer',    // explicit override
         ]);
 
         $status = strtolower($data['status']);
         $ts     = $data['ts'] ?? now()->toAtomString();
         $raw    = $data['message'] ?? 'mgmt';
 
-        // 📜 Always log append
+        // Always log — critical for debugging
         Log::info("APPEND_LOG: [{$status}] {$raw}");
 
         if ($status !== 'mgmt') {
             return response()->json(['ok' => true]);
         }
 
-        // ── Collect usernames ───────────────────────────────
+        // ── Collect usernames (robust fallbacks) ─────────────
         $usernames = [];
 
         if (!empty($data['users'])) {
             foreach ($data['users'] as $u) {
                 $name = $u['username'] ?? $u['cn'] ?? null;
-                if ($name) $usernames[] = $name;
+                if (is_string($name) && $name !== '') {
+                    $usernames[] = trim($name);
+                }
             }
         }
 
         if (!$usernames && !empty($data['cn_list'])) {
-            $usernames = array_filter(array_map('trim', explode(',', $data['cn_list'])));
+            $usernames = array_values(array_filter(
+                array_map('trim', explode(',', $data['cn_list']))
+            ));
         }
 
-        if (!$usernames && !empty($raw) &&
+        if (!$usernames && $raw &&
             preg_match('/clients\s*=\s*(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
             $list = trim($m[2] ?? '');
             $usernames = $list !== '' ? array_filter(array_map('trim', explode(',', $list))) : [];
         }
 
         $clients = $data['clients'] ?? count($usernames);
+        $now = now();
 
         // ── Sync DB with this snapshot ──────────────────────
-        DB::transaction(function () use ($server, $usernames) {
-            $now = now();
-
-            // Map usernames → ids
-            $idByUsername = VpnUser::whereIn('username', $usernames)->pluck('id', 'username');
+        DB::transaction(function () use ($server, $usernames, $now) {
+            // Map usernames to IDs (create if missing)
+            $existing = VpnUser::whereIn('username', $usernames)->pluck('id', 'username');
             $connectedIds = [];
 
             foreach ($usernames as $username) {
-                $uid = $idByUsername[$username] ?? null;
-                if (!$uid) continue;
+                $uid = $existing[$username] ?? null;
+
+                if (!$uid) {
+                    // create stub user if username not in DB
+                    $uid = VpnUser::create([
+                        'username' => $username,
+                        'is_online' => false,
+                    ])->id;
+                    $existing[$username] = $uid;
+                }
 
                 $connectedIds[] = $uid;
 
@@ -97,7 +108,7 @@ class DeployEventController extends Controller
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
                 ->when(!empty($connectedIds), fn ($q) => $q->whereNotIn('vpn_user_id', $connectedIds))
-                ->get(['id', 'vpn_user_id']);
+                ->get();
 
             foreach ($toDisconnect as $row) {
                 $row->update([
@@ -113,7 +124,7 @@ class DeployEventController extends Controller
             ])->saveQuietly();
         });
 
-        // ── Broadcast to Reverb/Echo ───────────────────────
+        // ── Broadcast snapshot to Echo/Reverb ───────────────
         broadcast(new ServerMgmtEvent(
             $server->id,
             $ts,
@@ -122,6 +133,7 @@ class DeployEventController extends Controller
             $raw
         ))->toOthers();
 
+        // API response
         return response()->json([
             'ok'        => true,
             'server_id' => $server->id,
