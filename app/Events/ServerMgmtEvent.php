@@ -62,9 +62,10 @@ class ServerMgmtEvent implements ShouldBroadcastNow
     }
 
     public function broadcastOn(): PrivateChannel
-    {
-        return new PrivateChannel("servers.$this->serverId");
-    }
+{
+    return new PrivateChannel("servers.{$this->serverId}");
+    
+}
 
     public function broadcastAs(): string
     {
