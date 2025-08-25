@@ -102,42 +102,48 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     }
 
     protected function fetchStatusWithSource(VpnServer $server): array
-    {
-        $mgmtPort = (int)($server->mgmt_port ?? 7505);
+{
+    $mgmtPort = (int)($server->mgmt_port ?? 7505);
 
-        // 1) Management socket
-        $mgmtCmd = 'bash -lc ' . escapeshellarg(
-            'set -o pipefail; { printf "status 3\r\n"; sleep 1; printf "quit\r\n"; } | nc -w 3 127.0.0.1' . $mgmtPort
-        );
-        $res = $this->executeRemoteCommand($server, $mgmtCmd);
-        $out = trim(implode("\n", $res['output'] ?? []));
-        if (($res['status'] ?? 1) === 0 && $out !== '' &&
-            (str_contains($out, "\tCLIENT_LIST\t") || str_contains($out, 'OpenVPN Management Interface'))) {
-            Log::info("📡 {$server->name}: read status via mgmt :{$mgmtPort}");
-            return [$out, "mgmt:{$mgmtPort}"];
-        }
+    // 1) Management socket
+    $mgmtCmd = 'bash -lc ' . escapeshellarg(
+        'set -o pipefail; { printf "status 3\r\n"; sleep 0.5; printf "quit\r\n"; } | nc -w 3 127.0.0.1 ' . $mgmtPort
+        //                                                               ^ space fixed!
+    );
 
-        // 2) Fallback status files
-        foreach ([
-            $server->status_log_path ?? null,
-            '/run/openvpn/server.status',
-            '/run/openvpn/openvpn.status',
-            '/run/openvpn/server/server.status',
-            '/var/log/openvpn-status.log',
-        ] as $path) {
-            if (!$path) continue;
-            $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
-            $res = $this->executeRemoteCommand($server, $cmd);
-            if (($res['status'] ?? 1) !== 0) continue;
-            $data = trim(implode("\n", $res['output'] ?? []));
-            if ($data !== '' && $data !== '__NOFILE__') {
-                Log::info("📄 {$server->name}: using {$path}");
-                return [$data, $path];
-            }
-        }
+    $res = $this->executeRemoteCommand($server, $mgmtCmd);
+    $out = trim(implode("\n", $res['output'] ?? []));
 
-        return ['', 'none'];
+    if (($res['status'] ?? 1) === 0 && $out !== '' &&
+        (str_contains($out, "CLIENT_LIST") || str_contains($out, "OpenVPN Management Interface"))) {
+        Log::info("📡 {$server->name}: mgmt responded with " . strlen($out) . " bytes");
+        return [$out, "mgmt:{$mgmtPort}"];
     }
+
+    // 2) Fallback: check known status files
+    $candidates = array_filter([
+        $server->status_log_path ?? null,
+        '/run/openvpn/server.status',
+        '/run/openvpn/openvpn.status',
+        '/run/openvpn/server/server.status',
+        '/var/log/openvpn-status.log',
+    ]);
+
+    foreach ($candidates as $path) {
+        $cmd = 'bash -lc ' . escapeshellarg(
+            "test -s {$path} && cat {$path} || echo '__NOFILE__'"
+        );
+        $res = $this->executeRemoteCommand($server, $cmd);
+        $data = trim(implode("\n", $res['output'] ?? []));
+        if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__') {
+            Log::info("📄 {$server->name}: using {$path} (" . strlen($data) . " bytes)");
+            return [$data, $path];
+        }
+    }
+
+    Log::warning("⚠️ {$server->name}: no mgmt or status file available");
+    return ['', 'none'];
+}
 
     /**
      * Push snapshot to the API instead of direct DB/broadcast.
