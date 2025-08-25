@@ -12,36 +12,48 @@ use App\Http\Controllers\Api\DeployEventController;
 |--------------------------------------------------------------------------
 | Endpoints used by your remote deployment script and the panel.
 | Protected with the custom 'auth.panel-token' middleware (Bearer token).
+|
+| NOTE: route-model binding for {server} will inject App\Models\VpnServer
+| because your controller action type-hints VpnServer $server.
 */
 
 Route::middleware('auth.panel-token')->group(function () {
-    // Optional: provisioning pings (if you use them)
+    // ── Provisioning pings ─────────────────────────────────────────
     Route::post('/servers/{server}/provision/start',  [ProvisioningController::class, 'start']);
     Route::post('/servers/{server}/provision/update', [ProvisioningController::class, 'update']);
     Route::post('/servers/{server}/provision/finish', [ProvisioningController::class, 'finish']);
 
-    // Deployment/event + logs streaming from the script
+    // ── Deployment/events + logs streaming ─────────────────────────
     Route::post('/servers/{server}/deploy/events', [DeployApiController::class, 'event']);
     Route::post('/servers/{server}/deploy/logs',   [DeployApiController::class, 'log']);
 
-    // Management status push (script -> panel; JSON with status/clients)
+    // ── Realtime management status (preferred unified endpoint) ────
+    // This feeds your ServerMgmtEvent broadcast used by the dashboard.
+    Route::post('/servers/{server}/events', [DeployEventController::class, 'store'])
+        ->name('api.servers.events.store');
+
+    // (optional) If your script already posts here, keep them:
     Route::post('/servers/{server}/mgmt/push',     [DeployApiController::class, 'pushMgmt']);
     Route::post('/servers/{server}/mgmt/snapshot', [DeployApiController::class, 'pushMgmtSnapshot']);
 
-    // Facts the script reports after install (iface, ports, proto, etc.)
+    // ── Facts reported after install ───────────────────────────────
     Route::post('/servers/{server}/deploy/facts',  [DeployApiController::class, 'facts']);
 
-    // Password file for OpenVPN (script pulls + can mirror back)
+    // ── Auth file (script pulls + mirror back) ─────────────────────
     Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
     Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
-    
 });
 
+/*
+| If (and only if) you need a Sanctum-secured alias for testing from the panel,
+| you can uncomment this. Your deploy script should prefer the Bearer token route above.
+|
+| Route::middleware('auth:sanctum')
+|     ->post('/servers/{server}/events', [DeployEventController::class, 'store'])
+|     ->name('api.servers.events.store.sanctum');
+*/
 
-Route::middleware('auth:sanctum')
-    ->post('servers/{server}/deploy/events', [DeployEventController::class, 'store']);
-
-
+// Simple device registration endpoint (unchanged)
 Route::post('/device/register', function (Request $request) {
     $request->validate([
         'username'    => 'required|string',
