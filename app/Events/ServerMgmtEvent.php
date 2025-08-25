@@ -15,22 +15,15 @@ class ServerMgmtEvent implements ShouldBroadcastNow
     public int $serverId;
     public string $ts;
 
-    /** Total clients (derived if not provided) */
-    public int $clients = 0;
-
-    /** Comma-separated CNs (derived if not provided) */
-    public string $cnList = '';
-
-    /** Rich users payload for the UI (optional) */
-    public array $users = [];
-
-    /** Free-form text for debugging (optional) */
+    public int $clients = 0;          // always present
+    public string $cnList = '';       // always present
+    public array $users = [];         // always present
     public string $raw = '';
 
     /**
-     * Backward-compatible constructor:
-     *  - 3rd arg can be an array of users OR a client count (int)
-     *  - If an int is passed, you can optionally pass $cnList in the 4th arg
+     * Constructor is flexible:
+     *  - If 3rd arg is array → treat as users[]
+     *  - If 3rd arg is int   → treat as client count
      */
     public function __construct(
         int $serverId,
@@ -43,29 +36,30 @@ class ServerMgmtEvent implements ShouldBroadcastNow
         $this->ts       = $ts;
 
         if (is_array($usersOrCount)) {
-            $this->users   = $usersOrCount;
-            $this->clients = count($usersOrCount);
-            // derive cnList if not provided
-            $this->cnList  = $cnList ?? implode(',', array_filter(array_map(function ($u) {
-                // allow string usernames or arrays with username/cn
-                if (is_string($u)) return $u;
-                if (is_array($u))  return $u['username'] ?? $u['cn'] ?? null;
-                return null;
-            }, $this->users)));
+            // ✅ Modern usage: pass array of usernames
+            $this->users   = array_map(fn ($u) =>
+                is_string($u) ? ['username' => $u] :
+                (is_array($u) ? $u : ['username' => (string) $u]),
+            $usersOrCount);
+
+            $this->clients = count($this->users);
+            $this->cnList  = $cnList ?: implode(',', array_column($this->users, 'username'));
         } else {
-            // old style: (serverId, ts, clients:int, cnList?:string, raw?:string)
+            // ✅ Legacy: pass int count
             $this->clients = (int) $usersOrCount;
             $this->cnList  = (string) ($cnList ?? '');
+            $this->users   = $this->cnList !== ''
+                ? array_map(fn ($n) => ['username' => $n], array_filter(explode(',', $this->cnList)))
+                : [];
         }
 
         $this->raw = (string) ($raw ?? '');
     }
 
     public function broadcastOn(): PrivateChannel
-{
-    return new PrivateChannel("servers.{$this->serverId}");
-    
-}
+    {
+        return new PrivateChannel("servers.{$this->serverId}");
+    }
 
     public function broadcastAs(): string
     {
@@ -79,7 +73,6 @@ class ServerMgmtEvent implements ShouldBroadcastNow
             'ts'        => $this->ts,
             'clients'   => $this->clients,
             'cn_list'   => $this->cnList,
-            // include users if we have them (UI handles both)
             'users'     => $this->users,
             'raw'       => $this->raw,
         ];
