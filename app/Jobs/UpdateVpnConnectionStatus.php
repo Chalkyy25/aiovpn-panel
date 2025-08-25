@@ -257,11 +257,22 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
     protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
 {
+    // Helpful log so you can see the broadcast attempt in laravel.log
+    Log::info('🔊 broadcasting mgmt.update', [
+        'server' => $serverId,
+        'ts'     => $ts->format(DATE_ATOM),
+        'count'  => count($usernames),
+        'users'  => $usernames,
+        'source' => 'sync-job',
+    ]);
+
+    // IMPORTANT: pass the usernames ARRAY as the 3rd arg so the Event
+    // fills `users[]`, `clients` and derives `cn_list` for the UI.
     broadcast(new ServerMgmtEvent(
         $serverId,
         $ts->format(DATE_ATOM),
-        $usernames,           // 👈 pass the array
-        null,                 // let the event derive cn_list
+        $usernames,   // 👈 array, not count
+        null,         // let the event derive cn_list
         'sync-job'
     ));
 }
