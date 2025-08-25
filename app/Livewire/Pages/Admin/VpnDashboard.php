@@ -5,155 +5,240 @@ namespace App\Livewire\Pages\Admin;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
-use Illuminate\Contracts\View\Factory;
-use Illuminate\Contracts\View\View;
-use Illuminate\Foundation\Application;
+use Carbon\Carbon;
+use Illuminate\Contracts\View\View as ViewContract;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
-use Illuminate\Support\Facades\Log;
-use App\Services\OpenVpnStatusParser;
-use phpseclib3\Net\SSH2;
 
 #[Layout('layouts.app')]
 class VpnDashboard extends Component
 {
-    public $selectedServerId = null;
-    public $showAllServers = true;
-    public int $hoursPerDay = 3;
-    public $liveLogs = [];
-    public $maxLogs = 100;
+    /** UI state */
+    public ?int $selectedServerId = null;
+    public bool $showAllServers = true;
 
-    public function mount()
+    /** Optional UI knobs you already had */
+    public int $hoursPerDay = 3;
+    public array $liveLogs = [];
+    public int $maxLogs = 100;
+
+    /* ----------------------------- Lifecycle ----------------------------- */
+
+    public function mount(): void
     {
-        // Default to showing all servers
         $this->showAllServers = true;
     }
 
-    public function selectServer($serverId = null)
+    /* -------------------------- UI interactions -------------------------- */
+
+    public function selectServer(?int $serverId = null): void
     {
         $this->selectedServerId = $serverId;
         $this->showAllServers = $serverId === null;
     }
 
+    /* --------------------------- Computed props -------------------------- */
+
+    /** Servers that finished deploying + their active connection count */
     public function getServersProperty()
     {
-        return VpnServer::where('deployment_status', 'succeeded')
-            ->withCount(['activeConnections'])
+        return VpnServer::query()
+            ->where('deployment_status', 'succeeded')
+            ->withCount('activeConnections')
             ->orderBy('name')
-            ->get();
+            ->get(['id', 'name']);
     }
 
+    /** Table rows for the “Active Connections” section */
     public function getActiveConnectionsProperty()
     {
-        $query = VpnUserConnection::with(['vpnUser', 'vpnServer'])
-            ->where('is_connected', true);
+        $q = VpnUserConnection::query()
+            ->where('is_connected', true)
+            ->with([
+                'vpnUser:id,username',
+                'vpnServer:id,name',
+            ])
+            ->select([
+                'vpn_user_id',
+                'vpn_server_id',
+                'client_ip',
+                'virtual_ip',
+                'bytes_received',
+                'bytes_sent',
+                'connected_at',
+            ]);
 
         if (!$this->showAllServers && $this->selectedServerId) {
-            $query->where('vpn_server_id', $this->selectedServerId);
+            $q->where('vpn_server_id', $this->selectedServerId);
         }
 
-        return $query->orderBy('connected_at', 'desc')->get();
+        return $q->orderByDesc('connected_at')->get();
     }
 
-    public function getTotalOnlineUsersProperty()
+    public function getTotalOnlineUsersProperty(): int
     {
-        return VpnUser::where('is_online', true)->count();
+        return (int) VpnUser::query()->where('is_online', true)->count();
     }
 
-    public function getTotalActiveConnectionsProperty()
+    public function getTotalActiveConnectionsProperty(): int
     {
-        return VpnUserConnection::where('is_connected', true)->count();
+        return (int) VpnUserConnection::query()->where('is_connected', true)->count();
     }
 
     public function getRecentlyDisconnectedProperty()
     {
-        return VpnUserConnection::with(['vpnUser', 'vpnServer'])
+        return VpnUserConnection::query()
             ->where('is_connected', false)
             ->whereNotNull('disconnected_at')
-            ->orderBy('disconnected_at', 'desc')
+            ->with([
+                'vpnUser:id,username',
+                'vpnServer:id,name',
+            ])
+            ->orderByDesc('disconnected_at')
             ->limit(10)
-            ->get();
+            ->get([
+                'vpn_user_id',
+                'vpn_server_id',
+                'client_ip',
+                'disconnected_at',
+                'bytes_received',
+                'bytes_sent',
+                'connected_at',
+            ]);
     }
 
-    public function disconnectUser($connectionId)
-{
-    /** @var VpnUserConnection $connection */
-    $connection = VpnUserConnection::with(['vpnUser','vpnServer'])->findOrFail($connectionId);
+    /* -------------------------- Livewire endpoints ----------------------- */
 
-    $server   = $connection->vpnServer;
-    $username = $connection->vpnUser?->username;
+    /**
+     * Polled by Alpine every 5s.
+     * Returns the fleet snapshot your JS expects:
+     *  - usersByServer: { [serverId]: [{ username, client_ip, virtual_ip, connected_human, connected_fmt, down_mb, up_mb }] }
+     *  - totals: { online_users, active_connections, active_servers }
+     */
+    public function getLiveStats(): array
+    {
+        [$serverMeta, $usersByServer] = $this->buildSnapshot();
+        $totals = $this->computeTotals($serverMeta, $usersByServer);
 
-    if (!$server || !$username) {
-        session()->flash('message', 'Missing server or username.');
-        return;
+        return [
+            'usersByServer' => $usersByServer,
+            'totals'        => $totals,
+        ];
     }
 
-    // 1) Kick via OpenVPN management (remote)
-    try {
-        // Build remote "client-kill USERNAME" piped to nc on mgmt port 7505
-        $mgmtPort = 7505; // matches your deploy script
-        $remoteCmd = "bash -lc " . escapeshellarg(
-            "printf 'client-kill " . addcslashes($username, "'\"\\") . "\\nquit\\n' | nc -w 3 127.0.0.1 {$mgmtPort} || true"
-        );
+    /* ------------------------------- Render ------------------------------ */
 
-        $ssh = $server->getSshCommand(); // from your model
-        $full = $ssh . ' ' . escapeshellarg($remoteCmd);
+    public function render(): ViewContract
+    {
+        // Build initial snapshot so the page has data before Echo/polling kicks in
+        [$serverMeta, $usersByServer] = $this->buildSnapshot();
+        $seedTotals = $this->computeTotals($serverMeta, $usersByServer);
 
-        $out = [];
-        $rc  = 0;
-        exec($full, $out, $rc);
-        Log::info("🔌 Disconnect cmd sent to {$server->name} for {$username} (rc={$rc})", ['out' => $out]);
-        // We don't hard-fail on rc != 0; OpenVPN may already have dropped the client.
-    } catch (\Throwable $e) {
-        Log::warning("⚠️ Disconnect management call failed: ".$e->getMessage());
-    }
+        return view('livewire.pages.admin.vpn-dashboard', [
+            // server list & cards
+            'servers'                => $this->servers,
+            'activeConnections'      => $this->activeConnections,
+            'totalOnlineUsers'       => $this->totalOnlineUsers,
+            'totalActiveConnections' => $this->totalActiveConnections,
+            'recentlyDisconnected'   => $this->recentlyDisconnected,
 
-    // 2) Update DB state so UI reflects immediately
-    if ($connection->is_connected) {
-        $connection->update([
-            'is_connected'    => false,
-            'disconnected_at' => now(),
+            // Alpine init() seeds (names match your JS)
+            'serverMeta'        => $serverMeta,        // { [id]: { name } }
+            'seedUsersByServer' => $usersByServer,     // { [id]: [ rows... ] }
+            'seedTotals'        => $seedTotals,        // { online_users, active_connections, active_servers }
         ]);
-
-        VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($connection->vpn_user_id);
     }
 
-    session()->flash('message', "User {$username} has been disconnected from {$server->name}");
-}
-    
-    public function getLiveClientsProperty(): array
-{
-    if (!$this->selectedServerId) return [];
+    /* --------------------------- Helper methods -------------------------- */
 
-    $server = VpnServer::find($this->selectedServerId);
+    /**
+     * Returns:
+     *  - serverMeta: id => ['name' => string]
+     *  - usersByServer: id => [ { username, client_ip, virtual_ip, connected_human, connected_fmt, down_mb, up_mb } ]
+     */
+    private function buildSnapshot(): array
+    {
+        // Servers (only deployed ones)
+        $servers = VpnServer::query()
+            ->where('deployment_status', 'succeeded')
+            ->orderBy('id')
+            ->get(['id', 'name']);
 
-    if (!$server || !$server->ip_address || !$server->ssh_user || !$server->ssh_password) {
-        return [];
-    }
-
-    try {
-        $ssh = new SSH2($server->ip_address);
-        if (!$ssh->login($server->ssh_user, $server->ssh_password)) {
-            return [];
+        $serverMeta = [];
+        foreach ($servers as $s) {
+            $serverMeta[(string) $s->id] = ['name' => $s->name];
         }
 
-        $raw = OpenVpnStatusParser::fetchAnyStatus($ssh);
-        $parsed = OpenVpnStatusParser::parse($raw);
+        // Current live connections (whole fleet)
+        $rows = VpnUserConnection::query()
+            ->where('is_connected', true)
+            ->with([
+                'vpnUser:id,username',
+            ])
+            ->select([
+                'vpn_user_id',
+                'vpn_server_id',
+                'client_ip',
+                'virtual_ip',
+                'bytes_received',
+                'bytes_sent',
+                'connected_at',
+            ])
+            ->get();
 
-        return $parsed['clients'] ?? [];
-    } catch (\Throwable $e) {
-        return [];
+        $usersByServer = [];
+
+        foreach ($rows as $r) {
+            $sid   = (string) $r->vpn_server_id;
+            $uname = $r->vpnUser?->username ?? 'unknown';
+            $at    = $r->connected_at ? Carbon::parse($r->connected_at) : null;
+
+            $usersByServer[$sid] ??= [];
+
+            $usersByServer[$sid][] = [
+                'username'        => $uname,
+                'client_ip'       => $r->client_ip,
+                'virtual_ip'      => $r->virtual_ip,
+                'connected_human' => $at?->diffForHumans(),
+                'connected_fmt'   => $at?->toIso8601String(),
+                'formatted_bytes' => null, // let the UI format aggregate if you want
+                'down_mb'         => $r->bytes_received ? round($r->bytes_received / 1048576, 2) : 0.0,
+                'up_mb'           => $r->bytes_sent     ? round($r->bytes_sent     / 1048576, 2) : 0.0,
+            ];
+        }
+
+        return [$serverMeta, $usersByServer];
     }
-}
 
-    public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
+    /** Compute KPIs for the dashboard header */
+    private function computeTotals(array $serverMeta, array $usersByServer): array
     {
-        return view('livewire.pages.admin.vpn-dashboard', [
-            'servers' => $this->servers,
-            'activeConnections' => $this->activeConnections,
-            'totalOnlineUsers' => $this->totalOnlineUsers,
-            'totalActiveConnections' => $this->totalActiveConnections,
-            'recentlyDisconnected' => $this->recentlyDisconnected,
-        ]);
+        $uniqueUsers = [];
+        $activeConnections = 0;
+        $activeServers = 0;
+
+        foreach ($serverMeta as $sid => $_) {
+            $list = $usersByServer[$sid] ?? [];
+            if (!empty($list)) {
+                $activeServers++;
+            }
+            foreach ($list as $u) {
+                if (!empty($u['username'])) {
+                    $uniqueUsers[$u['username']] = true;
+                }
+            }
+            $activeConnections += count($list);
+        }
+
+        // If no servers currently have users, show total number of deployed servers as “active servers”
+        if ($activeServers === 0) {
+            $activeServers = count($serverMeta);
+        }
+
+        return [
+            'online_users'       => count($uniqueUsers),
+            'active_connections' => $activeConnections,
+            'active_servers'     => $activeServers,
+        ];
     }
 }
