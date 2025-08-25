@@ -78,7 +78,11 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 $username = (string)($c['username'] ?? '');
                 if ($username !== '') $usernames[] = $username;
             }
-
+Log::info('DEBUG: parsed snapshot', [
+    'server' => $server->id,
+    'clients_raw_count' => count($parsed['clients'] ?? []),
+    'first_client' => $parsed['clients'][0] ?? null,
+]);
             if ($this->verboseMgmtLog) {
                 Log::info(sprintf(
                     'APPEND_LOG: [mgmt] ts=%s source=%s clients=%d [%s]',
