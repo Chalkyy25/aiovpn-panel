@@ -256,13 +256,13 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     }
 
     protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
-    {
-        broadcast(new ServerMgmtEvent(
-            $serverId,
-            $ts->format(DATE_ATOM),
-            count($usernames),
-            implode(',', $usernames),
-            'sync-job'
-        ));
-    }
+{
+    broadcast(new ServerMgmtEvent(
+        $serverId,
+        $ts->format(DATE_ATOM),
+        $usernames,           // 👈 pass the array
+        null,                 // let the event derive cn_list
+        'sync-job'
+    ));
+}
 }
