@@ -107,7 +107,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
         // 1) Management socket
         $mgmtCmd = 'bash -lc ' . escapeshellarg(
-            'set -o pipefail; { printf "status 3\r\n"; sleep 1; printf "quit\r\n"; } | nc -w 3 127.0.0.1 ' . $mgmtPort
+            'set -o pipefail; { printf "status 3\r\n"; sleep 1; printf "quit\r\n"; } | nc -w 3 127.0.0.1' . $mgmtPort
         );
         $res = $this->executeRemoteCommand($server, $mgmtCmd);
         $out = trim(implode("\n", $res['output'] ?? []));
