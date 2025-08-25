@@ -394,28 +394,39 @@ window.vpnDashboard = function () {
     selectServer(id) { this.selectedServerId = id; },
 
     async disconnect(row) {
-      if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
+  if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
-      try {
-  const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
-    method: 'POST',
-    headers: {
-      'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ username: row.username, server_id: row.server_id }),
-  });
+  try {
+    const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username: row.username, server_id: row.server_id }),
+    });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const details = Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error');
-    throw new Error(details);
+    // Try to parse JSON, fallback to plain text if it’s not JSON
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      const text = await res.text();
+      data = { message: text };
+    }
+
+    if (!res.ok) {
+      const details = Array.isArray(data.output)
+        ? data.output.join('\n')
+        : (data.message || 'Unknown error');
+      throw new Error(details);
+    }
+
+    alert(data.message || 'Disconnected.');
+  } catch (e) {
+    console.error(e);
+    alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
   }
-
-  alert(data.message || 'Disconnected.');
-} catch (e) {
-  console.error(e);
-  alert('Error disconnecting user.\n\n' + (e.message || ''));
 }
     },
   };
