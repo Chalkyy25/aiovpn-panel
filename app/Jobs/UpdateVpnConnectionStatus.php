@@ -157,33 +157,42 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     }
 
     // 2) Fallback to management socket (CRLF + tiny sleep + -w 2; keep output!)
-    $mgmtPort = (int)($server->mgmt_port ?? 7505);
+    // 1) MANAGEMENT FIRST
+$mgmtPort = (int)($server->mgmt_port ?? 7505);
+$mgmtCmd = 'bash -lc ' . escapeshellarg(
+    'set -o pipefail; { printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } | nc -w 2 127.0.0.1 '.$mgmtPort
+);
+$res = $this->executeRemoteCommand($server, $mgmtCmd);
+$out = trim(implode("\n", $res['output'] ?? []));
+if (($res['status'] ?? 1) === 0 && $out !== '' &&
+    (str_contains($out, 'OpenVPN Management Interface') || str_contains($out, "\tCLIENT_LIST\t"))) {
+    Log::info("📡 {$server->name}: read status via mgmt :{$mgmtPort}");
+    return $out;
+}
 
-    $mgmtCmd = 'bash -lc ' . escapeshellarg(implode(' && ', [
-        // ensure pipeline failures are not masked
-        'set -o pipefail',
-        // do the exact nc dance that works on your box
-        '{ printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; }'
-        . ' | nc -w 2 127.0.0.1 ' . $mgmtPort
-    ]));
+// 2) FALL BACK TO FILE LOCATIONS (only if mgmt didn’t work)
+$candidates = array_values(array_unique(array_filter([
+    $server->status_log_path ?? null,
+    '/run/openvpn/server.status',
+    '/run/openvpn/openvpn.status',
+    '/run/openvpn/server/server.status',
+    '/var/log/openvpn-status.log',
+])));
 
-    $res = $this->executeRemoteCommand($server, $mgmtCmd);
-
-    $out = trim(implode("\n", $res['output'] ?? []));
-    if (($res['status'] ?? 1) === 0 && $out !== '') {
-        // sanity: should include the mgmt banner
-        if (str_contains($out, 'OpenVPN Management Interface') || str_contains($out, "\tCLIENT_LIST\t")) {
-            Log::info("📡 {$server->name}: read status via mgmt :{$mgmtPort}");
-            return $out;
+foreach ($candidates as $path) {
+    $cmd = 'bash -lc ' . escapeshellarg('test -s '.escapeshellarg($path).' && cat '.escapeshellarg($path).' || echo "__NOFILE__"');
+    $res = $this->executeRemoteCommand($server, $cmd);
+    if (($res['status'] ?? 1) === 0) {
+        $data = trim(implode("\n", $res['output'] ?? []));
+        if ($data !== '' && $data !== '__NOFILE__') {
+            Log::info("📄 {$server->name}: using {$path}");
+            return $data;
         }
     }
-
-    // TEMP: add one-line debug so we can see what came back
-    Log::warning("⚠️ {$server->name}: mgmt socket read failed" . ($out ? " (got ".min(80, strlen($out))." bytes)" : ' (no output)'));
-
-    Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
-    return '';
 }
+
+Log::warning("⚠️ {$server->name}: status not readable from mgmt or file.");
+return '';
     protected function upsertConnections(VpnServer $server, array $connected): void
     {
         DB::transaction(function () use ($server, $connected) {
