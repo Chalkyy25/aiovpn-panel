@@ -118,7 +118,7 @@ class OpenVpnStatusParser
             }
 
             // CLIENT_LIST,<CN>,<RealAddr>,<VirtIP>,<VirtIPv6>,<BytesRecv>,<BytesSent>,<SinceStr>,<SinceEpoch>,<Username>,<ClientID>,...
-            if (str_starts_with($line, 'CLIENT_LIST,')) {
+            if (str_starts_with($line, 'CLIENT_LIST')) {
                 $p = explode(',', $line);
 
                 $commonName     = $p[1]  ?? '';
@@ -178,7 +178,7 @@ class OpenVpnStatusParser
             }
 
             // CLIENT_LIST\tCN\tRealAddr\tVirtIP\tVirtIPv6\tBytesRecv\tBytesSent\tSinceStr\tSinceEpoch\tUsername\tClientID...
-            if (str_starts_with($line, "CLIENT_LIST\t")) {
+            if (str_starts_with($line, "CLIENT_LIST")) {
                 $p = explode("\t", $line);
 
                 $commonName     = self::clean($p[1]  ?? '');
