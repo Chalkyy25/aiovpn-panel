@@ -39,6 +39,9 @@ class VpnServer extends Model
         'status',
         'status_log_path',   // <- reported by deploy script
     ];
+    protected $casts = [
+    'last_sync_at' => 'datetime',
+];
 
     /* ─────────────── Relationships ─────────────── */
 
