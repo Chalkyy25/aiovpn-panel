@@ -244,36 +244,30 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     /**
      * Push snapshot to API instead of direct broadcast()
      */
-    protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
-{
-    // Normalise into [{ username: "alice" }, { username: "bob" }]
-    $users = array_map(fn($u) => ['username' => (string) $u], $usernames);
+    use Illuminate\Support\Facades\Http;
 
+// ...
+
+protected function broadcastSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
+{
     Log::info('🔊 pushing mgmt.update via API', [
         'server' => $serverId,
         'ts'     => $ts->format(DATE_ATOM),
-        'count'  => count($users),
-        'users'  => $users,
+        'count'  => count($usernames),
+        'users'  => $usernames,
     ]);
 
     try {
-        $response = Http::withToken(config('services.panel.token'))
+        Http::withToken(config('services.panel.token'))
             ->acceptJson()
             ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
                 'status' => 'mgmt',
                 'ts'     => $ts->format(DATE_ATOM),
-                'users'  => $users,
-            ]);
-
-        if ($response->failed()) {
-            Log::error("❌ POST /api/servers/{$serverId}/events failed", [
-                'code' => $response->status(),
-                'body' => $response->body(),
-            ]);
-        }
+                'users'  => array_map(fn($u) => ['username' => $u], $usernames),
+            ])
+            ->throw();
     } catch (\Throwable $e) {
-        Log::error("❌ Exception posting /api/servers/{$serverId}/events", [
-            'error' => $e->getMessage(),
-        ]);
+        Log::error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
     }
+}
 }
