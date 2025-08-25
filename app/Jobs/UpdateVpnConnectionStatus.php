@@ -81,18 +81,19 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $connected = [];
 
             foreach ($parsed['clients'] as $c) {
-                $username = (string)($c['username'] ?? '');
-                if ($username === '') continue;
+    $username = (string)($c['username'] ?? '');
+    if ($username === '') continue;
 
-                $connected[$username] = [
-                    'client_ip'      => $c['client_ip'] ?? null,
-                    'bytes_received' => (int)($c['bytes_received'] ?? 0),
-                    'bytes_sent'     => (int)($c['bytes_sent'] ?? 0),
-                    'connected_at'   => isset($c['connected_at'])
-                        ? Carbon::createFromTimestamp($c['connected_at'])
-                        : null,
-                ];
-            }
+    $connected[$username] = [
+        'client_ip'      => $c['client_ip'] ?? null,
+        'virtual_ip'     => $c['virtual_ip'] ?? null,
+        'bytes_received' => (int)($c['bytes_received'] ?? 0),
+        'bytes_sent'     => (int)($c['bytes_sent'] ?? 0),
+        'connected_at'   => isset($c['connected_at'])
+            ? Carbon::createFromTimestamp($c['connected_at'])
+            : null,
+    ];
+}
 
             $this->upsertConnections($server, $connected);
 
