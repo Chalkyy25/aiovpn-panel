@@ -6,72 +6,97 @@ use App\Models\VpnServer;
 use App\Traits\ExecutesRemoteCommands;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Http\JsonResponse;
 
 class VpnDisconnectController extends Controller
 {
     use ExecutesRemoteCommands;
 
-    public function __invoke(Request $request)
+    /**
+     * POST /admin/vpn/disconnect
+     * JSON: { "server_id": 123, "username": "alice" }
+     */
+    public function __invoke(Request $request): JsonResponse
     {
-        $request->validate([
-            'server_id' => 'required|integer|exists:vpn_servers,id',
-            'username'  => 'required|string',
+        $data = $request->validate([
+            'server_id' => ['required', 'integer', 'exists:vpn_servers,id'],
+            'username'  => ['required', 'string'],
         ]);
 
-        /** @var \App\Models\VpnServer $server */
-        $server   = VpnServer::findOrFail($request->integer('server_id'));
-        $username = $request->string('username');
+        /** @var VpnServer $server */
+        $server   = VpnServer::findOrFail($data['server_id']);
+        $username = $data['username'];
 
-        // We’ll pipe a small script to `bash -s -- <username>`
-        $remote = <<<'SH'
+        // Entire remote script lives in a single-quoted heredoc so NO escaping drama.
+        // We pass only the username as $1 via "bash -s -- 'username'".
+        $remote = <<<'BASH'
 set -euo pipefail
+
 NEEDLE="${1:?username required}"
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 
-# Grab mgmt status v3 and find the first CID matching CN (col2) or Username (col10)
-OUT="$({ printf 'status 3\r\n'; sleep 0.2; printf 'quit\r\n'; } \
+# Grab TSV status from mgmt interface (status-version 3)
+OUT="$({ printf 'status 3\r\n'; sleep 0.3; printf 'quit\r\n'; } \
   | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)"
 
-CID="$(printf '%s\n' "$OUT" \
-  | awk -F '\t' -v q="$NEEDLE" '$1=="CLIENT_LIST"{cn=$2; gsub(/\r$/,"",cn); user=$10; gsub(/\r$/,"",user); if(cn==q || user==q){print $11; exit}}')"
+# Find first match by CN (col 2) OR Username (col 10). Output: CN<TAB>CID
+PAIR=$(printf "%s\n" "$OUT" \
+  | awk -F '\t' -v q="$NEEDLE" '
+      $1=="CLIENT_LIST" {
+        cn=$2;  sub(/\r$/,"",cn);
+        user=$10; sub(/\r$/,"",user);
+        if (cn==q || user==q) { print cn "\t" $11; exit }
+      }')
 
-if [ -z "$CID" ]; then
+CN=$(printf "%s" "$PAIR" | cut -f1)
+CID=$(printf "%s" "$PAIR" | cut -f2)
+
+if [ -z "${CID:-}" ]; then
   echo "ERR: no CID for user/CN: $NEEDLE"
+  # Helpful preview of rows (CN|USER|CID)
+  printf "%s\n" "$OUT" | awk -F"\t" '$1=="CLIENT_LIST"{print $2 "|" $10 "|" $11}' | head -n 5
   exit 2
 fi
 
-# Your daemon accepts CID-only — try that first, then fallbacks.
-send() {
-  # $1 command (no CRLF)
-  { printf "%s\r\n" "$1"; sleep 0.2; printf "quit\r\n"; } \
-    | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true
+# Your daemon accepts CID-only kills; do that first.
+send_cmd() {
+  # $1 = command string (w/out CRLF), $2 = label
+  RES=$({ printf '%s\r\n' "$1"; sleep 0.3; printf 'quit\r\n'; } \
+        | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true)
+  echo "$2: $RES"
+  case "$RES" in *SUCCESS*|*success*) return 0 ;; esac
+  return 1
 }
 
-RES="$(send "client-kill $CID")"
-case "$RES" in *SUCCESS*|*success*) echo "OK: $NEEDLE (CID=$CID) killed"; exit 0;; esac
+# Try CID-only first; then fallbacks if needed.
+send_cmd "client-kill $CID"     "REPLY1" || \
+send_cmd "client-kill $CN $CID" "REPLY2" || \
+send_cmd "kill $CID"            "REPLY3" || {
+  echo "ERR: mgmt did not return SUCCESS"
+  exit 3
+}
+BASH;
 
-RES="$(send "kill $CID")"
-case "$RES" in *SUCCESS*|*success*) echo "OK: $NEEDLE (CID=$CID) killed (legacy)"; exit 0;; esac
+        // IMPORTANT: use bash -s -- 'username' <<'BASH' … BASH
+        $command = "bash -s -- " . escapeshellarg($username) . " <<'BASH'\n{$remote}\nBASH";
 
-echo "ERR: mgmt did not return SUCCESS ($RES)"
-exit 3
-SH;
+        $res = $this->executeRemoteCommand($server, $command);
 
-        // IMPORTANT: our trait should run raw commands (no extra quoting).
-        // We run: bash -s -- '<username>' <<'SH' ... SH
-        $cmd = "bash -s -- " . escapeshellarg($username) . " <<'SH'\n{$remote}\nSH\n";
+        if (($res['status'] ?? 1) === 0) {
+            return response()->json([
+                'ok'      => true,
+                'message' => "Disconnect requested for {$username} on {$server->name}.",
+                'output'  => $res['output'] ?? [],
+            ]);
+        }
 
-        $res = $this->executeRemoteCommand($server, $cmd);
-
-        $ok = ($res['status'] ?? 1) === 0;
-        $msg = trim(implode("\n", $res['output'] ?? [])) ?: ($ok ? 'Disconnected' : 'Disconnect failed');
-
-        Log::info('[disconnect] '.$server->name.' -> '.$msg);
+        Log::error('Disconnect failed', ['server' => $server->id, 'out' => $res['output'] ?? []]);
 
         return response()->json([
-            'ok'      => $ok,
-            'message' => $msg,
-        ], $ok ? 200 : 422);
+            'ok'      => false,
+            'message' => 'Error disconnecting user.',
+            'output'  => $res['output'] ?? [],
+        ], 422);
     }
 }
