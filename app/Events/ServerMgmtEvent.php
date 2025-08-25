@@ -12,61 +12,58 @@ class ServerMgmtEvent implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    /** Server numeric ID */
     public int $serverId;
-
-    /** ISO8601 timestamp string */
     public string $ts;
 
-    /** Normalized users array (each item is at least ['username'=>..]) */
-    public array $users = [];
-
-    /** Convenience count */
+    /** Total clients (derived if not provided) */
     public int $clients = 0;
 
-    /** Back-compat string of usernames, comma-separated */
+    /** Comma-separated CNs (derived if not provided) */
     public string $cnList = '';
 
-    /** Optional source/debug tag (e.g. 'sync-job', 'mgmt', etc.) */
-    public string $source;
+    /** Rich users payload for the UI (optional) */
+    public array $users = [];
+
+    /** Free-form text for debugging (optional) */
+    public string $raw = '';
 
     /**
-     * @param int                     $serverId
-     * @param \DateTimeInterface|string $ts
-     * @param array<int, array|string>  $users   Array of strings or objects:
-     *        [
-     *          'username'        => string,
-     *          'client_ip'       => ?string,
-     *          'virtual_ip'      => ?string,
-     *          'bytes_received'  => ?int,
-     *          'bytes_sent'      => ?int,
-     *          'connected_at'    => ?int,
-     *          'connected_fmt'   => ?string,
-     *          'connected_human' => ?string,
-     *          'down_mb'         => ?float,
-     *          'up_mb'           => ?float,
-     *          'formatted_bytes' => ?string,
-     *          'connection_id'   => ?int,
-     *        ]
-     * @param string $source
+     * Backward-compatible constructor:
+     *  - 3rd arg can be an array of users OR a client count (int)
+     *  - If an int is passed, you can optionally pass $cnList in the 4th arg
      */
-    public function __construct(int $serverId, $ts, array $users = [], string $source = 'sync-job')
-    {
+    public function __construct(
+        int $serverId,
+        string $ts,
+        $usersOrCount = [],
+        ?string $cnList = null,
+        ?string $raw = null
+    ) {
         $this->serverId = $serverId;
-        $this->ts       = $ts instanceof \DateTimeInterface ? $ts->format(DATE_ATOM) : (string)$ts;
-        $this->users    = $this->normalizeUsers($users);
-        $this->clients  = count($this->users);
-        $this->cnList   = implode(',', array_map(fn ($u) => $u['username'] ?? '', $this->users));
-        $this->source   = $source;
+        $this->ts       = $ts;
+
+        if (is_array($usersOrCount)) {
+            $this->users   = $usersOrCount;
+            $this->clients = count($usersOrCount);
+            // derive cnList if not provided
+            $this->cnList  = $cnList ?? implode(',', array_filter(array_map(function ($u) {
+                // allow string usernames or arrays with username/cn
+                if (is_string($u)) return $u;
+                if (is_array($u))  return $u['username'] ?? $u['cn'] ?? null;
+                return null;
+            }, $this->users)));
+        } else {
+            // old style: (serverId, ts, clients:int, cnList?:string, raw?:string)
+            $this->clients = (int) $usersOrCount;
+            $this->cnList  = (string) ($cnList ?? '');
+        }
+
+        $this->raw = (string) ($raw ?? '');
     }
 
-    public function broadcastOn(): array
+    public function broadcastOn(): PrivateChannel
     {
-        // Per-server channel + fleet dashboard channel (your Alpine listens to both)
-        return [
-            new PrivateChannel("servers.{$this->serverId}"),
-            new PrivateChannel('servers.dashboard'),
-        ];
+        return new PrivateChannel("servers.$this->serverId");
     }
 
     public function broadcastAs(): string
@@ -80,40 +77,10 @@ class ServerMgmtEvent implements ShouldBroadcastNow
             'server_id' => $this->serverId,
             'ts'        => $this->ts,
             'clients'   => $this->clients,
-            'users'     => $this->users,   // ← rich objects for the UI
-            'cn_list'   => $this->cnList,  // ← back-compat
-            'source'    => $this->source,
+            'cn_list'   => $this->cnList,
+            // include users if we have them (UI handles both)
+            'users'     => $this->users,
+            'raw'       => $this->raw,
         ];
-    }
-
-    /** @param array<int, array|string> $users */
-    private function normalizeUsers(array $users): array
-    {
-        $out = [];
-        foreach ($users as $u) {
-            if (is_string($u)) {
-                $out[] = ['username' => $u];
-                continue;
-            }
-            if (is_array($u)) {
-                // keep expected keys only; ignore unknowns to keep payload tidy
-                $out[] = [
-                    'username'        => $u['username']        ?? null,
-                    'client_ip'       => $u['client_ip']       ?? null,
-                    'virtual_ip'      => $u['virtual_ip']      ?? null,
-                    'bytes_received'  => $u['bytes_received']  ?? null,
-                    'bytes_sent'      => $u['bytes_sent']      ?? null,
-                    'connected_at'    => $u['connected_at']    ?? null,
-                    'connected_fmt'   => $u['connected_fmt']   ?? null,
-                    'connected_human' => $u['connected_human'] ?? null,
-                    'down_mb'         => $u['down_mb']         ?? null,
-                    'up_mb'           => $u['up_mb']           ?? null,
-                    'formatted_bytes' => $u['formatted_bytes'] ?? null,
-                    'connection_id'   => $u['connection_id']   ?? null,
-                ];
-            }
-        }
-        // drop empties / missing usernames
-        return array_values(array_filter($out, fn ($r) => !empty($r['username'])));
     }
 }
