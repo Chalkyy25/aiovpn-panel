@@ -18,7 +18,9 @@ class UpdateVpnStatus extends Command
         $serverId = $this->option('server_id');
 
         $q = VpnServer::query()->where('deployment_status', 'succeeded');
-        if ($serverId) $q->where('id', (int) $serverId);
+        if ($serverId) {
+            $q->where('id', (int) $serverId);
+        }
 
         $servers = $q->get();
         if ($servers->isEmpty()) {
@@ -30,32 +32,60 @@ class UpdateVpnStatus extends Command
 
         foreach ($servers as $server) {
             try {
+                // 1) try mgmt socket
                 $raw = $this->readStatusFromMgmt($server);
+
+                // 2) fallback to files
                 if ($raw === '') {
                     $raw = $this->readStatusFromFiles($server);
                 }
 
                 if ($raw === '') {
                     Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
-                    $this->broadcast($server->id, now()->toAtomString(), 0, '');
+                    // Broadcast empty snapshot (keeps UI responsive)
+                    $this->broadcastUsers($server->id, []);
+                    // Optional: keep counters fresh
+                    $server->forceFill([
+                        'online_users' => 0,
+                        'last_sync_at' => now(),
+                    ])->saveQuietly();
                     continue;
                 }
 
+                // Parse status (auto-detects v3/v2)
                 $parsed = OpenVpnStatusParser::parse($raw);
-                $users  = collect($parsed['clients'] ?? [])->pluck('username')->filter()->values()->all();
-                $count  = count($users);
-                $cnList = implode(',', $users);
 
-                // optional: persist quick counters without noise
+                // Build rich users payload for the dashboard
+                // (your Alpine code will gracefully format / fallback where needed)
+                $users = [];
+                foreach ($parsed['clients'] ?? [] as $c) {
+                    $username = (string)($c['username'] ?? '');
+                    if ($username === '') {
+                        continue;
+                    }
+                    $users[] = [
+                        'username'       => $username,
+                        'client_ip'      => $c['client_ip']      ?? null,
+                        'virtual_ip'     => $c['virtual_ip']     ?? null,
+                        'bytes_received' => (int)($c['bytes_received'] ?? 0),
+                        'bytes_sent'     => (int)($c['bytes_sent'] ?? 0),
+                        'connected_at'   => isset($c['connected_at'])
+                            ? now()->setTimestamp($c['connected_at'])->toIso8601String()
+                            : null,
+                    ];
+                }
+
+                // persist quick counters (quietly)
                 $server->forceFill([
-                    'online_users' => $count,
+                    'online_users' => count($users),
                     'last_sync_at' => now(),
                 ])->saveQuietly();
 
-                $this->broadcast($server->id, now()->toAtomString(), $count, $cnList);
+                // Broadcast rich snapshot (ServerMgmtEvent handles both array & count styles)
+                $this->broadcastUsers($server->id, $users);
             } catch (\Throwable $e) {
                 Log::warning("⚠️ {$server->name}: status read failed – {$e->getMessage()}");
-                $this->broadcast($server->id, now()->toAtomString(), 0, '');
+                $this->broadcastUsers($server->id, []);
             }
         }
 
@@ -64,19 +94,17 @@ class UpdateVpnStatus extends Command
     }
 
     /**
-     * Management-socket reader (preferred).
+     * Read full status from the management socket.
      */
     private function readStatusFromMgmt(VpnServer $server): string
     {
-        // Build SSH command from the model
         $ssh = $server->getSshCommand();
 
-        // Small script that queries mgmt and prints the full status block
+        // Ask mgmt for status v3, then quit. Small sleep lets OpenVPN flush.
         $script = <<<'BASH'
 set -e
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
-# status 3 then quit; small sleep ensures OpenVPN flushes output
 { printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } \
   | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true
 BASH;
@@ -97,20 +125,19 @@ BASH;
     }
 
     /**
-     * File readers (fallback) — tries common v3/v2 paths.
+     * Read status from common file paths (v3 / v2).
      */
     private function readStatusFromFiles(VpnServer $server): string
     {
         $ssh = $server->getSshCommand();
 
-        // Try a few candidates, including custom per-server path
         $candidates = array_values(array_unique(array_filter([
-            $server->status_log_path,                 // per-server override
-            '/run/openvpn/server.status',             // systemd template default
+            $server->status_log_path,            // per-server override
+            '/run/openvpn/server.status',        // systemd template default
             '/run/openvpn/openvpn.status',
-            '/run/openvpn/server/server.status',      // some distros use nested dir
-            '/var/log/openvpn-status.log',            // classic v2
-        ], fn($p) => is_string($p) && $p !== '')));
+            '/run/openvpn/server/server.status', // some distros nest it
+            '/var/log/openvpn-status.log',       // classic v2
+        ], fn ($p) => is_string($p) && $p !== '')));
 
         foreach ($candidates as $path) {
             $remote = 'test -r ' . escapeshellarg($path) . ' && cat ' . escapeshellarg($path) . ' || echo "__NOFILE__"';
@@ -135,10 +162,7 @@ BASH;
     }
 
     /**
-     * Minimal runner that returns [exitCode, lines[]].
-     */
-        /**
-     * Minimal runner that returns [exitCode, lines[]].
+     * Run a shell command and return [exitCode, array-of-lines].
      */
     protected function runCmd(string $cmd): array
     {
@@ -151,6 +175,7 @@ BASH;
         if (!is_resource($p)) {
             return [255, ['proc_open failed']];
         }
+
         fclose($pipes[0]);
         $out = stream_get_contents($pipes[1]); fclose($pipes[1]);
         $err = stream_get_contents($pipes[2]); fclose($pipes[2]);
@@ -163,14 +188,16 @@ BASH;
         return [$rc, $lines];
     }
 
-    private function broadcast(int $serverId, string $tsIso, int $count, string $cnCsv): void
+    /**
+     * Broadcast a snapshot using rich users payload (UI supports both shapes).
+     */
+    private function broadcastUsers(int $serverId, array $users): void
     {
-        // Reverb/Echo event used by your dashboard
         broadcast(new ServerMgmtEvent(
             $serverId,
-            $tsIso,
-            $count,
-            $cnCsv,
+            now()->toIso8601String(),
+            $users,      // ← array payload (preferred, gives Virtual IP, Connected since, Data transfer)
+            null,
             'sync-job'
         ));
     }
