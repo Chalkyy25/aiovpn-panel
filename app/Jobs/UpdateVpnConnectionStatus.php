@@ -63,58 +63,107 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
     /* ───────────────────────────────────────────────────────────── */
 
-    protected function syncOneServer(VpnServer $server): void
-    {
-        try {
-            $raw = $this->fetchOpenVpnStatusLog($server);
+    /**
+ * Sync one OpenVPN server: read status (file or mgmt), persist connections,
+ * update server counters, and broadcast a rich snapshot for the UI.
+ */
+protected function syncOneServer(VpnServer $server): void
+{
+    try {
+        $raw = $this->fetchOpenVpnStatusLog($server);
 
-            if ($raw === '') {
-                Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
-                if ($this->strictOfflineOnMissing) {
-                    $this->markAllUsersDisconnected($server);
-                    $this->broadcastSnapshot($server->id, now(), []);
-                }
-                return;
-            }
-
-            $parsed = OpenVpnStatusParser::parse($raw);
-            $connected = [];
-
-            foreach ($parsed['clients'] as $c) {
-    $username = (string)($c['username'] ?? '');
-    if ($username === '') continue;
-
-    $connected[$username] = [
-        'client_ip'      => $c['client_ip'] ?? null,
-        'virtual_ip'     => $c['virtual_ip'] ?? null,
-        'bytes_received' => (int)($c['bytes_received'] ?? 0),
-        'bytes_sent'     => (int)($c['bytes_sent'] ?? 0),
-        'connected_at'   => isset($c['connected_at'])
-            ? Carbon::createFromTimestamp($c['connected_at'])
-            : null,
-    ];
-}
-
-            $this->upsertConnections($server, $connected);
-
-            // Optional columns (ignore if not present)
-            try {
-                $server->forceFill([
-                    'online_users' => count($connected),
-                    'last_sync_at' => now(),
-                ])->saveQuietly();
-            } catch (\Throwable) {}
-
-            $this->broadcastSnapshot($server->id, now(), array_keys($connected));
-
-        } catch (\Throwable $e) {
-            Log::error("❌ {$server->name}: sync failed – {$e->getMessage()}");
+        if ($raw === '') {
+            Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
             if ($this->strictOfflineOnMissing) {
                 $this->markAllUsersDisconnected($server);
+                // Broadcast “empty” to clear UI
                 $this->broadcastSnapshot($server->id, now(), []);
             }
+            return;
+        }
+
+        $parsed    = OpenVpnStatusParser::parse($raw); // v3-aware
+        $connected = [];  // keyed by username for DB upsert
+        $usersForBroadcast = []; // rich rows for the UI
+
+        foreach ($parsed['clients'] as $c) {
+            $username = (string)($c['username'] ?? '');
+            if ($username === '') {
+                continue;
+            }
+
+            // Normalize & cast
+            $clientIp    = $c['client_ip']   ?? null;
+            $virtualIp   = $c['virtual_ip']  ?? null;
+            $bytesRecv   = (int)($c['bytes_received'] ?? 0); // client -> server
+            $bytesSent   = (int)($c['bytes_sent']     ?? 0); // server -> client
+            $connectedAt = isset($c['connected_at']) && is_numeric($c['connected_at'])
+                ? Carbon::createFromTimestamp((int)$c['connected_at'])
+                : null;
+
+            // For DB layer (your VpnUserConnection columns)
+            $connected[$username] = [
+                'client_ip'      => $clientIp,
+                'virtual_ip'     => $virtualIp,
+                'bytes_received' => $bytesRecv,
+                'bytes_sent'     => $bytesSent,
+                'connected_at'   => $connectedAt,
+            ];
+
+            // For live UI
+            $usersForBroadcast[] = [
+                'username'        => $username,
+                'client_ip'       => $clientIp,
+                'virtual_ip'      => $virtualIp,
+                'bytes_in'        => $bytesRecv, // ↓ in UI (from client)
+                'bytes_out'       => $bytesSent, // ↑ in UI (to client)
+                'connected_at'    => $connectedAt?->timestamp,
+                'connected_human' => $connectedAt?->diffForHumans() ?? null,
+                'connected_fmt'   => $connectedAt?->toIso8601String() ?? null,
+                'formatted_bytes' => null, // let the front-end format totals if desired
+                'down_mb'         => $bytesRecv > 0 ? round($bytesRecv / 1048576, 2) : 0.0,
+                'up_mb'           => $bytesSent > 0 ? round($bytesSent / 1048576, 2) : 0.0,
+            ];
+        }
+
+        // Persist
+        $this->upsertConnections($server, $connected);
+
+        // Optional server counters (ignore if columns don’t exist)
+        try {
+            $server->forceFill([
+                'online_users' => count($connected),
+                'last_sync_at' => now(),
+            ])->saveQuietly();
+        } catch (\Throwable) {
+            // columns optional — ignore
+        }
+
+        // Broadcast rich snapshot (preferred). If your event doesn’t yet include `users`,
+        // keep your existing broadcastSnapshot() as a fallback.
+        try {
+            // If you've updated ServerMgmtEvent to accept `users`, do this:
+            broadcast(new \App\Events\ServerMgmtEvent(
+                serverId: $server->id,
+                ts: now()->toAtomString(),
+                clients: count($usersForBroadcast),
+                cnList: implode(',', array_keys($connected)),
+                raw: 'sync-job',
+                users: $usersForBroadcast,  // <-- requires the extended event I shared earlier
+            ));
+        } catch (\Throwable $e) {
+            // Fallback to legacy “names-only” broadcast
+            $this->broadcastSnapshot($server->id, now(), array_keys($connected));
+        }
+
+    } catch (\Throwable $e) {
+        Log::error("❌ {$server->name}: sync failed – {$e->getMessage()}");
+        if ($this->strictOfflineOnMissing) {
+            $this->markAllUsersDisconnected($server);
+            $this->broadcastSnapshot($server->id, now(), []);
         }
     }
+}
 
     /**
      * Try file (v3 path), then fall back to mgmt socket `status 3`.
