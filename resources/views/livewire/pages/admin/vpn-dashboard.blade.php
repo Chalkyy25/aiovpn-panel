@@ -260,44 +260,37 @@
   @endif
 </div>
 
-{{-- Alpine controller (GLOBAL, not module) --}}
 <script>
 window.vpnDashboard = function () {
   return {
     serverMeta: {},
-    usersByServer: {}, // { [sid]: [{username, client_ip, virtual_ip, connected_at, down_mb, up_mb, ...}] }
+    usersByServer: {},         // { [serverId]: [ { username, client_ip, virtual_ip, ... } ] }
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
     _pollTimer: null,
 
-    init(meta, seedUsersByServer, seedTotals) {
+    init(meta, seedUsersByServer /* ignore seedTotals to avoid mismatches */) {
       this.serverMeta = meta || {};
-
-      // seed (normalize keys to strings)
       this.usersByServer = {};
-      if (seedUsersByServer) {
-        Object.keys(seedUsersByServer).forEach(k => {
-          const sid = String(k);
-          this.usersByServer[sid] = (seedUsersByServer[k] || []).map(u => this._normUser(u));
-        });
-      }
 
-      this.totals = seedTotals || this.computeTotals();
+      // Seed rows if you have them; then ALWAYS compute totals from rows
+      if (seedUsersByServer) {
+        for (const k in seedUsersByServer) this.usersByServer[+k] = seedUsersByServer[k] || [];
+      }
+      this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
-      // Realtime first, then 5s polling as fallback
+      // Subscribe + also keep a gentle polling even when Echo is up
       this._waitForEcho()
         .then(() => { this._subscribeFleet(); this._subscribePerServer(); })
-        .catch(() => { console.warn('[VPN] Echo not available — starting 5s polling fallback'); this._startPolling(); });
+        .finally(() => { this._startPolling(15000); }); // 15s refresh to reconcile staleness
     },
-
-    /* ───────── helpers ───────── */
 
     _waitForEcho() {
       return new Promise((resolve, reject) => {
         const t = setInterval(() => { if (window.Echo) { clearInterval(t); resolve(); } }, 150);
-        setTimeout(() => { clearInterval(t); if (!window.Echo) reject(); }, 5000);
+        setTimeout(() => { clearInterval(t); window.Echo ? resolve() : reject(); }, 3000);
       });
     },
 
@@ -306,7 +299,7 @@ window.vpnDashboard = function () {
         window.Echo.private('servers.dashboard')
           .subscribed(() => console.log('✅ subscribed servers.dashboard'))
           .listen('.mgmt.update', e => this.handleEvent(e))
-          .listen('mgmt.update',  e => this.handleEvent(e));
+          .listen('mgmt.update',   e => this.handleEvent(e));
       } catch (e) { console.error('subscribe servers.dashboard failed', e); }
     },
 
@@ -316,120 +309,99 @@ window.vpnDashboard = function () {
           window.Echo.private(`servers.${sid}`)
             .subscribed(() => console.log(`✅ subscribed servers.${sid}`))
             .listen('.mgmt.update', e => this.handleEvent(e))
-            .listen('mgmt.update',  e => this.handleEvent(e));
+            .listen('mgmt.update',   e => this.handleEvent(e));
         } catch (e) { console.error(`subscribe servers.${sid} failed`, e); }
       });
     },
 
-    _startPolling() {
+    _startPolling(ms = 15000) {
       if (this._pollTimer) clearInterval(this._pollTimer);
       this._pollTimer = setInterval(() => {
         if (!window.$wire?.getLiveStats) return;
-        window.$wire.getLiveStats()
-          .then(res => {
-            if (!res) return;
-            // expect { usersByServer: {sid: [users...]}, totals: {...} }
-            const next = {};
-            Object.keys(res.usersByServer || {}).forEach(sid => {
-              next[String(sid)] = (res.usersByServer[sid] || []).map(u => this._normUser(u));
-            });
-            this.usersByServer = next;
-            this.totals = res.totals || this.computeTotals();
-            this.lastUpdated = new Date().toLocaleTimeString();
-          })
-          .catch(() => {});
-      }, 5000);
+        window.$wire.getLiveStats().then(res => {
+          if (!res) return;
+
+          // Normalize shape
+          const incoming = res.usersByServer || {};
+          const norm = {};
+          for (const k in this.serverMeta) {
+            const sid = +k;
+            norm[sid] = (incoming[sid] || []).map(u => ({
+              username: u.username ?? 'unknown',
+              client_ip: u.client_ip ?? null,
+              virtual_ip: u.virtual_ip ?? null,
+              connected_human: u.connected_human ?? null,
+              connected_fmt: u.connected_fmt ?? null,
+              formatted_bytes: u.formatted_bytes ?? null,
+              down_mb: u.down_mb ?? null,
+              up_mb: u.up_mb ?? null,
+            }));
+          }
+
+          this.usersByServer = norm;
+          this.totals = this.computeTotals();
+          this.lastUpdated = new Date().toLocaleTimeString();
+        }).catch(() => {});
+      }, ms);
     },
-
-    _normUser(u = {}) {
-      // Accept a variety of shapes from the backend and normalize for the UI
-      const username     = u.username ?? u.cn ?? 'unknown';
-      const client_ip    = u.client_ip ?? null;
-      const virtual_ip   = u.virtual_ip ?? null;
-      const connected_at = (typeof u.connected_at === 'number') ? u.connected_at
-                           : (u.connected_at ? Date.parse(u.connected_at) / 1000 : null);
-
-      // Bytes can come as bytes_in/out or bytes_received/sent
-      const bytes_in     = Number(u.bytes_in ?? u.bytes_received ?? 0);   // client -> server
-      const bytes_out    = Number(u.bytes_out ?? u.bytes_sent ?? 0);      // server -> client
-
-      const down_mb      = bytes_in  > 0 ? +(bytes_in  / 1048576).toFixed(2) : 0;
-      const up_mb        = bytes_out > 0 ? +(bytes_out / 1048576).toFixed(2) : 0;
-
-      return {
-        username,
-        client_ip,
-        virtual_ip,
-        connected_at,
-        connected_human: connected_at ? this._timeAgo(connected_at * 1000) : null,
-        connected_fmt:   connected_at ? new Date(connected_at * 1000).toISOString() : null,
-        formatted_bytes: null, // optional pretty total if you want to add one later
-        down_mb,
-        up_mb,
-      };
-    },
-
-    _timeAgo(ms) {
-      const s = Math.floor((Date.now() - ms) / 1000);
-      if (s < 60) return `${s}s ago`;
-      const m = Math.floor(s / 60);
-      if (m < 60) return `${m}m ago`;
-      const h = Math.floor(m / 60);
-      if (h < 24) return `${h}h ago`;
-      const d = Math.floor(h / 24);
-      return `${d}d ago`;
-    },
-
-    /* ───────── event handling ───────── */
 
     handleEvent(e) {
-      const sid = String(Number(e.server_id ?? e.serverId ?? 0));
-      if (!sid || sid === '0') return;
+      const sid = Number(e.server_id ?? e.serverId ?? 0);
+      if (!sid) return;
 
-      let users = [];
-
-      // Preferred: rich payload
+      // If your event includes a rich `users` array, prefer that
       if (Array.isArray(e.users) && e.users.length) {
-        users = e.users.map(u => this._normUser(u));
-      }
-      // Fallback: names-only list "alice,bob"
-      else if (typeof e.cn_list === 'string') {
-        users = e.cn_list
-          .split(',')
-          .map(s => s.trim())
-          .filter(Boolean)
-          .map(name => this._normUser({ username: name }));
+        this.usersByServer[sid] = e.users.map(u => ({
+          username: u.username ?? 'unknown',
+          client_ip: u.client_ip ?? null,
+          virtual_ip: u.virtual_ip ?? null,
+          connected_human: u.connected_human ?? null,
+          connected_fmt: u.connected_fmt ?? null,
+          formatted_bytes: u.formatted_bytes ?? null,
+          down_mb: u.bytes_in_mb ?? u.down_mb ?? null, // accept multiple keys
+          up_mb:   u.bytes_out_mb ?? u.up_mb ?? null,
+        }));
+      } else if (typeof e.cn_list === 'string') {
+        // legacy: just names
+        this.usersByServer[sid] = e.cn_list
+          .split(',').map(s => s.trim()).filter(Boolean)
+          .map(name => ({ username: name }));
+      } else if (Array.isArray(e.users)) {
+        // legacy: array of strings
+        this.usersByServer[sid] = e.users.map(name => ({ username: String(name) }));
       }
 
-      this.usersByServer[sid] = users;
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
 
-    /* ───────── derived + actions ───────── */
-
     computeTotals() {
-      let totalUsers = 0, totalConns = 0, activeServers = 0;
+      let uniqueUsers = new Set();
+      let totalConns = 0;
+
       Object.keys(this.serverMeta).forEach(sid => {
-        const arr = this.usersByServer[String(sid)] || [];
-        if (arr.length) activeServers++;
-        totalUsers += new Set(arr.map(u => u.username)).size;
+        const arr = this.usersByServer[sid] || [];
         totalConns += arr.length;
+        arr.forEach(u => uniqueUsers.add(u.username));
       });
+
+      const activeServers = Object.keys(this.serverMeta)
+        .filter(sid => (this.usersByServer[sid] || []).length > 0).length;
+
       return {
-        online_users: totalUsers,
-        active_connections: totalConns,
-        active_servers: activeServers || Object.keys(this.serverMeta).length,
+        online_users: uniqueUsers.size,     // ← always from rows
+        active_connections: totalConns,     // ← always from rows
+        active_servers: activeServers,      // ← no “fallback to total servers”
       };
     },
 
     serverUsersCount(id) {
-      return (this.usersByServer[String(id)] || []).length;
+      return (this.usersByServer[id] || []).length;
     },
 
     activeRows() {
       const ids = this.selectedServerId == null
-        ? Object.keys(this.serverMeta).map(String)
+        ? Object.keys(this.serverMeta)
         : [String(this.selectedServerId)];
 
       const rows = [];
@@ -437,6 +409,7 @@ window.vpnDashboard = function () {
         (this.usersByServer[sid] || []).forEach(u => {
           rows.push({
             key: `${sid}:${u.username}`,
+            connection_id: u.connection_id ?? null,
             server_id: Number(sid),
             server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
             username: u.username ?? 'unknown',
@@ -445,8 +418,8 @@ window.vpnDashboard = function () {
             connected_human: u.connected_human ?? null,
             connected_fmt: u.connected_fmt ?? null,
             formatted_bytes: u.formatted_bytes ?? null,
-            down_mb: u.down_mb ?? 0,
-            up_mb: u.up_mb ?? 0,
+            down_mb: u.down_mb ?? null,
+            up_mb: u.up_mb ?? null,
           });
         });
       });
@@ -457,6 +430,7 @@ window.vpnDashboard = function () {
 
     async disconnect(row) {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
+
       try {
         const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
           method: 'POST',
@@ -467,22 +441,21 @@ window.vpnDashboard = function () {
           body: JSON.stringify({ username: row.username, server_id: row.server_id }),
         });
 
-        // Parse as JSON, fallback to text
         let data;
-        try { data = await res.json(); } catch { data = { message: await res.text() }; }
+        try { data = await res.json(); }
+        catch { data = { message: await res.text() }; }
 
         if (!res.ok) {
           const details = Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error');
           throw new Error(details);
         }
 
-        // Optimistic UI update: remove the user from that server list
-        const sid = String(row.server_id);
-        this.usersByServer[sid] = (this.usersByServer[sid] || []).filter(u => u.username !== row.username);
+        // Optimistic UI: remove row immediately; cron/Echo will re-add if needed
+        this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || [])
+          .filter(u => u.username !== row.username);
         this.totals = this.computeTotals();
-        this.lastUpdated = new Date().toLocaleTimeString();
 
-        alert(data.message || 'Disconnected.');
+        alert(data.message || `Disconnected ${row.username}`);
       } catch (e) {
         console.error(e);
         alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
