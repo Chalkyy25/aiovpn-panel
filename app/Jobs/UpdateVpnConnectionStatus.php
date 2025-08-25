@@ -61,7 +61,14 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     {
         try {
             [$raw, $source] = $this->fetchStatusWithSource($server);
+Log::info("DEBUG: entered syncOneServer for {$server->id}");
 
+[$raw, $source] = $this->fetchStatusWithSource($server);
+Log::info("DEBUG: fetchStatusWithSource", [
+    'server' => $server->id,
+    'source' => $source,
+    'raw_len' => strlen($raw),
+]);
             if ($raw === '') {
                 Log::warning("⚠️ {$server->name}: status not readable from file or mgmt.");
                 if ($this->strictOfflineOnMissing) {
