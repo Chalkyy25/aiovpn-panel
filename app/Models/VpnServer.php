@@ -27,6 +27,7 @@ class VpnServer extends Model
         'ssh_password',
         'ssh_user',
         'port',
+        'mgmt_port',
         'transport',
         'dns',
         'enable_ipv6',

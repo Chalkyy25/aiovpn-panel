@@ -14,8 +14,8 @@ trait ExecutesRemoteCommands
      */
     private function executeRemoteCommand(VpnServer $server, string $command): array
     {
-        $user = $server->ssh_username ?? 'root';
-        $key  = $server->ssh_key_path ?? '/root/.ssh/id_rsa';
+        $user = $server->ssh_user ?? 'root';
+        $key  = $server->ssh_key ?? '/root/.ssh/id_rsa';
         $port = $server->ssh_port ?? 22;
         $ip   = $server->ip_address;
 
