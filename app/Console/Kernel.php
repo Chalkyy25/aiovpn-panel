@@ -8,6 +8,10 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
+
+    protected $commands = [
+    \App\Console\Commands\VpnPollServer::class,
+];
     protected function schedule(Schedule $schedule): void
     {
         // === Housekeeping (run once only) ===
