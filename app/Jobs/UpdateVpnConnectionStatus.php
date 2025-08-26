@@ -28,7 +28,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         $this->serverId = $serverId;
         $this->verboseMgmtLog = (bool) (config('app.env') !== 'production'
             ? true
-            : (env('VPN_LOG_VERBOSE', true)));
+            : config('app.vpn_log_verbose', true));
     }
 
     public function handle(): void
@@ -123,21 +123,127 @@ Log::info("APPEND_LOG: forced line regardless of flag", [
 {
     $mgmtPort = (int)($server->mgmt_port ?? 7505);
 
-    // --- Management socket with wait ---
-    $mgmtCmd = 'bash -lc ' . escapeshellarg(
-        '{ printf "status 3\n"; sleep 1; printf "quit\n"; } | nc -w 5 127.0.0.1 ' . $mgmtPort
-    );
+    Log::info("🔍 {$server->name}: Starting status fetch", [
+        'mgmt_port' => $mgmtPort,
+        'ip' => $server->ip_address,
+        'ssh_user' => $server->ssh_user ?? 'root',
+        'status_log_path' => $server->status_log_path ?? 'null'
+    ]);
 
-    $res = $this->executeRemoteCommand($server, $mgmtCmd);
-    $out = trim(implode("\n", $res['output'] ?? []));
+    // --- Test SSH connectivity first ---
+    $testCmd = 'bash -lc ' . escapeshellarg('echo "SSH_TEST_OK"');
+    $sshTest = $this->executeRemoteCommand($server, $testCmd);
 
-    if (($res['status'] ?? 1) === 0 && $out !== '' &&
-        (str_contains($out, "CLIENT_LIST") || str_contains($out, "OpenVPN Management Interface"))) {
-        Log::info("📡 {$server->name}: mgmt responded with " . strlen($out) . " bytes");
-        return [$out, "mgmt:{$mgmtPort}"];
+    if (($sshTest['status'] ?? 1) !== 0) {
+        Log::error("❌ {$server->name}: SSH connectivity failed", [
+            'exit_code' => $sshTest['status'] ?? 'unknown',
+            'output' => $sshTest['output'] ?? []
+        ]);
+        return ['', 'ssh_failed'];
     }
 
-    // --- Fallback to known status files ---
+    Log::info("✅ {$server->name}: SSH connectivity confirmed");
+
+    // --- Check if management port is listening ---
+    $portCheckCmd = 'bash -lc ' . escapeshellarg(
+        'netstat -ln 2>/dev/null | grep ":' . $mgmtPort . ' " || ss -ln 2>/dev/null | grep ":' . $mgmtPort . ' " || echo "PORT_NOT_LISTENING"'
+    );
+    $portCheck = $this->executeRemoteCommand($server, $portCheckCmd);
+    $portOutput = implode("\n", $portCheck['output'] ?? []);
+
+    if (str_contains($portOutput, 'PORT_NOT_LISTENING') || empty(trim($portOutput))) {
+        Log::warning("⚠️ {$server->name}: Management port {$mgmtPort} not listening", [
+            'port_check_output' => $portOutput
+        ]);
+    } else {
+        Log::info("✅ {$server->name}: Management port {$mgmtPort} is listening", [
+            'port_info' => trim($portOutput)
+        ]);
+    }
+
+    // --- Check OpenVPN process ---
+    $processCmd = 'bash -lc ' . escapeshellarg('ps aux | grep openvpn | grep -v grep | head -3');
+    $processCheck = $this->executeRemoteCommand($server, $processCmd);
+    $processOutput = implode("\n", $processCheck['output'] ?? []);
+
+    if (empty(trim($processOutput))) {
+        Log::warning("⚠️ {$server->name}: No OpenVPN processes found");
+    } else {
+        Log::info("✅ {$server->name}: OpenVPN processes running", [
+            'processes' => explode("\n", trim($processOutput))
+        ]);
+    }
+
+    // --- Management socket with retry logic ---
+    $mgmtCommands = [
+        '{ printf "status 3\n"; sleep 1; printf "quit\n"; } | nc -w 10 127.0.0.1 ' . $mgmtPort,
+        '{ printf "status 3\n"; sleep 2; printf "quit\n"; } | nc -w 15 127.0.0.1 ' . $mgmtPort,
+        '{ printf "status 3\n"; sleep 0.5; printf "quit\n"; } | timeout 20 nc 127.0.0.1 ' . $mgmtPort,
+    ];
+
+    foreach ($mgmtCommands as $attempt => $mgmtCmdRaw) {
+        $mgmtCmd = 'bash -lc ' . escapeshellarg($mgmtCmdRaw);
+
+        Log::info("🔌 {$server->name}: Management connection attempt #" . ($attempt + 1), [
+            'command' => $mgmtCmdRaw,
+            'port' => $mgmtPort,
+            'attempt' => $attempt + 1
+        ]);
+
+        $res = $this->executeRemoteCommand($server, $mgmtCmd);
+        $out = trim(implode("\n", $res['output'] ?? []));
+
+        Log::info("📊 {$server->name}: Management attempt #" . ($attempt + 1) . " result", [
+            'exit_code' => $res['status'] ?? 'unknown',
+            'output_length' => strlen($out),
+            'contains_client_list' => str_contains($out, "CLIENT_LIST"),
+            'contains_mgmt_interface' => str_contains($out, "OpenVPN Management Interface"),
+            'first_100_chars' => substr($out, 0, 100)
+        ]);
+
+        if (($res['status'] ?? 1) === 0 && $out !== '' &&
+            (str_contains($out, "CLIENT_LIST") || str_contains($out, "OpenVPN Management Interface"))) {
+            Log::info("📡 {$server->name}: mgmt responded on attempt #" . ($attempt + 1) . " with " . strlen($out) . " bytes");
+            return [$out, "mgmt:{$mgmtPort}:attempt" . ($attempt + 1)];
+        }
+
+        // Short delay between attempts
+        if ($attempt < count($mgmtCommands) - 1) {
+            sleep(1);
+        }
+    }
+
+    // --- Try alternative management commands ---
+    Log::info("🔄 {$server->name}: Trying alternative management commands");
+
+    $altCommands = [
+        'echo -e "status 3\\nquit\\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
+        'echo -e "status\\nquit\\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
+        '(echo "status 3"; sleep 0.5; echo "quit") | nc -w 5 127.0.0.1 ' . $mgmtPort
+    ];
+
+    foreach ($altCommands as $index => $altCmd) {
+        $altFullCmd = 'bash -lc ' . escapeshellarg($altCmd);
+        $altRes = $this->executeRemoteCommand($server, $altFullCmd);
+        $altOut = trim(implode("\n", $altRes['output'] ?? []));
+
+        Log::info("🔄 {$server->name}: Alternative command #{$index}", [
+            'command' => $altCmd,
+            'exit_code' => $altRes['status'] ?? 'unknown',
+            'output_length' => strlen($altOut),
+            'contains_client_list' => str_contains($altOut, "CLIENT_LIST")
+        ]);
+
+        if (($altRes['status'] ?? 1) === 0 && $altOut !== '' &&
+            (str_contains($altOut, "CLIENT_LIST") || str_contains($altOut, "OpenVPN Management Interface"))) {
+            Log::info("📡 {$server->name}: Alternative mgmt command worked with " . strlen($altOut) . " bytes");
+            return [$altOut, "mgmt_alt:{$mgmtPort}"];
+        }
+    }
+
+    // --- Fallback to known status files with detailed logging ---
+    Log::info("📁 {$server->name}: Attempting status file fallbacks");
+
     $candidates = array_filter([
         $server->status_log_path ?? null,
         '/run/openvpn/server.status',
@@ -147,18 +253,35 @@ Log::info("APPEND_LOG: forced line regardless of flag", [
     ]);
 
     foreach ($candidates as $path) {
+        Log::info("📄 {$server->name}: Checking status file: {$path}");
+
         $cmd = 'bash -lc ' . escapeshellarg(
             "test -s {$path} && cat {$path} || echo '__NOFILE__'"
         );
         $res = $this->executeRemoteCommand($server, $cmd);
         $data = trim(implode("\n", $res['output'] ?? []));
+
+        Log::info("📊 {$server->name}: Status file result for {$path}", [
+            'exit_code' => $res['status'] ?? 'unknown',
+            'data_length' => strlen($data),
+            'is_nofile' => $data === '__NOFILE__',
+            'first_100_chars' => substr($data, 0, 100)
+        ]);
+
         if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__') {
             Log::info("📄 {$server->name}: using {$path} (" . strlen($data) . " bytes)");
             return [$data, $path];
         }
     }
 
-    Log::warning("⚠️ {$server->name}: no mgmt or status file available");
+    Log::error("❌ {$server->name}: All methods failed - no mgmt or status file available", [
+        'ssh_working' => ($sshTest['status'] ?? 1) === 0,
+        'port_listening' => !str_contains($portOutput, 'PORT_NOT_LISTENING'),
+        'openvpn_running' => !empty(trim($processOutput)),
+        'mgmt_port' => $mgmtPort,
+        'status_paths_checked' => count($candidates)
+    ]);
+
     return ['', 'none'];
 }
     /**

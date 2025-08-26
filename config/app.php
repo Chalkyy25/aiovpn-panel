@@ -113,6 +113,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | VPN Logging Configuration
+    |--------------------------------------------------------------------------
+    |
+    | This option controls verbose logging for VPN management operations.
+    | When enabled, detailed logs will be generated for debugging purposes.
+    |
+    */
+
+    'vpn_log_verbose' => env('VPN_LOG_VERBOSE', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Encryption Key
     |--------------------------------------------------------------------------
     |
