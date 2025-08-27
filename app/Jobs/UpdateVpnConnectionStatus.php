@@ -2,10 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Events\ServerMgmtEvent;
 use App\Models\VpnServer;
 use App\Services\OpenVpnStatusParser;
 use App\Traits\ExecutesRemoteCommands;
-use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Collection;
@@ -60,27 +60,29 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     protected function syncOneServer(VpnServer $server): void
     {
         try {
-
             [$raw, $source] = $this->fetchStatusWithSource($server);
 
             if ($raw === '') {
-            
+                Log::warning("🟡 {$server->name}: RAW EMPTY, skipping");
+                return;
             }
 
-            $parsed = OpenVpnStatusParser::parse($raw);
+            $parsed  = OpenVpnStatusParser::parse($raw);
             $clients = $parsed['clients'] ?? [];
 
-// old: $usernames = collect(...)->pluck('username')->all();
-broadcast(new ServerMgmtEvent(
-    $server->id,
-    now()->toIso8601String(),
-    $clients,   // pass full client records, not just names
-    null,
-    $raw
-));
+            // Broadcast full client records
+            broadcast(new ServerMgmtEvent(
+                $server->id,
+                now()->toIso8601String(),
+                $clients,
+                null,
+                $raw
+            ));
 
+            // Logging
+            $usernames = array_column($clients, 'username');
             Log::info("APPEND_LOG: [{$server->name}] ts=" . now()->toIso8601String() .
-                " source={$source} clients=" . count($usernames),
+                " source={$source} clients=" . count($clients),
                 $usernames
             );
 
@@ -89,13 +91,13 @@ broadcast(new ServerMgmtEvent(
                     'APPEND_LOG: [mgmt] ts=%s source=%s clients=%d [%s]',
                     now()->toIso8601String(),
                     $source,
-                    count($usernames),
+                    count($clients),
                     implode(',', $usernames)
                 ));
             }
 
             // snapshot → API
-            $this->pushSnapshot($server->id, now(), $usernames);
+            $this->pushSnapshot($server->id, now(), $clients);
 
         } catch (\Throwable $e) {
             Log::error("❌ {$server->name}: sync failed – {$e->getMessage()}");
@@ -161,13 +163,13 @@ broadcast(new ServerMgmtEvent(
     /**
      * Push snapshot to the API instead of direct DB/broadcast.
      */
-    protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $usernames): void
+    protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $clients): void
     {
         Log::info('🔊 pushing mgmt.update via API', [
             'server' => $serverId,
             'ts'     => $ts->format(DATE_ATOM),
-            'count'  => count($usernames),
-            'users'  => $usernames,
+            'count'  => count($clients),
+            'users'  => $clients,
         ]);
 
         try {
@@ -176,7 +178,7 @@ broadcast(new ServerMgmtEvent(
                 ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
                     'status' => 'mgmt',
                     'ts'     => $ts->format(DATE_ATOM),
-                    'users'  => array_map(fn($u) => ['username' => $u], $usernames),
+                    'users'  => $clients, // send full client details
                 ])
                 ->throw();
         } catch (\Throwable $e) {
