@@ -20,7 +20,7 @@ class DeployEventController extends Controller
             'status'   => 'required|string',     // e.g. "mgmt"
             'message'  => 'nullable|string',     // optional raw line
             'ts'       => 'nullable|string',     // ISO8601 timestamp
-            'users'    => 'nullable|array',      // [{ username: "alice" }]
+            'users'    => 'nullable|array',      // [{ username: "alice", client_ip: "...", ... }]
             'cn_list'  => 'nullable|string',     // "alice,bob"
             'clients'  => 'nullable|integer',    // explicit override
         ]);
@@ -28,55 +28,69 @@ class DeployEventController extends Controller
         $status = strtolower($data['status']);
         $ts     = $data['ts'] ?? now()->toAtomString();
         $raw    = $data['message'] ?? 'mgmt';
+        $now    = now();
 
-        // ── Extract usernames ───────────────────────────────
-        $usernames = [];
+        // ── Normalise users into full client objects ──────────────
+        $clients = [];
 
-        if (!empty($data['users'])) {
+        if (!empty($data['users']) && is_array($data['users'][0] ?? null)) {
+            // Already full client objects
+            $clients = $data['users'];
+        } elseif (!empty($data['users'])) {
+            // Array of usernames only
             foreach ($data['users'] as $u) {
-                $name = $u['username'] ?? $u['cn'] ?? null;
-                if (is_string($name) && $name !== '') {
-                    $usernames[] = trim($name);
+                $name = $u['username'] ?? $u['cn'] ?? (string) $u;
+                if ($name) {
+                    $clients[] = ['username' => trim($name)];
+                }
+            }
+        } elseif (!empty($data['cn_list'])) {
+            foreach (explode(',', $data['cn_list']) as $name) {
+                $name = trim($name);
+                if ($name !== '') {
+                    $clients[] = ['username' => $name];
+                }
+            }
+        } elseif ($raw && preg_match('/clients\s*=\s*(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
+            foreach (explode(',', $m[2] ?? '') as $name) {
+                $name = trim($name);
+                if ($name !== '') {
+                    $clients[] = ['username' => $name];
                 }
             }
         }
 
-        if (!$usernames && !empty($data['cn_list'])) {
-            $usernames = array_values(array_filter(
-                array_map('trim', explode(',', $data['cn_list']))
-            ));
-        }
+        // Unique + clean
+        $clients = collect($clients)
+            ->filter(fn ($c) => !empty($c['username']))
+            ->unique('username')
+            ->values()
+            ->all();
 
-        if (!$usernames && $raw &&
-            preg_match('/clients\s*=\s*(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
-            $list = trim($m[2] ?? '');
-            $usernames = $list !== '' ? array_filter(array_map('trim', explode(',', $list))) : [];
-        }
+        $clientCount = $data['clients'] ?? count($clients);
 
-        $usernames = array_values(array_unique($usernames)); // ensure unique
-        $clients   = $data['clients'] ?? count($usernames);
-        $now       = now();
-
-        // ── Log APPEND_LOG with details ─────────────────────
+        // ── Log APPEND_LOG ─────────────────────────────────
         Log::info(sprintf(
             'APPEND_LOG: [%s] ts=%s server=%d clients=%d [%s]',
             $status,
             $ts,
             $server->id,
-            $clients,
-            implode(',', $usernames)
+            $clientCount,
+            implode(',', array_column($clients, 'username'))
         ));
 
         if ($status !== 'mgmt') {
             return response()->json(['ok' => true]);
         }
 
-        // ── Sync DB snapshot ────────────────────────────────
-        DB::transaction(function () use ($server, $usernames, $now) {
+        // ── Sync DB snapshot ───────────────────────────────
+        DB::transaction(function () use ($server, $clients, $now) {
+            $usernames = array_column($clients, 'username');
             $existing = VpnUser::whereIn('username', $usernames)->pluck('id', 'username');
             $connectedIds = [];
 
-            foreach ($usernames as $username) {
+            foreach ($clients as $c) {
+                $username = $c['username'];
                 $uid = $existing[$username] ?? null;
 
                 if (!$uid) {
@@ -100,6 +114,13 @@ class DeployEventController extends Controller
                 }
 
                 $row->is_connected = true;
+                // Fill in live fields if provided
+                if (!empty($c['client_ip'])) {
+                    $row->client_ip = $c['client_ip'];
+                }
+                if (!empty($c['virtual_ip'])) {
+                    $row->virtual_ip = $c['virtual_ip'];
+                }
                 $row->save();
 
                 VpnUser::whereKey($uid)->update([
@@ -108,7 +129,7 @@ class DeployEventController extends Controller
                 ]);
             }
 
-            // Disconnect missing ones
+            // Disconnect missing
             $toDisconnect = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
@@ -124,17 +145,17 @@ class DeployEventController extends Controller
             }
 
             $server->forceFill([
-                'online_users' => count($usernames),
+                'online_users' => count($clients),
                 'last_sync_at' => $now,
             ])->saveQuietly();
         });
 
-        // ── Broadcast snapshot ──────────────────────────────
+        // ── Broadcast full client objects ──────────────────
         broadcast(new ServerMgmtEvent(
             $server->id,
             $ts,
-            array_map(fn ($u) => ['username' => $u], $usernames),
-            implode(',', $usernames),
+            $clients,
+            implode(',', array_column($clients, 'username')),
             $raw
         ))->toOthers();
 
@@ -142,8 +163,8 @@ class DeployEventController extends Controller
         return response()->json([
             'ok'        => true,
             'server_id' => $server->id,
-            'clients'   => $clients,
-            'cn_list'   => implode(',', $usernames),
+            'clients'   => $clientCount,
+            'cn_list'   => implode(',', array_column($clients, 'username')),
         ]);
     }
 }
