@@ -7,7 +7,6 @@ use App\Http\Controllers\Controller;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,14 +29,7 @@ class DeployEventController extends Controller
         $ts     = $data['ts'] ?? now()->toAtomString();
         $raw    = $data['message'] ?? 'mgmt';
 
-        // Always log — critical for debugging
-        Log::info("APPEND_LOG: [{$status}] {$raw}");
-
-        if ($status !== 'mgmt') {
-            return response()->json(['ok' => true]);
-        }
-
-        // ── Collect usernames (robust fallbacks) ─────────────
+        // ── Extract usernames ───────────────────────────────
         $usernames = [];
 
         if (!empty($data['users'])) {
@@ -61,12 +53,26 @@ class DeployEventController extends Controller
             $usernames = $list !== '' ? array_filter(array_map('trim', explode(',', $list))) : [];
         }
 
-        $clients = $data['clients'] ?? count($usernames);
-        $now = now();
+        $usernames = array_values(array_unique($usernames)); // ensure unique
+        $clients   = $data['clients'] ?? count($usernames);
+        $now       = now();
 
-        // ── Sync DB with this snapshot ──────────────────────
+        // ── Log APPEND_LOG with details ─────────────────────
+        Log::info(sprintf(
+            'APPEND_LOG: [%s] ts=%s server=%d clients=%d [%s]',
+            $status,
+            $ts,
+            $server->id,
+            $clients,
+            implode(',', $usernames)
+        ));
+
+        if ($status !== 'mgmt') {
+            return response()->json(['ok' => true]);
+        }
+
+        // ── Sync DB snapshot ────────────────────────────────
         DB::transaction(function () use ($server, $usernames, $now) {
-            // Map usernames to IDs (create if missing)
             $existing = VpnUser::whereIn('username', $usernames)->pluck('id', 'username');
             $connectedIds = [];
 
@@ -74,7 +80,6 @@ class DeployEventController extends Controller
                 $uid = $existing[$username] ?? null;
 
                 if (!$uid) {
-                    // create stub user if username not in DB
                     $uid = VpnUser::create([
                         'username' => $username,
                         'is_online' => false,
@@ -124,16 +129,16 @@ class DeployEventController extends Controller
             ])->saveQuietly();
         });
 
-        // ── Broadcast snapshot to Echo/Reverb ───────────────
+        // ── Broadcast snapshot ──────────────────────────────
         broadcast(new ServerMgmtEvent(
             $server->id,
             $ts,
             array_map(fn ($u) => ['username' => $u], $usernames),
-            null,
+            implode(',', $usernames),
             $raw
         ))->toOthers();
 
-        // API response
+        // ── API response ───────────────────────────────────
         return response()->json([
             'ok'        => true,
             'server_id' => $server->id,
