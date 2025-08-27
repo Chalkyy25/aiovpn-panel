@@ -12,7 +12,7 @@ trait ExecutesRemoteCommands
      *
      * Uses the panel-managed key at storage/app/ssh_keys/id_rsa.
      */
-    private function executeRemoteCommand(VpnServer $server, string $command): array
+    public function executeRemoteCommand(VpnServer $server, string $command): array
     {
         $user = $server->ssh_user ?? 'root';
         $port = $server->ssh_port ?? 22;
