@@ -19,16 +19,18 @@ class VpnUserConnection extends Model
         'virtual_ip',
         'connected_at',
         'disconnected_at',
+        'session_duration',
         'bytes_received',
         'bytes_sent',
     ];
 
     protected $casts = [
-        'is_connected'    => 'boolean',
-        'connected_at'    => 'datetime',
-        'disconnected_at' => 'datetime',
-        'bytes_received'  => 'integer',
-        'bytes_sent'      => 'integer',
+        'is_connected'     => 'boolean',
+        'connected_at'     => 'datetime',
+        'disconnected_at'  => 'datetime',
+        'session_duration' => 'integer',
+        'bytes_received'   => 'integer',
+        'bytes_sent'       => 'integer',
     ];
 
     /*
@@ -84,36 +86,58 @@ class VpnUserConnection extends Model
      * set last_seen_at to the most recent disconnected_at we know about.
      */
     public static function updateUserOnlineStatusIfNoActiveConnections(int $userId): void
-{
-    $hasActive = static::where('vpn_user_id', $userId)
-        ->where('is_connected', true)
-        ->exists();
+    {
+        $hasActive = static::where('vpn_user_id', $userId)
+            ->where('is_connected', true)
+            ->exists();
 
-    if ($hasActive) {
-        // Don't touch last_seen_at while online.
-        VpnUser::where('id', $userId)->update(['is_online' => true]);
-        return;
+        if ($hasActive) {
+            VpnUser::where('id', $userId)->update(['is_online' => true]);
+            return;
+        }
+
+        $lastDisc = static::where('vpn_user_id', $userId)->max('disconnected_at');
+
+        VpnUser::where('id', $userId)->update([
+            'is_online'    => false,
+            'last_seen_at' => $lastDisc,
+        ]);
     }
 
-    $lastDisc = static::where('vpn_user_id', $userId)->max('disconnected_at'); // may be null
-
-    VpnUser::where('id', $userId)->update([
-        'is_online'    => false,
-        'last_seen_at' => $lastDisc, // null is OK if never connected
-    ]);
-}
-
     /**
-     * Duration (in seconds) for this connection (up to now if still connected).
+     * Duration (seconds). Uses stored session_duration if available,
+     * otherwise calculates live duration for connected sessions.
      */
     public function getConnectionDurationAttribute(): ?int
     {
+        if ($this->session_duration) {
+            return $this->session_duration;
+        }
+
         if (!$this->connected_at instanceof Carbon) {
             return null;
         }
 
         $end = $this->disconnected_at instanceof Carbon ? $this->disconnected_at : now();
         return $this->connected_at->diffInSeconds($end);
+    }
+
+    /**
+     * Human-readable formatted session duration.
+     */
+    public function getSessionDurationFormattedAttribute(): string
+    {
+        $seconds = $this->connection_duration;
+
+        if (!$seconds) {
+            return '-';
+        }
+
+        $minutes = intdiv($seconds, 60);
+        $hours   = intdiv($minutes, 60);
+        $minutes = $minutes % 60;
+
+        return $hours > 0 ? "{$hours}h {$minutes}m" : "{$minutes}m";
     }
 
     /**
