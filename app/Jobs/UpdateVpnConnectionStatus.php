@@ -60,13 +60,11 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     protected function syncOneServer(VpnServer $server): void
     {
         try {
-            Log::info("🟢 ENTERED syncOneServer for {$server->name}");
 
             [$raw, $source] = $this->fetchStatusWithSource($server);
 
             if ($raw === '') {
-                Log::info("🟡 {$server->name}: RAW EMPTY, skipping");
-                return;
+            
             }
 
             $parsed = OpenVpnStatusParser::parse($raw);
