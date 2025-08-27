@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class DeployEventController extends Controller
 {
@@ -20,7 +21,7 @@ class DeployEventController extends Controller
             'status'   => 'required|string',     // e.g. "mgmt"
             'message'  => 'nullable|string',     // optional raw line
             'ts'       => 'nullable|string',     // ISO8601 timestamp
-            'users'    => 'nullable|array',      // [{ username: "alice", client_ip: "...", ... }]
+            'users'    => 'nullable|array',      // [{ username, client_ip, ... }]
             'cn_list'  => 'nullable|string',     // "alice,bob"
             'clients'  => 'nullable|integer',    // explicit override
         ]);
@@ -30,19 +31,14 @@ class DeployEventController extends Controller
         $raw    = $data['message'] ?? 'mgmt';
         $now    = now();
 
-        // ── Normalise users into full client objects ──────────────
+        // ── Normalize to full client objects ────────────────
         $clients = [];
 
         if (!empty($data['users']) && is_array($data['users'][0] ?? null)) {
-            // Already full client objects
-            $clients = $data['users'];
+            $clients = $data['users']; // already full
         } elseif (!empty($data['users'])) {
-            // Array of usernames only
             foreach ($data['users'] as $u) {
-                $name = $u['username'] ?? $u['cn'] ?? (string) $u;
-                if ($name) {
-                    $clients[] = ['username' => trim($name)];
-                }
+                $clients[] = ['username' => $u['username'] ?? (string) $u];
             }
         } elseif (!empty($data['cn_list'])) {
             foreach (explode(',', $data['cn_list']) as $name) {
@@ -51,16 +47,8 @@ class DeployEventController extends Controller
                     $clients[] = ['username' => $name];
                 }
             }
-        } elseif ($raw && preg_match('/clients\s*=\s*(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
-            foreach (explode(',', $m[2] ?? '') as $name) {
-                $name = trim($name);
-                if ($name !== '') {
-                    $clients[] = ['username' => $name];
-                }
-            }
         }
 
-        // Unique + clean
         $clients = collect($clients)
             ->filter(fn ($c) => !empty($c['username']))
             ->unique('username')
@@ -69,7 +57,7 @@ class DeployEventController extends Controller
 
         $clientCount = $data['clients'] ?? count($clients);
 
-        // ── Log APPEND_LOG ─────────────────────────────────
+        // ── Log ─────────────────────────────────────────────
         Log::info(sprintf(
             'APPEND_LOG: [%s] ts=%s server=%d clients=%d [%s]',
             $status,
@@ -86,7 +74,7 @@ class DeployEventController extends Controller
         // ── Sync DB snapshot ───────────────────────────────
         DB::transaction(function () use ($server, $clients, $now) {
             $usernames = array_column($clients, 'username');
-            $existing = VpnUser::whereIn('username', $usernames)->pluck('id', 'username');
+            $existing  = VpnUser::whereIn('username', $usernames)->pluck('id', 'username');
             $connectedIds = [];
 
             foreach ($clients as $c) {
@@ -114,13 +102,24 @@ class DeployEventController extends Controller
                 }
 
                 $row->is_connected = true;
-                // Fill in live fields if provided
+
+                // fill stats if available
                 if (!empty($c['client_ip'])) {
                     $row->client_ip = $c['client_ip'];
                 }
                 if (!empty($c['virtual_ip'])) {
                     $row->virtual_ip = $c['virtual_ip'];
                 }
+                if (!empty($c['bytes_received'])) {
+                    $row->bytes_received = (int) $c['bytes_received'];
+                }
+                if (!empty($c['bytes_sent'])) {
+                    $row->bytes_sent = (int) $c['bytes_sent'];
+                }
+                if (!empty($c['connected_at'])) {
+                    $row->connected_at = Carbon::createFromTimestamp($c['connected_at']);
+                }
+
                 $row->save();
 
                 VpnUser::whereKey($uid)->update([
@@ -138,8 +137,11 @@ class DeployEventController extends Controller
 
             foreach ($toDisconnect as $row) {
                 $row->update([
-                    'is_connected'    => false,
-                    'disconnected_at' => $now,
+                    'is_connected'     => false,
+                    'disconnected_at'  => $now,
+                    'session_duration' => $row->connected_at
+                        ? $now->diffInSeconds($row->connected_at)
+                        : null,
                 ]);
                 VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
             }
@@ -150,7 +152,7 @@ class DeployEventController extends Controller
             ])->saveQuietly();
         });
 
-        // ── Broadcast full client objects ──────────────────
+        // ── Broadcast ─────────────────────────────────────
         broadcast(new ServerMgmtEvent(
             $server->id,
             $ts,
@@ -159,7 +161,6 @@ class DeployEventController extends Controller
             $raw
         ))->toOthers();
 
-        // ── API response ───────────────────────────────────
         return response()->json([
             'ok'        => true,
             'server_id' => $server->id,
