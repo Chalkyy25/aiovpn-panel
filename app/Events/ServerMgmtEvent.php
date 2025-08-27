@@ -37,10 +37,19 @@ class ServerMgmtEvent implements ShouldBroadcastNow
 
         if (is_array($usersOrCount)) {
             // ✅ Modern usage: pass array of usernames
-            $this->users   = array_map(fn ($u) =>
-                is_string($u) ? ['username' => $u] :
-                (is_array($u) ? $u : ['username' => (string) $u]),
-            $usersOrCount);
+            $this->users = collect($usersOrCount)->map(function ($u) {
+    return [
+        'username'        => $u['username'] ?? '',
+        'client_ip'       => $u['client_ip'] ?? null,
+        'virtual_ip'      => $u['virtual_ip'] ?? null,
+        'connected_at'    => $u['connected_at'] ?? null,
+        'bytes_received'  => $u['bytes_received'] ?? 0,
+        'bytes_sent'      => $u['bytes_sent'] ?? 0,
+        'connected_fmt'   => $u['connected_fmt'] ?? null,
+        'connected_human' => $u['connected_human'] ?? null,
+        'formatted_bytes' => $u['formatted_bytes'] ?? '0 MB',
+    ];
+})->all();
 
             $this->clients = count($this->users);
             $this->cnList  = $cnList ?: implode(',', array_column($this->users, 'username'));
