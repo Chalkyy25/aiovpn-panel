@@ -68,7 +68,16 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             }
 
             $parsed = OpenVpnStatusParser::parse($raw);
-            $usernames = collect($parsed['clients'] ?? [])->pluck('username')->filter()->values()->all();
+            $clients = $parsed['clients'] ?? [];
+
+// old: $usernames = collect(...)->pluck('username')->all();
+broadcast(new ServerMgmtEvent(
+    $server->id,
+    now()->toIso8601String(),
+    $clients,   // pass full client records, not just names
+    null,
+    $raw
+));
 
             Log::info("APPEND_LOG: [{$server->name}] ts=" . now()->toIso8601String() .
                 " source={$source} clients=" . count($usernames),
