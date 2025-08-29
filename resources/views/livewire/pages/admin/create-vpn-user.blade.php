@@ -48,8 +48,16 @@
         {{-- Username --}}
         <div class="form-group md:col-span-2">
           <label class="form-label">Username</label>
-          <input class="form-input" type="text" placeholder="Auto-generated if left as is"
-                 wire:model.lazy="username">
+          <input
+    class="form-input"
+    type="text"
+    placeholder="Auto-generated if left as is"
+    wire:model.lazy="username"
+    autocomplete="off"
+    autocorrect="off"
+    autocapitalize="off"
+    spellcheck="false"
+/>
           @error('username') <p class="aio-error text-red-300 text-xs">{{ $message }}</p> @enderror
         </div>
 
