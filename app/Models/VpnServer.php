@@ -37,6 +37,7 @@ class VpnServer extends Model
         'header2',
         'deployment_status',
         'deployment_log',
+        'is_online' => 'boolean',
         'status',
         'status_log_path',   // <- reported by deploy script
     ];
