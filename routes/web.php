@@ -13,6 +13,7 @@ use App\Http\Controllers\VpnServerController;
 use App\Http\Controllers\VpnConfigController;
 use App\Http\Controllers\ClientAuthController;
 use App\Http\Controllers\AdminImpersonationController;
+use App\Http\Controllers\Client\AuthController;
 
 // ✅ Livewire Pages
 use App\Livewire\Pages\Admin\{CreateUser,
@@ -176,8 +177,8 @@ Route::middleware(['auth', 'verified', 'role:reseller'])
 // ============================
 Route::prefix('client')->name('client.')->group(function () {
     // Login
-    Route::get('/login', [ClientAuthController::class, 'showLoginForm'])->name('login');
-    Route::post('/login', [ClientAuthController::class, 'login']);
+    Route::get('/client/login', [AuthController::class, 'showLoginForm'])->name('client.login.form');
+Route::post('/client/login', [AuthController::class, 'login'])->name('client.login');
     Route::post('/logout', [ClientAuthController::class, 'logout'])->name('logout');
 
     // Authenticated Client Area
@@ -187,17 +188,6 @@ Route::prefix('client')->name('client.')->group(function () {
     });
 });
 
-// routes/web.php (remove after testing)
-Route::get('/debug/ping/{id}', function (int $id) {
-    broadcast(new \App\Events\ServerMgmtEvent(
-        $id,
-        now()->toIso8601String(),
-        ['alice','bob'],
-        null,
-        'debug-route'
-    ));
-    return 'ok';
-});
 
 
 // ============================
