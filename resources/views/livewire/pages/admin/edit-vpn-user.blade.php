@@ -57,6 +57,31 @@
             <p class="mt-1 text-xs text-gray-400">Current password: {{ $vpnUser->plain_password ?? 'Encrypted' }}</p>
         </div>
 
+        {{-- Package (optional) --}}
+<div class="form-group">
+  <label class="form-label">Package</label>
+  <select class="form-select" wire:model="packageId">
+    <option value="">— No package (manual) —</option>
+    @foreach($packages as $p)
+      <option value="{{ $p->id }}">
+        {{ $p->name }} — {{ $p->price_credits }} credits
+        (max {{ $p->max_connections == 0 ? 'Unlimited' : $p->max_connections }} conn)
+      </option>
+    @endforeach
+  </select>
+  <p class="text-xs mt-1 text-[var(--aio-sub)]">
+    Selecting a package will set <strong>Max Connections</strong> for you. Leave blank to edit it manually.
+  </p>
+</div>
+
+{{-- Max Connections (0 = unlimited) --}}
+<div class="form-group">
+  <label class="form-label">Max Connections</label>
+  <input type="number" min="0" class="form-input" wire:model="maxConnections" />
+  <p class="text-xs mt-1 text-[var(--aio-sub)]">Use 0 for Unlimited devices.</p>
+  @error('maxConnections') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
+</div>
+
         <!-- Duration -->
         <div>
             <label class="block text-sm font-medium mb-1 text-gray-300">Duration</label>
