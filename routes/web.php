@@ -175,16 +175,23 @@ Route::middleware(['auth', 'verified', 'role:reseller'])
 // ============================
 // ✅ Client Routes
 // ============================
-Route::prefix('client')->name('client.')->group(function () {
-    // Login
-    Route::get('/client/login', [AuthController::class, 'showLoginForm'])->name('client.login.form');
-Route::post('/client/login', [AuthController::class, 'login'])->name('client.login');
-    Route::post('/logout', [ClientAuthController::class, 'logout'])->name('logout');
 
-    // Authenticated Client Area
+Route::prefix('client')->name('client.')->group(function () {
+    // Guest-only routes (not logged in as client)
+    Route::middleware('guest:client')->group(function () {
+        Route::get('login',  [AuthController::class, 'showLoginForm'])->name('login.form');
+        Route::post('login', [AuthController::class, 'login'])->name('login');
+    });
+
+    // Authenticated client routes
     Route::middleware('auth:client')->group(function () {
-        Route::get('/dashboard', Dashboard::class)->name('dashboard');
-        Route::get('/vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])->name('vpn.download');
+        Route::post('logout', [AuthController::class, 'logout'])->name('logout');
+
+        Route::get('dashboard', Dashboard::class)->name('dashboard');
+
+        // Client downloads an OVPN (or WG) for a specific server
+        Route::get('vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])
+            ->name('vpn.download');
     });
 });
 
