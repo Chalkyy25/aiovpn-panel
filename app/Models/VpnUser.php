@@ -13,12 +13,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class VpnUser extends Authenticatable
 {
     use HasFactory, ExecutesRemoteCommands;
+
+    protected $table = 'vpn_users';
 
     protected $fillable = [
         'username',
@@ -40,20 +43,64 @@ class VpnUser extends Authenticatable
 
     protected $hidden = [
         'password',
+        'plain_password',
         'wireguard_private_key',
     ];
 
     protected $casts = [
-        'is_online'    => 'boolean',
-        'is_active'    => 'boolean',
-        'is_trial'     => 'boolean',   // 👈 add
-        'last_seen_at' => 'datetime',
-        'expires_at'   => 'datetime',
-        'created_at'   => 'datetime',
-        'updated_at'   => 'datetime',
+        'is_online'     => 'boolean',
+        'is_active'     => 'boolean',
+        'is_trial'      => 'boolean',
+        'last_seen_at'  => 'datetime',
+        'expires_at'    => 'datetime',
+        'created_at'    => 'datetime',
+        'updated_at'    => 'datetime',
     ];
 
-    // ───── Relationships ────────────────────────────────────────────
+    /** ---- Auth integration ---- */
+
+    // 1) Use username for login instead of email
+    public function getAuthIdentifierName(): string
+    {
+        return 'username';
+    }
+
+    public function getAuthPassword(): string
+    {
+        return $this->password;
+    }
+
+    // 2) Hash password automatically when set (accepts raw or already-hashed)
+    protected function password(): Attribute
+    {
+        return Attribute::set(function ($value) {
+            if (empty($value)) {
+                return $this->password;
+            }
+            // If it looks like a bcrypt hash, keep as-is; otherwise hash it
+            return strlen($value) === 60 && str_starts_with($value, '$2y$')
+                ? $value
+                : Hash::make($value);
+        });
+    }
+
+    // If plain_password is set, mirror to hashed password for convenience
+    protected function plainPassword(): Attribute
+    {
+        return Attribute::set(function ($value) {
+            if (!empty($value)) {
+                $this->attributes['password'] = Hash::make($value);
+            }
+            return $value;
+        });
+    }
+
+    // 3) (Optional) Explicitly disable remember-me since table has no remember_token
+    public function setRememberToken($value) { /* no-op */ }
+    public function getRememberToken() { return null; }
+    public function getRememberTokenName() { return 'remember_token'; }
+
+    /** ---- Relationships ---- */
     public function vpnServers(): BelongsToMany
     {
         return $this->belongsToMany(VpnServer::class, 'vpn_user_server', 'user_id', 'server_id');
@@ -74,20 +121,17 @@ class VpnUser extends Authenticatable
         return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
     }
 
-    // ───── Helpful scopes ───────────────────────────────────────────
+    /** ---- Scopes & computed ---- */
     public function scopeTrials($q)       { return $q->where('is_trial', true); }
     public function scopeActiveTrials($q) { return $q->where('is_trial', true)->where('expires_at', '>', now()); }
+    public function scopeExpired($q)      { return $q->whereNotNull('expires_at')->where('expires_at', '<=', now()); }
+    public function scopeActive($q)       { return $q->where('is_active', true); }
 
-    public function scopeExpired($q)      { return $q->whereNotNull('expires_at')->where('expires_at', '<=', now()); } // 👈
-    public function scopeActive($q)       { return $q->where('is_active', true); }                                    // 👈
-
-    // Quick read: $user->isExpired
-    public function getIsExpiredAttribute(): bool                                // 👈
+    public function getIsExpiredAttribute(): bool
     {
         return $this->expires_at !== null && now()->greaterThanOrEqualTo($this->expires_at);
     }
 
-    // ───── Computed attributes (for UI) ─────────────────────────────
     public function onlineSince(): Attribute
     {
         return Attribute::get(function () {
@@ -121,23 +165,18 @@ class VpnUser extends Authenticatable
         );
     }
 
-    // ───── Auth integration ─────────────────────────────────────────
-    public function getAuthPassword(): string
-    {
-        return $this->password;
-    }
-
-    // ───── Model events ─────────────────────────────────────────────
+    /** ---- Model events ---- */
     protected static function booted(): void
     {
         static::creating(function (self $vpnUser) {
             $vpnUser->max_connections ??= 1;
-            $vpnUser->is_active      ??= true; // 👈 default active; remove if you prefer seeding this elsewhere
+            $vpnUser->is_active      ??= true;
 
             if (empty($vpnUser->username)) {
                 $vpnUser->username = 'wg-' . Str::random(6);
             }
 
+            // NOTE: consider moving WG keygen to a Job/Observer to avoid shell in web requests
             if (empty($vpnUser->wireguard_private_key) || empty($vpnUser->wireguard_public_key)) {
                 $keys = self::generateWireGuardKeys();
                 $vpnUser->wireguard_private_key = $keys['private'];
@@ -185,7 +224,7 @@ class VpnUser extends Authenticatable
         });
     }
 
-    // ───── Helpers ──────────────────────────────────────────────────
+    /** ---- Helpers ---- */
     public static function generateWireGuardKeys(): array
     {
         $hasWg = (bool) trim(shell_exec('command -v wg 2>/dev/null'));
@@ -205,7 +244,7 @@ class VpnUser extends Authenticatable
         return ['private' => $private, 'public' => $public];
     }
 
-    // ───── Legacy counters (kept for compatibility) ─────────────────
+    /** ---- Legacy counters (compat) ---- */
     public function getActiveConnectionsCountAttribute(): int
     {
         return $this->is_online ? 1 : 0;
