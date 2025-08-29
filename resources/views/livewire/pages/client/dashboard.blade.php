@@ -1,84 +1,70 @@
-<div class="p-6">
-    {{-- Impersonation Banner --}}
+<div class="p-6 space-y-6">
+    {{-- Impersonation banner --}}
     @if(session()->has('impersonating_admin_id'))
-        <div class="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-4 mb-6 rounded">
+        <div class="aio-card border border-orange-500/30 bg-orange-500/10 p-4 rounded">
             <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <svg class="h-5 w-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                        </svg>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium">
-                            🔐 Admin Impersonation Active — You are viewing as {{ $user->username }}
-                        </p>
-                        <p class="text-xs">
-                            Admin: {{ session('impersonating_admin_name') }}
-                        </p>
-                    </div>
+                <div class="text-sm">
+                    <div class="font-medium">🔐 Admin Impersonation Active — viewing as <span class="text-[var(--aio-ink)]">{{ $user->username }}</span></div>
+                    <div class="text-xs text-[var(--aio-sub)]">Admin: {{ session('impersonating_admin_name') }}</div>
                 </div>
-                <div class="flex-shrink-0">
-                    <form method="POST" action="{{ route('admin.stop-impersonation') }}" class="inline">
-                        @csrf
-                        <button type="submit" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-medium">
-                            Stop Impersonation
-                        </button>
-                    </form>
-                </div>
+                <form method="POST" action="{{ route('admin.stop-impersonation') }}">
+                    @csrf
+                    <button class="aio-pill bg-orange-600/90 hover:shadow-glow">Stop Impersonation</button>
+                </form>
             </div>
         </div>
     @endif
 
-    {{-- Header + Logout --}}
-    <div class="flex items-center justify-between mb-6">
+    {{-- Header + logout --}}
+    <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-2xl font-semibold">Welcome, {{ $user->username }}</h2>
+            <h2 class="text-2xl font-bold text-[var(--aio-ink)]">Welcome, {{ $user->username }}</h2>
             @if($user->email)
-                <p class="text-gray-600 mt-1">Your email: {{ $user->email }}</p>
+                <p class="text-[var(--aio-sub)] text-sm mt-1">Your email: {{ $user->email }}</p>
             @endif
         </div>
-        <div>
-            <form method="POST" action="{{ route('client.logout') }}" class="inline">
-                @csrf
-                <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors inline-flex items-center">
-                    🚪 Logout
-                </button>
-            </form>
-        </div>
+        <form method="POST" action="{{ route('client.logout') }}">
+            @csrf
+            <button class="aio-pill bg-red-600/90 hover:shadow-glow">🚪 Logout</button>
+        </form>
     </div>
 
-    <h3 class="text-xl mb-3">Your VPN Servers</h3>
+    <div class="aio-card p-5">
+        <h3 class="text-lg font-semibold text-[var(--aio-ink)] mb-3">Your VPN Servers</h3>
 
-    @if ($vpnServers->isEmpty())
-        <p>You have no assigned VPN servers yet.</p>
-    @else
-        <div class="space-y-4">
-            @foreach ($vpnServers as $server)
-                <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg border">
-                    <div>
-                        <strong class="text-lg">{{ $server->name }}</strong>
-                        @if($server->location)
-                            <span class="text-gray-600"> - {{ $server->location }}</span>
-                        @endif
-                        <br>
-                        <span class="text-sm">
-                            Status:
-                            <span class="{{ $server->is_online ? 'text-green-600' : 'text-red-600' }} font-semibold">
-                                {{ $server->is_online ? 'Online' : 'Offline' }}
-                            </span>
-                        </span>
-                    </div>
+        @if ($vpnServers->isEmpty())
+            <p class="muted">You have no assigned VPN servers yet.</p>
+        @else
+            <div class="space-y-3">
+                @foreach ($vpnServers as $server)
+                    <div class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg p-4">
+                        <div>
+                            <div class="text-[var(--aio-ink)] font-medium text-lg">{{ $server->name }}</div>
+                            <div class="text-sm text-[var(--aio-sub)]">
+                                Status:
+                                <span class="{{ $server->is_online ? 'text-green-400' : 'text-red-400' }} font-semibold">
+                                    {{ $server->is_online ? 'Online' : 'Offline' }}
+                                </span>
+                                @if($server->location) · <span>{{ $server->location }}</span>@endif
+                            </div>
+                        </div>
 
-                    <div class="flex space-x-2">
-                        {{-- OpenVPN: generate on the fly (embeds CA/TLS) --}}
-                        <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id]) }}"
-                           class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                          📥 Download OpenVPN
-                        </a>
+                        <div class="flex gap-2">
+                            {{-- OpenVPN download --}}
+                            <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id]) }}"
+                               class="aio-pill bg-blue-600/90 hover:shadow-glow">📥 Download OpenVPN</a>
+
+                            {{-- Optional WireGuard download if you add route later --}}
+                            @if(!empty($user->wireguard_public_key))
+                                <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id, 'proto' => 'wg']) }}"
+                                   class="aio-pill bg-indigo-600/90 hover:shadow-glow hidden md:inline-flex">
+                                   ⚡ WireGuard
+                                </a>
+                            @endif
+                        </div>
                     </div>
-                </div>
-            @endforeach
-        </div>
-    @endif
+                @endforeach
+            </div>
+        @endif
+    </div>
 </div>
