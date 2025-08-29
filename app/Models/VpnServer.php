@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Services\VpnConfigBuilder;
 use App\Traits\ExecutesRemoteCommands;
 use Exception;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -37,13 +39,14 @@ class VpnServer extends Model
         'header2',
         'deployment_status',
         'deployment_log',
-        'is_online' => 'boolean',
         'status',
-        'status_log_path',   // <- reported by deploy script
+        'status_log_path',
     ];
+
     protected $casts = [
-    'last_sync_at' => 'datetime',
-];
+        'last_sync_at' => 'datetime',
+        'is_online'    => 'boolean',
+    ];
 
     /* ─────────────── Relationships ─────────────── */
 
@@ -77,7 +80,7 @@ class VpnServer extends Model
 
     public function appendLog(string $line): void
     {
-        Log::info("APPEND_LOG: ".$line);
+        Log::info("APPEND_LOG: " . $line);
 
         $existing = trim($this->deployment_log ?? '');
         $lines = $existing === '' ? [] : explode("\n", $existing);
@@ -88,6 +91,7 @@ class VpnServer extends Model
                 'deployment_log' => implode("\n", $lines),
             ]);
         }
+    }
 
     /* ─────────────── Accessors / helpers ─────────────── */
 
@@ -98,22 +102,20 @@ class VpnServer extends Model
             return 0;
         }
 
-        // Default to the v3 path reported by the deploy script
         $statusPath = $this->status_log_path ?: '/run/openvpn/server.status';
 
         try {
-            // Count CLIENT_LIST rows in status-version 3 (TSV)
+            // v3 (TSV)
             $cmd = 'bash -lc ' . escapeshellarg(
                 "awk -F '\t' '\$1==\"CLIENT_LIST\"{c++} END{print c+0}' " . escapeshellarg($statusPath)
             );
-
             $result = $this->executeRemoteCommand($this, $cmd);
 
             if (($result['status'] ?? 1) === 0 && isset($result['output'][0])) {
                 return (int) trim((string) $result['output'][0]);
             }
 
-            // Fallback for older v2-style files (CSV)
+            // v2 (CSV) fallback
             $cmdV2 = 'bash -lc ' . escapeshellarg(
                 "awk -F ',' '\$1==\"CLIENT_LIST\"{c++} END{print c+0}' " . escapeshellarg($statusPath)
             );
@@ -123,7 +125,7 @@ class VpnServer extends Model
                 return (int) trim((string) $result2['output'][0]);
             }
         } catch (Exception $e) {
-            Log::error("❌ Failed to get online user count for {$this->name}: ".$e->getMessage());
+            Log::error("❌ Failed to get online user count for {$this->name}: " . $e->getMessage());
         }
 
         return 0;
@@ -149,7 +151,7 @@ class VpnServer extends Model
 
         if ($this->ssh_type === 'key') {
             // Accept absolute path or filename (resolved under storage/app/ssh_keys)
-            if (str_starts_with((string)$this->ssh_key, '/') || str_contains((string)$this->ssh_key, ':\\')) {
+            if (str_starts_with((string) $this->ssh_key, '/') || str_contains((string) $this->ssh_key, ':\\')) {
                 $keyPath = $this->ssh_key;
             } else {
                 $keyPath = storage_path('app/ssh_keys/' . ($this->ssh_key ?: 'id_rsa'));
@@ -175,7 +177,6 @@ class VpnServer extends Model
                 && (($res['openvpn_running'] ?? false) || ($res['port_open'] ?? false));
         });
     }
-}
 
     /* ─────────────── Boot hooks ─────────────── */
 
