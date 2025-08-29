@@ -2,17 +2,13 @@
 
 namespace App\Livewire\Pages\Admin;
 
-use App\Jobs\SyncOpenVPNCredentials;
-use App\Models\VpnUser;
-use App\Models\VpnServer;
 use App\Jobs\AddWireGuardPeer;
-use App\Services\VpnConfigBuilder;
-use Illuminate\Contracts\View\Factory;
+use App\Jobs\SyncOpenVPNCredentials;
+use App\Models\Package;
+use App\Models\VpnServer;
+use App\Models\VpnUser;
 use Illuminate\Contracts\View\View;
-use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -20,118 +16,122 @@ use Livewire\Component;
 class EditVpnUser extends Component
 {
     public VpnUser $vpnUser;
-    public $username;
-    public $password;
-    public $selectedServers = [];
-    public $expiry = '1m';
-    public $maxConnections;
-    public $isActive;
-    public $extendExpiry = false;
 
-    /**
-     * Set up initial component state
-     */
+    // form fields
+    public string $username = '';
+    public string $password = '';
+    /** @var array<int> */
+    public array $selectedServers = [];
+    public string $expiry = '1m';
+    public int $maxConnections = 1;     // 0 = unlimited
+    public bool $isActive = true;
+    public bool $extendExpiry = false;
+
+    // packages (optional)
+    public ?int $packageId = null;
+
     public function mount(VpnUser $vpnUser): void
     {
-        $this->vpnUser = $vpnUser;
-        $this->username = $vpnUser->username;
-        $this->password = $vpnUser->plain_password ?? '';
-        $this->selectedServers = $vpnUser->vpnServers->pluck('id')->toArray();
-        $this->maxConnections = $vpnUser->max_connections ?? 1;
-        $this->isActive = $vpnUser->is_active;
+        $this->vpnUser         = $vpnUser;
+        $this->username        = $vpnUser->username;
+        $this->password        = (string) ($vpnUser->plain_password ?? '');
+        $this->selectedServers = $vpnUser->vpnServers->pluck('id')->all();
+        $this->maxConnections  = (int) ($vpnUser->max_connections ?? 1);
+        $this->isActive        = (bool) $vpnUser->is_active;
 
-        // Calculate expiry based on current expires_at
+        // derive a duration bucket from current expiry
         if ($vpnUser->expires_at) {
-            $monthsFromNow = now()->diffInMonths($vpnUser->expires_at, false);
-            if ($monthsFromNow <= 1) {
-                $this->expiry = '1m';
-            } elseif ($monthsFromNow <= 3) {
-                $this->expiry = '3m';
-            } elseif ($monthsFromNow <= 6) {
-                $this->expiry = '6m';
-            } else {
-                $this->expiry = '12m';
-            }
+            $m = now()->diffInMonths($vpnUser->expires_at, false);
+            $this->expiry =
+                $m <= 1 ? '1m' :
+                ($m <= 3 ? '3m' :
+                ($m <= 6 ? '6m' : '12m'));
         }
+
+        // try to preselect a package that matches current max_connections (best-effort)
+        $pkg = Package::where('max_connections', $this->maxConnections)->orderBy('price_credits')->first();
+        $this->packageId = $pkg?->id;
     }
 
     public function save(): void
     {
         $this->validate([
-            'username' => 'required|unique:vpn_users,username,' . $this->vpnUser->id,
-            'password' => 'nullable|min:6',
-            'expiry' => 'required|in:1m,3m,6m,12m',
+            'username'        => 'required|unique:vpn_users,username,' . $this->vpnUser->id,
+            'password'        => 'nullable|min:6',
+            'expiry'          => 'required|in:1m,3m,6m,12m',
             'selectedServers' => 'required|array|min:1',
-            'maxConnections' => 'required|integer|min:1|max:10',
-            'isActive' => 'boolean',
-            'extendExpiry' => 'boolean',
+            // allow 0 = unlimited
+            'maxConnections'  => 'required|integer|min:0|max:100',
+            'isActive'        => 'boolean',
+            'extendExpiry'    => 'boolean',
+            'packageId'       => 'nullable|exists:packages,id',
         ]);
 
-        // Prepare update data
-        $updateData = [
-            'username' => $this->username,
-            'max_connections' => $this->maxConnections,
-            'is_active' => $this->isActive,
+        $update = [
+            'username'        => $this->username,
+            'is_active'       => $this->isActive,
         ];
 
-        // Only update expiry date if extend expiry is checked
+        // apply package if selected, else keep manual maxConnections
+        if ($this->packageId) {
+            $pkg = Package::find($this->packageId);
+            if ($pkg) {
+                $update['max_connections'] = (int) $pkg->max_connections;   // 0 = unlimited supported
+            }
+        } else {
+            $update['max_connections'] = (int) $this->maxConnections;
+        }
+
+        // extend expiry only when requested
         if ($this->extendExpiry) {
             $months = (int) rtrim($this->expiry, 'm');
-            $updateData['expires_at'] = now()->addMonths($months);
+            $update['expires_at'] = now()->addMonths($months);
         }
 
-        // Only update password if provided
-        if (!empty($this->password)) {
-            $updateData['plain_password'] = $this->password;
-            $updateData['password'] = bcrypt($this->password);
+        // update password only if provided
+        if ($this->password !== '') {
+            $update['plain_password'] = $this->password;
+            $update['password']       = bcrypt($this->password);
         }
 
-        // Update the VPN user
-        $this->vpnUser->update($updateData);
+        $this->vpnUser->update($update);
 
-        // Get current server assignments
-        $currentServers = $this->vpnUser->vpnServers->pluck('id')->toArray();
-        $newServers = $this->selectedServers;
-
-        // Sync the selected servers
+        // sync server assignments
+        $before = $this->vpnUser->vpnServers()->pluck('id')->all();
         $this->vpnUser->vpnServers()->sync($this->selectedServers);
+        $after  = $this->vpnUser->vpnServers()->pluck('id')->all();
 
-        // Reload the VPN user to ensure we have the latest data
-        $this->vpnUser->refresh();
-
-        // If servers changed, regenerate configs and sync credentials
-        if (array_diff($currentServers, $newServers) || array_diff($newServers, $currentServers)) {
-            // Regenerate OpenVPN configurations
-            VpnConfigBuilder::generate($this->vpnUser);
-
-            // Sync OpenVPN credentials for each server
+        // if server list changed, push credentials; no call to VpnConfigBuilder::generate()
+        if ($before !== $after) {
             foreach ($this->vpnUser->vpnServers as $server) {
                 SyncOpenVPNCredentials::dispatch($server);
-                Log::info("🚀 Synced OpenVPN credentials to $server->name ($server->ip_address)");
+                Log::info("🚀 Synced OpenVPN creds to {$server->name} ({$server->ip_address})");
             }
 
-            // Set up WireGuard peer for the user
-            AddWireGuardPeer::dispatch($this->vpnUser);
-            Log::info("🔧 WireGuard peer setup queued for user {$this->vpnUser->username}");
+            // Optional: queue WG peer setup only if you use WG today
+            if (config('services.wireguard.autogen', false)) {
+                AddWireGuardPeer::dispatch($this->vpnUser);
+                Log::info("🔧 WG peer setup queued for {$this->vpnUser->username}");
+            }
         }
 
-        // Log the successful update
-        Log::info("✅ VPN user updated: {$this->vpnUser->username}", [
-            'username' => $this->vpnUser->username,
-            'expires_at' => $this->vpnUser->expires_at,
+        Log::info("✅ VPN user updated", [
+            'user'            => $this->vpnUser->username,
+            'expires_at'      => $this->vpnUser->expires_at,
             'max_connections' => $this->vpnUser->max_connections,
-            'is_active' => $this->vpnUser->is_active,
-            'servers' => $this->vpnUser->vpnServers->pluck('name')->toArray()
+            'is_active'       => $this->vpnUser->is_active,
+            'servers'         => $this->vpnUser->vpnServers()->pluck('name')->all(),
+            'package_id'      => $this->packageId,
         ]);
 
-        // Add success message
-        session()->flash('success', "✅ VPN user {$this->vpnUser->username} updated successfully!");
+        session()->flash('success', "✅ {$this->vpnUser->username} updated.");
     }
 
-    public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
+    public function render(): View
     {
         return view('livewire.pages.admin.edit-vpn-user', [
-            'servers' => VpnServer::all(),
+            'servers'  => VpnServer::orderBy('name')->get(),
+            'packages' => Package::orderBy('price_credits')->get(),
         ]);
     }
 }
