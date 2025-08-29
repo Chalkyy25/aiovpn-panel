@@ -6,181 +6,140 @@ use App\Models\VpnUser;
 use App\Models\VpnServer;
 use App\Services\VpnConfigBuilder;
 use Exception;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Http\Response;
 use ZipArchive;
 
 class VpnConfigController extends Controller
 {
-    public function clientDownload(VpnServer $vpnserver)
-{
-    $client = Auth::guard('client')->user();
-    abort_unless($client, 403);
-
-    // If guard already returns a VpnUser, use it. Otherwise resolve by username.
-    if ($client instanceof VpnUser) {
-        $vpnUser = $client;
-    } else {
-        $vpnUser = VpnUser::where('username', $client->username)->first();
-        if (! $vpnUser) {
-            // Fallback: create an in-memory VpnUser instance (not saved)
-            $vpnUser = new VpnUser([
-                'username' => $client->username,
-                'password' => $client->password, // ensure this is the cleartext OpenVPN password
-            ]);
-        }
-    }
-
-    // (Optional) ensure the user is actually assigned to this server
-    try {
-        $isAssigned = method_exists($vpnUser, 'vpnServers')
-            ? $vpnUser->vpnServers()->whereKey($vpnserver->id)->exists()
-            : true; // if fallback instance without relation, skip the check
-
-        if (! $isAssigned) {
-            abort(403, 'Server not assigned to your account.');
-        }
-
-        $content = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnserver);
-        $name = str_replace([' ', '(', ')'], ['_', '', ''], $vpnserver->name) . "_{$vpnUser->username}.ovpn";
-
-        return response($content)
-            ->header('Content-Type', 'application/x-openvpn-profile')
-            ->header('Content-Disposition', "attachment; filename=\"{$name}\"")
-            ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-            ->header('Pragma', 'no-cache')
-            ->header('Expires', '0');
-
-    } catch (\Throwable $e) {
-        report($e);
-        abort(500, 'Failed to generate OpenVPN config: '.$e->getMessage());
-    }
-}
-
-    public function download(VpnUser $vpnUser, VpnServer $vpnServer = null) // Matches: admin/clients/{vpnUser}/config and client/vpn/{server}/download
+    /**
+     * Client downloads an OpenVPN/WireGuard config for a specific server.
+     * Route: client/vpn/{vpnserver}/download  (auth:client)
+     */
+    public function clientDownload(Request $request, VpnServer $vpnserver)
     {
-        // If server is provided, generate OpenVPN config with server name
-        if ($vpnServer) {
-            try {
-                $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
-                $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
+        /** @var VpnUser|null $client */
+        $client = Auth::guard('client')->user();
+        abort_unless($client instanceof VpnUser, 403, 'Not authenticated as client.');
 
-                return response($configContent)
-                    ->header('Content-Type', 'application/x-openvpn-profile')
-                    ->header('Content-Disposition', "attachment; filename=\"$fileName\"")
-                    ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                    ->header('Pragma', 'no-cache')
-                    ->header('Expires', '0');
+        // Ensure assignment
+        abort_unless(
+            $client->vpnServers()->whereKey($vpnserver->id)->exists(),
+            403,
+            'Server not assigned to your account.'
+        );
 
-            } catch (Exception $e) {
-                abort(500, "Failed to generate OpenVPN config for $vpnServer->name: " . $e->getMessage());
+        $proto = $request->string('proto')->lower()->value(); // 'ovpn'|'wg'|''
+
+        try {
+            if ($proto === 'wg') {
+                // Build WG config on-demand; return as download
+                $content = VpnConfigBuilder::generateWireGuardString($client, $vpnserver);
+                $name    = $this->safeName("{$vpnserver->name}_{$client->username}.conf");
+
+                return response($content, 200, [
+                    'Content-Type'        => 'text/plain',
+                    'Content-Disposition' => "attachment; filename=\"{$name}\"",
+                    'Cache-Control'       => 'no-cache, no-store, must-revalidate',
+                    'Pragma'              => 'no-cache',
+                    'Expires'             => '0',
+                ]);
             }
+
+            // Default: OpenVPN config (no cleartext bcrypt!)
+            $content = VpnConfigBuilder::generateOpenVpnConfigString($client, $vpnserver);
+            $name    = $this->safeName("{$vpnserver->name}_{$client->username}.ovpn");
+
+            return response($content, 200, [
+                'Content-Type'        => 'application/x-openvpn-profile',
+                'Content-Disposition' => "attachment; filename=\"{$name}\"",
+                'Cache-Control'       => 'no-cache, no-store, must-revalidate',
+                'Pragma'              => 'no-cache',
+                'Expires'             => '0',
+            ]);
+        } catch (Exception $e) {
+            report($e);
+            abort(500, 'Failed to generate config: '.$e->getMessage());
         }
-
-        // Default behavior for WireGuard configs
-        $path = "configs/{$vpnUser->username}_wg.conf";
-
-        if (!Storage::disk('local')->exists($path)) {
-            abort(404, 'WireGuard config not found for this user.');
-        }
-
-        return Storage::disk('local')->download($path);
     }
 
-    public function downloadForServer(VpnUser $vpnUser, VpnServer $vpnServer) // Matches: admin/clients/{vpnUser}/config/{vpnServer}
+    /**
+     * Admin: generate config for a specific server (on-demand).
+     * Route: admin/clients/{vpnUser}/config/{vpnServer}
+     */
+    public function downloadForServer(VpnUser $vpnUser, VpnServer $vpnServer)
     {
         try {
-            // ✅ SECURITY FIX: Generate config on-demand instead of reading from disk
-            $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+            $content = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+            $name    = $this->safeName("{$vpnServer->name}_{$vpnUser->username}.ovpn");
 
-            $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
-
-            return response($configContent)
-                ->header('Content-Type', 'application/x-openvpn-profile')
-                ->header('Content-Disposition', "attachment; filename=\"$fileName\"")
-                ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                ->header('Pragma', 'no-cache')
-                ->header('Expires', '0');
-
+            return response($content, 200, [
+                'Content-Type'        => 'application/x-openvpn-profile',
+                'Content-Disposition' => "attachment; filename=\"{$name}\"",
+                'Cache-Control'       => 'no-cache, no-store, must-revalidate',
+                'Pragma'              => 'no-cache',
+                'Expires'             => '0',
+            ]);
         } catch (Exception $e) {
-            abort(500, "Failed to generate OpenVPN config for $vpnServer->name: " . $e->getMessage());
+            abort(500, "Failed to generate OpenVPN config for {$vpnServer->name}: ".$e->getMessage());
         }
     }
 
-    public function downloadAll(VpnUser $vpnUser) // Matches: admin/clients/{vpnUser}/configs/download-all
+    /**
+     * Admin: zip all configs (WG + all OVPN) for a user.
+     * Route: admin/clients/{vpnUser}/configs/download-all
+     */
+    public function downloadAll(VpnUser $vpnUser)
     {
-        $servers = $vpnUser->vpnServers;
-
+        $servers = $vpnUser->vpnServers()->select('id','name')->get();
         if ($servers->isEmpty()) {
             return back()->with('error', 'No servers assigned to this user.');
         }
 
-        try {
-            $zipFileName = "{$vpnUser->username}_all_configs.zip";
-            $zipFilePath = storage_path("app/temp/$zipFileName");
+        $zipName = $this->safeName("{$vpnUser->username}_all_configs.zip");
+        $zipPath = storage_path("app/temp/{$zipName}");
 
-            // Ensure temp directory exists
-            if (!is_dir(storage_path('app/temp'))) {
-                mkdir(storage_path('app/temp'), 0755, true);
-            }
+        if (! is_dir(dirname($zipPath))) {
+            mkdir(dirname($zipPath), 0755, true);
+        }
 
-            $zip = new ZipArchive();
-
-            if ($zip->open($zipFilePath, ZipArchive::CREATE | ZipArchive::OVERWRITE) === true) {
-                // ✅ SECURITY FIX: Generate WireGuard config on-demand
-                $wgConfigPath = VpnConfigBuilder::generateWireGuard($vpnUser);
-                if ($wgConfigPath && file_exists($wgConfigPath)) {
-                    $zip->addFile($wgConfigPath, "{$vpnUser->username}_wg.conf");
-                }
-
-                // ✅ SECURITY FIX: Generate OpenVPN configs on-demand
-                foreach ($servers as $server) {
-                    $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server);
-                    $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $server->name) . "_$vpnUser->username.ovpn";
-
-                    // Add config content directly to ZIP
-                    $zip->addFromString($fileName, $configContent);
-                }
-
-                $zip->close();
-
-                $response = response()->download($zipFilePath)->deleteFileAfterSend();
-                $response->headers->set('Cache-Control', 'no-cache, no-store, must-revalidate');
-                $response->headers->set('Pragma', 'no-cache');
-                $response->headers->set('Expires', '0');
-                return $response;
-            }
-
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
             return back()->with('error', 'Could not create ZIP file.');
-
-        } catch (Exception $e) {
-            return back()->with('error', 'Failed to generate config archive: ' . $e->getMessage());
         }
-    }
 
-    /**
-     * Generate and download OpenVPN config without saving to file.
-     */
-    public function generateOpenVpnConfig(VpnUser $vpnUser, VpnServer $vpnServer)
-    {
         try {
-            $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+            // WG (optional)
+            if (method_exists(VpnConfigBuilder::class, 'generateWireGuardString')) {
+                $wg = VpnConfigBuilder::generateWireGuardString($vpnUser, null);
+                if ($wg) {
+                    $zip->addFromString($this->safeName("{$vpnUser->username}_wg.conf"), $wg);
+                }
+            }
 
-            $fileName = str_replace([' ', '(', ')'], ['_', '', ''], $vpnServer->name) . "_$vpnUser->username.ovpn";
+            // OVPN per server
+            foreach ($servers as $server) {
+                $ovpn = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server);
+                $file = $this->safeName("{$server->name}_{$vpnUser->username}.ovpn");
+                $zip->addFromString($file, $ovpn);
+            }
 
-            return response($configContent)
-                ->header('Content-Type', 'application/x-openvpn-profile')
-                ->header('Content-Disposition', "attachment; filename=\"$fileName\"");
+            $zip->close();
 
+            return response()->download($zipPath)->deleteFileAfterSend()
+                ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                ->header('Pragma', 'no-cache')
+                ->header('Expires', '0');
         } catch (Exception $e) {
-            return back()->with('error', 'Failed to generate OpenVPN config: ' . $e->getMessage());
+            // ensure we close/remove on error
+            try { $zip->close(); } catch (\Throwable $t) {}
+            @unlink($zipPath);
+            return back()->with('error', 'Failed to generate config archive: '.$e->getMessage());
         }
     }
 
     /**
-     * Show live OpenVPN sessions for a server.
+     * Live sessions JSON (unchanged, just type-hinted).
      */
     public function showLiveSessions(VpnServer $vpnServer)
     {
@@ -188,54 +147,22 @@ class VpnConfigController extends Controller
             $sessions = VpnConfigBuilder::getLiveOpenVpnSessions($vpnServer);
 
             return response()->json([
-                'success' => true,
-                'server' => [
-                    'id' => $vpnServer->id,
-                    'name' => $vpnServer->name,
-                    'ip_address' => $vpnServer->ip_address
-                ],
-                'sessions' => $sessions,
+                'success'        => true,
+                'server'         => ['id' => $vpnServer->id, 'name' => $vpnServer->name, 'ip_address' => $vpnServer->ip_address],
+                'sessions'       => $sessions,
                 'total_sessions' => count($sessions),
-                'timestamp' => now()->toISOString()
+                'timestamp'      => now()->toISOString(),
             ]);
-
         } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Failed to fetch live sessions: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'error' => 'Failed to fetch live sessions: '.$e->getMessage()], 500);
         }
     }
 
-    /**
-     * Generate OpenVPN config preview (returns config as JSON for display).
-     */
-    public function previewOpenVpnConfig(VpnUser $vpnUser, VpnServer $vpnServer)
+    /** ---------- Helpers ---------- */
+    private function safeName(string $name): string
     {
-        try {
-            $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
-
-            return response()->json([
-                'success' => true,
-                'server' => [
-                    'id' => $vpnServer->id,
-                    'name' => $vpnServer->name,
-                    'ip_address' => $vpnServer->ip_address
-                ],
-                'user' => [
-                    'id' => $vpnUser->id,
-                    'username' => $vpnUser->username
-                ],
-                'config_content' => $configContent,
-                'config_lines' => count(explode("\n", $configContent)),
-                'timestamp' => now()->toISOString()
-            ]);
-
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Failed to generate config preview: ' . $e->getMessage()
-            ], 500);
-        }
+        // collapse spaces, strip unsafe chars
+        $name = preg_replace('/[^\w\-.]+/u', '_', $name);
+        return trim($name, '_');
     }
 }
