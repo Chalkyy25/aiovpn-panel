@@ -17,6 +17,7 @@ class VpnServer extends Model
 {
     use HasFactory, ExecutesRemoteCommands;
 
+    // Show a computed online flag even when column is null
     protected $appends = ['is_online'];
 
     protected $fillable = [
@@ -48,7 +49,7 @@ class VpnServer extends Model
         'is_online'    => 'boolean',
     ];
 
-    /* ─────────────── Relationships ─────────────── */
+    /* ========= Relationships ========= */
 
     public function getRouteKeyName(): string
     {
@@ -76,7 +77,7 @@ class VpnServer extends Model
             ->where('is_connected', true);
     }
 
-    /* ─────────────── Deployment log helper ─────────────── */
+    /* ========= Deployment log helper ========= */
 
     public function appendLog(string $line): void
     {
@@ -87,17 +88,15 @@ class VpnServer extends Model
 
         if (!in_array($line, $lines, true)) {
             $lines[] = $line;
-            $this->update([
-                'deployment_log' => implode("\n", $lines),
-            ]);
+            $this->update(['deployment_log' => implode("\n", $lines)]);
         }
     }
 
-    /* ─────────────── Accessors / helpers ─────────────── */
+    /* ========= Helpers ========= */
 
     public function getOnlineUserCount(): int
     {
-        if (empty($this->ip_address)) {
+        if (blank($this->ip_address)) {
             Log::warning("⚠️ Cannot get online user count for {$this->name}: IP is empty");
             return 0;
         }
@@ -110,7 +109,6 @@ class VpnServer extends Model
                 "awk -F '\t' '\$1==\"CLIENT_LIST\"{c++} END{print c+0}' " . escapeshellarg($statusPath)
             );
             $result = $this->executeRemoteCommand($this, $cmd);
-
             if (($result['status'] ?? 1) === 0 && isset($result['output'][0])) {
                 return (int) trim((string) $result['output'][0]);
             }
@@ -120,7 +118,6 @@ class VpnServer extends Model
                 "awk -F ',' '\$1==\"CLIENT_LIST\"{c++} END{print c+0}' " . escapeshellarg($statusPath)
             );
             $result2 = $this->executeRemoteCommand($this, $cmdV2);
-
             if (($result2['status'] ?? 1) === 0 && isset($result2['output'][0])) {
                 return (int) trim((string) $result2['output'][0]);
             }
@@ -134,8 +131,7 @@ class VpnServer extends Model
     public function getSshCommand(): string
     {
         $ip = $this->ip_address;
-
-        if (empty($ip)) {
+        if (blank($ip)) {
             Log::error("❌ Cannot generate SSH command for {$this->name}: IP address missing");
             throw new InvalidArgumentException("Server IP address is required to generate SSH command");
         }
@@ -150,12 +146,10 @@ class VpnServer extends Model
         }
 
         if ($this->ssh_type === 'key') {
-            // Accept absolute path or filename (resolved under storage/app/ssh_keys)
-            if (str_starts_with((string)$this->ssh_key, '/') || str_contains((string)$this->ssh_key, ':\\')) {
-                $keyPath = $this->ssh_key;
-            } else {
-                $keyPath = storage_path('app/ssh_keys/' . ($this->ssh_key ?: 'id_rsa'));
-            }
+            $keyPath = (is_string($this->ssh_key) && (str_starts_with($this->ssh_key, '/') || str_contains($this->ssh_key, ':\\')))
+                ? $this->ssh_key
+                : storage_path('app/ssh_keys/' . ($this->ssh_key ?: 'id_rsa'));
+
             return "ssh -i {$keyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o UserKnownHostsFile={$tempSshDir}/known_hosts -p {$port} {$user}@{$ip}";
         }
 
@@ -163,12 +157,13 @@ class VpnServer extends Model
         return "sshpass -p '{$this->ssh_password}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o UserKnownHostsFile={$tempSshDir}/known_hosts -p {$port} {$user}@{$ip}";
     }
 
-    /* ─────────────── Virtuals ─────────────── */
+    /* ========= Virtuals ========= */
 
     public function getIsOnlineAttribute($value): bool
     {
-        if ($value !== null) {
-            return (bool) $value;
+        // If you persist is_online in DB, respect it when present
+        if (!is_null($this->attributes['is_online'] ?? null)) {
+            return (bool) $this->attributes['is_online'];
         }
 
         return Cache::remember("server:{$this->id}:is_online", 60, function () {
@@ -184,13 +179,12 @@ class VpnServer extends Model
     }
 
     /**
-     * Minimal inline probe used if the service method isn't available.
-     * SSH must work; then we accept either active service or open UDP/1194.
+     * Minimal inline probe if the service method isn't available.
      */
     private function quickOnlineProbe(): bool
     {
         $ip = $this->ip_address;
-        if (! $ip) return false;
+        if (!$ip) return false;
 
         try {
             // 1) SSH reachable?
@@ -218,7 +212,7 @@ class VpnServer extends Model
         }
     }
 
-    /* ─────────────── Boot hooks ─────────────── */
+    /* ========= Boot hooks ========= */
 
     protected static function booted(): void
     {
