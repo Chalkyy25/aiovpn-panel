@@ -57,9 +57,8 @@ class VpnUser extends Authenticatable
         'updated_at'   => 'datetime',
     ];
 
-    /* ========= Auth integration ========= */
+    /* ========= Auth (username + hashed password) ========= */
 
-    // Use username for auth guard
     public function getAuthIdentifierName(): string
     {
         return 'username';
@@ -70,15 +69,13 @@ class VpnUser extends Authenticatable
         return $this->password;
     }
 
-    // Hash on set; keep already-hashed values intact
+    // Hash on set; keep bcrypt as-is
     protected function password(): Attribute
     {
         return Attribute::set(function ($value) {
-            if (empty($value)) {
+            if (blank($value)) {
                 return $this->password;
             }
-
-            // Keep bcrypt as-is; otherwise hash
             return (is_string($value) && strlen($value) === 60 && str_starts_with($value, '$2y$'))
                 ? $value
                 : Hash::make($value);
@@ -89,14 +86,14 @@ class VpnUser extends Authenticatable
     protected function plainPassword(): Attribute
     {
         return Attribute::set(function ($value) {
-            if (! empty($value)) {
+            if (!blank($value)) {
                 $this->attributes['password'] = Hash::make($value);
             }
             return $value;
         });
     }
 
-    // No remember_token column for this table
+    // This table has no remember_token column
     public function setRememberToken($value): void {}
     public function getRememberToken(): ?string { return null; }
     public function getRememberTokenName(): string { return 'remember_token'; }
@@ -174,15 +171,12 @@ class VpnUser extends Authenticatable
         if ((int) $this->max_connections === 0) {
             return true;
         }
-
         return $this->activeConnectionsCount < (int) $this->max_connections;
     }
 
     public function getConnectionLimitTextAttribute(): string
     {
-        return ((int) $this->max_connections === 0)
-            ? 'Unlimited'
-            : (string) (int) $this->max_connections;
+        return ((int) $this->max_connections === 0) ? 'Unlimited' : (string) (int) $this->max_connections;
     }
 
     public function getConnectionSummaryAttribute(): string
@@ -200,20 +194,19 @@ class VpnUser extends Authenticatable
             $vpnUser->max_connections ??= 1;
             $vpnUser->is_active      ??= true;
 
-            if (empty($vpnUser->username)) {
+            if (blank($vpnUser->username)) {
                 $vpnUser->username = 'wg-' . Str::random(6);
             }
 
-            // ⚠️ WireGuard generation disabled for now (launch day).
-            // If you want to enable later, flip the env flag.
+            // WG disabled for launch unless explicitly enabled
             if (config('services.wireguard.autogen', false)) {
-                if (empty($vpnUser->wireguard_private_key) || empty($vpnUser->wireguard_public_key)) {
+                if (blank($vpnUser->wireguard_private_key) || blank($vpnUser->wireguard_public_key)) {
                     $keys = self::generateWireGuardKeys();
                     $vpnUser->wireguard_private_key = $keys['private'];
                     $vpnUser->wireguard_public_key  = $keys['public'];
                 }
 
-                if (empty($vpnUser->wireguard_address)) {
+                if (blank($vpnUser->wireguard_address)) {
                     do {
                         $last = random_int(2, 254);
                         $ip = "10.66.66.$last/32";
@@ -236,8 +229,7 @@ class VpnUser extends Authenticatable
             Log::info("🗑️ Cleanup for VPN user: {$vpnUser->username}");
             $vpnUser->loadMissing('vpnServers');
 
-            // WG cleanup only if enabled and keys exist
-            if (config('services.wireguard.autogen', false) && !empty($vpnUser->wireguard_public_key)) {
+            if (config('services.wireguard.autogen', false) && !blank($vpnUser->wireguard_public_key)) {
                 foreach ($vpnUser->vpnServers as $server) {
                     RemoveWireGuardPeer::dispatch(clone $vpnUser, $server);
                 }
@@ -253,16 +245,8 @@ class VpnUser extends Authenticatable
 
     /* ========= Helpers ========= */
 
-    /**
-     * Non-shell fallback WG keygen (launch safe).
-     * Switch to real wg tools later if needed.
-     */
     public static function generateWireGuardKeys(): array
     {
-        // If real wg tools present and allowed, you can re-enable:
-        // $hasWg = (bool) trim(shell_exec('command -v wg 2>/dev/null'));
-        // if ($hasWg) { ... }
-
         Log::warning('⚠️ WG tools disabled; using fallback key generation');
         $private = base64_encode(random_bytes(32));
         $public  = base64_encode(hash('sha256', $private, true));
