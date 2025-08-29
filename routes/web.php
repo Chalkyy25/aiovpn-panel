@@ -14,6 +14,7 @@ use App\Http\Controllers\VpnConfigController;
 use App\Http\Controllers\ClientAuthController;
 use App\Http\Controllers\AdminImpersonationController;
 use App\Http\Controllers\Client\AuthController;
+use App\Http\Controllers\Admin\Auth\LoginController as AdminLogin;
 
 // ✅ Livewire Pages
 use App\Livewire\Pages\Admin\{CreateUser,
@@ -195,6 +196,15 @@ Route::prefix('client')->name('client.')->group(function () {
     });
 });
 
+
+// ADMIN auth (web guard)
+Route::middleware('guest:web')->group(function () {
+    Route::get('/login',  [AdminLogin::class, 'show'])->name('login.form');
+    Route::post('/login', [AdminLogin::class, 'login'])->name('login');
+});
+Route::post('/logout', [AdminLogin::class, 'logout'])
+    ->middleware('auth:web')
+    ->name('logout');
 
 
 // ============================
