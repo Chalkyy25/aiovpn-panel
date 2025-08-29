@@ -71,7 +71,7 @@
           <select class="form-select" wire:model.live="packageId">
             @foreach($packages as $p)
               <option value="{{ $p->id }}">
-                {{ $p->name }} — {{ $p->name }} — {{ $p->price_credits }} credits 
+                {{ $p->name }} — {{ $p->price_credits }} credits 
                 (max {{ $p->max_connections == 0 ? 'Unlimited' : $p->max_connections }} conn)
               </option>
             @endforeach
