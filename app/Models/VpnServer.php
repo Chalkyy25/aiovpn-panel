@@ -88,7 +88,6 @@ class VpnServer extends Model
                 'deployment_log' => implode("\n", $lines),
             ]);
         }
-    }
 
     /* ─────────────── Accessors / helpers ─────────────── */
 
