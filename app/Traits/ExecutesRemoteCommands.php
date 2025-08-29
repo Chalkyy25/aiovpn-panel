@@ -4,68 +4,79 @@ namespace App\Traits;
 
 use App\Models\VpnServer;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Process\Process;
 
 trait ExecutesRemoteCommands
 {
     /**
-     * Execute a command on a remote VPN server via SSH.
+     * Execute an SSH command on a VPN server.
      *
-     * Uses the panel-managed key at storage/app/ssh_keys/id_rsa.
+     * Returns only STDOUT in 'output' (array of lines). STDERR is kept separate
+     * so warnings can never pollute file content (e.g., <ca>/<tls-auth> blocks).
      */
-    public function executeRemoteCommand(VpnServer $server, string $command): array
-    {
+    public function executeRemoteCommand(
+        VpnServer $server,
+        string $command,
+        int $timeoutSeconds = 15
+    ): array {
+        $host = $server->ssh_host ?? $server->hostname ?? $server->ip_address;
         $user = $server->ssh_user ?? 'root';
-        $port = $server->ssh_port ?? 22;
-        $ip   = $server->ip_address;
+        $port = (int)($server->ssh_port ?? 22);
 
-        // 🔑 Always use Laravel-managed key
-        $keyPath = storage_path('app/ssh_keys/id_rsa');
+        // Prefer per-server key path, else config, else storage default
+        $keyPath = $server->ssh_key_path
+            ?? config('services.vpn.ssh_key_path')
+            ?? storage_path('app/ssh_keys/id_rsa');
 
-        if (!file_exists($keyPath)) {
-            Log::error("❌ SSH key missing at {$keyPath}");
-            return ['status' => 1, 'output' => ["SSH key missing at {$keyPath}"]];
+        if (empty($host)) {
+            return ['status' => 1, 'output' => [], 'stderr' => ['Server host/IP missing']];
+        }
+        if (! is_file($keyPath)) {
+            Log::error("❌ SSH key missing", ['path' => $keyPath, 'server' => $host]);
+            return ['status' => 1, 'output' => [], 'stderr' => ["SSH key missing at {$keyPath}"]];
         }
 
-        // Build SSH command
-        $sshCommand = sprintf(
-            'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s -p %d %s@%s %s 2>&1',
-            escapeshellarg($keyPath),
-            $port,
-            escapeshellarg($user),
-            escapeshellarg($ip),
-            escapeshellarg($command)
-        );
-
-        $descriptorspec = [
-            0 => ["pipe", "r"],
-            1 => ["pipe", "w"],
-            2 => ["pipe", "w"],
+        // Build argv-style command (no shell), quiet + no prompts, no known_hosts writes
+        $ssh = [
+            'ssh',
+            '-i', $keyPath,
+            '-p', (string) $port,
+            '-q',                              // be quiet on STDERR for non-errors
+            '-o', 'BatchMode=yes',             // no password prompts
+            '-o', 'StrictHostKeyChecking=no',  // trust host (we're in infra)
+            '-o', 'UserKnownHostsFile=/dev/null',
+            '-o', 'LogLevel=ERROR',            // suppress “Permanently added …”
+            sprintf('%s@%s', $user, $host),
+            $command,
         ];
 
-        $process = proc_open($sshCommand, $descriptorspec, $pipes);
+        $proc = new Process($ssh, null, null, null, $timeoutSeconds);
 
-        if (!is_resource($process)) {
-            return ['status' => 255, 'output' => ['Failed to start SSH process']];
+        try {
+            $proc->run();
+        } catch (\Throwable $e) {
+            Log::error('❌ SSH exec exception', [
+                'server' => $host,
+                'port'   => $port,
+                'cmd'    => $command,
+                'error'  => $e->getMessage(),
+            ]);
+
+            return [
+                'status' => 255,
+                'output' => [],
+                'stderr' => [$e->getMessage()],
+            ];
         }
 
-        fclose($pipes[0]);
-        $stdout = stream_get_contents($pipes[1]); fclose($pipes[1]);
-        $stderr = stream_get_contents($pipes[2]); fclose($pipes[2]);
-        $status = proc_close($process);
+        // Split outputs into arrays of lines (do NOT merge stderr into output)
+        $stdout = trim($proc->getOutput());
+        $stderr = trim($proc->getErrorOutput());
 
-        $output = [];
-        if ($stdout) {
-            $output = array_merge($output, explode("\n", trim($stdout)));
-        }
-        if ($stderr) {
-            $output[] = "STDERR: " . trim($stderr);
-        }
-
-        if ($status !== 0) {
-            $redacted = preg_replace('/-i\s+\S+/', '-i [REDACTED]', $sshCommand);
-            $output[] = "SSH failed with status {$status}. Command: {$redacted}";
-        }
-
-        return ['status' => $status, 'output' => $output];
+        return [
+            'status' => $proc->getExitCode() ?? 1,
+            'output' => $stdout === '' ? [] : preg_split("/\r\n|\n|\r/", $stdout),
+            'stderr' => $stderr === '' ? [] : preg_split("/\r\n|\n|\r/", $stderr),
+        ];
     }
 }
