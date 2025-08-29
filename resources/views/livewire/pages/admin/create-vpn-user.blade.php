@@ -67,16 +67,20 @@
 
         {{-- Package --}}
         <div class="form-group">
-          <label class="form-label">Package</label>
-          <select class="form-select" wire:model.live="packageId">
-            @foreach($packages as $p)
-              <option value="{{ $p->id }}">
-                {{ $p->name }} — {{ $p->price_credits }} credits 
-                (max {{ $p->max_connections == 0 ? 'Unlimited' : $p->max_connections }} conn)
-              </option>
-            @endforeach
-          </select>
-          @error('packageId') <p class="aio-error text-red-300 text-xs">{{ $message }}</p> @enderror
+  <label class="form-label">Package</label>
+  <select class="form-select" wire:model.live="packageId">
+    @foreach($packages as $p)
+      <option value="{{ $p->id }}">
+        {{ $p->name }} — 
+        {{ $p->price_credits }} credits 
+        (max {{ $p->max_connections == 0 ? 'Unlimited' : $p->max_connections }} conn)
+      </option>
+    @endforeach
+  </select>
+  @error('packageId')
+    <p class="aio-error text-red-300 text-xs">{{ $message }}</p>
+  @enderror
+</div>
 
           <div class="mt-2 text-xs muted space-y-0.5">
             <div>Cost: <span class="text-[var(--aio-ink)] font-semibold">{{ $priceCredits }}</span> credits</div>
