@@ -5,7 +5,6 @@
     <div class="aio-card p-6 rounded-lg border border-white/10">
         <h2 class="text-2xl font-bold mb-6 text-[var(--aio-ink)] text-center">Client Login</h2>
 
-        {{-- Errors --}}
         @if ($errors->any())
             <div class="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 p-3 text-sm">
                 <ul class="list-disc list-inside space-y-1">
@@ -16,50 +15,32 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('client.login') }}" class="space-y-5" x-data="{ show:false }">
+        <form method="POST" action="{{ route('client.login') }}" class="space-y-5">
             @csrf
 
             {{-- Username --}}
-            <div>
-                <x-label for="username" class="text-[var(--aio-sub)]">Username</x-label>
-                <x-input
-                    id="username"
-                    name="username"
-                    type="text"
-                    value="{{ old('username') }}"
-                    required
-                    autofocus
-                    class="w-full mt-1"
-                    autocomplete="username"
-                />
-            </div>
+            <x-input
+                label="Username"
+                name="username"
+                type="text"
+                autocomplete="username"
+                value="{{ old('username') }}"
+                required
+                autofocus
+            />
 
-            {{-- Password (NOTE: use x-bind:type instead of :type) --}}
-            <div class="relative">
-                <x-label for="password" class="text-[var(--aio-sub)]">Password</x-label>
-                <x-input
-                    id="password"
-                    name="password"
-                    type="password"                     {{-- default type --}}
-                    x-bind:type="show ? 'text' : 'password'"  {{-- Alpine binding, not Blade prop --}}
-                    required
-                    class="w-full mt-1 pr-16"
-                    autocomplete="current-password"
-                />
-                <button type="button"
-                        class="absolute inset-y-0 right-0 mt-7 mr-3 text-xs aio-pill bg-white/5 hover:shadow-glow"
-                        @click="show = !show">
-                    <span x-show="!show">Show</span>
-                    <span x-show="show">Hide</span>
-                </button>
-            </div>
+            {{-- Password (toggle is built into x-input) --}}
+            <x-input
+                label="Password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+            />
 
-            {{-- Submit --}}
-            <div class="pt-2">
-                <x-button type="submit" class="w-full aio-pill pill-cya shadow-glow">
-                    Login
-                </x-button>
-            </div>
+            <x-button type="submit" class="w-full aio-pill pill-cya shadow-glow">
+                Login
+            </x-button>
         </form>
     </div>
 
