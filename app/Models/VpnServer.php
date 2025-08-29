@@ -164,11 +164,19 @@ class VpnServer extends Model
 
     /* ─────────────── Virtuals ─────────────── */
 
-    public function getIsOnlineAttribute(): bool
+    public function getIsOnlineAttribute($value): bool
     {
-        // Treat successfully deployed servers as "online" for now
-        return $this->deployment_status === 'succeeded';
+        if ($value !== null) {
+            return (bool) $value;
+        }
+
+        return Cache::remember("server:{$this->id}:is_online", 60, function () {
+            $res = VpnConfigBuilder::testOpenVpnConnectivity($this);
+            return ($res['server_reachable'] ?? false)
+                && (($res['openvpn_running'] ?? false) || ($res['port_open'] ?? false));
+        });
     }
+}
 
     /* ─────────────── Boot hooks ─────────────── */
 
