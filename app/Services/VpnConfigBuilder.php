@@ -15,22 +15,44 @@ class VpnConfigBuilder
     private const DEFAULT_OVPN_PORT = 1194;
 
     /**
-     * Generate an OpenVPN config string for a user + server.
+     * Used by admin flow to list per-server config filenames.
+     * No I/O; just returns descriptors.
+     */
+    public static function generate(VpnUser $vpnUser): array
+    {
+        $vpnUser->loadMissing('vpnServers');
+
+        $items = [];
+        foreach ($vpnUser->vpnServers as $server) {
+            $safe = str_replace([' ', '(', ')'], ['_', '', ''], $server->name);
+            $items[] = [
+                'server_id'   => $server->id,
+                'server_name' => $server->name,
+                'filename'    => "{$safe}_{$vpnUser->username}.ovpn",
+                'user_id'     => $vpnUser->id,
+                'username'    => $vpnUser->username,
+            ];
+        }
+        return $items;
+    }
+
+    /**
+     * Build an OpenVPN client config as a string.
+     * Always fetches CA/TLS directly from the target server.
+     * Throws if certs are missing.
      */
     public static function generateOpenVpnConfigString(VpnUser $vpnUser, VpnServer $server): string
     {
         $inst = new static();
 
-        // Always fetch certs directly from the server
         [$caCert, $tlsKey] = $inst->fetchCertificatesFromServer($server);
-
         if ($caCert === '' || $tlsKey === '') {
-            throw new Exception("❌ Missing certificates for server {$server->name} ({$server->id})");
+            throw new Exception("Missing certificates for server {$server->name} ({$server->id})");
         }
 
         $remote = "{$server->ip_address} " . self::DEFAULT_OVPN_PORT;
 
-        // Embed username/password if plain_password exists, otherwise prompt
+        // Embed username/password if we have a plain password; else prompt.
         $plain = trim((string)($vpnUser->plain_password ?? ''));
         $userpassBlock = $plain !== ''
             ? <<<TXT
@@ -69,48 +91,92 @@ key-direction 1
 {$userpassBlock}
 OVPN;
 
-        Log::info("✅ Built OVPN config", [
-            'user' => $vpnUser->username,
+        Log::info('OVPN config generated', [
+            'user'   => $vpnUser->username,
             'server' => $server->name,
-            'ip' => $server->ip_address,
+            'ip'     => $server->ip_address,
         ]);
 
         return $cfg;
     }
 
     /**
-     * Fetch CA + TLS keys from the VPN server over SSH.
-     * @return array{0:string,1:string}
+     * Resolve CA/TLS from the server via SSH.
+     * Returns [ca, ta] (empty strings if not available).
      */
     private function fetchCertificatesFromServer(VpnServer $server): array
     {
-        $result = ['', ''];
+        $ca = '';
+        $ta = '';
 
         try {
-            $ca = $this->executeRemoteCommand($server, 'cat /etc/openvpn/ca.crt');
-            if ($ca['status'] === 0 && !empty($ca['output'])) {
-                $result[0] = trim(implode("\n", $ca['output']));
+            $resCa = $this->executeRemoteCommand($server, 'cat /etc/openvpn/ca.crt');
+            if (($resCa['status'] ?? 1) === 0 && !empty($resCa['output'])) {
+                $ca = trim(implode("\n", $resCa['output']));
             }
 
-            $ta = $this->executeRemoteCommand($server, 'cat /etc/openvpn/ta.key');
-            if ($ta['status'] === 0 && !empty($ta['output'])) {
-                $result[1] = trim(implode("\n", $ta['output']));
+            $resTa = $this->executeRemoteCommand($server, 'cat /etc/openvpn/ta.key');
+            if (($resTa['status'] ?? 1) === 0 && !empty($resTa['output'])) {
+                $ta = trim(implode("\n", $resTa['output']));
             }
 
-            Log::info("✅ Fetched certs from server", [
+            Log::info('Fetched certs from server', [
                 'server' => $server->name,
-                'ip' => $server->ip_address,
-                'has_ca' => $result[0] !== '',
-                'has_ta' => $result[1] !== '',
+                'ip'     => $server->ip_address,
+                'has_ca' => $ca !== '',
+                'has_ta' => $ta !== '',
             ]);
         } catch (Exception $e) {
-            Log::error("❌ Failed fetching certs", [
+            Log::error('Fetch certs failed', [
                 'server' => $server->name,
-                'ip' => $server->ip_address,
-                'error' => $e->getMessage(),
+                'ip'     => $server->ip_address,
+                'error'  => $e->getMessage(),
             ]);
         }
 
-        return $result;
+        return [$ca, $ta];
+    }
+
+    /**
+     * Lightweight SSH connectivity test used by VpnServer::is_online.
+     */
+    public static function testOpenVpnConnectivity(VpnServer $server): array
+    {
+        $out = [
+            'server_reachable'       => false,
+            'openvpn_running'        => false,
+            'port_open'              => false,
+            'certificates_available' => false,
+            'details'                => [],
+        ];
+
+        $ip = $server->ip_address;
+        if (!$ip) { $out['details']['error'] = 'Server IP missing'; return $out; }
+
+        $inst = new static();
+
+        try {
+            $ssh  = $inst->executeRemoteCommand($server, 'echo ok');
+            $out['server_reachable'] = ($ssh['status'] === 0);
+            $out['details']['ssh']   = $ssh;
+
+            if ($out['server_reachable']) {
+                $svc  = $inst->executeRemoteCommand($server, 'systemctl is-active openvpn@server || systemctl is-active openvpn');
+                $port = $inst->executeRemoteCommand($server, 'ss -ulnp | grep ":1194" || netstat -ulnp | grep ":1194"');
+                $crt  = $inst->executeRemoteCommand($server, 'test -s /etc/openvpn/ca.crt -a -s /etc/openvpn/ta.key && echo ok || echo missing');
+
+                $out['openvpn_running']        = ($svc['status'] === 0 && in_array('active', $svc['output'] ?? []));
+                $out['port_open']              = ($port['status'] === 0 && !empty($port['output']));
+                $out['certificates_available'] = ($crt['status'] === 0 && in_array('ok', $crt['output'] ?? []));
+
+                $out['details']['service'] = $svc;
+                $out['details']['port']    = $port;
+                $out['details']['certs']   = $crt;
+            }
+        } catch (\Throwable $e) {
+            $out['details']['error'] = $e->getMessage();
+        }
+
+        return $out;
     }
 }
