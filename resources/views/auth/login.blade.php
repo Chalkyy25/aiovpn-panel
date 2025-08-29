@@ -1,47 +1,77 @@
-<x-guest-layout>
-    <!-- Session Status -->
-    <x-auth-session-status class="mb-4" :status="session('status')" />
+@extends('layouts.app')
 
-    <form method="POST" action="{{ route('client.login') }}">
-        @csrf
+@section('content')
+<div class="max-w-md mx-auto mt-10">
+    <div class="aio-card p-6 rounded-lg border border-white/10">
+        <h2 class="text-2xl font-bold mb-6 text-[var(--aio-ink)] text-center">Admin Login</h2>
 
-        <!-- Email Address -->
-        <div>
-            <x-input-label for="email" :value="__('Email')" />
-            <x-text-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" />
-            <x-input-error :messages="$errors->get('email')" class="mt-2" />
-        </div>
+        {{-- Session Status --}}
+        @if (session('status'))
+            <div class="mb-4 rounded-lg border border-white/10 bg-white/5 text-[var(--aio-ink)] p-3 text-sm">
+                {{ session('status') }}
+            </div>
+        @endif
 
-        <!-- Password -->
-        <div class="mt-4">
-            <x-input-label for="password" :value="__('Password')" />
+        {{-- Errors --}}
+        @if ($errors->any())
+            <div class="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 text-red-200 p-3 text-sm">
+                <ul class="list-disc list-inside space-y-1">
+                    @foreach ($errors->all() as $error)
+                        <li>{{ $error }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
 
-            <x-text-input id="password" class="block mt-1 w-full"
-                            type="password"
-                            name="password"
-                            required autocomplete="current-password" />
+        {{-- Admin Login Form --}}
+        <form method="POST" action="{{ route('login') }}" class="space-y-5">
+            @csrf
 
-            <x-input-error :messages="$errors->get('password')" class="mt-2" />
-        </div>
+            {{-- Email --}}
+            <x-input
+                label="Email"
+                name="email"
+                type="email"
+                value="{{ old('email') }}"
+                autocomplete="username"
+                required
+                autofocus
+            />
 
-        <!-- Remember Me -->
-        <div class="block mt-4">
-            <label for="remember_me" class="inline-flex items-center">
-                <input id="remember_me" type="checkbox" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500" name="remember">
-                <span class="ms-2 text-sm text-gray-600">{{ __('Remember me') }}</span>
-            </label>
-        </div>
+            {{-- Password --}}
+            <x-input
+                label="Password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+            />
 
-        <div class="flex items-center justify-end mt-4">
-            @if (Route::has('password.request'))
-                <a class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" href="{{ route('password.request') }}">
-                    {{ __('Forgot your password?') }}
-                </a>
-            @endif
+            {{-- Remember Me --}}
+            <div class="flex items-center">
+                <input id="remember" name="remember" type="checkbox"
+                       class="rounded border-gray-600 bg-white/5">
+                <label for="remember" class="ml-2 text-sm text-[var(--aio-sub)]">Remember me</label>
+            </div>
 
-            <x-primary-button class="ms-3">
-                {{ __('Log in') }}
-            </x-primary-button>
-        </div>
-    </form>
-</x-guest-layout>
+            {{-- Submit --}}
+            <div class="flex items-center justify-between pt-2">
+                @if (Route::has('password.request'))
+                    <a href="{{ route('password.request') }}"
+                       class="text-xs underline text-[var(--aio-sub)] hover:text-[var(--aio-ink)]">
+                        Forgot your password?
+                    </a>
+                @endif
+
+                <x-button type="submit" class="aio-pill pill-cya shadow-glow">
+                    Log in
+                </x-button>
+            </div>
+        </form>
+    </div>
+
+    <p class="mt-4 text-center text-xs text-[var(--aio-sub)]">
+        Need client login? <a href="{{ route('client.login.form') }}" class="underline">Go here</a>.
+    </p>
+</div>
+@endsection
