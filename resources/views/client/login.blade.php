@@ -34,15 +34,16 @@
                 />
             </div>
 
-            {{-- Password with show/hide (Alpine is optional; remove x-attrs if you don’t want it) --}}
+            {{-- Password (NOTE: use x-bind:type instead of :type) --}}
             <div class="relative">
                 <x-label for="password" class="text-[var(--aio-sub)]">Password</x-label>
                 <x-input
                     id="password"
                     name="password"
-                    :type="show ? 'text' : 'password'"
+                    type="password"                     {{-- default type --}}
+                    x-bind:type="show ? 'text' : 'password'"  {{-- Alpine binding, not Blade prop --}}
                     required
-                    class="w-full mt-1 pr-10"
+                    class="w-full mt-1 pr-16"
                     autocomplete="current-password"
                 />
                 <button type="button"
@@ -62,7 +63,6 @@
         </form>
     </div>
 
-    {{-- Optional: footer / help --}}
     <p class="mt-4 text-center text-xs text-[var(--aio-sub)]">
         Having trouble? Contact support.
     </p>
