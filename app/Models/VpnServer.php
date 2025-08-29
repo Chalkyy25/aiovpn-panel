@@ -80,7 +80,7 @@ class VpnServer extends Model
 
     public function appendLog(string $line): void
     {
-        Log::info("APPEND_LOG: " . $line);
+        Log::info("APPEND_LOG: ".$line);
 
         $existing = trim($this->deployment_log ?? '');
         $lines = $existing === '' ? [] : explode("\n", $existing);
@@ -125,7 +125,7 @@ class VpnServer extends Model
                 return (int) trim((string) $result2['output'][0]);
             }
         } catch (Exception $e) {
-            Log::error("❌ Failed to get online user count for {$this->name}: " . $e->getMessage());
+            Log::error("❌ Failed to get online user count for {$this->name}: ".$e->getMessage());
         }
 
         return 0;
@@ -151,7 +151,7 @@ class VpnServer extends Model
 
         if ($this->ssh_type === 'key') {
             // Accept absolute path or filename (resolved under storage/app/ssh_keys)
-            if (str_starts_with((string) $this->ssh_key, '/') || str_contains((string) $this->ssh_key, ':\\')) {
+            if (str_starts_with((string)$this->ssh_key, '/') || str_contains((string)$this->ssh_key, ':\\')) {
                 $keyPath = $this->ssh_key;
             } else {
                 $keyPath = storage_path('app/ssh_keys/' . ($this->ssh_key ?: 'id_rsa'));
@@ -172,10 +172,50 @@ class VpnServer extends Model
         }
 
         return Cache::remember("server:{$this->id}:is_online", 60, function () {
-            $res = VpnConfigBuilder::testOpenVpnConnectivity($this);
-            return ($res['server_reachable'] ?? false)
-                && (($res['openvpn_running'] ?? false) || ($res['port_open'] ?? false));
+            // Prefer the service method if present, else do a local probe
+            if (method_exists(VpnConfigBuilder::class, 'testOpenVpnConnectivity')) {
+                $res = VpnConfigBuilder::testOpenVpnConnectivity($this);
+                return ($res['server_reachable'] ?? false)
+                    && (($res['openvpn_running'] ?? false) || ($res['port_open'] ?? false));
+            }
+
+            return $this->quickOnlineProbe();
         });
+    }
+
+    /**
+     * Minimal inline probe used if the service method isn't available.
+     * SSH must work; then we accept either active service or open UDP/1194.
+     */
+    private function quickOnlineProbe(): bool
+    {
+        $ip = $this->ip_address;
+        if (! $ip) return false;
+
+        try {
+            // 1) SSH reachable?
+            $ssh = $this->executeRemoteCommand($this, 'echo ok');
+            if (($ssh['status'] ?? 1) !== 0) return false;
+
+            // 2) service active?
+            $svc = $this->executeRemoteCommand(
+                $this,
+                'systemctl is-active openvpn@server || systemctl is-active openvpn || echo inactive'
+            );
+            $active = ($svc['status'] === 0)
+                && collect($svc['output'] ?? [])->contains(fn($l) => trim($l) === 'active');
+
+            // 3) port open?
+            $port = $this->executeRemoteCommand(
+                $this,
+                'ss -ulnp 2>/dev/null | grep ":1194" || netstat -ulnp 2>/dev/null | grep ":1194" || true'
+            );
+            $portOpen = ($port['status'] === 0) && !empty($port['output']);
+
+            return $active || $portOpen;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /* ─────────────── Boot hooks ─────────────── */
