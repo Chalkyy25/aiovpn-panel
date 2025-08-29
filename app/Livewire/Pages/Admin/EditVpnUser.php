@@ -89,9 +89,15 @@ class EditVpnUser extends Component
         $this->vpnUser->update($update);
 
         // sync server assignments
-        $before = $this->vpnUser->vpnServers()->pluck('id')->all();
-        $this->vpnUser->vpnServers()->sync($this->selectedServers);
-        $after  = $this->vpnUser->vpnServers()->pluck('id')->all();
+        $before = $this->vpnUser->vpnServers()
+    ->pluck('vpn_servers.id')
+    ->all();
+
+$this->vpnUser->vpnServers()->sync($this->selectedServers);
+
+$after  = $this->vpnUser->vpnServers()
+    ->pluck('vpn_servers.id')
+    ->all();
 
         if ($before !== $after) {
             foreach ($this->vpnUser->vpnServers as $server) {
