@@ -6,7 +6,6 @@ use App\Jobs\AddWireGuardPeer;
 use App\Jobs\SyncOpenVPNCredentials;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
-use App\Services\VpnConfigBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -17,9 +16,11 @@ use Livewire\Component;
 class CreateTrialLine extends Component
 {
     public string $username = '';
-    public array  $selectedServers = [];
-    public int    $step = 1;
+    /** @var array<int> */
+    public array $selectedServers = [];
+    public int $step = 1;
 
+    /** @var \Illuminate\Support\Collection<array{id:int,name:string,ip_address:string}> */
     public $servers;
 
     public function mount(): void
@@ -31,9 +32,9 @@ class CreateTrialLine extends Component
     public function rules(): array
     {
         return [
-            'username'         => 'required|string|min:3|max:50|alpha_dash|unique:vpn_users,username',
-            'selectedServers'  => 'required|array|min:1',
-            'selectedServers.*'=> 'exists:vpn_servers,id',
+            'username'          => 'required|string|min:3|max:50|alpha_dash|unique:vpn_users,username',
+            'selectedServers'   => 'required|array|min:1',
+            'selectedServers.*' => 'integer|exists:vpn_servers,id',
         ];
     }
 
@@ -57,16 +58,7 @@ class CreateTrialLine extends Component
     {
         $this->validate();
 
-        // One active trial per creator (admin/reseller) at a time
         $creatorId = auth()->id();
-        $hasActive = VpnUser::activeTrials()
-            ->where('client_id', $creatorId) // or track a separate owner/reseller field if you prefer
-            ->exists();
-
-        if ($hasActive) {
-            $this->addError('username', 'You already have an active trial. Please wait until it expires.');
-            return;
-        }
 
         DB::transaction(function () use ($creatorId) {
             $plainPassword = Str::random(10);
@@ -75,26 +67,32 @@ class CreateTrialLine extends Component
                 'username'        => $this->username,
                 'plain_password'  => $plainPassword,
                 'password'        => bcrypt($plainPassword),
-                'client_id'       => $creatorId,         // owner
-                'max_connections' => 1,                  // trials: 1 device
+                'client_id'       => $creatorId,
+                'max_connections' => 1,                 // trials: 1 device
                 'is_active'       => true,
                 'is_trial'        => true,
-                'expires_at'      => now()->addDay(),    // 24 hours
+                'expires_at'      => now()->addDay(),   // 24 hours
             ]);
 
+            // Link servers
             $vpnUser->vpnServers()->sync($this->selectedServers);
             $vpnUser->refresh();
 
-            // Generate & sync OpenVPN configs
-            VpnConfigBuilder::generate($vpnUser);
+            // Push OpenVPN creds to each server so the user can auth immediately
             foreach ($vpnUser->vpnServers as $server) {
                 SyncOpenVPNCredentials::dispatch($server);
             }
 
-            // WG peer (if you use it)
-            AddWireGuardPeer::dispatch($vpnUser);
+            // Optional WG peer setup (only if feature enabled)
+            if (config('services.wireguard.autogen', false)) {
+                AddWireGuardPeer::dispatch($vpnUser);
+            }
 
-            session()->flash('success', "🎉 Trial line created: {$vpnUser->username}. Password: {$plainPassword} (expires in 24h)");
+            session()->flash(
+                'success',
+                "🎉 Trial created: {$vpnUser->username} — Password: {$plainPassword} (expires in 24h)"
+            );
+
             Log::info('Trial line created', [
                 'creator_id' => $creatorId,
                 'vpn_user'   => $vpnUser->id,
