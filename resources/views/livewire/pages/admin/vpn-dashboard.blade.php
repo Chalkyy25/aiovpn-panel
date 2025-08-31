@@ -44,6 +44,14 @@
           <x-icon name="o-activity" class="w-4 h-4" />
           Refresh
         </button>
+        <button
+  class="aio-pill bg-white/5 border border-white/10 text-xs inline-flex items-center gap-1"
+  @click="showFilters = !showFilters"
+  aria-expanded="false"
+>
+  <x-icon name="o-filter" class="w-4 h-4" />
+  Filter
+</button>
 
         <div class="text-xs text-[var(--aio-sub)]">
           <span class="hidden sm:inline">Updated</span>
@@ -110,15 +118,61 @@
 
   </div>
 
-  {{-- SERVER FILTER --}}
-  <div class="aio-card p-4">
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <x-icon name="o-filter" class="h-4 w-4" />
-        Filter by server
-      </h3>
-      <div class="text-[10px] sm:text-xs muted">Tap to filter</div>
+  {{-- SERVER FILTER (collapsible) --}}
+<div
+  x-show="showFilters"
+  x-transition
+  x-cloak
+  @keydown.escape.window="showFilters=false"
+  class="aio-card p-4"
+>
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
+      <x-icon name="o-filter" class="h-4 w-4" /> Filter by server
+    </h3>
+    <button class="text-xs muted hover:text-[var(--aio-ink)]" @click="showFilters=false">Close</button>
+  </div>
+
+  {{-- Quick actions --}}
+  <div class="flex flex-wrap items-center gap-2 mb-3">
+    <button
+      @click="selectServer(null)"
+      class="aio-pill"
+      :class="selectedServerId===null ? 'pill-cya shadow-glow' : 'bg-white/5'"
+      title="Show all servers"
+    >
+      All
+      <span class="aio-pill ml-1" :class="totals.active_connections>0 ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'">
+        <span x-text="totals.active_connections"></span>
+      </span>
+    </button>
+
+    {{-- Optional: “Active only” toggle, keep if useful
+    <label class="ml-auto inline-flex items-center gap-2 text-xs cursor-pointer">
+      <input type="checkbox" class="sr-only" x-model="onlyActiveServers">
+      <span class="aio-pill px-2 py-1 bg-white/5">Active servers only</span>
+    </label>
+    --}}
+  </div>
+
+  {{-- Server chips --}}
+  <div class="-mx-1 px-1 overflow-x-auto no-scrollbar">
+    <div class="flex flex-wrap gap-2">
+      <template x-for="(meta, sid) in serverMeta" :key="sid">
+        <button
+          @click="selectServer(Number(sid))"
+          class="aio-pill whitespace-nowrap"
+          :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : 'bg-white/5'"
+        >
+          <span x-text="meta.name"></span>
+          <span class="aio-pill ml-1"
+                :class="(serverUsersCount(Number(sid))>0) ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
+                x-text="serverUsersCount(Number(sid))"></span>
+        </button>
+      </template>
     </div>
+  </div>
+</div>
 
     {{-- Mobile pills --}}
     <div class="sm:hidden -mx-1 px-1 overflow-x-auto no-scrollbar">
