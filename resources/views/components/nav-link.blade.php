@@ -1,47 +1,69 @@
 @props([
+    'href'           => '#',
     'active'         => false,
     'icon'           => null,
-    // neon | mag | pup | cya | slate (slate = neutral ghost when inactive)
+    // neon | mag | pup | cya | slate
     'variant'        => 'pup',
-    // when true, label can be hidden by a parent x-data { sidebarCollapsed: true }
+    // when true, you can hide labels in the sidebar via x-show on the parent
     'collapseAware'  => true,
 ])
 
 @php
-    // Brand → ring color + active pill class
-    $map = [
-        'neon'  => ['pill' => 'pill-neon',  'ring' => 'ring-[rgba(61,255,127,.30)]'],
-        'mag'   => ['pill' => 'pill-mag',   'ring' => 'ring-[rgba(255,47,185,.30)]'],
-        'pup'   => ['pill' => 'pill-pup',   'ring' => 'ring-[rgba(124,77,255,.30)]'],
-        'cya'   => ['pill' => 'pill-cya',   'ring' => 'ring-[rgba(59,167,240,.30)]'],
-        'slate' => ['pill' => 'bg-white/10 text-[var(--aio-ink)]', 'ring' => 'ring-white/10'],
-    ];
-    $c = $map[$variant] ?? $map['pup'];
+  // One source of truth for tones
+  $tones = [
+    'neon'  => [
+      'ring'   => 'ring-[rgba(61,255,127,.28)]',
+      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
+      'active' => 'pill-neon text-[#0b0f1a]',
+      'icon'   => 'text-[var(--aio-neon)]',
+    ],
+    'mag'   => [
+      'ring'   => 'ring-[rgba(255,47,185,.28)]',
+      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
+      'active' => 'pill-mag text-[#0b0f1a]',
+      'icon'   => 'text-[var(--aio-mag)]',
+    ],
+    'pup'   => [
+      'ring'   => 'ring-[rgba(124,77,255,.28)]',
+      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
+      'active' => 'pill-pup text-[#0b0f1a]',
+      'icon'   => 'text-[var(--aio-pup)]',
+    ],
+    'cya'   => [
+      'ring'   => 'ring-[rgba(59,167,240,.28)]',
+      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
+      'active' => 'pill-cya text-[#0b0f1a]',
+      'icon'   => 'text-[var(--aio-cya)]',
+    ],
+    'slate' => [
+      'ring'   => 'ring-white/10',
+      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
+      'active' => 'bg-white/20 text-[var(--aio-ink)]',
+      'icon'   => 'text-[var(--aio-sub)]',
+    ],
+  ];
+  $t = $tones[$variant] ?? $tones['pup'];
 
-    // Shared ghost look (works everywhere, no dynamic Tailwind needed)
-    $base = 'aio-pill w-full justify-start flex items-center gap-2 px-3 py-2
-             rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-0
-             border border-white/10 bg-white/5 text-[var(--aio-ink)]';
+  // Fixed, consistent pill style (shape, spacing, ring, shadow)
+  $base = "nav-pill flex items-center gap-2 w-full px-3 py-2 rounded-xl
+           ring-1 {$t['ring']} shadow-[inset_0_0_0_1px_rgba(255,255,255,.06)]
+           transition-colors duration-150";
 
-    // Active vs inactive
-    $classes = $active
-        // Active: brand pill + subtle ring + glow
-        ? "{$base} {$c['pill']} shadow-glow ring-1 {$c['ring']}"
-        // Inactive: neutral ghost; brighten on hover
-        : "{$base} hover:bg-white/10";
+  $state = $active
+      ? "{$t['active']} shadow-glow font-semibold"
+      : "{$t['idle']}";
+
+  // We still allow attributes->merge, but avoid passing extra hover/active pill classes from callers.
 @endphp
 
-<a {{ $attributes->merge([
-        'class' => $classes,
-        'aria-current' => $active ? 'page' : null,
-    ]) }}>
-    @if($icon)
-        <x-icon :name="$icon" class="w-5 h-5 shrink-0" />
-    @endif
+<a href="{{ $href }}" {{ $attributes->merge(['class' => "$base $state"]) }}>
+  @if($icon)
+    <x-icon :name="$icon" class="w-5 h-5 shrink-0 {{ $t['icon'] }}" />
+  @endif
 
-    @if ($collapseAware)
-        <span class="truncate" x-show="!$root.sidebarCollapsed">{{ $slot }}</span>
-    @else
-        <span class="truncate">{{ $slot }}</span>
-    @endif
+  @if($collapseAware)
+    <span class="truncate" x-show="!$root.sidebarCollapsed">{{ $slot }}</span>
+  @else
+    <span class="truncate">{{ $slot }}</span>
+  @endif>
 </a>
