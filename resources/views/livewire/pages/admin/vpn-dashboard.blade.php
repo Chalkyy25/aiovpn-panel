@@ -1,22 +1,26 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
-{{-- VPN Dashboard — compact, mobile-friendly, real-time via Echo/Reverb + Alpine --}}
+{{-- VPN Dashboard — compact, mobile-friendly, real-time via Echo/Reverb + Alpine, with icons --}}
 
 <div
   x-data="vpnDashboard()"
-  x-init="init(@js($servers->mapWithKeys(fn($s)=>[$s->id=>['id'=>$s->id,'name'=>$s->name]])), @js($activeConnections->groupBy('vpn_server_id')->map(fn($g)=>$g->map(fn($c)=>[
-    'connection_id'=>$c->id,
-    'username'=>optional($c->vpnUser)->username ?? 'unknown',
-    'client_ip'=>$c->client_ip,
-    'virtual_ip'=>$c->virtual_ip,
-    'connected_at'=>optional($c->connected_at)?->toIso8601String(),
-    'bytes_in'=>(int) $c->bytes_received,
-    'bytes_out'=>(int) $c->bytes_sent,
-    'server_name'=>optional($c->vpnServer)->name,
-  ])->values())->toArray()), {
-    active_servers: {{ $servers->count() }},
-    active_connections: {{ $activeConnections->count() }},
-    online_users: {{ $activeConnections->pluck('vpnUser.username')->filter()->unique()->count() }},
-  })"
+  x-init="init(
+      @js($servers->mapWithKeys(fn($s)=>[$s->id=>['id'=>$s->id,'name'=>$s->name]])),
+      @js($activeConnections->groupBy('vpn_server_id')->map(fn($g)=>$g->map(fn($c)=>[
+        'connection_id'=>$c->id,
+        'username'=>optional($c->vpnUser)->username ?? 'unknown',
+        'client_ip'=>$c->client_ip,
+        'virtual_ip'=>$c->virtual_ip,
+        'connected_at'=>optional($c->connected_at)?->toIso8601String(),
+        'bytes_in'=>(int) $c->bytes_received,
+        'bytes_out'=>(int) $c->bytes_sent,
+        'server_name'=>optional($c->vpnServer)->name,
+      ])->values())->toArray()),
+      {
+        active_servers: {{ $servers->count() }},
+        active_connections: {{ $activeConnections->count() }},
+        online_users: {{ $activeConnections->pluck('vpnUser.username')->filter()->unique()->count() }},
+      }
+    )"
   class="space-y-6"
 >
   {{-- HEADER + TOOLBAR --}}
@@ -28,7 +32,7 @@
       </div>
       <div class="flex items-center gap-2">
         <button
-          class="aio-pill pill-cya text-xs"
+          class="aio-pill pill-cya text-xs inline-flex items-center gap-1"
           @click.prevent="
             if(window.$wire?.getLiveStats){
               $el.disabled=true;
@@ -36,6 +40,7 @@
                 .then(()=>{ lastUpdated=new Date().toLocaleTimeString(); })
                 .finally(()=>{ $el.disabled=false });
             }">
+          <x-icon name="o-activity" class="w-4 h-4" />
           Refresh
         </button>
         <div class="text-xs text-[var(--aio-sub)]">
@@ -46,23 +51,34 @@
     </div>
   </div>
 
-  {{-- STAT TILES (COMPACT) --}}
+  {{-- STAT TILES (with subtle gradients + icons) --}}
   <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-    <div class="rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted">Online</div>
-      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
+    <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-white/5 to-white/10">
+      <div class="flex items-center gap-2 text-[10px] muted">
+        <x-icon name="o-check-circle" class="h-4 w-4 opacity-70" /> Online
+      </div>
+      <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
     </div>
-    <div class="rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted">Connections</div>
-      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
+
+    <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-cyan-500/5 to-cyan-500/10">
+      <div class="flex items-center gap-2 text-[10px] muted">
+        <x-icon name="o-activity" class="h-4 w-4 opacity-70" /> Connections
+      </div>
+      <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
     </div>
-    <div class="rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted">Servers</div>
-      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
+
+    <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-fuchsia-500/5 to-fuchsia-500/10">
+      <div class="flex items-center gap-2 text-[10px] muted">
+        <x-icon name="o-server" class="h-4 w-4 opacity-70" /> Servers
+      </div>
+      <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
     </div>
-    <div class="hidden lg:block rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted">Avg. Session</div>
-      <div class="text-2xl font-semibold text-[var(--aio-ink)]">
+
+    <div class="hidden lg:block rounded border border-white/10 p-3 bg-gradient-to-br from-yellow-500/5 to-yellow-500/10">
+      <div class="flex items-center gap-2 text-[10px] muted">
+        <x-icon name="o-clock" class="h-4 w-4 opacity-70" /> Avg. Session
+      </div>
+      <div class="mt-1 text-2xl font-semibold text-[var(--aio-ink)]">
         @if($activeConnections->count() > 0)
           {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
         @else 0m @endif
@@ -73,7 +89,10 @@
   {{-- SERVER FILTER --}}
   <div class="aio-card p-4">
     <div class="flex items-center justify-between mb-2">
-      <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)]">Filter by server</h3>
+      <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
+        <x-icon name="o-filter" class="h-4 w-4" />
+        Filter by server
+      </h3>
       <div class="text-[10px] sm:text-xs muted">Tap to filter</div>
     </div>
 
@@ -141,7 +160,7 @@
             <tr class="hover:bg-white/5">
               <td class="px-4 py-2">
                 <div class="flex items-center gap-2">
-                  <span class="h-2 w-2 rounded-full bg-[var(--aio-neon)]"></span>
+                  <x-icon name="o-check-circle" class="h-4 w-4 text-[var(--aio-neon)]" />
                   <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
                 </div>
               </td>
@@ -157,8 +176,11 @@
                 <div class="text-xs muted">↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB</div>
               </td>
               <td class="px-4 py-2">
-                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
-                        @click.prevent="disconnect(row)">Disconnect</button>
+                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow inline-flex items-center gap-1"
+                        @click.prevent="disconnect(row)">
+                  <x-icon name="o-disconnect" class="w-4 h-4" />
+                  Disconnect
+                </button>
               </td>
             </tr>
           </template>
@@ -176,13 +198,16 @@
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="flex items-center gap-2">
-                <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
+                <x-icon name="o-check-circle" class="h-4 w-4 text-[var(--aio-neon)]" />
                 <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
               </div>
               <div class="text-xs muted" x-text="row.server_name"></div>
             </div>
-            <button class="aio-pill bg-red-500/15 text-red-300"
-                    @click.prevent="disconnect(row)">Disconnect</button>
+            <button class="aio-pill bg-red-500/15 text-red-300 inline-flex items-center gap-1"
+                    @click.prevent="disconnect(row)">
+              <x-icon name="o-disconnect" class="w-4 h-4" />
+              Disconnect
+            </button>
           </div>
 
           <div class="mt-3 grid grid-cols-2 gap-3">
