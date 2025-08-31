@@ -1,321 +1,220 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
-@php
-    $seedUsersByServer = $activeConnections->groupBy('vpn_server_id')->map(function ($group) {
-        return $group->map(function ($c) {
-            return [
-                'connection_id' => $c->id,
-                'username'      => optional($c->vpnUser)->username ?? 'unknown',
-                'client_ip'     => $c->client_ip,
-                'virtual_ip'    => $c->virtual_ip,
-                'connected_at'  => optional($c->connected_at)?->toIso8601String(),
-                'bytes_in'      => (int) $c->bytes_received,
-                'bytes_out'     => (int) $c->bytes_sent,
-                'server_name'   => optional($c->vpnServer)->name,
-            ];
-        })->values();
-    })->toArray();
-
-    $seedServerMeta = $servers->mapWithKeys(fn($s) => [
-        $s->id => ['id' => $s->id, 'name' => $s->name]
-    ])->toArray();
-
-    $seedTotals = [
-        'active_servers'      => $servers->count(),
-        'active_connections'  => $activeConnections->count(),
-        'online_users'        => $activeConnections->pluck('vpnUser.username')->filter()->unique()->count(),
-    ];
-@endphp
+{{-- VPN Dashboard — compact, mobile-friendly, real-time via Echo/Reverb + Alpine --}}
 
 <div
-    x-data="vpnDashboard()"
-    x-init="init(@js($seedServerMeta), @js($seedUsersByServer), @js($seedTotals))"
-    class="max-w-7xl mx-auto p-4 space-y-6"
+  x-data="vpnDashboard()"
+  x-init="init(@js($servers->mapWithKeys(fn($s)=>[$s->id=>['id'=>$s->id,'name'=>$s->name]])), @js($activeConnections->groupBy('vpn_server_id')->map(fn($g)=>$g->map(fn($c)=>[
+    'connection_id'=>$c->id,
+    'username'=>optional($c->vpnUser)->username ?? 'unknown',
+    'client_ip'=>$c->client_ip,
+    'virtual_ip'=>$c->virtual_ip,
+    'connected_at'=>optional($c->connected_at)?->toIso8601String(),
+    'bytes_in'=>(int) $c->bytes_received,
+    'bytes_out'=>(int) $c->bytes_sent,
+    'server_name'=>optional($c->vpnServer)->name,
+  ])->values())->toArray()), {
+    active_servers: {{ $servers->count() }},
+    active_connections: {{ $activeConnections->count() }},
+    online_users: {{ $activeConnections->pluck('vpnUser.username')->filter()->unique()->count() }},
+  })"
+  class="space-y-6"
 >
   {{-- HEADER + TOOLBAR --}}
-<div class="space-y-2">
-  <div class="flex items-end justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
-      <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
-    </div>
-    <div class="flex items-center gap-2">
-      <button
-        class="aio-pill pill-cya text-xs"
-        @click.prevent="
-          if(window.$wire?.getLiveStats){
-            $el.disabled=true;
-            window.$wire.getLiveStats()
-              .then(()=>{ lastUpdated=new Date().toLocaleTimeString(); })
-              .finally(()=>{ $el.disabled=false });
-          }">
-        Refresh
-      </button>
-      <div class="text-xs text-[var(--aio-sub)]">
-        <span class="hidden sm:inline">Updated</span>
-        <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
+  <div class="space-y-2">
+    <div class="flex items-end justify-between">
+      <div>
+        <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
+        <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button
+          class="aio-pill pill-cya text-xs"
+          @click.prevent="
+            if(window.$wire?.getLiveStats){
+              $el.disabled=true;
+              window.$wire.getLiveStats()
+                .then(()=>{ lastUpdated=new Date().toLocaleTimeString(); })
+                .finally(()=>{ $el.disabled=false });
+            }">
+          Refresh
+        </button>
+        <div class="text-xs text-[var(--aio-sub)]">
+          <span class="hidden sm:inline">Updated</span>
+          <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-{{-- STAT TILES (COMPACT) --}}
-<div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-  <div class="rounded bg-white/5 border border-white/10 p-3">
-    <div class="text-[10px] muted">Online</div>
-    <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
-  </div>
-  <div class="rounded bg-white/5 border border-white/10 p-3">
-    <div class="text-[10px] muted">Connections</div>
-    <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
-  </div>
-  <div class="rounded bg-white/5 border border-white/10 p-3">
-    <div class="text-[10px] muted">Servers</div>
-    <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
-  </div>
-  <div class="hidden lg:block rounded bg-white/5 border border-white/10 p-3">
-    <div class="text-[10px] muted">Avg. Session</div>
-    <div class="text-2xl font-semibold text-[var(--aio-ink)]">
-      @if($activeConnections->count() > 0)
-        {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
-      @else 0m @endif
+  {{-- STAT TILES (COMPACT) --}}
+  <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+    <div class="rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted">Online</div>
+      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
+    </div>
+    <div class="rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted">Connections</div>
+      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
+    </div>
+    <div class="rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted">Servers</div>
+      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
+    </div>
+    <div class="hidden lg:block rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted">Avg. Session</div>
+      <div class="text-2xl font-semibold text-[var(--aio-ink)]">
+        @if($activeConnections->count() > 0)
+          {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
+        @else 0m @endif
+      </div>
     </div>
   </div>
-</div>
 
-{{-- SERVER FILTER: PILLS (MOBILE) + SELECT (DESKTOP) --}}
-<div class="aio-card p-4">
-  <div class="flex items-center justify-between mb-2">
-    <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)]">Filter by server</h3>
-    <div class="text-[10px] sm:text-xs muted">Tap to filter</div>
-  </div>
+  {{-- SERVER FILTER --}}
+  <div class="aio-card p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)]">Filter by server</h3>
+      <div class="text-[10px] sm:text-xs muted">Tap to filter</div>
+    </div>
 
-  {{-- Mobile: horizontally scrollable pills --}}
-  <div class="sm:hidden -mx-1 px-1 overflow-x-auto no-scrollbar">
-    <div class="flex gap-2 py-1">
-      <button @click="selectServer(null)"
-              class="aio-pill whitespace-nowrap"
-              :class="selectedServerId===null ? 'pill-cya shadow-glow' : ''">
-        All (<span x-text="totals.active_connections"></span>)
-      </button>
-      <template x-for="(meta, sid) in serverMeta" :key="sid">
-        <button @click="selectServer(Number(sid))"
+    {{-- Mobile pills --}}
+    <div class="sm:hidden -mx-1 px-1 overflow-x-auto no-scrollbar">
+      <div class="flex gap-2 py-1">
+        <button @click="selectServer(null)"
                 class="aio-pill whitespace-nowrap"
-                :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : ''">
-          <span x-text="meta.name"></span>
-          <span class="aio-pill ml-1"
-                :class="(serverUsersCount(Number(sid))>0) ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
-                x-text="serverUsersCount(Number(sid))"></span>
+                :class="selectedServerId===null ? 'pill-cya shadow-glow' : ''">
+          All (<span x-text="totals.active_connections"></span>)
         </button>
-      </template>
+        <template x-for="(meta, sid) in serverMeta" :key="sid">
+          <button @click="selectServer(Number(sid))"
+                  class="aio-pill whitespace-nowrap"
+                  :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : ''">
+            <span x-text="meta.name"></span>
+            <span class="aio-pill ml-1"
+                  :class="(serverUsersCount(Number(sid))>0) ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
+                  x-text="serverUsersCount(Number(sid))"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    {{-- Desktop select --}}
+    <div class="hidden sm:block">
+      <select class="w-full bg-transparent border border-white/10 rounded px-3 py-2 text-sm"
+              @change="selectServer($event.target.value || null)">
+        <option value="">All servers</option>
+        <template x-for="(meta, sid) in serverMeta" :key="sid">
+          <option :value="sid" x-text="meta.name"></option>
+        </template>
+      </select>
     </div>
   </div>
 
-  {{-- Desktop: dropdown --}}
-  <div class="hidden sm:block">
-    <select class="w-full bg-transparent border border-white/10 rounded px-3 py-2 text-sm"
-            @change="selectServer($event.target.value || null)">
-      <option value="">All servers</option>
-      <template x-for="(meta, sid) in serverMeta" :key="sid">
-        <option :value="sid" x-text="meta.name"></option>
-      </template>
-    </select>
-  </div>
-</div>
-
-{{-- ACTIVE CONNECTIONS --}}
-<div class="aio-card overflow-hidden">
-  <div class="px-4 py-3 border-b aio-divider flex items-center justify-between">
-    <div class="text-lg font-semibold text-[var(--aio-ink)]">
-      Active Connections
-      <template x-if="selectedServerId">
-        <span>— <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span></span>
-      </template>
+  {{-- ACTIVE CONNECTIONS --}}
+  <div class="aio-card overflow-hidden">
+    <div class="px-4 py-3 border-b aio-divider flex items-center justify-between">
+      <div class="text-lg font-semibold text-[var(--aio-ink)]">
+        Active Connections
+        <template x-if="selectedServerId">
+          <span>— <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span></span>
+        </template>
+      </div>
+      <div class="text-xs muted"><span x-text="activeRows().length"></span> rows</div>
     </div>
-    <div class="text-xs muted"><span x-text="activeRows().length"></span> rows</div>
-  </div>
 
-  {{-- Desktop table (unchanged structure) --}}
-  <div class="hidden md:block overflow-auto">
-    <table class="min-w-full text-sm">
-      <thead class="bg-white/5 sticky top-0 z-10">
-        <tr class="text-[var(--aio-sub)] uppercase text-xs">
-          <th class="px-4 py-2 text-left">User</th>
-          <th class="px-4 py-2 text-left">Server</th>
-          <th class="px-4 py-2 text-left">Client IP</th>
-          <th class="px-4 py-2 text-left">Virtual IP</th>
-          <th class="px-4 py-2 text-left">Connected</th>
-          <th class="px-4 py-2 text-left">Transfer</th>
-          <th class="px-4 py-2 text-left">Actions</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-white/10">
-        <template x-for="row in activeRows()" :key="row.key">
-          <tr class="hover:bg-white/5">
-            <td class="px-4 py-2">
+    {{-- Desktop table --}}
+    <div class="hidden md:block overflow-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-white/5 sticky top-0 z-10">
+          <tr class="text-[var(--aio-sub)] uppercase text-xs">
+            <th class="px-4 py-2 text-left">User</th>
+            <th class="px-4 py-2 text-left">Server</th>
+            <th class="px-4 py-2 text-left">Client IP</th>
+            <th class="px-4 py-2 text-left">Virtual IP</th>
+            <th class="px-4 py-2 text-left">Connected</th>
+            <th class="px-4 py-2 text-left">Transfer</th>
+            <th class="px-4 py-2 text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/10">
+          <template x-for="row in activeRows()" :key="row.key">
+            <tr class="hover:bg-white/5">
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
+                  <span class="h-2 w-2 rounded-full bg-[var(--aio-neon)]"></span>
+                  <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
+                </div>
+              </td>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—' "></td>
+              <td class="px-4 py-2">
+                <div class="text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></div>
+                <div class="text-xs muted" x-text="row.connected_fmt ?? ''"></div>
+              </td>
+              <td class="px-4 py-2">
+                <div class="text-[var(--aio-ink)]" x-text="row.formatted_bytes ?? '—'"></div>
+                <div class="text-xs muted">↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB</div>
+              </td>
+              <td class="px-4 py-2">
+                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
+                        @click.prevent="disconnect(row)">Disconnect</button>
+              </td>
+            </tr>
+          </template>
+          <tr x-show="activeRows().length===0">
+            <td colspan="7" class="px-4 py-6 text-center muted">No active connections</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    {{-- Mobile cards --}}
+    <div class="md:hidden divide-y divide-white/10">
+      <template x-for="row in activeRows()" :key="row.key">
+        <div class="p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
               <div class="flex items-center gap-2">
-                <span class="h-2 w-2 rounded-full bg-[var(--aio-neon)]"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
                 <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
               </div>
-            </td>
-            <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
-            <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
-            <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—' "></td>
-            <td class="px-4 py-2">
-              <div class="text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></div>
-              <div class="text-xs muted" x-text="row.connected_fmt ?? ''"></div>
-            </td>
-            <td class="px-4 py-2">
-              <div class="text-[var(--aio-ink)]" x-text="row.formatted_bytes ?? '—'"></div>
-              <div class="text-xs muted">↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB</div>
-            </td>
-            <td class="px-4 py-2">
-              <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
-                      @click.prevent="disconnect(row)">Disconnect</button>
-            </td>
-          </tr>
-        </template>
-        <tr x-show="activeRows().length===0">
-          <td colspan="7" class="px-4 py-6 text-center muted">No active connections</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  {{-- Mobile cards (compact) --}}
-  <div class="md:hidden divide-y divide-white/10">
-    <template x-for="row in activeRows()" :key="row.key">
-      <div class="p-4">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
-              <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
+              <div class="text-xs muted" x-text="row.server_name"></div>
             </div>
-            <div class="text-xs muted" x-text="row.server_name"></div>
+            <button class="aio-pill bg-red-500/15 text-red-300"
+                    @click.prevent="disconnect(row)">Disconnect</button>
           </div>
-          <button class="aio-pill bg-red-500/15 text-red-300"
-                  @click.prevent="disconnect(row)">Disconnect</button>
-        </div>
 
-        <div class="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <div class="text-[10px] muted">Client IP</div>
-            <div class="text-sm text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></div>
-          </div>
-          <div>
-            <div class="text-[10px] muted">Virtual IP</div>
-            <div class="text-sm text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></div>
-          </div>
-          <div>
-            <div class="text-[10px] muted">Connected</div>
-            <div class="text-sm text-[var(--aio-ink)]" x-text="row.connected_human || '—'"></div>
-          </div>
-          <div>
-            <div class="text-[10px] muted">Transfer</div>
-            <div class="text-sm text-[var(--aio-ink)]" x-text="row.formatted_bytes || '—'"></div>
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <div class="text-[10px] muted">Client IP</div>
+              <div class="text-sm text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></div>
+            </div>
+            <div>
+              <div class="text-[10px] muted">Virtual IP</div>
+              <div class="text-sm text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></div>
+            </div>
+            <div>
+              <div class="text-[10px] muted">Connected</div>
+              <div class="text-sm text-[var(--aio-ink)]" x-text="row.connected_human || '—'"></div>
+            </div>
+            <div>
+              <div class="text-[10px] muted">Transfer</div>
+              <div class="text-sm text-[var(--aio-ink)]" x-text="row.formatted_bytes || '—'"></div>
+            </div>
           </div>
         </div>
-      </div>
-    </template>
-    <div x-show="activeRows().length===0" class="p-6 text-center muted">No active connections</div>
+      </template>
+      <div x-show="activeRows().length===0" class="p-6 text-center muted">No active connections</div>
+    </div>
   </div>
 </div>
 
-{{-- tiny helper to hide iOS scrollbars for pills --}}
+{{-- Helper: hide scrollbars on iOS for pill filters --}}
 <style>
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 </style>
-  {{-- Live Users by Server --}}
-  <div class="aio-card p-5">
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Live Users by Server</h3>
-      <div class="text-xs muted">Realtime via Reverb</div>
-    </div>
-
-    <div id="live-users" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      @foreach($servers as $server)
-        <div class="p-3 rounded bg-white/5 border border-white/10" data-server-id="{{ $server->id }}">
-          <div class="flex justify-between items-center">
-            <div class="font-medium text-[var(--aio-ink)]">{{ $server->name }}</div>
-            <span class="aio-pill pill-neon" x-text="serverUsersCount({{ $server->id }})"></span>
-          </div>
-          <ul class="mt-2 text-sm text-[var(--aio-ink)] users-list">
-            <template x-if="serverUsersCount({{ $server->id }})===0">
-              <li class="muted empty-msg">No users online</li>
-            </template>
-            <template x-for="u in (usersByServer[{{ $server->id }}] || [])" :key="u.username">
-              <li class="truncate" x-text="u.username"></li>
-            </template>
-          </ul>
-        </div>
-      @endforeach
-    </div>
-  </div>
-
-  {{-- Recently Disconnected --}}
-  @if($recentlyDisconnected->count() > 0)
-    <div class="aio-card overflow-hidden">
-      <div class="px-5 py-3 border-b aio-divider">
-        <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Recently Disconnected</h3>
-      </div>
-
-      {{-- Desktop table --}}
-      <div class="hidden md:block overflow-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-white/5 sticky top-0 z-10">
-            <tr class="text-[var(--aio-sub)] uppercase text-xs">
-              <th class="px-4 py-2 text-left">User</th>
-              <th class="px-4 py-2 text-left">Server</th>
-              <th class="px-4 py-2 text-left">Last IP</th>
-              <th class="px-4 py-2 text-left">Disconnected</th>
-              <th class="px-4 py-2 text-left">Duration</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-white/10">
-            @foreach($recentlyDisconnected as $connection)
-              <tr>
-                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->vpnUser->username }}</td>
-                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</td>
-                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->client_ip ?? '—' }}</td>
-                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->disconnected_at->diffForHumans() }}</td>
-                <td class="px-4 py-2 text-[var(--aio-ink)]">
-                  @if($connection->connected_at && $connection->disconnected_at)
-                    {{ $connection->connected_at->diffInMinutes($connection->disconnected_at) }}m
-                  @else — @endif
-                </td>
-              </tr>
-            @endforeach
-          </tbody>
-        </table>
-      </div>
-
-      {{-- Mobile cards --}}
-      <div class="md:hidden divide-y divide-white/10">
-        @foreach($recentlyDisconnected as $connection)
-          <div class="p-4">
-            <div class="flex items-center justify-between">
-              <div class="font-medium text-[var(--aio-ink)]">{{ $connection->vpnUser->username }}</div>
-              <div class="text-xs muted">{{ $connection->disconnected_at->diffForHumans() }}</div>
-            </div>
-            <dl class="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <div><dt class="muted">Server</dt><dd class="text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</dd></div>
-              <div><dt class="muted">Last IP</dt><dd class="text-[var(--aio-ink)]">{{ $connection->client_ip ?? '—' }}</dd></div>
-              <div class="col-span-2">
-                <dt class="muted">Duration</dt>
-                <dd class="text-[var(--aio-ink)]">
-                  @if($connection->connected_at && $connection->disconnected_at)
-                    {{ $connection->connected_at->diffInMinutes($connection->disconnected_at) }}m
-                  @else — @endif
-                </dd>
-              </div>
-            </dl>
-          </div>
-        @endforeach
-      </div>
-    </div>
-  @endif
-</div>
 
 <script>
 window.vpnDashboard = function () {
