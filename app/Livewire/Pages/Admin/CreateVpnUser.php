@@ -78,12 +78,20 @@ class CreateVpnUser extends Component
     }
 
     private function refreshCreditFigures(): void
-    {
-        $pkg = $this->packages->firstWhere('id', $this->packageId);
-        $this->priceCredits = (int) ($pkg->price_credits ?? 0);
-        $this->adminCredits = (int) (auth()->user()->credits ?? 0);
-    }
+{
+    $pkg = $this->packages->firstWhere('id', $this->packageId);
 
+    $months = match ($this->expiry) {
+        '1m' => 1, '3m' => 3, '6m' => 6, '12m' => 12,
+        default => 1,
+    };
+
+    $rate = (int) ($pkg->price_credits ?? 0);
+    $this->priceCredits = $months * $rate;
+
+    // keep showing the freshest balance
+    $this->adminCredits = (int) (auth()->user()->fresh()?->credits ?? 0);
+}
     /* ----------------------- Tab navigation ----------------------- */
 
     /** Clickable tabs, but don’t allow jumping to Done (3). */
