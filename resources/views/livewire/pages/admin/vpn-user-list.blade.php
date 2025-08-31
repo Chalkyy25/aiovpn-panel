@@ -1,6 +1,14 @@
 <div wire:poll.10s class="max-w-7xl mx-auto p-4 space-y-4">
 
-    <h2 class="text-xl font-semibold">VPN Users</h2>
+    {{-- Header + Add button --}}
+    <div class="flex items-center justify-between">
+        <h2 class="text-xl font-semibold">VPN Users</h2>
+
+        <x-button :href="route('admin.vpn-users.create')" variant="light" size="sm" class="gap-2">
+            <span class="text-base leading-none">＋</span>
+            <span>Add User</span>
+        </x-button>
+    </div>
 
     @if (session()->has('message'))
         <div class="aio-pill pill-neon inline-block">
