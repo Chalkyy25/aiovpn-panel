@@ -228,28 +228,29 @@
   @endif
 </div>
 
-{{-- Alpine controller --}}
 <script>
-window.vpnDashboard = function () {
-  return {
+document.addEventListener('alpine:init', () => {
+  Alpine.data('vpnDash', () => ({
+    // ---- state ----
     serverMeta: {},
-    usersByServer: {},      // { [serverId]: [ {username, __key, ...} ] }
+    usersByServer: {},
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
     _pollTimer: null,
     _subscribed: false,
 
-    init(meta, seedUsersByServer, seedTotals) {
+    // ---- lifecycle ----
+    boot(meta, seedUsersByServer, seedTotals) {
       this.serverMeta = meta || {};
-      for (const id in this.serverMeta) this.usersByServer[id] = [];
-
+      this.usersByServer = {};
+      Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
       if (seedUsersByServer) {
-        for (const id in seedUsersByServer) {
-          this.usersByServer[id] = this._normaliseUsers(+id, seedUsersByServer[id]);
+        for (const k in seedUsersByServer) {
+          this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
         }
       }
-      if (seedTotals) this.totals = seedTotals;
+      if (seedTotals) this.totals = seedTotals; else this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
       this._waitForEcho()
@@ -257,13 +258,13 @@ window.vpnDashboard = function () {
         .finally(() => { this._startPolling(15000); });
     },
 
+    // ---- helpers (unchanged from your version) ----
     _waitForEcho() {
       return new Promise((resolve) => {
         const t = setInterval(() => { if (window.Echo) { clearInterval(t); resolve(); } }, 150);
         setTimeout(() => { clearInterval(t); resolve(); }, 3000);
       });
     },
-
     _subscribeFleet() {
       if (this._subscribed || !window.Echo) return;
       try {
@@ -271,22 +272,20 @@ window.vpnDashboard = function () {
           .subscribed(() => console.log('✅ subscribed servers.dashboard'))
           .listen('.mgmt.update', e => this.handleEvent(e))
           .listen('mgmt.update',   e => this.handleEvent(e));
-      } catch (e) { console.error('subscribe fleet failed', e); }
+      } catch (e) { console.error('subscribe servers.dashboard failed', e); }
     },
-
     _subscribePerServer() {
       if (this._subscribed || !window.Echo) return;
-      for (const id in this.serverMeta) {
+      Object.keys(this.serverMeta).forEach(sid => {
         try {
-          window.Echo.private(`servers.${id}`)
-            .subscribed(() => console.log(`✅ subscribed servers.${id}`))
+          window.Echo.private(`servers.${sid}`)
+            .subscribed(() => console.log(`✅ subscribed servers.${sid}`))
             .listen('.mgmt.update', e => this.handleEvent(e))
             .listen('mgmt.update',   e => this.handleEvent(e));
-        } catch (e) { console.error(`subscribe servers.${id} failed`, e); }
-      }
+        } catch (e) { console.error(`subscribe servers.${sid} failed`, e); }
+      });
       this._subscribed = true;
     },
-
     _startPolling(ms = 15000) {
       if (this._pollTimer) clearInterval(this._pollTimer);
       this._pollTimer = setInterval(() => {
@@ -304,10 +303,9 @@ window.vpnDashboard = function () {
         }).catch(() => {});
       }, ms);
     },
-
     _normaliseUsers(serverId, list) {
       const arr = Array.isArray(list) ? list : [];
-      const mapped = arr.map(u => (typeof u === 'string' ? { username: u } : { ...u }))
+      const mapped = arr.map(u => (typeof u === 'string') ? { username: u } : { ...u })
         .map(u => {
           const name = u.username ?? u.cn ?? 'unknown';
           return { ...u, username: name, __key: `${serverId}:${name}` };
@@ -315,79 +313,55 @@ window.vpnDashboard = function () {
       const seen = new Set();
       return mapped.filter(u => (seen.has(u.__key) ? false : (seen.add(u.__key), true)));
     },
-
     handleEvent(e) {
       const sid = Number(e.server_id ?? e.serverId ?? 0);
       if (!sid) return;
-
       let list = [];
       if (Array.isArray(e.users) && e.users.length) list = e.users;
-      else if (typeof e.cn_list === 'string') list = e.cn_list.split(',').map(s=>s.trim()).filter(Boolean);
-
+      else if (typeof e.cn_list === 'string') list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean);
       this.usersByServer[sid] = this._normaliseUsers(sid, list);
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
-
     computeTotals() {
       const unique = new Set(); let conns = 0;
-      for (const id in this.serverMeta) {
-        const arr = this.usersByServer[id] || [];
+      Object.keys(this.serverMeta).forEach(sid => {
+        const arr = this.usersByServer[sid] || [];
         conns += arr.length; arr.forEach(u => unique.add(u.username));
-      }
+      });
       const activeServers = Object.keys(this.serverMeta)
-        .filter(id => (this.usersByServer[id] || []).length > 0).length;
+        .filter(sid => (this.usersByServer[sid] || []).length > 0).length;
       return { online_users: unique.size, active_connections: conns, active_servers: activeServers };
     },
-
     serverUsersCount(id) { return (this.usersByServer[id] || []).length; },
-
     activeRows() {
       const ids = this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
       const rows = [];
-      ids.forEach(sid => {
-        (this.usersByServer[sid] || []).forEach(u => rows.push({
-          key: u.__key,
-          connection_id: u.connection_id ?? null,
-          server_id: Number(sid),
-          server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
-          username: u.username ?? 'unknown',
-          client_ip: u.client_ip ?? null,
-          virtual_ip: u.virtual_ip ?? null,
-          connected_human: u.connected_human ?? null,
-          connected_fmt: u.connected_fmt ?? null,
-          formatted_bytes: u.formatted_bytes ?? null,
-          down_mb: u.down_mb ?? null,
-          up_mb: u.up_mb ?? null,
-        })));
-      });
+      ids.forEach(sid => (this.usersByServer[sid] || []).forEach(u => rows.push({
+        key: u.__key, connection_id: u.connection_id ?? null, server_id: Number(sid),
+        server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
+        username: u.username ?? 'unknown', client_ip: u.client_ip ?? null, virtual_ip: u.virtual_ip ?? null,
+        connected_human: u.connected_human ?? null, connected_fmt: u.connected_fmt ?? null,
+        formatted_bytes: u.formatted_bytes ?? null, down_mb: u.down_mb ?? null, up_mb: u.up_mb ?? null,
+      })));
       return rows;
     },
-
     selectServer(id) { this.selectedServerId = id; },
-
     async disconnect(row) {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
       try {
         const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
           method: 'POST',
-          headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content, 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: row.username, server_id: row.server_id }),
         });
-        let data; try { data = await res.json(); } catch { data = { message: await res.text() }; }
+        const data = await (async () => { try { return await res.json(); } catch { return { message: await res.text() }; } })();
         if (!res.ok) throw new Error(Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error'));
-
-        // optimistic removal
         this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || []).filter(u => u.username !== row.username);
         this.totals = this.computeTotals();
         alert(data.message || `Disconnected ${row.username}`);
-      } catch (e) {
-        console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
-      }
+      } catch (e) { console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue')); }
     },
-  };
-};
+  }));
+});
 </script>
