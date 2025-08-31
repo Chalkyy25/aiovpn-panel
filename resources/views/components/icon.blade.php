@@ -96,6 +96,48 @@
         </svg>
     @break
 
+    {{-- NEW: activity (pulse) --}}
+    @case('o-activity')
+        <svg {{ $attributes->merge(['class' => $class]) }} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                  d="M3 12h4l3 7 4-14 3 7h4"/>
+        </svg>
+    @break
+
+    {{-- NEW: filter (funnel) --}}
+    @case('o-filter')
+        <svg {{ $attributes->merge(['class' => $class]) }} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                  d="M3 5h18M7 12h10M10 19h4"/>
+        </svg>
+    @break
+
+    {{-- NEW: check-circle (online) + alias o-online --}}
+    @case('o-check-circle')
+    @case('o-online')
+        <svg {{ $attributes->merge(['class' => $class]) }} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <circle cx="12" cy="12" r="9" stroke-width="1.5"/>
+            <path stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                  d="M8.5 12.5l2.5 2.5 4.5-5"/>
+        </svg>
+    @break
+
+    {{-- NEW: disconnect (broken link) --}}
+    @case('o-disconnect')
+        <svg {{ $attributes->merge(['class' => $class]) }} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                  d="M9 8l-2-2a3 3 0 0 0-4.2 4.2l2 2M15 16l2 2a3 3 0 1 0 4.2-4.2l-2-2M8 16l8-8"/>
+        </svg>
+    @break
+
+    {{-- NEW: copy (overlapped squares) --}}
+    @case('o-copy')
+        <svg {{ $attributes->merge(['class' => $class]) }} viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <rect x="9" y="9" width="10" height="12" rx="2" stroke-width="1.5"/>
+            <rect x="5" y="3" width="10" height="12" rx="2" stroke-width="1.5"/>
+        </svg>
+    @break
+
     @default
         {{-- Fallback --}}
         <svg {{ $attributes->merge(['class' => $class]) }} viewBox="0 0 24 24" fill="none" stroke="currentColor">
