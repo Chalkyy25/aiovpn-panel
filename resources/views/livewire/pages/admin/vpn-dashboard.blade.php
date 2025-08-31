@@ -1,12 +1,9 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
-{{-- Real-time VPN dashboard (Reverb/Echo + Alpine) with 5s fallback polling + working Disconnect --}}
-
 @php
-    // Seed: group connections by server, include connection_id so Livewire disconnect works
     $seedUsersByServer = $activeConnections->groupBy('vpn_server_id')->map(function ($group) {
         return $group->map(function ($c) {
             return [
-                'connection_id' => $c->id, // 👈 needed for Livewire disconnectUser
+                'connection_id' => $c->id,
                 'username'      => optional($c->vpnUser)->username ?? 'unknown',
                 'client_ip'     => $c->client_ip,
                 'virtual_ip'    => $c->virtual_ip,
@@ -32,63 +29,60 @@
 <div
     x-data="vpnDashboard()"
     x-init="init(@js($seedServerMeta), @js($seedUsersByServer), @js($seedTotals))"
-    class="space-y-6"
+    class="max-w-7xl mx-auto p-4 space-y-6"
 >
   {{-- Header --}}
-  <div class="flex justify-between items-center">
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
     <div>
       <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
-      <p class="text-sm text-[var(--aio-sub)]">Real-time monitoring of VPN connections</p>
+      <p class="text-sm text-[var(--aio-sub)]">Real-time monitoring of users, servers and connections</p>
     </div>
-    <div class="text-sm text-[var(--aio-sub)]">
-      Last updated: <span x-text="lastUpdated"></span>
+    <div class="text-xs text-[var(--aio-sub)]">
+      Last updated <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
     </div>
   </div>
 
   {{-- Flash --}}
   @if (session()->has('message'))
     <div class="aio-card border border-white/10 px-4 py-3 rounded-lg text-[var(--aio-ink)]">
-      <span class="block sm:inline">{{ session('message') }}</span>
+      {{ session('message') }}
     </div>
   @endif
 
-  {{-- Stat tiles (live) --}}
-  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-    <div class="pill-card outline-neon">
+  {{-- Stat tiles --}}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="rounded-lg bg-white/5 border border-white/10">
       <div class="p-4 flex items-center gap-4">
         <div class="h-10 w-10 rounded-full pill-neon flex items-center justify-center">🟢</div>
         <div>
-          <div class="text-sm muted">Online Users</div>
+          <div class="text-xs muted">Online Users</div>
           <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
         </div>
       </div>
     </div>
-
-    <div class="pill-card outline-cya">
+    <div class="rounded-lg bg-white/5 border border-white/10">
       <div class="p-4 flex items-center gap-4">
-        <div class="h-10 w-10 rounded-full pill-cya flex items-center justify-center">📊</div>
+        <div class="h-10 w-10 rounded-full pill-cya flex items-center justify-center">📡</div>
         <div>
-          <div class="text-sm muted">Active Connections</div>
+          <div class="text-xs muted">Active Connections</div>
           <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
         </div>
       </div>
     </div>
-
-    <div class="pill-card outline-pup">
+    <div class="rounded-lg bg-white/5 border border-white/10">
       <div class="p-4 flex items-center gap-4">
         <div class="h-10 w-10 rounded-full pill-pup flex items-center justify-center">🖥️</div>
         <div>
-          <div class="text-sm muted">Active Servers</div>
+          <div class="text-xs muted">Active Servers</div>
           <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
         </div>
       </div>
     </div>
-
-    <div class="pill-card outline-mag">
+    <div class="rounded-lg bg-white/5 border border-white/10">
       <div class="p-4 flex items-center gap-4">
         <div class="h-10 w-10 rounded-full pill-mag flex items-center justify-center">⏱️</div>
         <div>
-          <div class="text-sm muted">Avg. Connection Time</div>
+          <div class="text-xs muted">Avg. Session</div>
           <div class="text-2xl font-semibold text-[var(--aio-ink)]">
             @if($activeConnections->count() > 0)
               {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
@@ -99,115 +93,140 @@
     </div>
   </div>
 
-  {{-- Server filter --}}
-  <div class="aio-card p-5">
-    <h3 class="text-lg font-semibold text-[var(--aio-ink)] mb-3">Servers</h3>
+  {{-- Server filter (scrollable pills on mobile) --}}
+  <div class="aio-card p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Servers</h3>
+      <div class="text-xs muted">Tap a server to filter</div>
+    </div>
 
-    <div class="flex flex-wrap gap-2">
+    <div class="flex gap-2 overflow-x-auto py-1 snap-x">
       <button @click="selectServer(null)"
-              class="aio-pill"
+              class="aio-pill snap-start"
               :class="selectedServerId===null ? 'pill-cya shadow-glow' : ''">
-        All Servers (<span x-text="totals.active_connections"></span>)
+        All (<span x-text="totals.active_connections"></span>)
       </button>
 
       @foreach($servers as $server)
         <button @click="selectServer({{ $server->id }})"
-                class="aio-pill"
+                class="aio-pill snap-start"
                 :class="selectedServerId==={{ $server->id }} ? 'pill-pup shadow-glow' : ''">
           {{ $server->name }}
           <span class="aio-pill ml-1"
-                :class="(serverUsersCount({{ $server->id }})>0) ? 'pill-neon' : ''"
+                :class="(serverUsersCount({{ $server->id }})>0) ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
                 x-text="serverUsersCount({{ $server->id }})"></span>
         </button>
       @endforeach
     </div>
   </div>
 
-  {{-- Active Connections (live, filtered) --}}
+  {{-- Active Connections --}}
   <div class="aio-card overflow-hidden">
-    <div class="px-5 py-3 border-b aio-divider">
+    <div class="px-5 py-3 border-b aio-divider flex items-center justify-between">
       <h3 class="text-lg font-semibold text-[var(--aio-ink)]">
         Active Connections
         <template x-if="selectedServerId">
-          <span> — <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown Server'"></span></span>
+          <span>— <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown Server'"></span></span>
         </template>
       </h3>
+      <div class="text-xs muted"><span x-text="activeRows().length"></span> rows</div>
     </div>
 
-    <div class="overflow-x-auto">
-      <table class="table-dark w-full">
-        <thead class="bg-white/5">
-          <tr class="text-xs uppercase tracking-wide muted">
-            <th>User</th>
-            <th>Server</th>
-            <th>Client IP</th>
-            <th>Virtual IP</th>
-            <th>Connected Since</th>
-            <th>Data Transfer</th>
-            <th>Actions</th>
+    {{-- Desktop table --}}
+    <div class="hidden md:block overflow-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-white/5 sticky top-0 z-10">
+          <tr class="text-[var(--aio-sub)] uppercase text-xs">
+            <th class="px-4 py-2 text-left">User</th>
+            <th class="px-4 py-2 text-left">Server</th>
+            <th class="px-4 py-2 text-left">Client IP</th>
+            <th class="px-4 py-2 text-left">Virtual IP</th>
+            <th class="px-4 py-2 text-left">Connected</th>
+            <th class="px-4 py-2 text-left">Transfer</th>
+            <th class="px-4 py-2 text-left">Actions</th>
           </tr>
         </thead>
-        <tbody id="active-rows">
+        <tbody class="divide-y divide-white/10">
           <template x-for="row in activeRows()" :key="row.key">
-            <tr>
-              <td class="py-3">
-                <div class="flex items-center">
+            <tr class="hover:bg-white/5">
+              <td class="px-4 py-2">
+                <div class="flex items-center gap-2">
                   <span class="h-2 w-2 rounded-full bg-[var(--aio-neon)]"></span>
-                  <div class="ml-3">
-                    <div class="text-sm text-[var(--aio-ink)] font-medium" x-text="row.username"></div>
-                    <div class="text-xs muted" x-text="row.device ?? 'Unknown Device'"></div>
-                  </div>
+                  <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
                 </div>
               </td>
-              <td class="text-sm text-[var(--aio-ink)]" x-text="row.server_name"></td>
-              <td class="text-sm text-[var(--aio-ink)]" x-text="row.client_ip || 'N/A'"></td>
-              <td class="text-sm text-[var(--aio-ink)]" x-text="row.virtual_ip || 'N/A'"></td>
-              <td class="text-sm text-[var(--aio-ink)]">
-                <span x-text="row.connected_human ?? 'N/A'"></span>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—' "></td>
+              <td class="px-4 py-2">
+                <div class="text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></div>
                 <div class="text-xs muted" x-text="row.connected_fmt ?? ''"></div>
               </td>
-              <td class="text-sm text-[var(--aio-ink)]">
-                <span x-text="row.formatted_bytes ?? '—'"></span>
-                <div class="text-xs muted">
-                  ↓<span x-text="row.down_mb ?? '0.00'"></span>MB
-                  ↑<span x-text="row.up_mb ?? '0.00'"></span>MB
-                </div>
+              <td class="px-4 py-2">
+                <div class="text-[var(--aio-ink)]" x-text="row.formatted_bytes ?? '—'"></div>
+                <div class="text-xs muted">↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB</div>
               </td>
-              <td class="text-sm">
-                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
-                        @click.prevent="disconnect(row)">
+              <td class="px-4 py-2">
+                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow" @click.prevent="disconnect(row)">
                   Disconnect
                 </button>
               </td>
             </tr>
           </template>
-
           <tr x-show="activeRows().length===0">
-            <td colspan="7" class="py-6 text-center muted">No active connections found.</td>
+            <td colspan="7" class="px-4 py-6 text-center muted">No active connections</td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    {{-- Mobile cards --}}
+    <div class="md:hidden divide-y divide-white/10">
+      <template x-for="row in activeRows()" :key="row.key">
+        <div class="p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
+                <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
+              </div>
+              <div class="text-xs muted" x-text="row.server_name"></div>
+            </div>
+            <button class="aio-pill bg-red-500/15 text-red-300" @click.prevent="disconnect(row)">Disconnect</button>
+          </div>
+
+          <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div><dt class="muted">Client IP</dt><dd class="text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></dd></div>
+            <div><dt class="muted">Virtual IP</dt><dd class="text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></dd></div>
+            <div><dt class="muted">Connected</dt><dd class="text-[var(--aio-ink)]" x-text="row.connected_human || '—'"></dd></div>
+            <div><dt class="muted">Transfer</dt><dd class="text-[var(--aio-ink)]" x-text="row.formatted_bytes || '—'"></dd></div>
+          </dl>
+        </div>
+      </template>
+      <div x-show="activeRows().length===0" class="p-6 text-center muted">No active connections</div>
     </div>
   </div>
 
   {{-- Live Users by Server --}}
   <div class="aio-card p-5">
-    <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Live Users by Server</h3>
-    <p class="text-xs muted mb-3">Updates instantly from Reverb events</p>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Live Users by Server</h3>
+      <div class="text-xs muted">Realtime via Reverb</div>
+    </div>
 
     <div id="live-users" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       @foreach($servers as $server)
         <div class="p-3 rounded bg-white/5 border border-white/10" data-server-id="{{ $server->id }}">
           <div class="flex justify-between items-center">
             <div class="font-medium text-[var(--aio-ink)]">{{ $server->name }}</div>
-            <div class="text-xs muted">ID: {{ $server->id }}</div>
+            <span class="aio-pill pill-neon" x-text="serverUsersCount({{ $server->id }})"></span>
           </div>
           <ul class="mt-2 text-sm text-[var(--aio-ink)] users-list">
             <template x-if="serverUsersCount({{ $server->id }})===0">
               <li class="muted empty-msg">No users online</li>
             </template>
             <template x-for="u in (usersByServer[{{ $server->id }}] || [])" :key="u.username">
-              <li x-text="u.username"></li>
+              <li class="truncate" x-text="u.username"></li>
             </template>
           </ul>
         </div>
@@ -221,40 +240,59 @@
       <div class="px-5 py-3 border-b aio-divider">
         <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Recently Disconnected</h3>
       </div>
-      <div class="overflow-x-auto">
-        <table class="table-dark w-full">
-          <thead class="bg-white/5">
-            <tr class="text-xs uppercase tracking-wide muted">
-              <th>User</th>
-              <th>Server</th>
-              <th>Last IP</th>
-              <th>Disconnected</th>
-              <th>Session Duration</th>
+
+      {{-- Desktop table --}}
+      <div class="hidden md:block overflow-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-white/5 sticky top-0 z-10">
+            <tr class="text-[var(--aio-sub)] uppercase text-xs">
+              <th class="px-4 py-2 text-left">User</th>
+              <th class="px-4 py-2 text-left">Server</th>
+              <th class="px-4 py-2 text-left">Last IP</th>
+              <th class="px-4 py-2 text-left">Disconnected</th>
+              <th class="px-4 py-2 text-left">Duration</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody class="divide-y divide-white/10">
             @foreach($recentlyDisconnected as $connection)
               <tr>
-                <td class="py-3">
-                  <div class="flex items-center">
-                    <span class="h-2 w-2 rounded-full bg-white/30"></span>
-                    <div class="ml-3 text-sm text-[var(--aio-ink)] font-medium">
-                      {{ $connection->vpnUser->username }}
-                    </div>
-                  </div>
-                </td>
-                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</td>
-                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->client_ip ?? 'N/A' }}</td>
-                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->disconnected_at->diffForHumans() }}</td>
-                <td class="text-sm text-[var(--aio-ink)]">
+                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->vpnUser->username }}</td>
+                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</td>
+                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->client_ip ?? '—' }}</td>
+                <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $connection->disconnected_at->diffForHumans() }}</td>
+                <td class="px-4 py-2 text-[var(--aio-ink)]">
                   @if($connection->connected_at && $connection->disconnected_at)
                     {{ $connection->connected_at->diffInMinutes($connection->disconnected_at) }}m
-                  @else N/A @endif
+                  @else — @endif
                 </td>
               </tr>
             @endforeach
           </tbody>
         </table>
+      </div>
+
+      {{-- Mobile cards --}}
+      <div class="md:hidden divide-y divide-white/10">
+        @foreach($recentlyDisconnected as $connection)
+          <div class="p-4">
+            <div class="flex items-center justify-between">
+              <div class="font-medium text-[var(--aio-ink)]">{{ $connection->vpnUser->username }}</div>
+              <div class="text-xs muted">{{ $connection->disconnected_at->diffForHumans() }}</div>
+            </div>
+            <dl class="mt-2 grid grid-cols-2 gap-2 text-xs">
+              <div><dt class="muted">Server</dt><dd class="text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</dd></div>
+              <div><dt class="muted">Last IP</dt><dd class="text-[var(--aio-ink)]">{{ $connection->client_ip ?? '—' }}</dd></div>
+              <div class="col-span-2">
+                <dt class="muted">Duration</dt>
+                <dd class="text-[var(--aio-ink)]">
+                  @if($connection->connected_at && $connection->disconnected_at)
+                    {{ $connection->connected_at->diffInMinutes($connection->disconnected_at) }}m
+                  @else — @endif
+                </dd>
+              </div>
+            </dl>
+          </div>
+        @endforeach
       </div>
     </div>
   @endif
@@ -264,27 +302,19 @@
 window.vpnDashboard = function () {
   return {
     serverMeta: {},
-    usersByServer: {},   // { [serverId]: [ { username, …, __key } ] }
+    usersByServer: {},
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
     _pollTimer: null,
-    _subscribed: false,  // ← guard against re-subscribes
+    _subscribed: false,
 
     init(meta, seedUsersByServer) {
       this.serverMeta = meta || {};
-      this.usersByServer = {};
-
-      // ensure every server has an array (prevents undefined errors in x-for)
       Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
-
-      // optional seed
       if (seedUsersByServer) {
-        for (const k in seedUsersByServer) {
-          this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
-        }
+        for (const k in seedUsersByServer) this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
       }
-
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
@@ -320,7 +350,7 @@ window.vpnDashboard = function () {
             .listen('mgmt.update',   e => this.handleEvent(e));
         } catch (e) { console.error(`subscribe servers.${sid} failed`, e); }
       });
-      this._subscribed = true;              // ← mark subscribed once
+      this._subscribed = true;
     },
 
     _startPolling(ms = 15000) {
@@ -330,10 +360,7 @@ window.vpnDashboard = function () {
         window.$wire.getLiveStats().then(res => {
           const incoming = res?.usersByServer || {};
           const norm = {};
-          for (const k in this.serverMeta) {
-            const sid = +k;
-            norm[sid] = this._normaliseUsers(sid, incoming[sid] || []);
-          }
+          for (const k in this.serverMeta) norm[+k] = this._normaliseUsers(+k, incoming[k] || []);
           this.usersByServer = norm;
           this.totals = this.computeTotals();
           this.lastUpdated = new Date().toLocaleTimeString();
@@ -341,21 +368,13 @@ window.vpnDashboard = function () {
       }, ms);
     },
 
-    /* ---- unify / dedupe users + add stable keys ---- */
     _normaliseUsers(serverId, list) {
-      // allow ['alice','bob'] or [{username:'alice'}]
       const arr = Array.isArray(list) ? list : [];
-      const mapped = arr.map(u =>
-        (typeof u === 'string') ? { username: u } : { ...u }
-      ).map(u => {
-        const name = u.username ?? u.cn ?? 'unknown';
-        return {
-          ...u,
-          username: name,
-          __key: `${serverId}:${name}`,  // stable key per server
-        };
-      });
-
+      const mapped = arr.map(u => (typeof u === 'string') ? { username: u } : { ...u })
+        .map(u => {
+          const name = u.username ?? u.cn ?? 'unknown';
+          return { ...u, username: name, __key: `${serverId}:${name}` };
+        });
       const seen = new Set();
       return mapped.filter(u => (seen.has(u.__key) ? false : (seen.add(u.__key), true)));
     },
@@ -365,13 +384,8 @@ window.vpnDashboard = function () {
       if (!sid) return;
 
       let list = [];
-      if (Array.isArray(e.users) && e.users.length) {
-        list = e.users;                       // rich array from backend
-      } else if (typeof e.cn_list === 'string') {
-        list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean);
-      } else if (Array.isArray(e.users)) {
-        list = e.users;                       // legacy string array
-      }
+      if (Array.isArray(e.users) && e.users.length) list = e.users;
+      else if (typeof e.cn_list === 'string') list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean);
 
       this.usersByServer[sid] = this._normaliseUsers(sid, list);
       this.totals = this.computeTotals();
@@ -386,21 +400,19 @@ window.vpnDashboard = function () {
         conns += arr.length;
         arr.forEach(u => unique.add(u.username));
       });
-      const activeServers = Object.keys(this.serverMeta)
-        .filter(sid => (this.usersByServer[sid] || []).length > 0).length;
+      const activeServers = Object.keys(this.serverMeta).filter(sid => (this.usersByServer[sid] || []).length > 0).length;
       return { online_users: unique.size, active_connections: conns, active_servers: activeServers };
     },
 
     serverUsersCount(id) { return (this.usersByServer[id] || []).length; },
 
     activeRows() {
-      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta)
-                                                : [String(this.selectedServerId)];
+      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
       const rows = [];
       ids.forEach(sid => {
         (this.usersByServer[sid] || []).forEach(u => {
           rows.push({
-            key: u.__key,                          // ← use stable key
+            key: u.__key,
             connection_id: u.connection_id ?? null,
             server_id: Number(sid),
             server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
@@ -431,17 +443,15 @@ window.vpnDashboard = function () {
           },
           body: JSON.stringify({ username: row.username, server_id: row.server_id }),
         });
-
         let data; try { data = await res.json(); } catch { data = { message: await res.text() }; }
         if (!res.ok) throw new Error(Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error'));
 
-        // optimistic UI
-        this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || [])
-          .filter(u => u.username !== row.username);
+        this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || []).filter(u => u.username !== row.username);
         this.totals = this.computeTotals();
-
         alert(data.message || `Disconnected ${row.username}`);
-      } catch (e) { console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue')); }
+      } catch (e) {
+        console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
+      }
     },
   };
 };
