@@ -25,108 +25,176 @@
     </div>
 
     {{-- Table --}}
-    <div class="aio-card overflow-x-auto">
-        <table class="min-w-full text-sm">
-            <thead class="bg-white/5">
-                <tr class="text-[var(--aio-sub)] uppercase text-xs">
-                    <th class="px-6 py-3 text-left">Username</th>
-                    <th class="px-6 py-3 text-left">Password</th>
-                    <th class="px-6 py-3 text-left">Servers</th>
-                    <th class="px-6 py-3 text-left">Expires</th>
-                    <th class="px-6 py-3 text-left">Status</th>
-                    <th class="px-6 py-3 text-left">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-white/10">
-                @forelse ($users as $user)
-                    <tr>
-                        {{-- Username + online/offline --}}
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div class="flex items-center gap-3">
-                                <div class="h-2.5 w-2.5 rounded-full {{ $user->is_online ? 'bg-[var(--aio-neon)]' : 'bg-gray-500' }}"></div>
-                                <div>
-                                    <div class="font-medium text-[var(--aio-ink)]">{{ $user->username }}</div>
-                                    @if($user->is_online && $user->online_since)
-                                        <div class="text-xs text-[var(--aio-neon)]">Online – {{ $user->online_since->diffForHumans() }}</div>
-                                    @elseif($user->last_disconnected_at)
-                                        <div class="text-xs text-gray-400">Offline – {{ $user->last_disconnected_at->diffForHumans() }}</div>
-                                    @else
-                                        <div class="text-xs text-gray-500">Never connected</div>
-                                    @endif
-                                </div>
-                            </div>
-                        </td>
+    {{-- Responsive list: cards on mobile, table on md+ --}}
+<div class="aio-card overflow-x-auto">
 
-                        {{-- Password --}}
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            @if($user->plain_password)
-                                <span class="font-mono aio-pill pill-cya text-xs">{{ $user->plain_password }}</span>
-                            @else
-                                <span class="text-gray-500 text-xs">Encrypted</span>
-                            @endif
-                        </td>
+  {{-- md+: classic table --}}
+  <table class="min-w-full text-sm hidden md:table">
+    <thead class="bg-white/5">
+      <tr class="text-[var(--aio-sub)] uppercase text-xs">
+        <th class="px-6 py-3 text-left">Username</th>
+        <th class="px-6 py-3 text-left">Password</th>
+        <th class="px-6 py-3 text-left">Servers</th>
+        <th class="px-6 py-3 text-left">Expires</th>
+        <th class="px-6 py-3 text-left">Status</th>
+        <th class="px-6 py-3 text-left">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/10">
+      @forelse ($users as $user)
+        <tr>
+          <td class="px-6 py-4 whitespace-nowrap">
+            <div class="flex items-center gap-3">
+              <span class="h-2.5 w-2.5 rounded-full {{ $user->is_online ? 'bg-[var(--aio-neon)]' : 'bg-gray-500' }}"></span>
+              <div>
+                <div class="font-medium text-[var(--aio-ink)]">{{ $user->username }}</div>
+                @if($user->is_online && $user->online_since)
+                  <div class="text-xs text-[var(--aio-neon)]">Online – {{ $user->online_since->diffForHumans() }}</div>
+                @elseif($user->last_disconnected_at)
+                  <div class="text-xs text-gray-400">Offline – {{ $user->last_disconnected_at->diffForHumans() }}</div>
+                @else
+                  <div class="text-xs text-gray-500">Never connected</div>
+                @endif
+              </div>
+            </div>
+          </td>
 
-                        {{-- Servers --}}
-                        <td class="px-6 py-4">
-                            @if($user->vpnServers->count())
-                                <div class="flex flex-wrap gap-1">
-                                    @foreach($user->vpnServers as $server)
-                                        <a href="{{ route('admin.servers.show', $server->id) }}" class="aio-pill pill-mag text-xs hover:shadow-glow">
-                                            {{ $server->name }}
-                                        </a>
-                                    @endforeach
-                                </div>
-                            @else
-                                <span class="text-gray-500">No servers</span>
-                            @endif
-                        </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            @if($user->plain_password)
+              <span class="font-mono aio-pill pill-cya text-xs">{{ $user->plain_password }}</span>
+            @else
+              <span class="text-gray-500 text-xs">Encrypted</span>
+            @endif
+          </td>
 
-                        {{-- Expiry --}}
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            {{ $user->expires_at ? \Carbon\Carbon::parse($user->expires_at)->format('d M Y') : 'Never' }}
-                        </td>
+          <td class="px-6 py-4">
+            @if($user->vpnServers->count())
+              <div class="flex flex-wrap gap-1">
+                @foreach($user->vpnServers as $server)
+                  <a href="{{ route('admin.servers.show', $server->id) }}" class="aio-pill pill-mag text-xs hover:shadow-glow">
+                    {{ $server->name }}
+                  </a>
+                @endforeach
+              </div>
+            @else
+              <span class="text-gray-500">No servers</span>
+            @endif
+          </td>
 
-                        {{-- Status --}}
-                        <td class="px-6 py-4 whitespace-nowrap space-y-1">
-                            <span class="aio-pill {{ $user->is_active ? 'pill-neon' : 'bg-red-500/20 text-red-400' }}">
-                                {{ $user->is_active ? 'Active' : 'Inactive' }}
-                            </span>
-                            @if($user->is_online)
-                                <span class="aio-pill pill-cya">
-                                    {{ $user->activeConnections->count() }} conn
-                                </span>
-                            @endif
-                        </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            {{ $user->expires_at ? \Carbon\Carbon::parse($user->expires_at)->format('d M Y') : 'Never' }}
+          </td>
 
-                        {{-- Actions --}}
-                        <td class="px-6 py-4 whitespace-nowrap text-xs space-x-2">
-                            <a href="{{ route('admin.vpn-users.edit', $user->id) }}" class="text-[var(--aio-neon)] hover:underline">Edit</a>
-                            <button wire:click="generateOvpn({{ $user->id }})" class="text-[var(--aio-cya)] hover:underline">OpenVPN</button>
-                            <button wire:click="generateWireGuard({{ $user->id }})" class="text-[var(--aio-mag)] hover:underline">WireGuard</button>
-                            <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
-                                @csrf
-                                <button type="submit" class="text-[var(--aio-pup)] hover:underline" title="Login as this client">
-                                    Login
-                                </button>
-                            </form>
-                            <button wire:click="toggleActive({{ $user->id }})" class="text-yellow-400 hover:underline">
-                                {{ $user->is_active ? 'Disable' : 'Enable' }}
-                            </button>
-                            <button wire:click="deleteUser({{ $user->id }})" onclick="return confirm('Delete this user?')" class="text-red-400 hover:underline">
-                                Delete
-                            </button>
-                        </td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="6" class="px-6 py-4 text-center text-gray-500">
-                            No VPN users found
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+          <td class="px-6 py-4 whitespace-nowrap space-y-1">
+            <span class="aio-pill {{ $user->is_active ? 'pill-neon' : 'bg-red-500/20 text-red-400' }}">
+              {{ $user->is_active ? 'Active' : 'Inactive' }}
+            </span>
+            @if($user->is_online)
+              <span class="aio-pill pill-cya">{{ $user->activeConnections->count() }} conn</span>
+            @endif
+          </td>
+
+          <td class="px-6 py-4 whitespace-nowrap text-xs space-x-2">
+            <a href="{{ route('admin.vpn-users.edit', $user->id) }}" class="text-[var(--aio-neon)] hover:underline">Edit</a>
+            <button wire:click="generateOvpn({{ $user->id }})" class="text-[var(--aio-cya)] hover:underline">OpenVPN</button>
+            <button wire:click="generateWireGuard({{ $user->id }})" class="text-[var(--aio-mag)] hover:underline">WireGuard</button>
+            <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
+              @csrf
+              <button type="submit" class="text-[var(--aio-pup)] hover:underline" title="Login as this client">Login</button>
+            </form>
+            <button wire:click="toggleActive({{ $user->id }})" class="text-yellow-400 hover:underline">
+              {{ $user->is_active ? 'Disable' : 'Enable' }}
+            </button>
+            <button wire:click="deleteUser({{ $user->id }})" onclick="return confirm('Delete this user?')" class="text-red-400 hover:underline">Delete</button>
+          </td>
+        </tr>
+      @empty
+        <tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No VPN users found</td></tr>
+      @endforelse
+    </tbody>
+  </table>
+
+  {{-- <md: stacked cards --}}
+  <div class="md:hidden divide-y divide-white/10">
+    @forelse ($users as $user)
+      <div class="p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <span class="h-2.5 w-2.5 mt-1 rounded-full {{ $user->is_online ? 'bg-[var(--aio-neon)]' : 'bg-gray-500' }}"></span>
+            <div>
+              <div class="font-semibold text-[var(--aio-ink)]">{{ $user->username }}</div>
+              @if($user->is_online && $user->online_since)
+                <div class="text-[10px] text-[var(--aio-neon)]">Online – {{ $user->online_since->diffForHumans() }}</div>
+              @elseif($user->last_disconnected_at)
+                <div class="text-[10px] text-gray-400">Offline – {{ $user->last_disconnected_at->diffForHumans() }}</div>
+              @else
+                <div class="text-[10px] text-gray-500">Never connected</div>
+              @endif
+            </div>
+          </div>
+          <span class="aio-pill {{ $user->is_active ? 'pill-neon' : 'bg-red-500/20 text-red-400' }}">
+            {{ $user->is_active ? 'Active' : 'Inactive' }}
+          </span>
+        </div>
+
+        <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <dt class="text-[var(--aio-sub)]">Password</dt>
+            <dd class="mt-0.5">
+              @if($user->plain_password)
+                <span class="font-mono bg-white/5 rounded px-1.5 py-0.5">{{ $user->plain_password }}</span>
+              @else
+                <span class="text-gray-500">Encrypted</span>
+              @endif
+            </dd>
+          </div>
+          <div>
+            <dt class="text-[var(--aio-sub)]">Expires</dt>
+            <dd class="mt-0.5">
+              {{ $user->expires_at ? \Carbon\Carbon::parse($user->expires_at)->isoFormat('D MMM YYYY') : 'Never' }}
+            </dd>
+          </div>
+          <div class="col-span-2">
+            <dt class="text-[var(--aio-sub)]">Servers</dt>
+            <dd class="mt-0.5 flex flex-wrap gap-1">
+              @if($user->vpnServers->count())
+                @foreach($user->vpnServers as $server)
+                  <a href="{{ route('admin.servers.show', $server->id) }}" class="aio-pill pill-mag">{{ $server->name }}</a>
+                @endforeach
+              @else
+                <span class="text-gray-500">No servers</span>
+              @endif
+            </dd>
+          </div>
+          @if($user->is_online)
+            <div>
+              <dt class="text-[var(--aio-sub)]">Connections</dt>
+              <dd class="mt-0.5 aio-pill pill-cya inline-block">{{ $user->activeConnections->count() }} conn</dd>
+            </div>
+          @endif
+        </dl>
+
+        <div class="mt-3 flex flex-wrap gap-3 text-xs">
+          <a href="{{ route('admin.vpn-users.edit', $user->id) }}" class="text-[var(--aio-neon)] underline">Edit</a>
+          <button wire:click="generateOvpn({{ $user->id }})" class="text-[var(--aio-cya)] underline">OpenVPN</button>
+          <button wire:click="generateWireGuard({{ $user->id }})" class="text-[var(--aio-mag)] underline">WireGuard</button>
+          <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
+            @csrf
+            <button type="submit" class="text-[var(--aio-pup)] underline" title="Login as this client">Login</button>
+          </form>
+          <button wire:click="toggleActive({{ $user->id }})" class="text-yellow-400 underline">
+            {{ $user->is_active ? 'Disable' : 'Enable' }}
+          </button>
+          <button wire:click="deleteUser({{ $user->id }})" onclick="return confirm('Delete this user?')" class="text-red-400 underline">
+            Delete
+          </button>
+        </div>
+      </div>
+    @empty
+      <div class="p-6 text-center text-gray-500">No VPN users found</div>
+    @endforelse
+  </div>
+</div>
 
     <div>
         {{ $users->links() }}
