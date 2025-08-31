@@ -12,7 +12,7 @@
     </div>
   @endif
 
-  {{-- (Optional) success flash shown after redirect back from save() --}}
+  {{-- Success flash shown after redirect back from save() --}}
   @if (session()->has('success'))
     <div class="aio-card p-4">
       <span class="aio-pill pill-neon">✅</span>
@@ -70,11 +70,23 @@
         </div>
 
         {{-- Credits summary --}}
+        @php $isAdmin = auth()->user()?->role === 'admin'; @endphp
         <div class="mt-2 text-xs muted space-y-0.5 md:col-span-2">
-          <div>Cost: <span class="text-[var(--aio-ink)] font-semibold">{{ $priceCredits }}</span> credits</div>
-          <div>Your credits: <span class="text-[var(--aio-ink)] font-semibold">{{ $adminCredits }}</span></div>
-          @if($adminCredits < $priceCredits)
-            <div class="text-red-300">Not enough credits for this package.</div>
+          @if ($isAdmin)
+            <div class="text-green-300">Admin — no credits will be deducted.</div>
+            <div>
+              Package total (info): <span class="text-[var(--aio-ink)] font-semibold">{{ $priceCredits }}</span> credits
+            </div>
+          @else
+            <div>
+              Cost: <span class="text-[var(--aio-ink)] font-semibold">{{ $priceCredits }}</span> credits
+            </div>
+            <div>
+              Your credits: <span class="text-[var(--aio-ink)] font-semibold">{{ $adminCredits }}</span>
+            </div>
+            @if ($adminCredits < $priceCredits)
+              <div class="text-red-300">Not enough credits for this package.</div>
+            @endif
           @endif
         </div>
       </div>
@@ -129,7 +141,9 @@
     {{-- Actions --}}
     <div class="mt-6 flex items-center justify-end gap-2">
       <x-button variant="light" :href="route('admin.vpn-users.index')">Cancel</x-button>
-      <x-button type="submit" wire:loading.attr="disabled">Save</x-button>
+      <x-button type="submit" wire:loading.attr="disabled">
+        {{ $isAdmin ? 'Save (Free)' : 'Save' }}
+      </x-button>
     </div>
   </form>
 </div>
