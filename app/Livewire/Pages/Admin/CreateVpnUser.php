@@ -77,69 +77,75 @@ class CreateVpnUser extends Component
     /* --------------------------- Actions --------------------------- */
 
     public function save()
-    {
-        // Validate single step
-        $this->validate([
-            'username'           => 'required|string|alpha_dash|min:3|max:50|unique:vpn_users,username',
-            'selectedServers'    => 'required|array|min:1',
-            'selectedServers.*'  => 'exists:vpn_servers,id',
-            'expiry'             => 'required|in:1m,3m,6m,12m',
-            'packageId'          => 'required|exists:packages,id',
-        ], [], ['selectedServers' => 'servers']);
+{
+    $this->validate([
+        'username'           => 'required|string|alpha_dash|min:3|max:50|unique:vpn_users,username',
+        'selectedServers'    => 'required|array|min:1',
+        'selectedServers.*'  => 'exists:vpn_servers,id',
+        'expiry'             => 'required|in:1m,3m,6m,12m',
+        'packageId'          => 'required|exists:packages,id',
+    ], [], ['selectedServers' => 'servers']);
 
-        $admin = auth()->user();
-        $pkg   = $this->packages->firstWhere('id', $this->packageId);
+    $admin = auth()->user();
+    $pkg   = $this->packages->firstWhere('id', $this->packageId);
 
-        if (! $pkg) {
-            $this->addError('packageId', 'Invalid package selected.');
-            return;
-        }
+    if (! $pkg) {
+        $this->addError('packageId', 'Invalid package selected.');
+        return;
+    }
 
-        if ($admin->credits < $this->priceCredits) {
-            $this->addError('packageId', 'Not enough credits for this package.');
-            return;
-        }
+    // ✅ Skip credit check if admin
+    if ($admin->role !== 'admin' && $admin->credits < $this->priceCredits) {
+        $this->addError('packageId', 'Not enough credits for this package.');
+        return;
+    }
 
-        $months = (int) rtrim($this->expiry, 'm');
+    $months = (int) rtrim($this->expiry, 'm');
 
-        DB::transaction(function () use ($admin, $pkg, $months) {
-            // 1) Deduct full cost (months × rate)
+    DB::transaction(function () use ($admin, $pkg, $months) {
+        // 1) Deduct credits only if NOT admin
+        if ($admin->role !== 'admin') {
             $admin->deductCredits(
                 $this->priceCredits,
                 'Create VPN user',
                 ['username' => $this->username, 'package_id' => $pkg->id, 'months' => $months]
             );
+        }
 
-            // 2) Create VPN user with random password
-            $plain = Str::random(12);
+        // 2) Create VPN user with random password
+        $plain = Str::random(12);
 
-            $vpnUser = VpnUser::create([
-                'username'        => $this->username,
-                'plain_password'  => $plain,
-                'password'        => bcrypt($plain),
-                'max_connections' => (int) $pkg->max_connections,
-                'is_active'       => true,
-                'expires_at'      => now()->addMonths($months),
-            ]);
+        $vpnUser = VpnUser::create([
+            'username'        => $this->username,
+            'plain_password'  => $plain,
+            'password'        => bcrypt($plain),
+            'max_connections' => (int) $pkg->max_connections,
+            'is_active'       => true,
+            'expires_at'      => now()->addMonths($months),
+        ]);
 
-            // 3) Attach servers
-            $vpnUser->vpnServers()->sync($this->selectedServers);
-            $vpnUser->refresh();
+        // 3) Attach servers
+        $vpnUser->vpnServers()->sync($this->selectedServers);
+        $vpnUser->refresh();
 
-            // 4) Build OVPN + sync creds
-            VpnConfigBuilder::generate($vpnUser);
-            foreach ($vpnUser->vpnServers as $server) {
-                SyncOpenVPNCredentials::dispatch($server);
-            }
+        // 4) Build OVPN + sync creds
+        VpnConfigBuilder::generate($vpnUser);
+        foreach ($vpnUser->vpnServers as $server) {
+            SyncOpenVPNCredentials::dispatch($server);
+        }
 
-            // 5) Optional WireGuard
-            AddWireGuardPeer::dispatch($vpnUser);
+        // 5) Optional WireGuard
+        AddWireGuardPeer::dispatch($vpnUser);
 
-            // 6) Flash for the listing page
-            session()->flash('success', "✅ VPN user {$vpnUser->username} created. Password: {$plain}");
-        });
+        // 6) Flash for the listing page
+        $msg = "✅ VPN user {$vpnUser->username} created. Password: {$plain}";
+        if ($admin->role === 'admin') {
+            $msg .= " (no credits deducted)";
+        }
+        session()->flash('success', $msg);
+    });
 
-        // 7) Redirect back to list
-        return to_route('admin.vpn-users.index');
-    }
+    // 7) Redirect back to list
+    return to_route('admin.vpn-users.index');
+}
 }
