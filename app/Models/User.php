@@ -114,29 +114,51 @@ class User extends Authenticatable
     }
 
     public function deductCredits(int $amount, ?string $reason = null, array $meta = []): void
-    {
-        if ($amount <= 0) {
-            throw new \InvalidArgumentException('Amount must be positive.');
-        }
+{
+    // 🚫 Negative protection
+    if ($amount < 0) {
+        throw new \InvalidArgumentException('Amount cannot be negative.');
+    }
 
-        DB::transaction(function () use ($amount, $reason, $meta) {
-            // atomic guard against races
-            $affected = static::whereKey($this->getKey())
-                ->where('credits', '>=', $amount)
-                ->decrement('credits', $amount);
+    // ✅ Admins bypass credit deductions
+    if ($this->hasRole('admin')) {
+        $this->creditTransactions()->create([
+            'change' => 0,
+            'reason' => $reason ?? 'Admin bypass (no credits deducted)',
+            'meta'   => $meta ?: null,
+        ]);
 
-            if ($affected === 0) {
-                throw new \RuntimeException('Not enough credits.');
-            }
+        return;
+    }
 
-            // log transaction
+    DB::transaction(function () use ($amount, $reason, $meta) {
+        if ($amount === 0) {
+            // Non-admins shouldn’t normally have 0-credit packages,
+            // but we’ll log it for traceability
             $this->creditTransactions()->create([
-                'change' => -$amount,
-                'reason' => $reason,
+                'change' => 0,
+                'reason' => $reason ?? 'No charge',
                 'meta'   => $meta ?: null,
             ]);
-        });
+            return;
+        }
 
-        $this->refresh();
-    }
+        // Normal deduction path
+        $affected = static::whereKey($this->getKey())
+            ->where('credits', '>=', $amount)
+            ->decrement('credits', $amount);
+
+        if ($affected === 0) {
+            throw new \RuntimeException('Not enough credits.');
+        }
+
+        $this->creditTransactions()->create([
+            'change' => -$amount,
+            'reason' => $reason,
+            'meta'   => $meta ?: null,
+        ]);
+    });
+
+    $this->refresh();
+}
 }
