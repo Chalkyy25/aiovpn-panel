@@ -62,30 +62,36 @@
     </div>
   </div>
 
-  {{-- STAT TILES --}}
-  <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-    <div class="rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted flex items-center gap-1">
-        <x-icon name="o-user-group" class="w-4 h-4" /> Online
-      </div>
-      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
+  {{-- STAT TILES (with color + icons) --}}
+<div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+  <div class="pill-card outline-neon p-4 flex items-center gap-3">
+    <x-icon name="o-user-group" class="w-6 h-6 text-[var(--aio-neon)]"/>
+    <div>
+      <div class="text-xs muted">Online</div>
+      <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
     </div>
-    <div class="rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted flex items-center gap-1">
-        <x-icon name="o-chart-bar" class="w-4 h-4" /> Connections
-      </div>
-      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
+  </div>
+
+  <div class="pill-card outline-cya p-4 flex items-center gap-3">
+    <x-icon name="o-chart-bar" class="w-6 h-6 text-[var(--aio-cya)]"/>
+    <div>
+      <div class="text-xs muted">Connections</div>
+      <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
     </div>
-    <div class="rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted flex items-center gap-1">
-        <x-icon name="o-server" class="w-4 h-4" /> Servers
-      </div>
-      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
+  </div>
+
+  <div class="pill-card outline-pup p-4 flex items-center gap-3">
+    <x-icon name="o-server" class="w-6 h-6 text-[var(--aio-pup)]"/>
+    <div>
+      <div class="text-xs muted">Servers</div>
+      <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
     </div>
-    <div class="hidden lg:block rounded bg-white/5 border border-white/10 p-3">
-      <div class="text-[10px] muted flex items-center gap-1">
-        <x-icon name="o-clock" class="w-4 h-4" /> Avg. Session
-      </div>
+  </div>
+
+  <div class="hidden lg:flex pill-card outline-mag p-4 items-center gap-3">
+    <x-icon name="o-clock" class="w-6 h-6 text-[var(--aio-mag)]"/>
+    <div>
+      <div class="text-xs muted">Avg. Session</div>
       <div class="text-2xl font-semibold text-[var(--aio-ink)]">
         @if($activeConnections->count() > 0)
           {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
@@ -93,6 +99,7 @@
       </div>
     </div>
   </div>
+</div>
 
   {{-- SERVER FILTER (collapsible) --}}
   <div
@@ -144,63 +151,69 @@
   </div>
 
   {{-- ACTIVE CONNECTIONS --}}
-  <div class="aio-card overflow-hidden">
-    <div class="px-4 py-3 border-b aio-divider flex items-center justify-between">
-      <div class="text-lg font-semibold text-[var(--aio-ink)]">
-        Active Connections
-        <template x-if="selectedServerId">
-          <span>— <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span></span>
-        </template>
-      </div>
-      <div class="text-xs muted"><span x-text="activeRows().length"></span> rows</div>
+<div class="aio-card overflow-hidden mt-6">
+  <div class="px-4 py-3 border-b aio-divider flex items-center justify-between">
+    <div class="text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
+      <x-icon name="o-list-bullet" class="w-5 h-5 text-[var(--aio-cya)]"/>
+      Active Connections
+      <template x-if="selectedServerId">
+        <span> — <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span></span>
+      </template>
     </div>
+    <div class="text-xs muted"><span x-text="activeRows().length"></span> rows</div>
+  </div>
 
-    {{-- Desktop table --}}
-    <div class="hidden md:block overflow-auto">
-      <table class="min-w-full text-sm">
-        <thead class="bg-white/5 sticky top-0 z-10">
-          <tr class="text-[var(--aio-sub)] uppercase text-xs">
-            <th class="px-4 py-2 text-left">User</th>
-            <th class="px-4 py-2 text-left">Server</th>
-            <th class="px-4 py-2 text-left">Client IP</th>
-            <th class="px-4 py-2 text-left">Virtual IP</th>
-            <th class="px-4 py-2 text-left">Connected</th>
-            <th class="px-4 py-2 text-left">Transfer</th>
-            <th class="px-4 py-2 text-left">Actions</th>
+  {{-- Desktop table --}}
+  <div class="hidden md:block overflow-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-white/5 sticky top-0 z-10">
+        <tr class="text-[var(--aio-sub)] uppercase text-xs">
+          <th class="px-4 py-2 text-left">User</th>
+          <th class="px-4 py-2 text-left">Server</th>
+          <th class="px-4 py-2 text-left">Client IP</th>
+          <th class="px-4 py-2 text-left">Virtual IP</th>
+          <th class="px-4 py-2 text-left">Connected</th>
+          <th class="px-4 py-2 text-left">Transfer</th>
+          <th class="px-4 py-2 text-left">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/10">
+        <template x-for="row in activeRows()" :key="row.key">
+          <tr class="hover:bg-white/5">
+            <td class="px-4 py-2">
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
+                <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
+              </div>
+            </td>
+            <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
+            <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
+            <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—' "></td>
+            <td class="px-4 py-2">
+              <div class="text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></div>
+              <div class="text-xs muted" x-text="row.connected_fmt ?? ''"></div>
+            </td>
+            <td class="px-4 py-2">
+              <div class="aio-pill pill-cya text-xs" x-text="row.formatted_bytes ?? '—'"></div>
+              <div class="text-xs muted">
+                ↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB
+              </div>
+            </td>
+            <td class="px-4 py-2">
+              <button class="aio-pill pill-neon bg-red-500/15 text-red-300 hover:shadow-glow"
+                      @click.prevent="disconnect(row)">
+                Disconnect
+              </button>
+            </td>
           </tr>
-        </thead>
-        <tbody class="divide-y divide-white/10">
-          <template x-for="row in activeRows()" :key="row.key">
-            <tr class="hover:bg-white/5">
-              <td class="px-4 py-2">
-                <div class="flex items-center gap-2">
-                  <span class="h-2 w-2 rounded-full bg-[var(--aio-neon)]"></span>
-                  <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
-                </div>
-              </td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></td>
-              <td class="px-4 py-2">
-                <div class="text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></div>
-                <div class="text-xs muted" x-text="row.connected_fmt ?? ''"></div>
-              </td>
-              <td class="px-4 py-2">
-                <div class="text-[var(--aio-ink)]" x-text="row.formatted_bytes ?? '—'"></div>
-                <div class="text-xs muted">↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB</div>
-              </td>
-              <td class="px-4 py-2">
-                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
-                        @click.prevent="disconnect(row)">Disconnect</button>
-              </td>
-            </tr>
-          </template>
-          <tr x-show="activeRows().length===0">
-            <td colspan="7" class="px-4 py-6 text-center muted">No active connections</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        </template>
+        <tr x-show="activeRows().length===0">
+          <td colspan="7" class="px-4 py-6 text-center muted">No active connections</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
     {{-- Mobile cards --}}
     <div class="md:hidden divide-y divide-white/10">
