@@ -1,5 +1,5 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
-{{-- VPN Dashboard — compact, mobile-friendly, real-time via Echo/Reverb + Alpine, with icons --}}
+{{-- VPN Dashboard — compact, mobile-friendly, real-time via Echo/Reverb + Alpine, with deltas & polish --}}
 
 <div
   x-data="vpnDashboard()"
@@ -30,7 +30,8 @@
         <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
         <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
       </div>
-      <div class="flex items-center gap-2">
+
+      <div class="flex items-center gap-3">
         <button
           class="aio-pill pill-cya text-xs inline-flex items-center gap-1"
           @click.prevent="
@@ -43,21 +44,31 @@
           <x-icon name="o-activity" class="w-4 h-4" />
           Refresh
         </button>
+
         <div class="text-xs text-[var(--aio-sub)]">
           <span class="hidden sm:inline">Updated</span>
-          <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
+          <span class="font-medium text-[var(--aio-ink)]"
+                x-text="lastUpdated"
+                x-init="setInterval(()=>lastUpdated=new Date().toLocaleTimeString(),1000)"></span>
         </div>
       </div>
     </div>
   </div>
 
-  {{-- STAT TILES (with subtle gradients + icons) --}}
+  {{-- STAT TILES (with subtle gradients + icons + deltas) --}}
   <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+
     <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-white/5 to-white/10">
       <div class="flex items-center gap-2 text-[10px] muted">
         <x-icon name="o-check-circle" class="h-4 w-4 opacity-70" /> Online
       </div>
       <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
+      <div class="flex items-center gap-1 text-[10px] mt-1"
+           :class="delta.online_users>=0 ? 'text-green-400' : 'text-red-400'">
+        <span x-text="delta.online_users>=0 ? '▲' : '▼'"></span>
+        <span x-text="Math.abs(delta.online_users)"></span>
+        <span class="text-[var(--aio-sub)] ml-1">since refresh</span>
+      </div>
     </div>
 
     <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-cyan-500/5 to-cyan-500/10">
@@ -65,6 +76,12 @@
         <x-icon name="o-activity" class="h-4 w-4 opacity-70" /> Connections
       </div>
       <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
+      <div class="flex items-center gap-1 text-[10px] mt-1"
+           :class="delta.active_connections>=0 ? 'text-green-400' : 'text-red-400'">
+        <span x-text="delta.active_connections>=0 ? '▲' : '▼'"></span>
+        <span x-text="Math.abs(delta.active_connections)"></span>
+        <span class="text-[var(--aio-sub)] ml-1">since refresh</span>
+      </div>
     </div>
 
     <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-fuchsia-500/5 to-fuchsia-500/10">
@@ -72,6 +89,12 @@
         <x-icon name="o-server" class="h-4 w-4 opacity-70" /> Servers
       </div>
       <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
+      <div class="flex items-center gap-1 text-[10px] mt-1"
+           :class="delta.active_servers>=0 ? 'text-green-400' : 'text-red-400'">
+        <span x-text="delta.active_servers>=0 ? '▲' : '▼'"></span>
+        <span x-text="Math.abs(delta.active_servers)"></span>
+        <span class="text-[var(--aio-sub)] ml-1">since refresh</span>
+      </div>
     </div>
 
     <div class="hidden lg:block rounded border border-white/10 p-3 bg-gradient-to-br from-yellow-500/5 to-yellow-500/10">
@@ -84,6 +107,7 @@
         @else 0m @endif
       </div>
     </div>
+
   </div>
 
   {{-- SERVER FILTER --}}
@@ -120,7 +144,8 @@
     {{-- Desktop select --}}
     <div class="hidden sm:block">
       <select class="w-full bg-transparent border border-white/10 rounded px-3 py-2 text-sm"
-              @change="selectServer($event.target.value || null)">
+              @change="selectServer($event.target.value || null)"
+              x-init="(() => { try { const saved = localStorage.getItem('vpn.selectedServerId'); if(saved!==null){ $el.value = saved; } } catch {} })()">
         <option value="">All servers</option>
         <template x-for="(meta, sid) in serverMeta" :key="sid">
           <option :value="sid" x-text="meta.name"></option>
@@ -176,8 +201,9 @@
                 <div class="text-xs muted">↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB</div>
               </td>
               <td class="px-4 py-2">
-                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow inline-flex items-center gap-1"
-                        @click.prevent="disconnect(row)">
+                <button
+                  class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-red-400/30 inline-flex items-center gap-1"
+                  @click.prevent="disconnect(row)">
                   <x-icon name="o-disconnect" class="w-4 h-4" />
                   Disconnect
                 </button>
@@ -203,8 +229,9 @@
               </div>
               <div class="text-xs muted" x-text="row.server_name"></div>
             </div>
-            <button class="aio-pill bg-red-500/15 text-red-300 inline-flex items-center gap-1"
-                    @click.prevent="disconnect(row)">
+            <button
+              class="aio-pill bg-red-500/15 text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400/30 inline-flex items-center gap-1"
+              @click.prevent="disconnect(row)">
               <x-icon name="o-disconnect" class="w-4 h-4" />
               Disconnect
             </button>
@@ -247,6 +274,8 @@ window.vpnDashboard = function () {
     serverMeta: {},
     usersByServer: {},
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
+    prevTotals: { online_users: 0, active_connections: 0, active_servers: 0 },
+    delta: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
     _pollTimer: null,
@@ -255,10 +284,21 @@ window.vpnDashboard = function () {
     init(meta, seedUsersByServer) {
       this.serverMeta = meta || {};
       Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
+
+      // seed
       if (seedUsersByServer) {
         for (const k in seedUsersByServer) this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
       }
+
+      // restore server filter
+      try {
+        const saved = localStorage.getItem('vpn.selectedServerId');
+        if (saved !== null && saved !== '') this.selectedServerId = Number(saved);
+      } catch {}
+
       this.totals = this.computeTotals();
+      this.prevTotals = { ...this.totals };
+      this._updateDeltas();
       this.lastUpdated = new Date().toLocaleTimeString();
 
       this._waitForEcho()
@@ -306,6 +346,7 @@ window.vpnDashboard = function () {
           for (const k in this.serverMeta) norm[+k] = this._normaliseUsers(+k, incoming[k] || []);
           this.usersByServer = norm;
           this.totals = this.computeTotals();
+          this._updateDeltas();
           this.lastUpdated = new Date().toLocaleTimeString();
         }).catch(() => {});
       }, ms);
@@ -322,6 +363,15 @@ window.vpnDashboard = function () {
       return mapped.filter(u => (seen.has(u.__key) ? false : (seen.add(u.__key), true)));
     },
 
+    _updateDeltas() {
+      this.delta = {
+        online_users: this.totals.online_users - this.prevTotals.online_users,
+        active_connections: this.totals.active_connections - this.prevTotals.active_connections,
+        active_servers: this.totals.active_servers - this.prevTotals.active_servers,
+      };
+      this.prevTotals = { ...this.totals };
+    },
+
     handleEvent(e) {
       const sid = Number(e.server_id ?? e.serverId ?? 0);
       if (!sid) return;
@@ -332,6 +382,7 @@ window.vpnDashboard = function () {
 
       this.usersByServer[sid] = this._normaliseUsers(sid, list);
       this.totals = this.computeTotals();
+      this._updateDeltas();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
 
@@ -373,7 +424,10 @@ window.vpnDashboard = function () {
       return rows;
     },
 
-    selectServer(id) { this.selectedServerId = id; },
+    selectServer(id) {
+      this.selectedServerId = (id === '' ? null : (id === null ? null : Number(id)));
+      try { localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? ''); } catch {}
+    },
 
     async disconnect(row) {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
@@ -391,6 +445,7 @@ window.vpnDashboard = function () {
 
         this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || []).filter(u => u.username !== row.username);
         this.totals = this.computeTotals();
+        this._updateDeltas();
         alert(data.message || `Disconnected ${row.username}`);
       } catch (e) {
         console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
