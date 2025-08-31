@@ -54,15 +54,6 @@
     </div>
 
     <div class="flex items-center gap-2">
-      {{-- Filter toggle --}}
-      <button
-        class="aio-pill bg-white/5 border border-white/10 text-xs inline-flex items-center gap-1"
-        @click="showFilters = !showFilters; try{localStorage.setItem('vpn.showFilters', showFilters ? '1':'0')}catch{}"
-        :aria-expanded="showFilters"
-      >
-        <x-icon name="o-filter" class="w-4 h-4" />
-        Filter
-      </button>
 
       {{-- Manual refresh --}}
       <button
@@ -122,6 +113,15 @@
       </div>
     </div>
   </div>
+  {{-- Filter toggle --}}
+      <button
+        class="aio-pill bg-white/5 border border-white/10 text-xs inline-flex items-center gap-1"
+        @click="showFilters = !showFilters; try{localStorage.setItem('vpn.showFilters', showFilters ? '1':'0')}catch{}"
+        :aria-expanded="showFilters"
+      >
+        <x-icon name="o-filter" class="w-4 h-4" />
+        Filter
+      </button>
 
   {{-- SERVER FILTER (collapsible) --}}
   <div
