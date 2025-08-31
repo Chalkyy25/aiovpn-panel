@@ -1,99 +1,86 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
-{{-- Real-time VPN dashboard (Reverb/Echo + Alpine) with 5s fallback polling + working Disconnect --}}
+{{-- Real-time VPN dashboard (Echo optional) + 15s fallback polling + Disconnect --}}
 
 @php
-    // Seed: group connections by server, include connection_id so Livewire disconnect works
-    $seedUsersByServer = $activeConnections->groupBy('vpn_server_id')->map(function ($group) {
-        return $group->map(function ($c) {
-            return [
-                'connection_id' => $c->id, // 👈 needed for Livewire disconnectUser
-                'username'      => optional($c->vpnUser)->username ?? 'unknown',
-                'client_ip'     => $c->client_ip,
-                'virtual_ip'    => $c->virtual_ip,
-                'connected_at'  => optional($c->connected_at)?->toIso8601String(),
-                'bytes_in'      => (int) $c->bytes_received,
-                'bytes_out'     => (int) $c->bytes_sent,
-                'server_name'   => optional($c->vpnServer)->name,
-            ];
-        })->values();
-    })->toArray();
+  // Seed rows (keep tiny)
+  $seedUsersByServer = $activeConnections->groupBy('vpn_server_id')->map(function ($rows) {
+      return $rows->map(function ($c) {
+          return [
+              'connection_id' => $c->id,
+              'username'      => optional($c->vpnUser)->username ?? 'unknown',
+              'client_ip'     => $c->client_ip,
+              'virtual_ip'    => $c->virtual_ip,
+              'connected_human'=> optional($c->connected_at)?->diffForHumans(),
+              'connected_fmt' => optional($c->connected_at)?->toDateTimeString(),
+              'formatted_bytes'=> number_format((int)($c->bytes_received + $c->bytes_sent) / (1024*1024), 2) . ' MB',
+              'down_mb'       => number_format((int)$c->bytes_received / (1024*1024), 2),
+              'up_mb'         => number_format((int)$c->bytes_sent / (1024*1024), 2),
+              'server_name'   => optional($c->vpnServer)->name,
+          ];
+      })->values();
+  })->toArray();
 
-    $seedServerMeta = $servers->mapWithKeys(fn($s) => [
-        $s->id => ['id' => $s->id, 'name' => $s->name]
-    ])->toArray();
+  $seedServerMeta = $servers->mapWithKeys(fn($s) => [
+      $s->id => ['id' => $s->id, 'name' => $s->name]
+  ])->toArray();
 
-    $seedTotals = [
-        'active_servers'      => $servers->count(),
-        'active_connections'  => $activeConnections->count(),
-        'online_users'        => $activeConnections->pluck('vpnUser.username')->filter()->unique()->count(),
-    ];
+  $seedTotals = [
+      'active_servers'     => $servers->count(),
+      'active_connections' => $activeConnections->count(),
+      'online_users'       => $activeConnections->pluck('vpnUser.username')->filter()->unique()->count(),
+  ];
 @endphp
 
 <div
-    x-data="vpnDashboard()"
-    x-init="init(@js($seedServerMeta), @js($seedUsersByServer), @js($seedTotals))"
-    class="space-y-6"
+  x-data="vpnDashboard()"
+  x-init="init(@js($seedServerMeta), @js($seedUsersByServer), @js($seedTotals))"
+  class="space-y-6"
 >
   {{-- Header --}}
-  <div class="flex justify-between items-center">
+  <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
-      <p class="text-sm text-[var(--aio-sub)]">Real-time monitoring of VPN connections</p>
+      <h1 class="text-2xl font-semibold text-[var(--aio-ink)]">VPN Dashboard</h1>
+      <p class="text-sm text-[var(--aio-sub)]">Live status for users & servers</p>
     </div>
-    <div class="text-sm text-[var(--aio-sub)]">
+    <div class="text-xs text-[var(--aio-sub)]">
       Last updated: <span x-text="lastUpdated"></span>
     </div>
   </div>
 
-  {{-- Flash --}}
-  @if (session()->has('message'))
-    <div class="aio-card border border-white/10 px-4 py-3 rounded-lg text-[var(--aio-ink)]">
-      <span class="block sm:inline">{{ session('message') }}</span>
-    </div>
-  @endif
-
-  {{-- Stat tiles (live) --}}
+  {{-- Stat tiles --}}
   <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-    <div class="pill-card outline-neon">
-      <div class="p-4 flex items-center gap-4">
-        <div class="h-10 w-10 rounded-full pill-neon flex items-center justify-center">🟢</div>
-        <div>
-          <div class="text-sm muted">Online Users</div>
-          <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
-        </div>
+    <div class="pill-card outline-neon p-4 flex items-center gap-4">
+      <div class="h-10 w-10 rounded-full pill-neon grid place-items-center">🟢</div>
+      <div>
+        <div class="text-xs muted">Online Users</div>
+        <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
       </div>
     </div>
 
-    <div class="pill-card outline-cya">
-      <div class="p-4 flex items-center gap-4">
-        <div class="h-10 w-10 rounded-full pill-cya flex items-center justify-center">📊</div>
-        <div>
-          <div class="text-sm muted">Active Connections</div>
-          <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
-        </div>
+    <div class="pill-card outline-cya p-4 flex items-center gap-4">
+      <div class="h-10 w-10 rounded-full pill-cya grid place-items-center">📊</div>
+      <div>
+        <div class="text-xs muted">Active Connections</div>
+        <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
       </div>
     </div>
 
-    <div class="pill-card outline-pup">
-      <div class="p-4 flex items-center gap-4">
-        <div class="h-10 w-10 rounded-full pill-pup flex items-center justify-center">🖥️</div>
-        <div>
-          <div class="text-sm muted">Active Servers</div>
-          <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
-        </div>
+    <div class="pill-card outline-pup p-4 flex items-center gap-4">
+      <div class="h-10 w-10 rounded-full pill-pup grid place-items-center">🖥️</div>
+      <div>
+        <div class="text-xs muted">Active Servers</div>
+        <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
       </div>
     </div>
 
-    <div class="pill-card outline-mag">
-      <div class="p-4 flex items-center gap-4">
-        <div class="h-10 w-10 rounded-full pill-mag flex items-center justify-center">⏱️</div>
-        <div>
-          <div class="text-sm muted">Avg. Connection Time</div>
-          <div class="text-2xl font-semibold text-[var(--aio-ink)]">
-            @if($activeConnections->count() > 0)
-              {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
-            @else 0m @endif
-          </div>
+    <div class="pill-card outline-mag p-4 flex items-center gap-4">
+      <div class="h-10 w-10 rounded-full pill-mag grid place-items-center">⏱️</div>
+      <div>
+        <div class="text-xs muted">Avg. Connection Time</div>
+        <div class="text-2xl font-semibold text-[var(--aio-ink)]">
+          @if($activeConnections->count() > 0)
+            {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
+          @else 0m @endif
         </div>
       </div>
     </div>
@@ -101,53 +88,42 @@
 
   {{-- Server filter --}}
   <div class="aio-card p-5">
-    <h3 class="text-lg font-semibold text-[var(--aio-ink)] mb-3">Servers</h3>
-
-    <div class="flex flex-wrap gap-2">
-      <button @click="selectServer(null)"
-              class="aio-pill"
+    <div class="flex flex-wrap items-center gap-2">
+      <button @click="selectServer(null)" class="aio-pill"
               :class="selectedServerId===null ? 'pill-cya shadow-glow' : ''">
         All Servers (<span x-text="totals.active_connections"></span>)
       </button>
-
       @foreach($servers as $server)
-        <button @click="selectServer({{ $server->id }})"
-                class="aio-pill"
+        <button @click="selectServer({{ $server->id }})" class="aio-pill"
                 :class="selectedServerId==={{ $server->id }} ? 'pill-pup shadow-glow' : ''">
           {{ $server->name }}
-          <span class="aio-pill ml-1"
-                :class="(serverUsersCount({{ $server->id }})>0) ? 'pill-neon' : ''"
+          <span class="aio-pill ml-1" :class="serverUsersCount({{ $server->id }})>0 ? 'pill-neon' : ''"
                 x-text="serverUsersCount({{ $server->id }})"></span>
         </button>
       @endforeach
     </div>
   </div>
 
-  {{-- Active Connections (live, filtered) --}}
+  {{-- Active connections table --}}
   <div class="aio-card overflow-hidden">
     <div class="px-5 py-3 border-b aio-divider">
       <h3 class="text-lg font-semibold text-[var(--aio-ink)]">
         Active Connections
         <template x-if="selectedServerId">
-          <span> — <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown Server'"></span></span>
+          <span> — <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span></span>
         </template>
       </h3>
     </div>
 
     <div class="overflow-x-auto">
       <table class="table-dark w-full">
-        <thead class="bg-white/5">
-          <tr class="text-xs uppercase tracking-wide muted">
-            <th>User</th>
-            <th>Server</th>
-            <th>Client IP</th>
-            <th>Virtual IP</th>
-            <th>Connected Since</th>
-            <th>Data Transfer</th>
-            <th>Actions</th>
+        <thead class="bg-white/5 text-xs uppercase tracking-wide muted">
+          <tr>
+            <th>User</th><th>Server</th><th>Client IP</th><th>Virtual IP</th>
+            <th>Connected Since</th><th>Data Transfer</th><th>Actions</th>
           </tr>
         </thead>
-        <tbody id="active-rows">
+        <tbody>
           <template x-for="row in activeRows()" :key="row.key">
             <tr>
               <td class="py-3">
@@ -155,7 +131,7 @@
                   <span class="h-2 w-2 rounded-full bg-[var(--aio-neon)]"></span>
                   <div class="ml-3">
                     <div class="text-sm text-[var(--aio-ink)] font-medium" x-text="row.username"></div>
-                    <div class="text-xs muted" x-text="row.device ?? 'Unknown Device'"></div>
+                    <div class="text-xs muted" x-text="row.device ?? '—'"></div>
                   </div>
                 </div>
               </td>
@@ -175,38 +151,36 @@
               </td>
               <td class="text-sm">
                 <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
-                        @click.prevent="disconnect(row)">
-                  Disconnect
-                </button>
+                        @click.prevent="disconnect(row)">Disconnect</button>
               </td>
             </tr>
           </template>
 
           <tr x-show="activeRows().length===0">
-            <td colspan="7" class="py-6 text-center muted">No active connections found.</td>
+            <td colspan="7" class="py-6 text-center muted">No active connections.</td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  {{-- Live Users by Server --}}
+  {{-- Live users by server --}}
   <div class="aio-card p-5">
     <h3 class="text-lg font-semibold text-[var(--aio-ink)]">Live Users by Server</h3>
-    <p class="text-xs muted mb-3">Updates instantly from Reverb events</p>
+    <p class="text-xs muted mb-3">Realtime via Reverb/Echo; falls back to polling</p>
 
-    <div id="live-users" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       @foreach($servers as $server)
-        <div class="p-3 rounded bg-white/5 border border-white/10" data-server-id="{{ $server->id }}">
+        <div class="p-3 rounded bg-white/5 border border-white/10">
           <div class="flex justify-between items-center">
             <div class="font-medium text-[var(--aio-ink)]">{{ $server->name }}</div>
             <div class="text-xs muted">ID: {{ $server->id }}</div>
           </div>
-          <ul class="mt-2 text-sm text-[var(--aio-ink)] users-list">
+          <ul class="mt-2 text-sm text-[var(--aio-ink)]">
             <template x-if="serverUsersCount({{ $server->id }})===0">
-              <li class="muted empty-msg">No users online</li>
+              <li class="muted">No users online</li>
             </template>
-            <template x-for="u in (usersByServer[{{ $server->id }}] || [])" :key="u.username">
+            <template x-for="u in (usersByServer[{{ $server->id }}] || [])" :key="u.__key">
               <li x-text="u.username"></li>
             </template>
           </ul>
@@ -215,7 +189,7 @@
     </div>
   </div>
 
-  {{-- Recently Disconnected --}}
+  {{-- Recently disconnected --}}
   @if($recentlyDisconnected->count() > 0)
     <div class="aio-card overflow-hidden">
       <div class="px-5 py-3 border-b aio-divider">
@@ -223,32 +197,26 @@
       </div>
       <div class="overflow-x-auto">
         <table class="table-dark w-full">
-          <thead class="bg-white/5">
-            <tr class="text-xs uppercase tracking-wide muted">
-              <th>User</th>
-              <th>Server</th>
-              <th>Last IP</th>
-              <th>Disconnected</th>
-              <th>Session Duration</th>
-            </tr>
+          <thead class="bg-white/5 text-xs uppercase tracking-wide muted">
+            <tr><th>User</th><th>Server</th><th>Last IP</th><th>Disconnected</th><th>Session</th></tr>
           </thead>
           <tbody>
-            @foreach($recentlyDisconnected as $connection)
+            @foreach($recentlyDisconnected as $c)
               <tr>
                 <td class="py-3">
                   <div class="flex items-center">
                     <span class="h-2 w-2 rounded-full bg-white/30"></span>
                     <div class="ml-3 text-sm text-[var(--aio-ink)] font-medium">
-                      {{ $connection->vpnUser->username }}
+                      {{ $c->vpnUser->username }}
                     </div>
                   </div>
                 </td>
-                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->vpnServer->name }}</td>
-                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->client_ip ?? 'N/A' }}</td>
-                <td class="text-sm text-[var(--aio-ink)]">{{ $connection->disconnected_at->diffForHumans() }}</td>
+                <td class="text-sm text-[var(--aio-ink)]">{{ $c->vpnServer->name }}</td>
+                <td class="text-sm text-[var(--aio-ink)]">{{ $c->client_ip ?? 'N/A' }}</td>
+                <td class="text-sm text-[var(--aio-ink)]">{{ $c->disconnected_at->diffForHumans() }}</td>
                 <td class="text-sm text-[var(--aio-ink)]">
-                  @if($connection->connected_at && $connection->disconnected_at)
-                    {{ $connection->connected_at->diffInMinutes($connection->disconnected_at) }}m
+                  @if($c->connected_at && $c->disconnected_at)
+                    {{ $c->connected_at->diffInMinutes($c->disconnected_at) }}m
                   @else N/A @endif
                 </td>
               </tr>
@@ -260,32 +228,28 @@
   @endif
 </div>
 
+{{-- Alpine controller --}}
 <script>
 window.vpnDashboard = function () {
   return {
     serverMeta: {},
-    usersByServer: {},   // { [serverId]: [ { username, …, __key } ] }
+    usersByServer: {},      // { [serverId]: [ {username, __key, ...} ] }
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
     selectedServerId: null,
     lastUpdated: new Date().toLocaleTimeString(),
     _pollTimer: null,
-    _subscribed: false,  // ← guard against re-subscribes
+    _subscribed: false,
 
-    init(meta, seedUsersByServer) {
+    init(meta, seedUsersByServer, seedTotals) {
       this.serverMeta = meta || {};
-      this.usersByServer = {};
+      for (const id in this.serverMeta) this.usersByServer[id] = [];
 
-      // ensure every server has an array (prevents undefined errors in x-for)
-      Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
-
-      // optional seed
       if (seedUsersByServer) {
-        for (const k in seedUsersByServer) {
-          this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
+        for (const id in seedUsersByServer) {
+          this.usersByServer[id] = this._normaliseUsers(+id, seedUsersByServer[id]);
         }
       }
-
-      this.totals = this.computeTotals();
+      if (seedTotals) this.totals = seedTotals;
       this.lastUpdated = new Date().toLocaleTimeString();
 
       this._waitForEcho()
@@ -301,26 +265,26 @@ window.vpnDashboard = function () {
     },
 
     _subscribeFleet() {
-      if (this._subscribed) return;
+      if (this._subscribed || !window.Echo) return;
       try {
         window.Echo.private('servers.dashboard')
           .subscribed(() => console.log('✅ subscribed servers.dashboard'))
           .listen('.mgmt.update', e => this.handleEvent(e))
           .listen('mgmt.update',   e => this.handleEvent(e));
-      } catch (e) { console.error('subscribe servers.dashboard failed', e); }
+      } catch (e) { console.error('subscribe fleet failed', e); }
     },
 
     _subscribePerServer() {
-      if (this._subscribed) return;
-      Object.keys(this.serverMeta).forEach(sid => {
+      if (this._subscribed || !window.Echo) return;
+      for (const id in this.serverMeta) {
         try {
-          window.Echo.private(`servers.${sid}`)
-            .subscribed(() => console.log(`✅ subscribed servers.${sid}`))
+          window.Echo.private(`servers.${id}`)
+            .subscribed(() => console.log(`✅ subscribed servers.${id}`))
             .listen('.mgmt.update', e => this.handleEvent(e))
             .listen('mgmt.update',   e => this.handleEvent(e));
-        } catch (e) { console.error(`subscribe servers.${sid} failed`, e); }
-      });
-      this._subscribed = true;              // ← mark subscribed once
+        } catch (e) { console.error(`subscribe servers.${id} failed`, e); }
+      }
+      this._subscribed = true;
     },
 
     _startPolling(ms = 15000) {
@@ -341,21 +305,13 @@ window.vpnDashboard = function () {
       }, ms);
     },
 
-    /* ---- unify / dedupe users + add stable keys ---- */
     _normaliseUsers(serverId, list) {
-      // allow ['alice','bob'] or [{username:'alice'}]
       const arr = Array.isArray(list) ? list : [];
-      const mapped = arr.map(u =>
-        (typeof u === 'string') ? { username: u } : { ...u }
-      ).map(u => {
-        const name = u.username ?? u.cn ?? 'unknown';
-        return {
-          ...u,
-          username: name,
-          __key: `${serverId}:${name}`,  // stable key per server
-        };
-      });
-
+      const mapped = arr.map(u => (typeof u === 'string' ? { username: u } : { ...u }))
+        .map(u => {
+          const name = u.username ?? u.cn ?? 'unknown';
+          return { ...u, username: name, __key: `${serverId}:${name}` };
+        });
       const seen = new Set();
       return mapped.filter(u => (seen.has(u.__key) ? false : (seen.add(u.__key), true)));
     },
@@ -365,13 +321,8 @@ window.vpnDashboard = function () {
       if (!sid) return;
 
       let list = [];
-      if (Array.isArray(e.users) && e.users.length) {
-        list = e.users;                       // rich array from backend
-      } else if (typeof e.cn_list === 'string') {
-        list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean);
-      } else if (Array.isArray(e.users)) {
-        list = e.users;                       // legacy string array
-      }
+      if (Array.isArray(e.users) && e.users.length) list = e.users;
+      else if (typeof e.cn_list === 'string') list = e.cn_list.split(',').map(s=>s.trim()).filter(Boolean);
 
       this.usersByServer[sid] = this._normaliseUsers(sid, list);
       this.totals = this.computeTotals();
@@ -379,41 +330,36 @@ window.vpnDashboard = function () {
     },
 
     computeTotals() {
-      const unique = new Set();
-      let conns = 0;
-      Object.keys(this.serverMeta).forEach(sid => {
-        const arr = this.usersByServer[sid] || [];
-        conns += arr.length;
-        arr.forEach(u => unique.add(u.username));
-      });
+      const unique = new Set(); let conns = 0;
+      for (const id in this.serverMeta) {
+        const arr = this.usersByServer[id] || [];
+        conns += arr.length; arr.forEach(u => unique.add(u.username));
+      }
       const activeServers = Object.keys(this.serverMeta)
-        .filter(sid => (this.usersByServer[sid] || []).length > 0).length;
+        .filter(id => (this.usersByServer[id] || []).length > 0).length;
       return { online_users: unique.size, active_connections: conns, active_servers: activeServers };
     },
 
     serverUsersCount(id) { return (this.usersByServer[id] || []).length; },
 
     activeRows() {
-      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta)
-                                                : [String(this.selectedServerId)];
+      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
       const rows = [];
       ids.forEach(sid => {
-        (this.usersByServer[sid] || []).forEach(u => {
-          rows.push({
-            key: u.__key,                          // ← use stable key
-            connection_id: u.connection_id ?? null,
-            server_id: Number(sid),
-            server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
-            username: u.username ?? 'unknown',
-            client_ip: u.client_ip ?? null,
-            virtual_ip: u.virtual_ip ?? null,
-            connected_human: u.connected_human ?? null,
-            connected_fmt: u.connected_fmt ?? null,
-            formatted_bytes: u.formatted_bytes ?? null,
-            down_mb: u.down_mb ?? null,
-            up_mb: u.up_mb ?? null,
-          });
-        });
+        (this.usersByServer[sid] || []).forEach(u => rows.push({
+          key: u.__key,
+          connection_id: u.connection_id ?? null,
+          server_id: Number(sid),
+          server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
+          username: u.username ?? 'unknown',
+          client_ip: u.client_ip ?? null,
+          virtual_ip: u.virtual_ip ?? null,
+          connected_human: u.connected_human ?? null,
+          connected_fmt: u.connected_fmt ?? null,
+          formatted_bytes: u.formatted_bytes ?? null,
+          down_mb: u.down_mb ?? null,
+          up_mb: u.up_mb ?? null,
+        })));
       });
       return rows;
     },
@@ -431,17 +377,16 @@ window.vpnDashboard = function () {
           },
           body: JSON.stringify({ username: row.username, server_id: row.server_id }),
         });
-
         let data; try { data = await res.json(); } catch { data = { message: await res.text() }; }
         if (!res.ok) throw new Error(Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error'));
 
-        // optimistic UI
-        this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || [])
-          .filter(u => u.username !== row.username);
+        // optimistic removal
+        this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || []).filter(u => u.username !== row.username);
         this.totals = this.computeTotals();
-
         alert(data.message || `Disconnected ${row.username}`);
-      } catch (e) { console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue')); }
+      } catch (e) {
+        console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
+      }
     },
   };
 };
