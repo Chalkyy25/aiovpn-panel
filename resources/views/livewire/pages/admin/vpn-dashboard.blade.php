@@ -1,191 +1,138 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
-{{-- VPN Dashboard — compact, mobile-friendly, real-time via Echo/Reverb + Alpine, with deltas & polish --}}
+{{-- VPN Dashboard — compact, mobile/desktop friendly, Echo/Reverb + Alpine, collapsible server filter --}}
 
 <div
   x-data="vpnDashboard()"
-  x-init="init(
+  x-init="
+    init(
       @js($servers->mapWithKeys(fn($s)=>[$s->id=>['id'=>$s->id,'name'=>$s->name]])),
-      @js($activeConnections->groupBy('vpn_server_id')->map(fn($g)=>$g->map(fn($c)=>[
-        'connection_id'=>$c->id,
-        'username'=>optional($c->vpnUser)->username ?? 'unknown',
-        'client_ip'=>$c->client_ip,
-        'virtual_ip'=>$c->virtual_ip,
-        'connected_at'=>optional($c->connected_at)?->toIso8601String(),
-        'bytes_in'=>(int) $c->bytes_received,
-        'bytes_out'=>(int) $c->bytes_sent,
-        'server_name'=>optional($c->vpnServer)->name,
-      ])->values())->toArray()),
-      {
-        active_servers: {{ $servers->count() }},
-        active_connections: {{ $activeConnections->count() }},
-        online_users: {{ $activeConnections->pluck('vpnUser.username')->filter()->unique()->count() }},
-      }
-    )"
+      @js(
+        $activeConnections->groupBy('vpn_server_id')->map(
+          fn($g)=>$g->map(fn($c)=>[
+            'connection_id'=>$c->id,
+            'username'=>optional($c->vpnUser)->username ?? 'unknown',
+            'client_ip'=>$c->client_ip,
+            'virtual_ip'=>$c->virtual_ip,
+            'connected_at'=>optional($c->connected_at)?->toIso8601String(),
+            'bytes_in'=>(int) $c->bytes_received,
+            'bytes_out'=>(int) $c->bytes_sent,
+            'server_name'=>optional($c->vpnServer)->name,
+          ])->values()
+        )->toArray()
+      )
+    )
+  "
   class="space-y-6"
 >
   {{-- HEADER + TOOLBAR --}}
-  <div class="space-y-2">
-    <div class="flex items-end justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
-        <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
-      </div>
+  <div class="flex items-end justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
+      <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
+    </div>
 
-      <div class="flex items-center gap-3">
-        <button
-          class="aio-pill pill-cya text-xs inline-flex items-center gap-1"
-          @click.prevent="
-            if(window.$wire?.getLiveStats){
-              $el.disabled=true;
-              window.$wire.getLiveStats()
-                .then(()=>{ lastUpdated=new Date().toLocaleTimeString(); })
-                .finally(()=>{ $el.disabled=false });
-            }">
-          <x-icon name="o-activity" class="w-4 h-4" />
-          Refresh
-        </button>
-        <button
-  class="aio-pill bg-white/5 border border-white/10 text-xs inline-flex items-center gap-1"
-  @click="showFilters = !showFilters"
-  aria-expanded="false"
->
-  <x-icon name="o-filter" class="w-4 h-4" />
-  Filter
-</button>
+    <div class="flex items-center gap-2">
+      {{-- Filter toggle --}}
+      <button
+        class="aio-pill bg-white/5 border border-white/10 text-xs inline-flex items-center gap-1"
+        @click="showFilters = !showFilters; try{localStorage.setItem('vpn.showFilters', showFilters ? '1':'0')}catch{}"
+        :aria-expanded="showFilters"
+      >
+        <x-icon name="o-filter" class="w-4 h-4" /> {{-- or use o-list-bullet --}}
+        Filter
+      </button>
 
-        <div class="text-xs text-[var(--aio-sub)]">
-          <span class="hidden sm:inline">Updated</span>
-          <span class="font-medium text-[var(--aio-ink)]"
-                x-text="lastUpdated"
-                x-init="setInterval(()=>lastUpdated=new Date().toLocaleTimeString(),1000)"></span>
-        </div>
+      {{-- Manual refresh --}}
+      <button
+        class="aio-pill pill-cya text-xs"
+        @click.prevent="
+          if(window.$wire?.getLiveStats){
+            $el.disabled=true;
+            window.$wire.getLiveStats()
+              .then(()=>{ lastUpdated=new Date().toLocaleTimeString(); })
+              .finally(()=>{ $el.disabled=false });
+          }">
+        Refresh
+      </button>
+
+      <div class="text-xs text-[var(--aio-sub)]">
+        <span class="hidden sm:inline">Updated</span>
+        <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
       </div>
     </div>
   </div>
 
-  {{-- STAT TILES (with subtle gradients + icons + deltas) --}}
+  {{-- STAT TILES --}}
   <div class="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-
-    <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-white/5 to-white/10">
-      <div class="flex items-center gap-2 text-[10px] muted">
-        <x-icon name="o-check-circle" class="h-4 w-4 opacity-70" /> Online
+    <div class="rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted flex items-center gap-1">
+        <x-icon name="o-user-group" class="w-4 h-4" /> Online
       </div>
-      <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
-      <div class="flex items-center gap-1 text-[10px] mt-1"
-           :class="delta.online_users>=0 ? 'text-green-400' : 'text-red-400'">
-        <span x-text="delta.online_users>=0 ? '▲' : '▼'"></span>
-        <span x-text="Math.abs(delta.online_users)"></span>
-        <span class="text-[var(--aio-sub)] ml-1">since refresh</span>
-      </div>
+      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
     </div>
-
-    <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-cyan-500/5 to-cyan-500/10">
-      <div class="flex items-center gap-2 text-[10px] muted">
-        <x-icon name="o-activity" class="h-4 w-4 opacity-70" /> Connections
+    <div class="rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted flex items-center gap-1">
+        <x-icon name="o-chart-bar" class="w-4 h-4" /> Connections
       </div>
-      <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
-      <div class="flex items-center gap-1 text-[10px] mt-1"
-           :class="delta.active_connections>=0 ? 'text-green-400' : 'text-red-400'">
-        <span x-text="delta.active_connections>=0 ? '▲' : '▼'"></span>
-        <span x-text="Math.abs(delta.active_connections)"></span>
-        <span class="text-[var(--aio-sub)] ml-1">since refresh</span>
-      </div>
+      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
     </div>
-
-    <div class="rounded border border-white/10 p-3 bg-gradient-to-br from-fuchsia-500/5 to-fuchsia-500/10">
-      <div class="flex items-center gap-2 text-[10px] muted">
-        <x-icon name="o-server" class="h-4 w-4 opacity-70" /> Servers
+    <div class="rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted flex items-center gap-1">
+        <x-icon name="o-server" class="w-4 h-4" /> Servers
       </div>
-      <div class="mt-1 text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
-      <div class="flex items-center gap-1 text-[10px] mt-1"
-           :class="delta.active_servers>=0 ? 'text-green-400' : 'text-red-400'">
-        <span x-text="delta.active_servers>=0 ? '▲' : '▼'"></span>
-        <span x-text="Math.abs(delta.active_servers)"></span>
-        <span class="text-[var(--aio-sub)] ml-1">since refresh</span>
-      </div>
+      <div class="text-xl sm:text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
     </div>
-
-    <div class="hidden lg:block rounded border border-white/10 p-3 bg-gradient-to-br from-yellow-500/5 to-yellow-500/10">
-      <div class="flex items-center gap-2 text-[10px] muted">
-        <x-icon name="o-clock" class="h-4 w-4 opacity-70" /> Avg. Session
+    <div class="hidden lg:block rounded bg-white/5 border border-white/10 p-3">
+      <div class="text-[10px] muted flex items-center gap-1">
+        <x-icon name="o-clock" class="w-4 h-4" /> Avg. Session
       </div>
-      <div class="mt-1 text-2xl font-semibold text-[var(--aio-ink)]">
+      <div class="text-2xl font-semibold text-[var(--aio-ink)]">
         @if($activeConnections->count() > 0)
           {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
         @else 0m @endif
       </div>
     </div>
-
   </div>
 
   {{-- SERVER FILTER (collapsible) --}}
-<div
-  x-show="showFilters"
-  x-transition
-  x-cloak
-  @keydown.escape.window="showFilters=false"
-  class="aio-card p-4"
->
-  <div class="flex items-center justify-between mb-3">
-    <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-      <x-icon name="o-filter" class="h-4 w-4" /> Filter by server
-    </h3>
-    <button class="text-xs muted hover:text-[var(--aio-ink)]" @click="showFilters=false">Close</button>
-  </div>
-
-  {{-- Quick actions --}}
-  <div class="flex flex-wrap items-center gap-2 mb-3">
-    <button
-      @click="selectServer(null)"
-      class="aio-pill"
-      :class="selectedServerId===null ? 'pill-cya shadow-glow' : 'bg-white/5'"
-      title="Show all servers"
-    >
-      All
-      <span class="aio-pill ml-1" :class="totals.active_connections>0 ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'">
-        <span x-text="totals.active_connections"></span>
-      </span>
-    </button>
-
-    {{-- Optional: “Active only” toggle, keep if useful
-    <label class="ml-auto inline-flex items-center gap-2 text-xs cursor-pointer">
-      <input type="checkbox" class="sr-only" x-model="onlyActiveServers">
-      <span class="aio-pill px-2 py-1 bg-white/5">Active servers only</span>
-    </label>
-    --}}
-  </div>
-
-  {{-- Server chips --}}
-  <div class="-mx-1 px-1 overflow-x-auto no-scrollbar">
-    <div class="flex flex-wrap gap-2">
-      <template x-for="(meta, sid) in serverMeta" :key="sid">
-        <button
-          @click="selectServer(Number(sid))"
-          class="aio-pill whitespace-nowrap"
-          :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : 'bg-white/5'"
-        >
-          <span x-text="meta.name"></span>
-          <span class="aio-pill ml-1"
-                :class="(serverUsersCount(Number(sid))>0) ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
-                x-text="serverUsersCount(Number(sid))"></span>
-        </button>
-      </template>
+  <div
+    x-show="showFilters"
+    x-transition
+    x-cloak
+    @keydown.escape.window="showFilters=false"
+    class="aio-card p-4"
+  >
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
+        <x-icon name="o-filter" class="h-4 w-4" /> Filter by server
+      </h3>
+      <button class="text-xs muted hover:text-[var(--aio-ink)]" @click="showFilters=false">Close</button>
     </div>
-  </div>
-</div>
 
-    {{-- Mobile pills --}}
-    <div class="sm:hidden -mx-1 px-1 overflow-x-auto no-scrollbar">
-      <div class="flex gap-2 py-1">
-        <button @click="selectServer(null)"
-                class="aio-pill whitespace-nowrap"
-                :class="selectedServerId===null ? 'pill-cya shadow-glow' : ''">
-          All (<span x-text="totals.active_connections"></span>)
-        </button>
+    {{-- Quick actions --}}
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <button
+        @click="selectServer(null)"
+        class="aio-pill"
+        :class="selectedServerId===null ? 'pill-cya shadow-glow' : 'bg-white/5'"
+        title="Show all servers"
+      >
+        All
+        <span class="aio-pill ml-1" :class="totals.active_connections>0 ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'">
+          <span x-text="totals.active_connections"></span>
+        </span>
+      </button>
+    </div>
+
+    {{-- Server chips --}}
+    <div class="-mx-1 px-1 overflow-x-auto no-scrollbar">
+      <div class="flex flex-wrap gap-2">
         <template x-for="(meta, sid) in serverMeta" :key="sid">
-          <button @click="selectServer(Number(sid))"
-                  class="aio-pill whitespace-nowrap"
-                  :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : ''">
+          <button
+            @click="selectServer(Number(sid))"
+            class="aio-pill whitespace-nowrap"
+            :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : 'bg-white/5'"
+          >
             <span x-text="meta.name"></span>
             <span class="aio-pill ml-1"
                   :class="(serverUsersCount(Number(sid))>0) ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
@@ -193,18 +140,6 @@
           </button>
         </template>
       </div>
-    </div>
-
-    {{-- Desktop select --}}
-    <div class="hidden sm:block">
-      <select class="w-full bg-transparent border border-white/10 rounded px-3 py-2 text-sm"
-              @change="selectServer($event.target.value || null)"
-              x-init="(() => { try { const saved = localStorage.getItem('vpn.selectedServerId'); if(saved!==null){ $el.value = saved; } } catch {} })()">
-        <option value="">All servers</option>
-        <template x-for="(meta, sid) in serverMeta" :key="sid">
-          <option :value="sid" x-text="meta.name"></option>
-        </template>
-      </select>
     </div>
   </div>
 
@@ -239,13 +174,13 @@
             <tr class="hover:bg-white/5">
               <td class="px-4 py-2">
                 <div class="flex items-center gap-2">
-                  <x-icon name="o-check-circle" class="h-4 w-4 text-[var(--aio-neon)]" />
+                  <span class="h-2 w-2 rounded-full bg-[var(--aio-neon)]"></span>
                   <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
                 </div>
               </td>
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—' "></td>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></td>
               <td class="px-4 py-2">
                 <div class="text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></div>
                 <div class="text-xs muted" x-text="row.connected_fmt ?? ''"></div>
@@ -255,12 +190,8 @@
                 <div class="text-xs muted">↓<span x-text="row.down_mb ?? '0.00'"></span>MB ↑<span x-text="row.up_mb ?? '0.00'"></span>MB</div>
               </td>
               <td class="px-4 py-2">
-                <button
-                  class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-red-400/30 inline-flex items-center gap-1"
-                  @click.prevent="disconnect(row)">
-                  <x-icon name="o-disconnect" class="w-4 h-4" />
-                  Disconnect
-                </button>
+                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
+                        @click.prevent="disconnect(row)">Disconnect</button>
               </td>
             </tr>
           </template>
@@ -278,17 +209,13 @@
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="flex items-center gap-2">
-                <x-icon name="o-check-circle" class="h-4 w-4 text-[var(--aio-neon)]" />
+                <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
                 <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
               </div>
               <div class="text-xs muted" x-text="row.server_name"></div>
             </div>
-            <button
-              class="aio-pill bg-red-500/15 text-red-300 focus:outline-none focus:ring-2 focus:ring-red-400/30 inline-flex items-center gap-1"
-              @click.prevent="disconnect(row)">
-              <x-icon name="o-disconnect" class="w-4 h-4" />
-              Disconnect
-            </button>
+            <button class="aio-pill bg-red-500/15 text-red-300"
+                    @click.prevent="disconnect(row)">Disconnect</button>
           </div>
 
           <div class="mt-3 grid grid-cols-2 gap-3">
@@ -328,31 +255,28 @@ window.vpnDashboard = function () {
     serverMeta: {},
     usersByServer: {},
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
-    prevTotals: { online_users: 0, active_connections: 0, active_servers: 0 },
-    delta: { online_users: 0, active_connections: 0, active_servers: 0 },
+
     selectedServerId: null,
+    showFilters: false,
     lastUpdated: new Date().toLocaleTimeString(),
+
     _pollTimer: null,
     _subscribed: false,
 
     init(meta, seedUsersByServer) {
       this.serverMeta = meta || {};
-      Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
+      // restore persisted UI state
+      try {
+        this.showFilters = localStorage.getItem('vpn.showFilters') === '1';
+        const saved = localStorage.getItem('vpn.selectedServerId');
+        this.selectedServerId = saved === '' || saved === null ? null : Number(saved);
+      } catch {}
 
-      // seed
+      Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
       if (seedUsersByServer) {
         for (const k in seedUsersByServer) this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
       }
-
-      // restore server filter
-      try {
-        const saved = localStorage.getItem('vpn.selectedServerId');
-        if (saved !== null && saved !== '') this.selectedServerId = Number(saved);
-      } catch {}
-
       this.totals = this.computeTotals();
-      this.prevTotals = { ...this.totals };
-      this._updateDeltas();
       this.lastUpdated = new Date().toLocaleTimeString();
 
       this._waitForEcho()
@@ -400,7 +324,6 @@ window.vpnDashboard = function () {
           for (const k in this.serverMeta) norm[+k] = this._normaliseUsers(+k, incoming[k] || []);
           this.usersByServer = norm;
           this.totals = this.computeTotals();
-          this._updateDeltas();
           this.lastUpdated = new Date().toLocaleTimeString();
         }).catch(() => {});
       }, ms);
@@ -417,15 +340,6 @@ window.vpnDashboard = function () {
       return mapped.filter(u => (seen.has(u.__key) ? false : (seen.add(u.__key), true)));
     },
 
-    _updateDeltas() {
-      this.delta = {
-        online_users: this.totals.online_users - this.prevTotals.online_users,
-        active_connections: this.totals.active_connections - this.prevTotals.active_connections,
-        active_servers: this.totals.active_servers - this.prevTotals.active_servers,
-      };
-      this.prevTotals = { ...this.totals };
-    },
-
     handleEvent(e) {
       const sid = Number(e.server_id ?? e.serverId ?? 0);
       if (!sid) return;
@@ -436,7 +350,6 @@ window.vpnDashboard = function () {
 
       this.usersByServer[sid] = this._normaliseUsers(sid, list);
       this.totals = this.computeTotals();
-      this._updateDeltas();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
 
@@ -479,7 +392,7 @@ window.vpnDashboard = function () {
     },
 
     selectServer(id) {
-      this.selectedServerId = (id === '' ? null : (id === null ? null : Number(id)));
+      this.selectedServerId = (id === '' || id === null) ? null : Number(id);
       try { localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? ''); } catch {}
     },
 
@@ -499,7 +412,6 @@ window.vpnDashboard = function () {
 
         this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || []).filter(u => u.username !== row.username);
         this.totals = this.computeTotals();
-        this._updateDeltas();
         alert(data.message || `Disconnected ${row.username}`);
       } catch (e) {
         console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
