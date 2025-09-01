@@ -30,7 +30,8 @@ class DeployApiController extends Controller
             'protocol' => $data['proto'] ?? $server->protocol,
         ])->save();
 
-        Log::info("📡 DeployFacts #{$server->id}", $data);
+        Log::channel('vpn')->info("📡 DeployFacts #{$server->id}", $data);
+
         return response()->json(['ok' => true]);
     }
 
@@ -77,7 +78,6 @@ class DeployApiController extends Controller
             }
 
             if ($shouldLog) {
-                // 👇 quieter: goes only into vpn.log
                 Log::channel('vpn')->debug("[mgmt] {$clients} online: [{$cnList}]");
                 cache()->put($lastKey, 1, 60);
             }
@@ -93,7 +93,7 @@ class DeployApiController extends Controller
             return response()->json(['ok' => true]);
         }
 
-        // Default path for non-mgmt events
+        // non-mgmt events
         $vpn->deployment_status = $data['status'] === 'info'
             ? $vpn->deployment_status
             : $data['status'];
@@ -105,7 +105,7 @@ class DeployApiController extends Controller
         ));
         $vpn->save();
 
-        Log::info("📡 DeployEvent #{$vpn->id}", $data);
+        Log::channel('vpn')->info("📡 DeployEvent #{$vpn->id}", $data);
 
         return response()->json(['ok' => true]);
     }
@@ -128,7 +128,6 @@ class DeployApiController extends Controller
             ]);
         } catch (\Throwable $e) {}
 
-        // 👇 keep these in vpn.log only
         Log::channel('vpn')->debug("[deploy.log] #{$server->id} {$line}");
 
         return response()->json(['ok' => true]);
@@ -152,7 +151,6 @@ class DeployApiController extends Controller
 
         ServerMgmtUpdated::dispatch($server);
 
-        // quieter log
         Log::channel('vpn')->debug("[pushMgmtSnapshot] #{$server->id} online={$server->online_count}");
 
         return response()->json(['ok' => true]);
@@ -189,7 +187,6 @@ class DeployApiController extends Controller
             ]);
         } catch (\Throwable $e) {}
 
-        // quieter log
         Log::channel('vpn')->debug("[pushMgmt] #{$server->id}", $payload);
 
         return response()->json(['ok' => true]);
