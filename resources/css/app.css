@@ -36,6 +36,27 @@
    ========================= */
 @layer components {
   /* ===== Sections ===== */
+  
+  /* Frosted glass surfaces */
+.aio-card,
+.aio-header {
+  @apply rounded-xl border;
+  background-color: rgba(17, 24, 39, 0.55);      /* translucent */
+  border-color: rgba(255, 255, 255, 0.10);
+  -webkit-backdrop-filter: saturate(160%) blur(10px);
+  backdrop-filter: saturate(160%) blur(10px);
+}
+
+/* Slightly stronger card hover (optional) */
+.aio-card:hover {
+  background-color: rgba(17, 24, 39, 0.62);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Divider helper used in your sections/tables */
+.aio-divider {
+  border-color: rgba(255, 255, 255, 0.08);
+}
   .aio-section {
     @apply rounded-2xl border p-5 md:p-6;
     background-color: rgba(17,24,39,.92);
@@ -170,3 +191,11 @@
 .aio-section, .pill-card { pointer-events: auto; }
 .aio-overlay { position: relative; }
 .aio-overlay > * { pointer-events: auto; }
+
+/* Backdrop-filter guard + Safari support */
+@supports ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+  .aio-card, .aio-header {
+    -webkit-backdrop-filter: saturate(160%) blur(10px);
+    backdrop-filter: saturate(160%) blur(10px);
+  }
+}
