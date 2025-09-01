@@ -103,26 +103,26 @@
   </div>
   
     {{-- ========= PACKAGES ========= --}}
-  <div class="space-y-1">
-    <div class="px-3 pt-2 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
-         x-show="!$root.sidebarCollapsed">
-      Packages
-    </div>
-
-    <x-nav-link href="{{ route('admin.packages.index') }}"
-                :active="request()->routeIs('packages.*')"
-                icon="o-archive-box"
-                variant="pup">
-      Manage Packages
-    </x-nav-link>
-
-    <x-nav-link href="{{ route('admin.packages.create') }}"
-                :active="request()->routeIs('packages.create')"
-                icon="o-plus-circle"
-                variant="neon">
-      New Package
-    </x-nav-link>
+<div class="space-y-1">
+  <div class="px-3 pt-2 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
+       x-show="!$root.sidebarCollapsed">
+    Packages
   </div>
+
+  <x-nav-link href="{{ route('admin.packages.index') }}"
+              :active="request()->routeIs('admin.packages.*')"
+              icon="o-archive-box"
+              variant="pup">
+    Manage Packages
+  </x-nav-link>
+
+  <x-nav-link href="{{ route('admin.packages.create') }}"
+              :active="request()->routeIs('admin.packages.create')"
+              icon="o-plus-circle"
+              variant="neon">
+    New Package
+  </x-nav-link>
+</div>
 
   {{-- ========= CREDITS ========= --}}
   @auth
