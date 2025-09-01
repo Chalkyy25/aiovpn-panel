@@ -4,7 +4,7 @@
   </x-slot>
 
   <div class="max-w-2xl mx-auto py-6">
-    <form method="POST" action="{{ route('packages.store') }}" class="space-y-4 aio-card p-6">
+    <form method="POST" action="{{ route('admin.packages.store') }}" class="space-y-4 aio-card p-6">
       @csrf
 
       <div>
