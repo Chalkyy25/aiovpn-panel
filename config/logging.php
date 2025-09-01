@@ -12,9 +12,8 @@ return [
     | Default Log Channel
     |--------------------------------------------------------------------------
     |
-    | This option defines the default log channel that gets used when writing
-    | messages to the logs. The name specified here should match one of the
-    | channels defined in the "channels" array below.
+    | The default channel used when calling Log::info() without specifying
+    | a channel. By default we keep this on "stack" → laravel.log.
     |
     */
 
@@ -24,10 +23,6 @@ return [
     |--------------------------------------------------------------------------
     | Deprecations Log Channel
     |--------------------------------------------------------------------------
-    |
-    | This channel is used to log warnings about deprecated features in PHP
-    | or libraries so you can prepare for upcoming versions.
-    |
     */
 
     'deprecations' => [
@@ -39,25 +34,28 @@ return [
     |--------------------------------------------------------------------------
     | Log Channels
     |--------------------------------------------------------------------------
-    |
-    | Laravel uses Monolog under the hood. Here you may configure your log
-    | channels for different outputs: daily files, Slack, syslog, etc.
-    |
-    | Available Drivers: "single", "daily", "slack", "syslog",
-    |                    "errorlog", "monolog",
-    |                    "custom", "stack"
-    |
     */
 
     'channels' => [
 
-        // 👇 Default stack now writes to both laravel.log AND vpn.log
+        /*
+        |---------------------------------------------------------------
+        | Default application stack
+        |---------------------------------------------------------------
+        | Writes to the normal Laravel log (laravel.log).
+        */
         'stack' => [
             'driver' => 'stack',
             'channels' => ['single'],
             'ignore_exceptions' => false,
         ],
 
+        /*
+        |---------------------------------------------------------------
+        | Laravel single log
+        |---------------------------------------------------------------
+        | Standard app logging.
+        */
         'single' => [
             'driver' => 'single',
             'path'   => storage_path('logs/laravel.log'),
@@ -65,6 +63,11 @@ return [
             'replace_placeholders' => true,
         ],
 
+        /*
+        |---------------------------------------------------------------
+        | Laravel daily rotating log
+        |---------------------------------------------------------------
+        */
         'daily' => [
             'driver' => 'daily',
             'path'   => storage_path('logs/laravel.log'),
@@ -73,15 +76,24 @@ return [
             'replace_placeholders' => true,
         ],
 
-        // 👇 New VPN-specific channel (separate file, rotates daily)
-        // 👇 VPN-specific channel (static single file)
+        /*
+        |---------------------------------------------------------------
+        | VPN-specific channel
+        |---------------------------------------------------------------
+        | Writes only to vpn.log (not daily rotated).
+        */
         'vpn' => [
             'driver' => 'single',
             'path'   => storage_path('logs/vpn.log'),
-            'level'  => env('LOG_LEVEL', 'debug'),
+            'level'  => 'debug',
             'replace_placeholders' => true,
         ],
 
+        /*
+        |---------------------------------------------------------------
+        | Other channels
+        |---------------------------------------------------------------
+        */
         'slack' => [
             'driver' => 'slack',
             'url'    => env('LOG_SLACK_WEBHOOK_URL'),
