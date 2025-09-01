@@ -1,5 +1,5 @@
 {{-- resources/views/components/partials/sidebar.blade.php --}}
-<nav class="px-2 pb-4 space-y-2 text-sm text-[var(--aio-ink)]" aria-label="Sidebar">
+<nav class="sidebar px-2 pb-4 space-y-2 text-sm text-[var(--aio-ink)]" aria-label="Sidebar">
 
   {{-- ========= MAIN ========= --}}
   <div class="space-y-1">
