@@ -148,33 +148,39 @@
   .sidebar .pill-pup  { background: var(--aio-pup);  color:#fff; }
   .sidebar .pill-cya  { background: var(--aio-cya);  color:#fff; }
   
-      /* Active — bright solid + glow */
-.sidebar .nav-pill.active.pill-neon,
-.drawer .nav-pill.active.pill-neon {
-  background: var(--aio-neon) !important;
-  color: #0b0f1a !important;
-  box-shadow: 0 0 10px var(--aio-neon), 0 0 20px var(--aio-neon);
+/* Active — solid brand color + softer glow */
+.sidebar .nav-pill.active,
+.drawer .nav-pill.active {
+  font-weight: 600;
+  color: #0b0f1a; /* dark text for contrast */
+  background: var(--aio-neon); /* fallback, overridden by per-variant */
+  box-shadow: 0 0 6px rgba(255,255,255,.25), 
+              0 0 12px currentColor; /* softer glow */
 }
 
-.sidebar .nav-pill.active.pill-mag,
-.drawer .nav-pill.active.pill-mag {
-  background: var(--aio-mag) !important;
-  color: #fff !important;
-  box-shadow: 0 0 10px var(--aio-mag), 0 0 20px var(--aio-mag);
+/* Per-variant active overrides */
+.sidebar .pill-neon.active,
+.drawer .pill-neon.active {
+  background: var(--aio-neon);
+  box-shadow: 0 0 6px rgba(61,255,127,.4), 0 0 12px rgba(61,255,127,.25);
 }
 
-.sidebar .nav-pill.active.pill-pup,
-.drawer .nav-pill.active.pill-pup {
-  background: var(--aio-pup) !important;
-  color: #fff !important;
-  box-shadow: 0 0 10px var(--aio-pup), 0 0 20px var(--aio-pup);
+.sidebar .pill-cya.active,
+.drawer .pill-cya.active {
+  background: var(--aio-cya);
+  box-shadow: 0 0 6px rgba(59,167,240,.4), 0 0 12px rgba(59,167,240,.25);
 }
 
-.sidebar .nav-pill.active.pill-cya,
-.drawer .nav-pill.active.pill-cya {
-  background: var(--aio-cya) !important;
-  color: #fff !important;
-  box-shadow: 0 0 10px var(--aio-cya), 0 0 20px var(--aio-cya);
+.sidebar .pill-pup.active,
+.drawer .pill-pup.active {
+  background: var(--aio-pup);
+  box-shadow: 0 0 6px rgba(124,77,255,.4), 0 0 12px rgba(124,77,255,.25);
+}
+
+.sidebar .pill-mag.active,
+.drawer .pill-mag.active {
+  background: var(--aio-mag);
+  box-shadow: 0 0 6px rgba(255,47,185,.4), 0 0 12px rgba(255,47,185,.25);
 }
 
   /* Nav-pill helper */
