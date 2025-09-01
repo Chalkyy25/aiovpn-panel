@@ -74,11 +74,11 @@ return [
         ],
 
         // 👇 New VPN-specific channel (separate file, rotates daily)
+        // 👇 VPN-specific channel (static single file)
         'vpn' => [
             'driver' => 'single',
             'path'   => storage_path('logs/vpn.log'),
             'level'  => env('LOG_LEVEL', 'debug'),
-            'days'   => 14,
             'replace_placeholders' => true,
         ],
 
