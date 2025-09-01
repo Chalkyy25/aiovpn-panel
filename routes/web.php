@@ -6,6 +6,7 @@ use App\Models\VpnUser;
 
 // ✅ Controllers
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PackageController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\VpnUserController;
 use App\Http\Controllers\VpnDisconnectController;
@@ -102,11 +103,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         
         //Manage Credits
          Route::get('/credits', ManageCredits::class)->name('credits');
+        Route::resource('/packages', PackageController::class)->name('packages');
 
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
         Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
-
+        
 });
 
 // ============================
