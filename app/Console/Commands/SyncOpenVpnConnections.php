@@ -17,10 +17,9 @@ class SyncOpenVpnConnections extends Command
     protected $signature = 'vpn:sync-connections
         {--server= : Server ID or name (repeatable)}
         {--all : Sync all deployed servers}
-        {--dry : Dry-run (no DB writes)}
-        {--verbose : Extra output}';
+        {--dry : Dry-run (no DB writes)}';
 
-    protected $description = 'Ingest OpenVPN status (v2/v3, /run or /var/log), upsert active sessions, and close stale ones.';
+    protected $description = 'Ingest OpenVPN status, upsert active sessions, and close stale ones.';
 
     public function handle(): int
     {
@@ -31,7 +30,7 @@ class SyncOpenVpnConnections extends Command
         }
 
         $dry = (bool) $this->option('dry');
-        $vrb = (bool) $this->option('verbose');
+        $vrb = $this->output->isVerbose();
 
         foreach ($servers as $server) {
             $this->line("→ {$server->name} ({$server->ip_address})");
@@ -39,7 +38,6 @@ class SyncOpenVpnConnections extends Command
                 [$ssh] = $this->sshLogin($server);
                 if (!$ssh) { $this->error('  SSH login failed.'); continue; }
 
-                // Try /run first, then /var/log (handled inside)
                 $raw = OpenVpnStatusParser::fetchAnyStatus($ssh);
                 if (trim($raw) === '') { $this->warn('  Status empty.'); continue; }
 
@@ -52,7 +50,6 @@ class SyncOpenVpnConnections extends Command
 
                 DB::beginTransaction();
 
-                // Upsert live sessions
                 foreach ($live as $c) {
                     $username = trim((string)($c['username'] ?? ''));
                     if ($username === '') continue;
@@ -81,7 +78,6 @@ class SyncOpenVpnConnections extends Command
                     }
                 }
 
-                // Close stale sessions for this server
                 $liveUsernames = $live->pluck('username')->filter()->unique();
                 $liveIds = $liveUsernames->isNotEmpty()
                     ? VpnUser::whereIn('username', $liveUsernames)->pluck('id')
@@ -90,7 +86,6 @@ class SyncOpenVpnConnections extends Command
                 $stales = VpnUserConnection::where('vpn_server_id', $server->id)
                     ->where('is_connected', true)
                     ->when($liveIds->isNotEmpty(), fn($q) => $q->whereNotIn('vpn_user_id', $liveIds))
-                    ->when($liveIds->isEmpty(), fn($q) => $q) // if none live, close all connected on this server
                     ->get();
 
                 foreach ($stales as $row) {
@@ -140,7 +135,6 @@ class SyncOpenVpnConnections extends Command
         $ssh = new SSH2($host, $port);
         $ssh->setTimeout(8);
 
-        // key first (path or inline)
         if (!empty($server->ssh_key)) {
             $keyMaterial = is_file($server->ssh_key) ? file_get_contents($server->ssh_key) : (string)$server->ssh_key;
             $keyMaterial = preg_replace("/\r\n|\r|\n/", "\n", $keyMaterial);
@@ -150,12 +144,10 @@ class SyncOpenVpnConnections extends Command
             } catch (\Throwable) {}
         }
 
-        // password fallback
         if (!empty($server->ssh_password) && $ssh->login($user, (string)$server->ssh_password)) {
             return [$ssh, null];
         }
 
-        // project default key
         $default = storage_path('app/ssh_keys/id_rsa');
         if (is_readable($default)) {
             try {
