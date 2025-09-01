@@ -51,23 +51,49 @@
       @include('layouts.partials.sidebar')
     </aside>
 
-    {{-- ===== Mobile drawer ===== --}}
-    <div class="md:hidden" x-show="sidebarOpen" x-cloak>
-      <div class="fixed inset-0 bg-gray-900/95">
-        <div class="absolute inset-0 bg-black/30" @click="sidebarOpen=false" aria-hidden="true"></div>
-        <aside class="absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3" role="dialog" aria-modal="true">
-          <div class="h-14 flex items-center justify-between">
-            <span class="font-semibold">AIO VPN</span>
-            <button class="p-2 rounded hover:bg-white/10" @click="sidebarOpen=false" aria-label="Close">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-          @include('layouts.partials.sidebar')
-        </aside>
-      </div>
+    {{-- ===== Mobile drawer (fixed overlay + blurred background) ===== --}}
+<div
+  x-show="sidebarOpen"
+  x-cloak
+  class="fixed inset-0 z-[100] md:hidden"
+  x-transition.opacity
+>
+  {{-- BACKDROP (click to close) --}}
+  <div
+    class="absolute inset-0 bg-gray-900/60 backdrop-blur-md"
+    style="-webkit-backdrop-filter: blur(8px);"  {{-- iOS Safari --}}
+    @click="sidebarOpen = false"
+    aria-hidden="true"
+  ></div>
+
+  {{-- PANEL (stays sharp, sits above the blur) --}}
+  <aside
+    class="absolute left-0 top-0 bottom-0 z-[110] w-72 p-3 aio-card border-r
+           transform transition-transform duration-200 will-change-transform
+           translate-x-0"
+    x-transition:enter="ease-out duration-200"
+    x-transition:enter-start="-translate-x-full"
+    x-transition:enter-end="translate-x-0"
+    x-transition:leave="ease-in duration-150"
+    x-transition:leave-start="translate-x-0"
+    x-transition:leave-end="-translate-x-full"
+    role="dialog" aria-modal="true"
+  >
+    <div class="h-14 flex items-center justify-between">
+      <span class="font-semibold">AIO VPN</span>
+      <button class="p-2 rounded hover:bg-white/10"
+              @click="sidebarOpen=false" aria-label="Close">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
+
+    {{-- Same nav everywhere --}}
+    @include('layouts.partials.sidebar')
+  </aside>
+</div>
 
     {{-- ===== Main ===== --}}
     <div class="flex-1 flex flex-col">
