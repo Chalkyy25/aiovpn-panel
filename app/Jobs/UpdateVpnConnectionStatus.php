@@ -58,7 +58,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         Log::channel('vpn')->info('✅ Hybrid sync completed');
     }
 
-    /* ───────────────────────────────────────────────────────────── */
+    /* ─────────────────────────────────────────────── */
 
     protected function syncOneServer(VpnServer $server): void
     {
@@ -73,7 +73,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $parsed  = OpenVpnStatusParser::parse($raw);
             $clients = $parsed['clients'] ?? [];
 
-            // Broadcast client records
             broadcast(new ServerMgmtEvent(
                 $server->id,
                 now()->toIso8601String(),
@@ -84,7 +83,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
             $usernames = array_column($clients, 'username');
 
-            // Quieter: send to vpn.log
             Log::channel('vpn')->debug("[sync] {$server->name} source={$source} clients=" . count($clients), [
                 'users' => $usernames
             ]);
@@ -99,7 +97,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 ));
             }
 
-            // push snapshot → API
             $this->pushSnapshot($server->id, now(), $clients);
 
         } catch (\Throwable $e) {
@@ -120,7 +117,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             'ssh_user'  => $server->ssh_user ?? 'root',
         ]);
 
-        // Test SSH connectivity
         $testCmd = 'bash -lc ' . escapeshellarg('echo "SSH_TEST_OK"');
         $sshTest = $this->executeRemoteCommand($server, $testCmd);
 
@@ -131,7 +127,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             return ['', 'ssh_failed'];
         }
 
-        // mgmt commands first
         $mgmtCmds = [
             '{ printf "status 3\n"; sleep 1; printf "quit\n"; } | nc -w 10 127.0.0.1 ' . $mgmtPort,
             'echo -e "status 3\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
@@ -146,7 +141,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             }
         }
 
-        // fallback: status file
         foreach (['/run/openvpn/server.status','/etc/openvpn/openvpn-status.log'] as $path) {
             $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
             $res = $this->executeRemoteCommand($server, $cmd);
