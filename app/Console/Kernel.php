@@ -29,12 +29,7 @@ class Kernel extends ConsoleKernel
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        // 2) Sync users — every 2 minutes (odd minutes)
-        $schedule->command('vpn:sync-users')
-            ->cron('1-59/2 * * * *')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo(storage_path('logs/scheduler.log'));
+        // 2) Sync Users
 
         // 3) Sync active connections — every 2 minutes (even minutes)
         $schedule->command('vpn:sync-connections')
