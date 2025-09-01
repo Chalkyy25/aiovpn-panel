@@ -109,13 +109,15 @@
     Packages
   </div>
 
+  {{-- Manage Packages = all package routes EXCEPT create --}}
   <x-nav-link href="{{ route('admin.packages.index') }}"
-              :active="request()->routeIs('admin.packages.*')"
+              :active="request()->routeIs('admin.packages.index') || request()->routeIs('admin.packages.edit')"
               icon="o-archive-box"
               variant="pup">
     Manage Packages
   </x-nav-link>
 
+  {{-- New Package = only the create route --}}
   <x-nav-link href="{{ route('admin.packages.create') }}"
               :active="request()->routeIs('admin.packages.create')"
               icon="o-plus-circle"
