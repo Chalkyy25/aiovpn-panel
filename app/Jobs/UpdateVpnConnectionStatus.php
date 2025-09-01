@@ -26,14 +26,14 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     public function __construct(?int $serverId = null)
     {
         $this->serverId = $serverId;
-        $this->verboseMgmtLog = (bool) (config('app.env') !== 'production'
+        $this->verboseMgmtLog = config('app.env') !== 'production'
             ? true
-            : config('app.vpn_log_verbose', true));
+            : (bool) config('app.vpn_log_verbose', false);
     }
 
     public function handle(): void
     {
-        Log::info('🔄 Hybrid sync: updating VPN connection status' . ($this->serverId ? " (server {$this->serverId})" : ' (fleet)'));
+        Log::info('🔄 VPN sync started' . ($this->serverId ? " (server {$this->serverId})" : ' (fleet)'));
 
         /** @var Collection<int,VpnServer> $servers */
         $servers = VpnServer::query()
@@ -52,7 +52,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $this->syncOneServer($server);
         }
 
-        Log::info('✅ Hybrid sync completed');
+        Log::info('✅ VPN sync completed');
     }
 
     /* ───────────────────────────────────────────────────────────── */
@@ -63,14 +63,15 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             [$raw, $source] = $this->fetchStatusWithSource($server);
 
             if ($raw === '') {
-                Log::warning("🟡 {$server->name}: RAW EMPTY, skipping");
+                Log::warning("🟡 {$server->name}: no status output, skipping");
                 return;
             }
 
             $parsed  = OpenVpnStatusParser::parse($raw);
             $clients = $parsed['clients'] ?? [];
+            $usernames = array_column($clients, 'username');
 
-            // Broadcast full client records
+            // Broadcast
             broadcast(new ServerMgmtEvent(
                 $server->id,
                 now()->toIso8601String(),
@@ -79,24 +80,30 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 $raw
             ));
 
-            // Logging
-            $usernames = array_column($clients, 'username');
-            Log::info("APPEND_LOG: [{$server->name}] ts=" . now()->toIso8601String() .
-                " source={$source} clients=" . count($clients),
-                $usernames
-            );
+            // Throttled logging (state change or every 60s)
+            $stateKey   = "server:{$server->id}:last_state";
+            $logKey     = "server:{$server->id}:last_log";
+            $lastState  = cache()->get($stateKey);
+            $state      = count($clients) . '|' . implode(',', $usernames);
 
-            if ($this->verboseMgmtLog) {
-                Log::info(sprintf(
-                    'APPEND_LOG: [mgmt] ts=%s source=%s clients=%d [%s]',
-                    now()->toIso8601String(),
-                    $source,
-                    count($clients),
-                    implode(',', $usernames)
-                ));
+            $shouldLog = false;
+            if ($state !== $lastState) {
+                $shouldLog = true;
+                cache()->put($stateKey, $state, 300);
+            } elseif (!cache()->has($logKey)) {
+                $shouldLog = true;
             }
 
-            // snapshot → API
+            if ($shouldLog) {
+                Log::channel('vpn')->info("📊 {$server->name}: " . count($clients) . " clients", $usernames);
+                cache()->put($logKey, 1, 60);
+            }
+
+            if ($this->verboseMgmtLog) {
+                Log::channel('vpn')->debug("{$server->name}: mgmt source={$source}, raw_length=" . strlen($raw));
+            }
+
+            // Push snapshot → API
             $this->pushSnapshot($server->id, now(), $clients);
 
         } catch (\Throwable $e) {
@@ -111,26 +118,17 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     {
         $mgmtPort = (int)($server->mgmt_port ?? 7505);
 
-        Log::info("🔍 {$server->name}: Starting status fetch", [
-            'mgmt_port' => $mgmtPort,
-            'ip' => $server->ip_address,
-            'ssh_user' => $server->ssh_user ?? 'root',
-            'status_log_path' => $server->status_log_path ?? 'null'
-        ]);
+        Log::debug("{$server->name}: fetching status via mgmt port {$mgmtPort}");
 
-        // --- Test SSH connectivity first ---
+        // --- Test SSH connectivity
         $testCmd = 'bash -lc ' . escapeshellarg('echo "SSH_TEST_OK"');
         $sshTest = $this->executeRemoteCommand($server, $testCmd);
-
         if (($sshTest['status'] ?? 1) !== 0) {
-            Log::error("❌ {$server->name}: SSH connectivity failed", [
-                'exit_code' => $sshTest['status'] ?? 'unknown',
-                'output' => $sshTest['output'] ?? []
-            ]);
+            Log::error("❌ {$server->name}: SSH connectivity failed");
             return ['', 'ssh_failed'];
         }
 
-        // try mgmt first → fallback to status files
+        // try mgmt
         $mgmtCmds = [
             '{ printf "status 3\n"; sleep 1; printf "quit\n"; } | nc -w 10 127.0.0.1 ' . $mgmtPort,
             'echo -e "status 3\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
@@ -140,47 +138,38 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
             $out = trim(implode("\n", $res['output'] ?? []));
             if (($res['status'] ?? 1) === 0 && str_contains($out, "CLIENT_LIST")) {
-                Log::info("📡 {$server->name}: mgmt responded (" . strlen($out) . " bytes)");
+                Log::debug("{$server->name}: mgmt responded");
                 return [$out, "mgmt:{$mgmtPort}"];
             }
         }
 
-        // fallback files
+        // fallback to status files
         foreach (['/run/openvpn/server.status','/etc/openvpn/openvpn-status.log'] as $path) {
             $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
             $res = $this->executeRemoteCommand($server, $cmd);
             $data = trim(implode("\n", $res['output'] ?? []));
             if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__') {
-                Log::info("📄 {$server->name}: using status file {$path} (" . strlen($data) . " bytes)");
+                Log::debug("{$server->name}: using status file {$path}");
                 return [$data, $path];
             }
         }
 
-        Log::error("❌ {$server->name}: All methods failed - no mgmt or status file available");
+        Log::error("❌ {$server->name}: no mgmt or status file available");
         return ['', 'none'];
     }
 
-    /**
-     * Push snapshot to the API instead of direct DB/broadcast.
-     */
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $clients): void
     {
-        Log::info('🔊 pushing mgmt.update via API', [
-            'server' => $serverId,
-            'ts'     => $ts->format(DATE_ATOM),
-            'count'  => count($clients),
-            'users'  => $clients,
-        ]);
-
         try {
             Http::withToken(config('services.panel.token'))
                 ->acceptJson()
                 ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
                     'status' => 'mgmt',
                     'ts'     => $ts->format(DATE_ATOM),
-                    'users'  => $clients, // send full client details
+                    'users'  => $clients,
                 ])
                 ->throw();
+
         } catch (\Throwable $e) {
             Log::error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
         }
