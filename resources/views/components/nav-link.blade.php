@@ -9,7 +9,6 @@
 ])
 
 @php
-  // One source of truth for tones
   $tones = [
     'neon'  => [
       'ring'   => 'ring-[rgba(61,255,127,.28)]',
@@ -44,16 +43,11 @@
   ];
   $t = $tones[$variant] ?? $tones['pup'];
 
-  // Fixed, consistent pill style (shape, spacing, ring, shadow)
   $base = "nav-pill flex items-center gap-2 w-full px-3 py-2 rounded-xl
            ring-1 {$t['ring']} shadow-[inset_0_0_0_1px_rgba(255,255,255,.06)]
            transition-colors duration-150";
 
-  $state = $active
-      ? "{$t['active']} shadow-glow font-semibold"
-      : "{$t['idle']}";
-
-  // We still allow attributes->merge, but avoid passing extra hover/active pill classes from callers.
+  $state = $active ? "{$t['active']} shadow-glow font-semibold" : "{$t['idle']}";
 @endphp
 
 <a href="{{ $href }}" {{ $attributes->merge(['class' => "$base $state"]) }}>
@@ -65,5 +59,5 @@
     <span class="truncate" x-show="!$root.sidebarCollapsed">{{ $slot }}</span>
   @else
     <span class="truncate">{{ $slot }}</span>
-  @endif>
+  @endif
 </a>
