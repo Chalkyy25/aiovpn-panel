@@ -1,18 +1,17 @@
-{{-- resources/views/components/responsive-nav-link.blade.php --}}
 @props([
-    'active' => false,
-    'icon' => null,
-    'variant' => 'pup',      {{-- neon | mag | pup | cya | slate --}}
-    'collapseAware' => false, {{-- mobile drawer never collapses, so false --}}
+    'href'    => '#',
+    'active'  => false,
+    'icon'    => null,
+    'variant' => 'pup',
 ])
 
 <x-nav-link
-    :href="$attributes->get('href')"
+    :href="$href"
     :active="$active"
     :icon="$icon"
     :variant="$variant"
-    :collapse-aware="$collapseAware"
-    {{ $attributes->except(['href']) }}
+    :collapse-aware="false"
+    {{ $attributes->class('block') }}
 >
     {{ $slot }}
 </x-nav-link>
