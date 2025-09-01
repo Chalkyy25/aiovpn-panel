@@ -147,6 +147,10 @@
   .sidebar .pill-mag  { background: var(--aio-mag);  color:#fff; }
   .sidebar .pill-pup  { background: var(--aio-pup);  color:#fff; }
   .sidebar .pill-cya  { background: var(--aio-cya);  color:#fff; }
+  
+  .sidebar .nav-pill.active {
+  box-shadow: 0 0 8px currentColor, 0 0 16px rgba(255,255,255,.15);
+}
 
   /* Nav-pill helper */
   .nav-pill {
