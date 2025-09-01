@@ -58,7 +58,7 @@ class DeployEventController extends Controller
         $clientCount = $data['clients'] ?? count($clients);
 
         // ── Log ─────────────────────────────────────────────
-        Log::info(sprintf(
+        Log::channel('vpn')->debug(sprintf(
             'APPEND_LOG: [%s] ts=%s server=%d clients=%d [%s]',
             $status,
             $ts,
@@ -66,7 +66,6 @@ class DeployEventController extends Controller
             $clientCount,
             implode(',', array_column($clients, 'username'))
         ));
-
         if ($status !== 'mgmt') {
             return response()->json(['ok' => true]);
         }
