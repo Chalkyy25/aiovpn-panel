@@ -23,38 +23,45 @@
   <div class="min-h-screen flex bg-[var(--aio-bg)] text-[var(--aio-ink)]">
 
     {{-- DESKTOP SIDEBAR --}}
-    <aside class="hidden md:flex md:flex-col aio-card border-r transition-[width] duration-200"
-           :class="sidebarCollapsed ? 'md:w-20' : 'md:w-64'">
-      <div class="h-16 flex items-center justify-between px-3">
-        <div class="flex items-center gap-2 overflow-hidden">
-          <x-application-logo type="mark" class="w-8 h-8 shrink-0"/>
-          <span x-show="!sidebarCollapsed" class="font-bold truncate">AIO VPN</span>
-        </div>
-        <button class="hidden md:inline-flex p-2 rounded hover:bg-white/10"
-                @click="toggleCollapse()" :aria-expanded="!sidebarCollapsed">
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  :d="sidebarCollapsed ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'"/>
-          </svg>
-        </button>
-      </div>
-      @include('layouts.partials.sidebar')
-    </aside>
+<aside class="sidebar hidden md:flex md:flex-col aio-card border-r transition-[width] duration-200"
+       :class="sidebarCollapsed ? 'md:w-20' : 'md:w-64'"
+       aria-label="Main Navigation">
 
-    {{-- MOBILE DRAWER (overlay) --}}
+  {{-- Header (logo + collapse button) --}}
+  <div class="h-16 flex items-center justify-between px-3">
+    <div class="flex items-center gap-2 overflow-hidden">
+      <x-application-logo type="mark" class="w-8 h-8 shrink-0"/>
+      <span x-show="!sidebarCollapsed" class="font-bold truncate">AIO VPN</span>
+    </div>
+    <button class="hidden md:inline-flex p-2 rounded hover:bg-white/10"
+            @click="toggleCollapse()" :aria-expanded="!sidebarCollapsed"
+            aria-label="Toggle sidebar">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              :d="sidebarCollapsed ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'"/>
+      </svg>
+    </button>
+  </div>
+
+  {{-- Nav links --}}
+  @include('layouts.partials.sidebar')
+</aside>
+
+
+{{-- MOBILE DRAWER (overlay) --}}
 <template x-teleport="body">
   <div x-show="sidebarOpen" x-cloak
        class="fixed inset-0 z-[100]"
        @keydown.escape.window="sidebarOpen=false"
        x-transition.opacity>
-       
-    {{-- Dim/blur background layer --}}
+
+    {{-- Dim/blur background --}}
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
          @click="sidebarOpen=false"
          aria-hidden="true"></div>
 
     {{-- Drawer panel --}}
-    <aside class="drawer absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3 z-[101] 
+    <aside class="sidebar drawer absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3 z-[101] 
                    overflow-y-auto"
            x-transition:enter="transform transition ease-out duration-200"
            x-transition:enter-start="-translate-x-full"
@@ -77,9 +84,8 @@
         </button>
       </div>
 
-      {{-- Sidebar navigation content --}}
+      {{-- Nav links (same partial as desktop) --}}
       @include('layouts.partials.sidebar')
-
     </aside>
   </div>
 </template>
