@@ -148,8 +148,25 @@
   .sidebar .pill-pup  { background: var(--aio-pup);  color:#fff; }
   .sidebar .pill-cya  { background: var(--aio-cya);  color:#fff; }
   
-  .sidebar .nav-pill.active {
-  box-shadow: 0 0 8px currentColor, 0 0 16px rgba(255,255,255,.15);
+  .sidebar .nav-pill {
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  color: var(--aio-ink);
+  transition: all .2s ease;
+}
+
+/* Hover (only subtle, not glowing) */
+.sidebar .nav-pill:hover:not(.active) {
+  background: rgba(255,255,255,.1);
+  border-color: rgba(255,255,255,.18);
+}
+
+/* Active — bright solid + glow */
+.sidebar .nav-pill.active {
+  font-weight: 600;
+  background: currentColor; /* takes variant (neon, pup, mag, cya) */
+  color: #0b0f1a; /* ensure text is readable */
+  box-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
 }
 
   /* Nav-pill helper */
