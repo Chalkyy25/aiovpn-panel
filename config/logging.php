@@ -54,7 +54,7 @@ return [
         // 👇 Default stack now writes to both laravel.log AND vpn.log
         'stack' => [
             'driver' => 'stack',
-            'channels' => ['vpn'],
+            'channels' => ['single'],
             'ignore_exceptions' => false,
         ],
 
