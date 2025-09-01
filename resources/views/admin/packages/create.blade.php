@@ -35,7 +35,7 @@
                 <option value="1" {{ old('max_connections') == 1 ? 'selected' : '' }}>1 Device</option>
                 <option value="2" {{ old('max_connections') == 2 ? 'selected' : '' }}>2 Devices</option>
                 <option value="3" {{ old('max_connections') == 3 ? 'selected' : '' }}>3 Devices</option>
-                <option value="5" {{ old('max_connections') == 5 ? 'selected' : '' }}>5 Devices</option>
+                <option value="6" {{ old('max_connections') == 5 ? 'selected' : '' }}>6 Devices</option>
                 <option value="10" {{ old('max_connections') == 10 ? 'selected' : '' }}>10 Devices</option>
                 <option value="0" {{ old('max_connections') == 0 ? 'selected' : '' }}>Unlimited</option>
             </select>
