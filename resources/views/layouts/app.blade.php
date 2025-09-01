@@ -42,38 +42,47 @@
     </aside>
 
     {{-- MOBILE DRAWER (overlay) --}}
-    <template x-teleport="body">
-      <div x-show="sidebarOpen" x-cloak
-           class="fixed inset-0 z-[100]"
-           @keydown.escape.window="sidebarOpen=false"
-           x-transition.opacity>
-        {{-- the dim/blur layer --}}
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
-             @click="sidebarOpen=false" aria-hidden="true"></div>
+<template x-teleport="body">
+  <div x-show="sidebarOpen" x-cloak
+       class="fixed inset-0 z-[100]"
+       @keydown.escape.window="sidebarOpen=false"
+       x-transition.opacity>
+       
+    {{-- Dim/blur background layer --}}
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+         @click="sidebarOpen=false"
+         aria-hidden="true"></div>
 
-        {{-- the actual drawer --}}
-        <aside class="absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3 z-[101]
-                       overflow-y-auto"
-               x-transition:enter="transform transition ease-out duration-200"
-               x-transition:enter-start="-translate-x-full"
-               x-transition:enter-end="translate-x-0"
-               x-transition:leave="transform transition ease-in duration-150"
-               x-transition:leave-start="translate-x-0"
-               x-transition:leave-end="-translate-x-full"
-               role="dialog" aria-modal="true">
-          <div class="h-14 flex items-center justify-between">
-            <span class="font-semibold">AIO VPN</span>
-            <button class="p-2 rounded hover:bg-white/10" @click="sidebarOpen=false" aria-label="Close">
-              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M6 18L18 6M6 6l12 12"/>
-              </svg>
-            </button>
-          </div>
-          @include('layouts.partials.sidebar')
-        </aside>
+    {{-- Drawer panel --}}
+    <aside class="drawer absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3 z-[101] 
+                   overflow-y-auto"
+           x-transition:enter="transform transition ease-out duration-200"
+           x-transition:enter-start="-translate-x-full"
+           x-transition:enter-end="translate-x-0"
+           x-transition:leave="transform transition ease-in duration-150"
+           x-transition:leave-start="translate-x-0"
+           x-transition:leave-end="-translate-x-full"
+           role="dialog" aria-modal="true">
+
+      {{-- Drawer header --}}
+      <div class="h-14 flex items-center justify-between">
+        <span class="font-semibold">AIO VPN</span>
+        <button class="p-2 rounded hover:bg-white/10"
+                @click="sidebarOpen=false"
+                aria-label="Close">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
       </div>
-    </template>
+
+      {{-- Sidebar navigation content --}}
+      @include('layouts.partials.sidebar')
+
+    </aside>
+  </div>
+</template>
 
     {{-- MAIN COLUMN --}}
     <div class="flex-1 flex flex-col min-w-0">
