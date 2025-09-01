@@ -103,7 +103,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         
         //Manage Credits
          Route::get('/credits', ManageCredits::class)->name('credits');
-        Route::resource('/packages', PackageController::class)->name('packages');
+        Route::resource('/packages', PackageController::class);
 
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
