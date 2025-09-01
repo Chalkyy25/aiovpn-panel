@@ -109,14 +109,14 @@
       Packages
     </div>
 
-    <x-nav-link href="{{ route('packages.index') }}"
+    <x-nav-link href="{{ route('admin.packages.index') }}"
                 :active="request()->routeIs('packages.*')"
                 icon="o-archive-box"
                 variant="pup">
       Manage Packages
     </x-nav-link>
 
-    <x-nav-link href="{{ route('packages.create') }}"
+    <x-nav-link href="{{ route('admin.packages.create') }}"
                 :active="request()->routeIs('packages.create')"
                 icon="o-plus-circle"
                 variant="neon">
