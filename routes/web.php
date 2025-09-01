@@ -86,6 +86,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         // Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
+        
+        Route::resource('packages', PackageController::class);
 
         // VPN Users (global list)
         Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
@@ -103,7 +105,6 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         
         //Manage Credits
          Route::get('/credits', ManageCredits::class)->name('credits');
-        Route::resource('/packages', PackageController::class);
 
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
