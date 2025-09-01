@@ -6,7 +6,7 @@ use App\Models\VpnUser;
 
 // ✅ Controllers
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\PackageController;
+use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\VpnUserController;
 use App\Http\Controllers\VpnDisconnectController;
