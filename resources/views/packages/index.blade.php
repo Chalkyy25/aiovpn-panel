@@ -4,7 +4,7 @@
   </x-slot>
 
   <div class="max-w-4xl mx-auto py-6 space-y-4">
-    <a href="{{ route('packages.create') }}" class="btn">+ New Package</a>
+    <a href="{{ route('admin.packages.create') }}" class="btn">+ New Package</a>
 
     <div class="aio-card overflow-x-auto">
       <table class="min-w-full text-sm table-dark">
