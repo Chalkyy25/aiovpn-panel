@@ -46,9 +46,9 @@
   // Shared base styles
   $base = "nav-pill flex items-center gap-2 w-full px-3 py-2 rounded-xl
            ring-1 {$tone['ring']} shadow-[inset_0_0_0_1px_rgba(255,255,255,.06)]
-           transition-colors duration-150";
+           transition-all duration-200";
 
-  // Add variant + active marker
+  // Final classes: add "active" marker when active
   $classes = $active
       ? "$base {$tone['active']} active font-semibold"
       : "$base {$tone['idle']}";
