@@ -33,7 +33,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
     public function handle(): void
     {
-        Log::info('🔄 Hybrid sync: updating VPN connection status ' .
+        Log::channel('vpn')->info('🔄 Hybrid sync: updating VPN connection status ' .
             ($this->serverId ? "(server {$this->serverId})" : '(fleet)')
         );
 
@@ -44,7 +44,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             ->get();
 
         if ($servers->isEmpty()) {
-            Log::warning($this->serverId
+            Log::channel('vpn')->warning($this->serverId
                 ? "⚠️ No VPN server found with ID {$this->serverId}"
                 : "⚠️ No succeeded VPN servers found."
             );
@@ -55,7 +55,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $this->syncOneServer($server);
         }
 
-        Log::info('✅ Hybrid sync completed');
+        Log::channel('vpn')->info('✅ Hybrid sync completed');
     }
 
     /* ───────────────────────────────────────────────────────────── */
@@ -66,7 +66,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             [$raw, $source] = $this->fetchStatusWithSource($server);
 
             if ($raw === '') {
-                Log::warning("🟡 {$server->name}: RAW EMPTY, skipping");
+                Log::channel('vpn')->warning("🟡 {$server->name}: RAW EMPTY, skipping");
                 return;
             }
 
@@ -103,7 +103,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $this->pushSnapshot($server->id, now(), $clients);
 
         } catch (\Throwable $e) {
-            Log::error("❌ {$server->name}: sync failed – {$e->getMessage()}");
+            Log::channel('vpn')->error("❌ {$server->name}: sync failed – {$e->getMessage()}");
             if ($this->strictOfflineOnMissing) {
                 $this->pushSnapshot($server->id, now(), []);
             }
@@ -125,7 +125,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         $sshTest = $this->executeRemoteCommand($server, $testCmd);
 
         if (($sshTest['status'] ?? 1) !== 0) {
-            Log::error("❌ {$server->name}: SSH connectivity failed", [
+            Log::channel('vpn')->error("❌ {$server->name}: SSH connectivity failed", [
                 'exit_code' => $sshTest['status'] ?? 'unknown',
             ]);
             return ['', 'ssh_failed'];
@@ -157,7 +157,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             }
         }
 
-        Log::error("❌ {$server->name}: All methods failed - no mgmt or status file available");
+        Log::channel('vpn')->error("❌ {$server->name}: All methods failed - no mgmt or status file available");
         return ['', 'none'];
     }
 
@@ -176,7 +176,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             Log::channel('vpn')->debug("[pushSnapshot] #{$serverId} sent " . count($clients) . " clients");
 
         } catch (\Throwable $e) {
-            Log::error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
+            Log::channel('vpn')->error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
         }
     }
 }
