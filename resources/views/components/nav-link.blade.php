@@ -1,33 +1,33 @@
 @props([
-    'href'           => '#',
-    'active'         => false,   // route match will override this
-    'icon'           => null,
+    'href'          => '#',
+    'active'        => false,   // route match overrides this
+    'icon'          => null,
     // neon | mag | pup | cya | slate
-    'variant'        => 'pup',
-    'collapseAware'  => true,
+    'variant'       => 'pup',
+    'collapseAware' => true,
 ])
 
 @php
   $tones = [
-    'neon'  => [
+    'neon' => [
       'ring'   => 'ring-[rgba(61,255,127,.28)]',
       'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
       'active' => 'pill-neon',
       'icon'   => 'text-[var(--aio-neon)]',
     ],
-    'mag'   => [
+    'mag' => [
       'ring'   => 'ring-[rgba(255,47,185,.28)]',
       'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
       'active' => 'pill-mag',
       'icon'   => 'text-[var(--aio-mag)]',
     ],
-    'pup'   => [
+    'pup' => [
       'ring'   => 'ring-[rgba(124,77,255,.28)]',
       'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
       'active' => 'pill-pup',
       'icon'   => 'text-[var(--aio-pup)]',
     ],
-    'cya'   => [
+    'cya' => [
       'ring'   => 'ring-[rgba(59,167,240,.28)]',
       'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
       'active' => 'pill-cya',
@@ -40,25 +40,26 @@
       'icon'   => 'text-[var(--aio-sub)]',
     ],
   ];
-  $t = $tones[$variant] ?? $tones['pup'];
 
-  // Always include nav-pill + tone ring
+  $tone = $tones[$variant] ?? $tones['pup'];
+
+  // Shared base styles
   $base = "nav-pill flex items-center gap-2 w-full px-3 py-2 rounded-xl
-           ring-1 {$t['ring']} shadow-[inset_0_0_0_1px_rgba(255,255,255,.06)]
+           ring-1 {$tone['ring']} shadow-[inset_0_0_0_1px_rgba(255,255,255,.06)]
            transition-colors duration-150";
 
-  // Add "active" class so CSS .sidebar .nav-pill.active kicks in
+  // Add variant + active marker
   $classes = $active
-      ? "$base {$t['active']} active font-semibold"
-      : "$base {$t['idle']}";
+      ? "$base {$tone['active']} active font-semibold"
+      : "$base {$tone['idle']}";
 @endphp
 
 <a href="{{ $href }}" {{ $attributes->merge(['class' => $classes]) }}>
-  @if($icon)
-    <x-icon :name="$icon" class="w-5 h-5 shrink-0 {{ $t['icon'] }}" />
+  @if ($icon)
+    <x-icon :name="$icon" class="w-5 h-5 shrink-0 {{ $tone['icon'] }}" />
   @endif
 
-  @if($collapseAware)
+  @if ($collapseAware)
     <span class="truncate" x-show="!$root.sidebarCollapsed">{{ $slot }}</span>
   @else
     <span class="truncate">{{ $slot }}</span>
