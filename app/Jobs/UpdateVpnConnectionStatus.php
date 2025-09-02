@@ -117,7 +117,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         'ssh_user'  => $server->ssh_user ?? 'root',
     ]);
 
-    // --- Test SSH connectivity first
+    // --- Test SSH connectivity first ---
     $testCmd = 'bash -lc ' . escapeshellarg('echo "SSH_TEST_OK"');
     $sshTest = $this->executeRemoteCommand($server, $testCmd);
 
@@ -128,37 +128,40 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         return ['', 'ssh_failed'];
     }
 
-    // --- Try mgmt interface (3 attempts: robust → normal → plain)
+    // --- Try mgmt interface first ---
     $mgmtCmds = [
-        '{ printf "status 3\n"; sleep 1; printf "quit\n"; } | nc -w 5 127.0.0.1 ' . $mgmtPort, // best
-        'echo -e "status 3\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,                           // fallback
-        'echo -e "status\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,                             // last resort
+        '( printf "status 3\n"; sleep 1; printf "quit\n" ) | nc -w 5 127.0.0.1 ' . $mgmtPort,
+        'echo -e "status 3\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
+        'echo -e "status\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
     ];
 
     foreach ($mgmtCmds as $cmd) {
         $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
         $out = trim(implode("\n", $res['output'] ?? []));
         if (($res['status'] ?? 1) === 0 && str_contains($out, "CLIENT_LIST")) {
-            Log::channel('vpn')->debug("📡 {$server->name}: mgmt responded (" . strlen($out) . " bytes)");
+            Log::channel('vpn')->debug("📡 {$server->name}: mgmt responded (" . strlen($out) . " bytes)", [
+                'preview' => substr($out, 0, 200) . '...',
+            ]);
             return [$out, "mgmt:{$mgmtPort}"];
         }
     }
 
-    // --- Fallback: status log files
-    foreach (['/run/openvpn/server.status', '/etc/openvpn/openvpn-status.log'] as $path) {
+    // --- Fallback: status log files ---
+    foreach (['/run/openvpn/server.status','/etc/openvpn/openvpn-status.log'] as $path) {
         $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
         $res = $this->executeRemoteCommand($server, $cmd);
         $data = trim(implode("\n", $res['output'] ?? []));
         if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__') {
-            Log::channel('vpn')->debug("📄 {$server->name}: using status file {$path} (" . strlen($data) . " bytes)");
+            Log::channel('vpn')->debug("📄 {$server->name}: using status file {$path} (" . strlen($data) . " bytes)", [
+                'preview' => substr($data, 0, 200) . '...',
+            ]);
             return [$data, $path];
         }
     }
 
-    Log::channel('vpn')->warning("⚠️ {$server->name}: All methods failed — no mgmt or status file available");
+    Log::channel('vpn')->error("❌ {$server->name}: All methods failed - no mgmt or status file available");
     return ['', 'none'];
 }
-
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $clients): void
     {
         try {
