@@ -125,6 +125,36 @@ class VpnDashboard extends Component
             'totals'        => $totals,
         ];
     }
+    
+    public function disconnectUser(int $serverId, string $username): void
+{
+    try {
+        $resp = \Http::withToken(csrf_token()) // not really needed if same app, but safe
+            ->post(route('admin.servers.disconnect', $serverId), [
+                'username' => $username,
+            ]);
+
+        if ($resp->successful()) {
+            $this->dispatchBrowserEvent('notify', [
+                'type' => 'success',
+                'message' => "Disconnected {$username} from server #{$serverId}"
+            ]);
+        } else {
+            $this->dispatchBrowserEvent('notify', [
+                'type' => 'error',
+                'message' => "Failed to disconnect {$username}"
+            ]);
+        }
+    } catch (\Throwable $e) {
+        $this->dispatchBrowserEvent('notify', [
+            'type' => 'error',
+            'message' => "Error disconnecting {$username}: " . $e->getMessage()
+        ]);
+    }
+
+    // Refresh snapshot so table updates
+    $this->render();
+}
 
     /* ------------------------------- Render ------------------------------ */
 
