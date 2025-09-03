@@ -426,26 +426,45 @@ window.vpnDashboard = function () {
     },
 
     async disconnect(row) {
-      if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
-      try {
-        const res = await fetch('{{ route('admin.vpn.disconnect') }}', {
-          method: 'POST',
-          headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username: row.username, server_id: row.server_id }),
-        });
-        let data; try { data = await res.json(); } catch { data = { message: await res.text() }; }
-        if (!res.ok) throw new Error(Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error'));
+  if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
-        this.usersByServer[row.server_id] = (this.usersByServer[row.server_id] || []).filter(u => u.username !== row.username);
-        this.totals = this.computeTotals();
-        alert(data.message || `Disconnected ${row.username}`);
-      } catch (e) {
-        console.error(e); alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
-      }
-    },
+  try {
+    const res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: row.connection_id, // mgmt client id (more reliable)
+      }),
+    });
+
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      data = { message: await res.text() };
+    }
+
+    if (!res.ok) {
+      throw new Error(
+        Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error')
+      );
+    }
+
+    // Remove user from dashboard UI
+    this.usersByServer[row.server_id] =
+      (this.usersByServer[row.server_id] || []).filter(u => u.username !== row.username);
+
+    this.totals = this.computeTotals();
+
+    alert(data.message || `Disconnected ${row.username}`);
+  } catch (e) {
+    console.error(e);
+    alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
+  }
+},
   };
 };
 </script>
