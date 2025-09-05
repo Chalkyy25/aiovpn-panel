@@ -895,6 +895,3 @@ window.vpnDashboard = function () {
   };
 };
 </script>
-  };
-};
-</script>
