@@ -24,7 +24,11 @@ class VpnDisconnectController extends Controller
         $mgmtPort = (int)($server->mgmt_port ?? 7505);
 
         // Mgmt disconnect command
-        $cmd = sprintf('echo -e "kill %d\nquit\n" | nc -w 3 127.0.0.1 %d', $clientId, $mgmtPort);
+        $cmd = sprintf(
+            'echo -e "kill %d\nquit\n" | nc -w 5 127.0.0.1 %d',
+            $clientId,
+            $mgmtPort
+        );
 
         $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
         $success = ($res['status'] ?? 1) === 0;
@@ -32,7 +36,10 @@ class VpnDisconnectController extends Controller
         if ($success) {
             Log::channel('vpn')->info("💀 Disconnected client_id={$clientId} on {$server->name}");
         } else {
-            Log::channel('vpn')->warning("⚠️ Failed to disconnect client_id={$clientId} on {$server->name}", $res);
+            Log::channel('vpn')->warning(
+                "⚠️ Failed to disconnect client_id={$clientId} on {$server->name}",
+                $res
+            );
         }
 
         return response()->json([
@@ -40,8 +47,8 @@ class VpnDisconnectController extends Controller
             'server_id' => $server->id,
             'client_id' => $clientId,
             'status'    => $success ? 'disconnected' : 'failed',
-            'output'    => $res['output'] ?? [],
-            'stderr'    => $res['stderr'] ?? [],
+            'output'    => array_filter($res['output'] ?? []),
+            'stderr'    => array_filter($res['stderr'] ?? []),
         ]);
     }
 }
