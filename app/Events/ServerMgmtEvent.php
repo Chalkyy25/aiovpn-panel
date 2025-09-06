@@ -15,66 +15,83 @@ class ServerMgmtEvent implements ShouldBroadcastNow
     public int $serverId;
     public string $ts;
 
-    public int $clients = 0;          // always present
-    public string $cnList = '';       // always present
-    public array $users = [];         // always present
+    public int $clients = 0;     // always present
+    public string $cnList = '';  // always present
+    /** @var array<int,array> */
+    public array $users = [];    // always present
     public string $raw = '';
 
     /**
-     * Constructor is flexible:
-     *  - If 3rd arg is array → treat as users[]
-     *  - If 3rd arg is int   → treat as client count
+     * $usersOrCount can be:
+     *  - array of usernames: ["alice", "bob"]
+     *  - array of objects:   [{ username, client_ip, virtual_ip, connected_at, bytes_in/out, ... }]
+     *  - int count (legacy) with optional $cnList string "alice,bob"
      */
     public function __construct(
         int $serverId,
         string $ts,
-        $usersOrCount = [],
+        array|int $usersOrCount = [],
         ?string $cnList = null,
         ?string $raw = null
     ) {
         $this->serverId = $serverId;
         $this->ts       = $ts;
+        $this->raw      = (string)($raw ?? '');
 
         if (is_array($usersOrCount)) {
-            // ✅ Modern usage: pass array of usernames
+            // Accept ["alice","bob"] OR [{...}]
             $this->users = collect($usersOrCount)->map(function ($u) {
-    return [
-        'username'        => $u['username'] ?? '',
-        'client_ip'       => $u['client_ip'] ?? null,
-        'virtual_ip'      => $u['virtual_ip'] ?? null,
-        'connected_at'    => $u['connected_at'] ?? null,
-        'bytes_received'  => $u['bytes_received'] ?? 0,
-        'bytes_sent'      => $u['bytes_sent'] ?? 0,
-        'connected_fmt'   => $u['connected_fmt'] ?? null,
-        'connected_human' => $u['connected_human'] ?? null,
-        'formatted_bytes' => $u['formatted_bytes'] ?? '0 MB',
-    ];
-})->all();
+                if (is_string($u)) {
+                    $u = ['username' => $u];
+                }
+
+                // Normalise to the dashboard shape (keep sensible fallbacks)
+                return [
+                    'connection_id' => $u['connection_id'] ?? null,
+                    'username'      => $u['username'] ?? ($u['cn'] ?? 'unknown'),
+                    'client_ip'     => $u['client_ip'] ?? null,
+                    'virtual_ip'    => $u['virtual_ip'] ?? null,
+                    // ISO8601 strongly recommended
+                    'connected_at'  => $u['connected_at'] ?? null,
+
+                    // Normalise bytes_* key names -> bytes_in / bytes_out
+                    'bytes_in'      => (int)($u['bytes_in'] ?? $u['bytesReceived'] ?? $u['bytes_received'] ?? 0),
+                    'bytes_out'     => (int)($u['bytes_out'] ?? $u['bytesSent'] ?? $u['bytes_sent'] ?? 0),
+
+                    // Optional (Alpine can also derive from meta map)
+                    'server_name'   => $u['server_name'] ?? null,
+                ];
+            })->values()->all();
 
             $this->clients = count($this->users);
-            $this->cnList  = $cnList ?: implode(',', array_column($this->users, 'username'));
+            $names = array_map(fn ($r) => $r['username'] ?? '', $this->users);
+            $this->cnList = $cnList ?: implode(',', array_filter($names));
         } else {
-            // ✅ Legacy: pass int count
-            $this->clients = (int) $usersOrCount;
-            $this->cnList  = (string) ($cnList ?? '');
+            // Legacy: only count + optional "a,b,c"
+            $this->clients = (int)$usersOrCount;
+            $this->cnList  = (string)($cnList ?? '');
             $this->users   = $this->cnList !== ''
                 ? array_map(fn ($n) => ['username' => $n], array_filter(explode(',', $this->cnList)))
                 : [];
         }
-
-        $this->raw = (string) ($raw ?? '');
     }
 
-    public function broadcastOn(): PrivateChannel
+    /** Broadcast to fleet + per-server */
+    public function broadcastOn(): array
     {
-        return new PrivateChannel("servers.{$this->serverId}");
+        return [
+            new PrivateChannel('servers.dashboard'),
+            new PrivateChannel("servers.{$this->serverId}"),
+        ];
     }
 
+    /** Echo listens to ".mgmt.update" */
     public function broadcastAs(): string
     {
         return 'mgmt.update';
     }
 
+    /** Payload shape Alpine expects */
     public function broadcastWith(): array
     {
         return [
@@ -82,7 +99,7 @@ class ServerMgmtEvent implements ShouldBroadcastNow
             'ts'        => $this->ts,
             'clients'   => $this->clients,
             'cn_list'   => $this->cnList,
-            'users'     => $this->users,
+            'users'     => $this->users, // already normalised: bytes_in/out, connected_at, etc.
             'raw'       => $this->raw,
         ];
     }
