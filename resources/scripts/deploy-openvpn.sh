@@ -7,16 +7,20 @@ set -euo pipefail
 : "${SERVER_ID:?set SERVER_ID (panel id for this server)}"
 
 # ===== Optional toggles =====
-PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"   # 1=POST back to panel, 0=quiet
-PUSH_MGMT="${PUSH_MGMT:-1}"               # 1=enable mgmt pusher, 0=disable
-PUSH_INTERVAL="${PUSH_INTERVAL:-5}"       # seconds between mgmt polls
-PUSH_HEARTBEAT="${PUSH_HEARTBEAT:-60}"    # always send at least once per N seconds
+PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"       # 1=POST back to panel, 0=quiet
+PUSH_MGMT="${PUSH_MGMT:-0}"                   # 0=disable legacy mgmt pusher (avoid duplicates)
+PUSH_INTERVAL="${PUSH_INTERVAL:-5}"           # (legacy pusher) seconds between polls
+PUSH_HEARTBEAT="${PUSH_HEARTBEAT:-60}"        # (legacy pusher) heartbeat seconds
+
+# ===== Status v3 agent options =====
+STATUS_PATH="${STATUS_PATH:-/run/openvpn/server.status}"
+STATUS_PUSH_INTERVAL="${STATUS_PUSH_INTERVAL:-5}"   # seconds between pushes
 
 # ===== VPN defaults =====
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 VPN_PORT="${VPN_PORT:-1194}"
-VPN_PROTO="${VPN_PROTO:-udp}"             # udp|tcp
+VPN_PROTO="${VPN_PROTO:-udp}"               # udp|tcp
 DNS1="${DNS1:-1.1.1.1}"
 DNS2="${DNS2:-8.8.8.8}"
 VPN_USER="${VPN_USER:-admin}"
@@ -81,14 +85,12 @@ done
 
 # ===== apt with retries =====
 export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a   # avoid interactive restarts
+export NEEDRESTART_MODE=a
 apt_try() {
-  local tries=3
-  local i=1
+  local tries=3 i=1
   until "$@"; do
-    if (( i >= tries )); then return 1; fi
-    sleep $((i*2))
-    ((i++))
+    (( i >= tries )) && return 1
+    sleep $((i*2)); ((i++))
   done
 }
 
@@ -222,6 +224,156 @@ systemctl enable openvpn@server
 systemctl restart openvpn@server
 systemctl is-active --quiet openvpn@server || fail "OpenVPN failed to start"
 
+# ===== Status-v3 push agent (rich users[] to /api/servers/{id}/events) =====
+logchunk "Install status-v3 push agent"
+cat >/usr/local/bin/ovpn-status-push.sh <<'AGENT'
+#!/usr/bin/env bash
+set -euo pipefail
+PANEL_URL="${PANEL_URL:?}"
+SERVER_ID="${SERVER_ID:?}"
+PANEL_TOKEN="${PANEL_TOKEN:?}"
+STATUS_PATH="${STATUS_PATH:-/run/openvpn/server.status}"
+
+JSON_PAYLOAD="$(/usr/bin/env python3 - "$STATUS_PATH" <<'PY'
+import sys, csv, json, datetime, io
+
+def sniff_delim(sample: str) -> str:
+    # choose delimiter with more occurrences: comma vs tab
+    c = sample.count(',')
+    t = sample.count('\t')
+    return ',' if c >= t else '\t'
+
+def iso_from_epoch(v):
+    try:
+        v = int(v)
+        return datetime.datetime.utcfromtimestamp(v).isoformat() + "Z"
+    except:
+        return None
+
+path = sys.argv[1]
+clients_by_cn = {}
+virt_by_cn = {}
+hdr_CL = {}
+hdr_RT = {}
+
+try:
+    with open(path, 'r', newline='') as fh:
+        sample = fh.read(4096)
+        fh.seek(0)
+        delim = sniff_delim(sample)
+        reader = csv.reader(fh, delimiter=delim)
+        for row in reader:
+            if not row:
+                continue
+            tag = row[0]
+            if tag == 'HEADER' and len(row) > 2:
+                if row[1] == 'CLIENT_LIST':
+                    hdr_CL = {name: idx for idx, name in enumerate(row)}
+                elif row[1] == 'ROUTING_TABLE':
+                    hdr_RT = {name: idx for idx, name in enumerate(row)}
+                continue
+
+            if tag == 'CLIENT_LIST':
+                def col(h, default=''):
+                    i = hdr_CL.get(h)
+                    return row[i] if i is not None and i < len(row) else default
+                cn = col('Common Name') or col('Username') or ''
+                if not cn:
+                    continue
+                real = col('Real Address') or None
+                real_ip = real.split(':')[0] if real else None
+                rx = int(col('Bytes Received','0') or 0)
+                tx = int(col('Bytes Sent','0') or 0)
+                ts_epoch = col('Connected Since (time_t)','') or ''
+                client_id = col('Client ID','') or None
+
+                clients_by_cn[cn] = {
+                    "username": cn,
+                    "client_ip": real_ip,
+                    "virtual_ip": None,  # filled from ROUTING_TABLE
+                    "bytes_received": rx,
+                    "bytes_sent": tx,
+                    "connected_at": int(ts_epoch) if ts_epoch.isdigit() else None,
+                    "client_id": int(client_id) if (client_id and client_id.isdigit()) else None
+                }
+
+            elif tag == 'ROUTING_TABLE':
+                def col(h, default=''):
+                    i = hdr_RT.get(h)
+                    return row[i] if i is not None and i < len(row) else default
+                virt = col('Virtual Address') or None
+                cn = col('Common Name') or ''
+                if cn and virt:
+                    virt_by_cn[cn] = virt
+except FileNotFoundError:
+    pass
+
+# stitch virtual IPs
+for cn, virt in virt_by_cn.items():
+    if cn in clients_by_cn and virt:
+        clients_by_cn[cn]["virtual_ip"] = virt
+
+# output
+uniq = list(clients_by_cn.values())
+payload = {
+    "status": "mgmt",
+    "ts": datetime.datetime.utcnow().isoformat()+"Z",
+    "clients": len(uniq),
+    "cn_list": ",".join([c["username"] for c in uniq]),
+    "users": uniq
+}
+print(json.dumps(payload, separators=(",",":")))
+PY
+)"
+curl -sS -X POST \
+  -H "Authorization: Bearer ${PANEL_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data-raw "${JSON_PAYLOAD}" \
+  "${PANEL_URL%/}/api/servers/${SERVER_ID}/events" \
+  >/dev/null 2>&1 || true
+AGENT
+chmod 0755 /usr/local/bin/ovpn-status-push.sh
+
+cat >/etc/systemd/system/ovpn-status-push.service <<'SVC'
+[Unit]
+Description=Post OpenVPN status (v3) to panel
+After=openvpn@server.service
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/ovpn-status-push
+ExecStart=/usr/local/bin/ovpn-status-push.sh
+SVC
+
+cat >/etc/systemd/system/ovpn-status-push.timer <<'TIM'
+[Unit]
+Description=Post OpenVPN status (v3) to panel on interval
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=5s
+AccuracySec=1s
+Unit=ovpn-status-push.service
+[Install]
+WantedBy=timers.target
+TIM
+
+cat >/etc/default/ovpn-status-push <<ENV
+PANEL_URL="$PANEL_URL"
+PANEL_TOKEN="$PANEL_TOKEN"
+SERVER_ID="$SERVER_ID"
+STATUS_PATH="$STATUS_PATH"
+ENV
+
+# apply interval
+sed -i "s/OnUnitActiveSec=.*/OnUnitActiveSec=${STATUS_PUSH_INTERVAL}s/" /etc/systemd/system/ovpn-status-push.timer || true
+
+# disable any old mgmt pusher to prevent duplicates
+systemctl disable --now aiovpn-mgmt-pusher.service 2>/dev/null || true
+rm -f /usr/local/lib/aiovpn/mgmt-pusher.sh /etc/systemd/system/aiovpn-mgmt-pusher.service 2>/dev/null || true
+
+systemctl daemon-reload
+systemctl enable --now ovpn-status-push.timer
+systemctl status --no-pager ovpn-status-push.timer >/dev/null 2>&1 || true
+
 # ===== Facts + auth mirror =====
 panel POST "/api/servers/$SERVER_ID/deploy/facts" \
   --data "{ $(json_kv iface "$DEF_IFACE"), $(json_kv proto "$VPN_PROTO"), \"mgmt_port\": $MGMT_PORT, \"vpn_port\": $VPN_PORT, \"ip_forward\": 1 }" >/dev/null || true
@@ -274,12 +426,12 @@ TIM
 systemctl daemon-reload
 systemctl enable --now aiovpn-auth-sync.timer
 
-# ===== Management "pusher" (file-first, dedup, robust) =====
-logchunk "Install OpenVPN management pusher"
-cat >/usr/local/lib/aiovpn/mgmt-pusher.sh <<'PUSH'
+# ===== (LEGACY) Management "pusher" — optional/disabled by default =====
+if [[ "${PUSH_MGMT:-0}" = "1" ]]; then
+  logchunk "Install legacy management pusher"
+  cat >/usr/local/lib/aiovpn/mgmt-pusher.sh <<'PUSH'
 #!/bin/bash
 set -euo pipefail
-
 PANEL_URL="${PANEL_URL:?}"
 PANEL_TOKEN="${PANEL_TOKEN:?}"
 SERVER_ID="${SERVER_ID:?}"
@@ -289,7 +441,6 @@ INTERVAL="${PUSH_INTERVAL:-5}"
 HEARTBEAT="${PUSH_HEARTBEAT:-60}"
 PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"
 STATUS_FILE="/run/openvpn/server.status"
-
 JSON_ESC(){ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 post_event(){ # $1=message
   [[ "$PANEL_CALLBACKS" = "1" ]] || return 0
@@ -300,7 +451,6 @@ post_event(){ # $1=message
     -d "{\"status\":\"mgmt\",\"message\":\"$msg\"}" \
     "${PANEL_URL%/}/api/servers/$SERVER_ID/deploy/events" >/dev/null || true
 }
-
 from_file() {
   [[ -r "$STATUS_FILE" ]] || return 1
   local COUNT CN_LIST
@@ -308,10 +458,8 @@ from_file() {
   CN_LIST="$(awk -F'\t' '$1=="CLIENT_LIST"{print $2}' "$STATUS_FILE" | paste -sd, -)"
   printf '%s\t%s\n' "$COUNT" "$CN_LIST"
 }
-
 from_mgmt() {
   command -v nc >/dev/null || return 1
-  # avoid SIGPIPE noise under -e: wrap pipeline, discard printf stderr
   local OUT
   OUT="$( { { printf 'status 3\r\n'; printf 'quit\r\n'; } 2>/dev/null | nc -w 3 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null; } || true )"
   [[ -n "$OUT" ]] || return 1
@@ -320,7 +468,6 @@ from_mgmt() {
   CN_LIST="$(printf '%s\n' "$OUT" | awk -F'\t' '/^CLIENT_LIST/{print $2}' | paste -sd, -)"
   printf '%s\t%s\n' "$COUNT" "$CN_LIST"
 }
-
 LAST_PAYLOAD=""; LAST_TS=0
 while true; do
   TS="$(date -u +%FT%TZ)"
@@ -334,22 +481,20 @@ while true; do
   else
     PAYLOAD="source=none clients=0 []"
   fi
-
   NOW=$(date +%s)
   if [[ "$PAYLOAD" != "$LAST_PAYLOAD" ]] || (( NOW - LAST_TS >= HEARTBEAT )); then
     post_event "ts=$TS $PAYLOAD"
     LAST_PAYLOAD="$PAYLOAD"
     LAST_TS=$NOW
   fi
-
   sleep "$INTERVAL"
 done
 PUSH
-chmod 0755 /usr/local/lib/aiovpn/mgmt-pusher.sh
+  chmod 0755 /usr/local/lib/aiovpn/mgmt-pusher.sh
 
-cat >/etc/systemd/system/aiovpn-mgmt-pusher.service <<SVC2
+  cat >/etc/systemd/system/aiovpn-mgmt-pusher.service <<SVC2
 [Unit]
-Description=AIOVPN OpenVPN management pusher
+Description=AIOVPN OpenVPN management pusher (legacy)
 After=openvpn@server.service network-online.target
 Wants=network-online.target
 [Service]
@@ -372,11 +517,8 @@ ProtectHome=true
 WantedBy=multi-user.target
 SVC2
 
-systemctl daemon-reload
-if [[ "${PUSH_MGMT:-1}" = "1" ]]; then
+  systemctl daemon-reload
   systemctl enable --now aiovpn-mgmt-pusher.service
-else
-  systemctl disable --now aiovpn-mgmt-pusher.service 2>/dev/null || true
 fi
 
 announce succeeded "Deployment complete"
