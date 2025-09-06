@@ -2,9 +2,10 @@
 
 namespace App\Jobs;
 
-use App\Models\VpnServer;
-use App\Models\VpnUser;
 use Throwable;
+use App\Models\VpnUser;
+use App\Models\VpnServer;
+use App\Models\DeployKey;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\SerializesModels;
@@ -15,20 +16,18 @@ use App\Jobs\SyncOpenVPNCredentials;
 
 /**
  * Provisions an OpenVPN/WireGuard host over SSH using resources/scripts/deploy-openvpn.sh.
- * Streams remote output into the server's deployment_log and marks status accordingly.
- *
- * Notes:
- * - Uses OpenVPN status-v3 push agent (timer) installed by the deploy script.
- * - Legacy mgmt pusher is disabled by default to avoid duplicates.
+ * - Uses DB-backed DeployKey (server->deployKey or active default) for key auth.
+ * - Falls back to legacy ssh_type/ssh_key/password if needed.
+ * - Installs status-v3 push timer; kicks an immediate push so UI updates instantly.
  */
 class DeployVpnServer implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** @var int Seconds the queue worker allows this job to run */
+    /** Seconds the queue worker allows this job to run */
     public $timeout = 900;
 
-    /** @var int Number of attempts */
+    /** Number of attempts */
     public $tries = 2;
 
     public VpnServer $vpnServer;
@@ -57,10 +56,9 @@ class DeployVpnServer implements ShouldQueue
         }
 
         // Server facts
-        $ip      = (string) $this->vpnServer->ip_address;
-        $port    = (int) ($this->vpnServer->ssh_port ?: 22);
-        $user    = (string) ($this->vpnServer->ssh_user ?: 'root');
-        $sshType = (string) ($this->vpnServer->ssh_type ?: 'key'); // 'key' | 'password'
+        $ip   = (string) $this->vpnServer->ip_address;
+        $port = (int) ($this->vpnServer->ssh_port ?: 22);
+        $user = (string) ($this->vpnServer->ssh_user ?: 'root');
 
         if ($ip === '' || $user === '') {
             $this->failWith('❌ Server IP or SSH user is missing');
@@ -103,11 +101,10 @@ class DeployVpnServer implements ShouldQueue
         ]);
 
         try {
-            // SSH base
-            $sshCmdBase = $this->buildSshBase($sshType, $user, $ip, $port);
+            // SSH base (DeployKey first, then legacy)
+            $sshCmdBase = $this->buildSshBase($user, $ip, $port);
             if ($sshCmdBase === null) {
-                // buildSshBase already called failWith
-                return;
+                return; // buildSshBase already failed + logged
             }
 
             // SSH sanity test
@@ -152,11 +149,7 @@ class DeployVpnServer implements ShouldQueue
             ));
 
             // Mask sensitive bits for logs only
-            $maskedAssigns = str_replace(
-                [$panelToken, $vpnPass],
-                ['***TOKEN***', '***PASS***'],
-                $assigns
-            );
+            $maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
             Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' [ssh …]');
 
             // Build one remote bash string and run with bash -lc
@@ -194,6 +187,7 @@ BASH;
 
                 // Kick one immediate status push (best-effort) so UI updates instantly
                 @exec($sshCmdBase . ' ' . escapeshellarg('systemctl start ovpn-status-push.service'));
+
                 // Keep your credential sync if you use it elsewhere
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
             } else {
@@ -222,7 +216,12 @@ BASH;
     // Helpers
     // ────────────────────────────────────────────────────────────────────────
 
-    private function buildSshBase(string $sshType, string $user, string $ip, int $port): ?string
+    /**
+     * Build the SSH base command:
+     * 1) Prefer server->deployKey or active default DeployKey (key auth).
+     * 2) Fallback to legacy ssh_type=password (sshpass) or ssh_type=key with ssh_key path.
+     */
+    private function buildSshBase(string $user, string $ip, int $port): ?string
     {
         $sshOpts = implode(' ', [
             '-o StrictHostKeyChecking=no',
@@ -233,6 +232,21 @@ BASH;
             '-p ' . $port,
         ]);
 
+        // 1) DeployKey (DB-first)
+        $dk = $this->vpnServer->deployKey ?: DeployKey::active()->first();
+        if ($dk) {
+            $keyPath = $dk->privateAbsolutePath();
+            if (!is_file($keyPath)) {
+                $this->failWith("❌ DeployKey file not found at {$keyPath} (name={$dk->name})");
+                return null;
+            }
+            @chmod($keyPath, 0600);
+            return 'ssh -i ' . escapeshellarg($keyPath)
+                 . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+        }
+
+        // 2) Legacy: password or key
+        $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
         if ($sshType === 'password') {
             $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
             if ($haveSshpass === '') {
@@ -248,11 +262,11 @@ BASH;
                  . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
         }
 
-        // key auth
-        $keyValue = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
-        $keyPath  = str_starts_with($keyValue, '/') || str_contains($keyValue, ':\\')
-            ? $keyValue
-            : storage_path('app/ssh_keys/' . $keyValue);
+        // Legacy key path: absolute or storage/app/ssh_keys/<file>
+        $legacy  = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
+        $keyPath = str_starts_with($legacy, '/') || str_contains($legacy, ':\\')
+            ? $legacy
+            : storage_path('app/ssh_keys/' . $legacy);
 
         if (!is_file($keyPath)) {
             $this->failWith("❌ SSH key not found at {$keyPath}");
@@ -291,7 +305,6 @@ BASH;
         $map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
 
         $start = time();
-        // Let the loop breathe: align to job timeout (minus a margin)
         $maxDuration = max(60, ($this->timeout ?? 900) - 30);
 
         while (!empty($streams)) {
@@ -338,9 +351,7 @@ BASH;
     private function failWith(string $message, Throwable $e = null): void
     {
         Log::error($message);
-        if ($e) {
-            Log::error($e);
-        }
+        if ($e) Log::error($e);
 
         $this->vpnServer->update([
             'is_deploying'      => false,
