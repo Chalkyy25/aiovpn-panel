@@ -3,52 +3,160 @@
 namespace App\Http\Controllers;
 
 use App\Models\VpnServer;
-use Illuminate\Http\Request;
+use App\Models\VpnUser;
+use App\Models\VpnUserConnection;
+use App\Events\ServerMgmtEvent;
 use App\Traits\ExecutesRemoteCommands;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Http\JsonResponse;
 
 class VpnDisconnectController extends Controller
 {
     use ExecutesRemoteCommands;
 
     /**
-     * Disconnect a client by mgmt client_id.
+     * Disconnect a client using OpenVPN management interface.
+     * Accepts either:
+     *  - client_id (mgmt CID), or
+     *  - username (CN) and we’ll resolve the mgmt CID first.
      */
-    public function disconnect(Request $request, VpnServer $server)
+    public function disconnect(Request $request, VpnServer $server): JsonResponse
     {
-        $validated = $request->validate([
-            'client_id' => 'required|integer|min:0',
+        $data = $request->validate([
+            'client_id' => 'nullable|integer|min:0',
+            'username'  => 'nullable|string',
         ]);
 
-        $clientId = $validated['client_id'];
+        if (!($data['client_id'] ?? null) && !($data['username'] ?? null)) {
+            return response()->json(['message' => 'client_id or username is required'], 422);
+        }
+
         $mgmtPort = (int)($server->mgmt_port ?? 7505);
+        $cid      = $data['client_id'] ?? null;
+        $cn       = $data['username']  ?? null;
 
-        // Mgmt disconnect command
-        $cmd = sprintf(
-            'echo -e "kill %d\nquit\n" | nc -w 5 127.0.0.1 %d',
-            $clientId,
-            $mgmtPort
-        );
+        // If CID not provided, resolve it by CN from "status 2"
+        if (!$cid && $cn) {
+            $cid = $this->resolveCidByCn($server, $mgmtPort, $cn);
+        }
 
-        $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
-        $success = ($res['status'] ?? 1) === 0;
+        // Attempt the mgmt kill if we have a CID
+        $killed = false;
+        $cmdOut = [];
+        if ($cid !== null) {
+            $cmd = sprintf('echo -e "kill %d\nquit\n" | nc -w 5 127.0.0.1 %d', $cid, $mgmtPort);
+            $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
+            $killed = (($res['status'] ?? 1) === 0);
+            $cmdOut = $res;
 
-        if ($success) {
-            Log::channel('vpn')->info("💀 Disconnected client_id={$clientId} on {$server->name}");
-        } else {
-            Log::channel('vpn')->warning(
-                "⚠️ Failed to disconnect client_id={$clientId} on {$server->name}",
+            Log::channel('vpn')->{$killed ? 'info' : 'warning'}(
+                ($killed ? '💀 Disconnected' : '⚠️ Failed to disconnect') . " client_id={$cid} on {$server->name}",
                 $res
             );
+        } else {
+            Log::channel('vpn')->warning("⚠️ No CID resolved for CN={$cn} on {$server->name}");
+        }
+
+        // Best-effort DB mark + cleanup
+        try {
+            $this->markDisconnectedInDb($server, $cid, $cn);
+        } catch (\Throwable $e) {
+            Log::channel('vpn')->warning('DB disconnect mark failed', ['error' => $e->getMessage()]);
+        }
+
+        // Build fresh active list from DB and broadcast so the UI updates instantly
+        try {
+            $active = VpnUserConnection::with('vpnUser')
+                ->where('vpn_server_id', $server->id)
+                ->where('is_connected', true)
+                ->get()
+                ->map(fn ($c) => [
+                    'username'        => optional($c->vpnUser)->username ?? 'unknown',
+                    'client_ip'       => $c->client_ip,
+                    'virtual_ip'      => $c->virtual_ip,
+                    'connected_at'    => optional($c->connected_at)?->toIso8601String(),
+                    'bytes_received'  => (int)$c->bytes_received,
+                    'bytes_sent'      => (int)$c->bytes_sent,
+                    'connection_id'   => $c->id,                 // panel connection id
+                    'server_name'     => $server->name,
+                ])
+                ->values()->all();
+
+            broadcast(new ServerMgmtEvent(
+                $server->id,
+                now()->toAtomString(),
+                $active,
+                implode(',', array_column($active, 'username')),
+                'panel.disconnect'
+            ))->toOthers();
+        } catch (\Throwable $e) {
+            Log::channel('vpn')->warning('Broadcast after disconnect failed', ['error' => $e->getMessage()]);
         }
 
         return response()->json([
-            'ok'        => $success,
+            'ok'        => (bool)$killed,
+            'message'   => ($killed ? 'Disconnected ' : 'Tried to disconnect ') . ($cn ?? ('#'.$cid)),
             'server_id' => $server->id,
-            'client_id' => $clientId,
-            'status'    => $success ? 'disconnected' : 'failed',
-            'output'    => array_filter($res['output'] ?? []),
-            'stderr'    => array_filter($res['stderr'] ?? []),
+            'client_id' => $cid,
+            'username'  => $cn,
+            'output'    => array_filter($cmdOut['output'] ?? []),
+            'stderr'    => array_filter($cmdOut['stderr'] ?? []),
         ]);
+    }
+
+    /**
+     * Resolve mgmt client id (CID) for a given common-name (CN) using "status 2".
+     */
+    protected function resolveCidByCn(VpnServer $server, int $mgmtPort, string $cn): ?int
+    {
+        // Ask mgmt for status 2, parse CLIENT_LIST lines:
+        // Format: CLIENT_LIST,<CN>,<RealIP>,<VPNIP>,<bytes_rx>,<bytes_tx>,<since>,<...,CID>
+        $script = <<<BASH
+set -e
+out=$(echo -e "status 2\nquit\n" | nc -w 5 127.0.0.1 {$mgmtPort} || true)
+echo "$out" | awk -F',' -v cn="{$this->escAwk($cn)}" '
+  $1=="CLIENT_LIST" && $2==cn {print $NF; found=1}
+  END { if (!found) exit 1 }
+'
+BASH;
+        $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($script));
+        if (($res['status'] ?? 1) === 0) {
+            $val = trim(implode("\n", $res['output'] ?? []));
+            if ($val !== '' && ctype_digit($val)) return (int)$val;
+        }
+        return null;
+    }
+
+    /**
+     * Mark the connection disconnected in the DB (best effort).
+     */
+    protected function markDisconnectedInDb(VpnServer $server, ?int $cid, ?string $cn): void
+    {
+        $q = VpnUserConnection::query()->where('vpn_server_id', $server->id)->where('is_connected', true);
+
+        if ($cid !== null) {
+            // If panel uses its own connection row id, this will match; otherwise no-op.
+            $q->where('id', $cid);
+        } elseif ($cn) {
+            $uid = VpnUser::where('username', $cn)->value('id');
+            if ($uid) $q->where('vpn_user_id', $uid);
+        }
+
+        $conn = $q->first();
+        if ($conn) {
+            $conn->is_connected     = false;
+            $conn->disconnected_at  = now();
+            $conn->session_duration = $conn->connected_at ? now()->diffInSeconds($conn->connected_at) : null;
+            $conn->save();
+
+            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($conn->vpn_user_id);
+        }
+    }
+
+    /** Escape for awk -v cn="..." */
+    private function escAwk(string $s): string
+    {
+        return str_replace(['\\', '"'], ['\\\\', '\\"'], $s);
     }
 }
