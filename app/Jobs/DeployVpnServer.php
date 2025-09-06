@@ -13,11 +13,22 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Jobs\SyncOpenVPNCredentials;
 
+/**
+ * Provisions an OpenVPN/WireGuard host over SSH using resources/scripts/deploy-openvpn.sh.
+ * Streams remote output into the server's deployment_log and marks status accordingly.
+ *
+ * Notes:
+ * - Uses OpenVPN status-v3 push agent (timer) installed by the deploy script.
+ * - Legacy mgmt pusher is disabled by default to avoid duplicates.
+ */
 class DeployVpnServer implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /** @var int Seconds the queue worker allows this job to run */
     public $timeout = 900;
+
+    /** @var int Number of attempts */
     public $tries = 2;
 
     public VpnServer $vpnServer;
@@ -41,7 +52,7 @@ class DeployVpnServer implements ShouldQueue
         $panelToken = (string) config('services.panel.token');
 
         if ($panelUrl === '' || $panelToken === '') {
-            $this->failWith('❌ PANEL config missing: set PANEL_BASE_URL and PANEL_TOKEN in .env (then php artisan config:cache)');
+            $this->failWith('❌ PANEL config missing: set PANEL_BASE_URL and PANEL_TOKEN in .env then php artisan config:cache');
             return;
         }
 
@@ -62,7 +73,7 @@ class DeployVpnServer implements ShouldQueue
 
         $vpnPort  = (int) ($this->vpnServer->port ?: 1194);
         $mgmtHost = '127.0.0.1';
-        $mgmtPort = 7505;
+        $mgmtPort = (int) ($this->vpnServer->mgmt_port ?: 7505);
         $wgPort   = 51820;
 
         // Load deploy script
@@ -93,42 +104,10 @@ class DeployVpnServer implements ShouldQueue
 
         try {
             // SSH base
-            $sshOpts = implode(' ', [
-                '-o StrictHostKeyChecking=no',
-                '-o UserKnownHostsFile=/dev/null',
-                '-o ConnectTimeout=30',
-                '-o ServerAliveInterval=15',
-                '-o ServerAliveCountMax=4',
-                '-p ' . $port,
-            ]);
-
-            if ($sshType === 'password') {
-                $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
-                if ($haveSshpass === '') {
-                    $this->failWith('❌ sshpass is required on the panel host for password auth. Install it or use key auth.');
-                    return;
-                }
-                $sshPass = (string) $this->vpnServer->ssh_password;
-                if ($sshPass === '') {
-                    $this->failWith('❌ SSH password not set for password auth.');
-                    return;
-                }
-                $sshCmdBase = 'sshpass -p ' . escapeshellarg($sshPass)
-                    . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
-            } else {
-                $keyValue = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
-                $keyPath  = str_starts_with($keyValue, '/') || str_contains($keyValue, ':\\')
-                    ? $keyValue
-                    : storage_path('app/ssh_keys/' . $keyValue);
-
-                if (!is_file($keyPath)) {
-                    $this->failWith("❌ SSH key not found at {$keyPath}");
-                    return;
-                }
-                @chmod($keyPath, 0600);
-
-                $sshCmdBase = 'ssh -i ' . escapeshellarg($keyPath)
-                    . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+            $sshCmdBase = $this->buildSshBase($sshType, $user, $ip, $port);
+            if ($sshCmdBase === null) {
+                // buildSshBase already called failWith
+                return;
             }
 
             // SSH sanity test
@@ -141,34 +120,47 @@ class DeployVpnServer implements ShouldQueue
             }
             Log::info("✅ SSH test OK for {$ip}");
 
-            // Remote env
+            // Remote env (explicit beats implicit)
             $env = [
                 'PANEL_URL'   => $panelUrl,
                 'PANEL_TOKEN' => $panelToken,
                 'SERVER_ID'   => (string) $this->vpnServer->id,
+
+                // VPN/mgmt tunables
                 'MGMT_HOST'   => $mgmtHost,
                 'MGMT_PORT'   => (string) $mgmtPort,
                 'VPN_PORT'    => (string) $vpnPort,
                 'VPN_PROTO'   => $vpnProto,
+                'WG_PORT'     => (string) $wgPort,
+
+                // seed auth
                 'VPN_USER'    => $vpnUser,
                 'VPN_PASS'    => $vpnPass,
-                'WG_PORT'     => (string) $wgPort,
+
+                // agent envs
+                'STATUS_PATH'           => '/run/openvpn/server.status',
+                'STATUS_PUSH_INTERVAL'  => (string) (config('services.vpn.status_push_interval', 5)),
+                'PANEL_CALLBACKS'       => '1',  // POST back to panel
+                'PUSH_MGMT'             => '0',  // disable legacy mgmt pusher
             ];
 
-            // --- Build "KEY='val' ..." assignments (no 'export' yet) ---
-$assigns = implode(' ', array_map(
-    fn ($k, $v) => $k . '=' . escapeshellarg($v),
-    array_keys($env),
-    array_values($env)
-));
+            // Build KEY='val' assignments
+            $assigns = implode(' ', array_map(
+                fn ($k, $v) => $k . '=' . escapeshellarg($v),
+                array_keys($env),
+                array_values($env)
+            ));
 
-// Mask for logs only
-$maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
-Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' export PANEL_URL PANEL_TOKEN SERVER_ID MGMT_HOST MGMT_PORT VPN_PORT VPN_PROTO VPN_USER VPN_PASS WG_PORT [ssh …]');
+            // Mask sensitive bits for logs only
+            $maskedAssigns = str_replace(
+                [$panelToken, $vpnPass],
+                ['***TOKEN***', '***PASS***'],
+                $assigns
+            );
+            Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' [ssh …]');
 
-// Build ONE remote bash command string and pass it to `bash -lc`.
-// Using bash -lc ensures a bash parser (not /bin/sh) and a clean environment.
-$remoteBash = <<<BASH
+            // Build one remote bash string and run with bash -lc
+            $remoteBash = <<<BASH
 set -e
 export {$assigns}
 bash -se <<'SCRIPT_EOF'
@@ -177,119 +169,178 @@ SCRIPT_EOF
 echo EXIT_CODE:$?
 BASH;
 
-// SSH base + run bash -lc '<our string>'
-$remoteCmd = $sshCmdBase . ' ' . escapeshellarg('bash -lc ' . escapeshellarg($remoteBash));
+            $remoteCmd = $sshCmdBase . ' ' . escapeshellarg('bash -lc ' . escapeshellarg($remoteBash));
 
-// Run
-$descriptors = [
-    0 => ['pipe', 'r'],
-    1 => ['pipe', 'w'],
-    2 => ['pipe', 'w'],
-];
-$proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
+            // Stream the remote output
+            [$exitCode, $combined] = $this->runAndStream($remoteCmd);
 
-if (!is_resource($proc)) {
-    $this->failWith('❌ Failed to open SSH process');
-    return;
-}
+            // Prefer explicit marker if present
+            if (preg_match('/EXIT_CODE:(\d+)/', $combined, $m)) {
+                $exitCode = (int) $m[1];
+            }
 
-// Nothing to send on STDIN (script is embedded via HEREDOC); close it
-fclose($pipes[0]);
+            $status   = $exitCode === 0 ? 'succeeded' : 'failed';
+            $finalLog = $this->stripNoise($combined);
 
-$out = '';
-$err = '';
-$streams = [$pipes[1], $pipes[2]];
-$map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
+            if ($exitCode === 0) {
+                $finalLog .= "\n✅ Deployment succeeded";
 
-$start = time();
-$maxDuration = 180; // Max loop duration in seconds
+                // Attach any existing active users to this server
+                $existingUsers = VpnUser::where('is_active', true)->get();
+                if ($existingUsers->isNotEmpty()) {
+                    $this->vpnServer->vpnUsers()->syncWithoutDetaching($existingUsers->pluck('id')->all());
+                    $finalLog .= "\n👥 Auto-assigned {$existingUsers->count()} existing users to server";
+                }
 
-while (!empty($streams)) {
-    // Timeout safety to prevent infinite loop
-    if ((time() - $start) > $maxDuration) {
-        $this->failWith("❌ Timeout while reading deployment output");
-        foreach ($streams as $s) fclose($s);
-        proc_terminate($proc);
-        return;
-    }
+                // Kick one immediate status push (best-effort) so UI updates instantly
+                @exec($sshCmdBase . ' ' . escapeshellarg('systemctl start ovpn-status-push.service'));
+                // Keep your credential sync if you use it elsewhere
+                SyncOpenVPNCredentials::dispatch($this->vpnServer);
+            } else {
+                $finalLog .= "\n❌ Deployment failed (exit code: {$exitCode})";
+            }
 
-    $read = $streams; $write = $except = null;
-    $select = @stream_select($read, $write, $except, 10);
+            $this->vpnServer->update([
+                'is_deploying'      => false,
+                'deployment_status' => $status,
+                'deployment_log'    => $finalLog,
+                'status'            => $exitCode === 0 ? 'online' : 'offline',
+            ]);
 
-    if ($select === false) {
-        $this->failWith("❌ stream_select() failed during SSH session");
-        foreach ($streams as $s) fclose($s);
-        proc_terminate($proc);
-        return;
-    }
-
-    foreach ($read as $r) {
-        $line = fgets($r);
-
-        if ($line === false) {
-            fclose($r);
-            unset($streams[array_search($r, $streams, true)]);
-            continue;
-        }
-
-        $clean = rtrim($line, "\r\n");
-        $this->vpnServer->appendLog($clean);
-
-        if ($map[(int) $r] === 'OUT') {
-            $out .= $line;
-        } else {
-            $err .= $line;
+            Log::info("✅ DeployVpnServer: done for #{$this->vpnServer->id} (exit={$exitCode})");
+        } catch (Throwable $e) {
+            $this->failWith('❌ Exception during deployment: ' . $e->getMessage(), $e);
         }
     }
-}
-
-$exitCode = proc_close($proc);
-
-// Prefer explicit marker if present
-$combined = ($this->vpnServer->deployment_log ?? '') . $out . $err;
-if (preg_match('/EXIT_CODE:(\d+)/', $combined, $m)) {
-    $exitCode = (int) $m[1];
-}
-
-$status   = $exitCode === 0 ? 'succeeded' : 'failed';
-$finalLog = $this->stripNoise($combined);
-
-if ($exitCode === 0) {
-    $finalLog .= "\n✅ Deployment succeeded";
-
-    $existingUsers = VpnUser::where('is_active', true)->get();
-    if ($existingUsers->isNotEmpty()) {
-        $this->vpnServer->vpnUsers()->syncWithoutDetaching($existingUsers->pluck('id')->all());
-        $finalLog .= "\n👥 Auto-assigned {$existingUsers->count()} existing users to server";
-    }
-
-    SyncOpenVPNCredentials::dispatch($this->vpnServer);
-} else {
-    $finalLog .= "\n❌ Deployment failed (exit code: {$exitCode})";
-}
-
-$this->vpnServer->update([
-    'is_deploying'      => false,
-    'deployment_status' => $status,
-    'deployment_log'    => $finalLog,
-    'status'            => $exitCode === 0 ? 'online' : 'offline',
-]);
-
-Log::info("✅ DeployVpnServer: done for #{$this->vpnServer->id} (exit={$exitCode})");
-} catch (Throwable $e) {
-    $this->failWith('❌ Exception during deployment: ' . $e->getMessage(), $e);
-}   // <- closes the catch
-} 
 
     public function failed(Throwable $e): void
     {
         $this->failWith('❌ Job failed with exception: ' . $e->getMessage(), $e);
     }
 
+    // ────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ────────────────────────────────────────────────────────────────────────
+
+    private function buildSshBase(string $sshType, string $user, string $ip, int $port): ?string
+    {
+        $sshOpts = implode(' ', [
+            '-o StrictHostKeyChecking=no',
+            '-o UserKnownHostsFile=/dev/null',
+            '-o ConnectTimeout=30',
+            '-o ServerAliveInterval=15',
+            '-o ServerAliveCountMax=4',
+            '-p ' . $port,
+        ]);
+
+        if ($sshType === 'password') {
+            $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
+            if ($haveSshpass === '') {
+                $this->failWith('❌ sshpass is required on the panel host for password auth. Install it or use key auth.');
+                return null;
+            }
+            $sshPass = (string) $this->vpnServer->ssh_password;
+            if ($sshPass === '') {
+                $this->failWith('❌ SSH password not set for password auth.');
+                return null;
+            }
+            return 'sshpass -p ' . escapeshellarg($sshPass)
+                 . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+        }
+
+        // key auth
+        $keyValue = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
+        $keyPath  = str_starts_with($keyValue, '/') || str_contains($keyValue, ':\\')
+            ? $keyValue
+            : storage_path('app/ssh_keys/' . $keyValue);
+
+        if (!is_file($keyPath)) {
+            $this->failWith("❌ SSH key not found at {$keyPath}");
+            return null;
+        }
+        @chmod($keyPath, 0600);
+
+        return 'ssh -i ' . escapeshellarg($keyPath)
+             . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+    }
+
+    /**
+     * Run a long SSH command and stream output into the server's log.
+     *
+     * @return array{0:int,1:string} [exitCode, combinedOutput]
+     */
+    private function runAndStream(string $remoteCmd): array
+    {
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
+
+        if (!is_resource($proc)) {
+            $this->failWith('❌ Failed to open SSH process');
+            return [1, ''];
+        }
+
+        fclose($pipes[0]); // nothing to send to STDIN
+
+        $out = '';
+        $err = '';
+        $streams = [$pipes[1], $pipes[2]];
+        $map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
+
+        $start = time();
+        // Let the loop breathe: align to job timeout (minus a margin)
+        $maxDuration = max(60, ($this->timeout ?? 900) - 30);
+
+        while (!empty($streams)) {
+            if ((time() - $start) > $maxDuration) {
+                $this->failWith("❌ Timeout while reading deployment output");
+                foreach ($streams as $s) @fclose($s);
+                @proc_terminate($proc);
+                return [1, $out . $err];
+            }
+
+            $read = $streams; $write = $except = null;
+            $select = @stream_select($read, $write, $except, 10);
+
+            if ($select === false) {
+                $this->failWith("❌ stream_select() failed during SSH session");
+                foreach ($streams as $s) @fclose($s);
+                @proc_terminate($proc);
+                return [1, $out . $err];
+            }
+
+            foreach ($read as $r) {
+                $line = fgets($r);
+                if ($line === false) {
+                    fclose($r);
+                    unset($streams[array_search($r, $streams, true)]);
+                    continue;
+                }
+
+                $clean = rtrim($line, "\r\n");
+                $this->vpnServer->appendLog($clean);
+
+                if ($map[(int) $r] === 'OUT') {
+                    $out .= $line;
+                } else {
+                    $err .= $line;
+                }
+            }
+        }
+
+        $exitCode = proc_close($proc);
+        return [$exitCode, ($this->vpnServer->deployment_log ?? '') . $out . $err];
+    }
+
     private function failWith(string $message, Throwable $e = null): void
     {
         Log::error($message);
-        if ($e) Log::error($e);
+        if ($e) {
+            Log::error($e);
+        }
 
         $this->vpnServer->update([
             'is_deploying'      => false,
