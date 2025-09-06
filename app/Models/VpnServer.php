@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\DeployKey;
 use App\Services\VpnConfigBuilder;
 use App\Traits\ExecutesRemoteCommands;
 use Exception;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Cache;
@@ -17,7 +19,7 @@ class VpnServer extends Model
 {
     use HasFactory, ExecutesRemoteCommands;
 
-    // Show a computed online flag even when column is null
+    // Compute is_online even if not persisted
     protected $appends = ['is_online'];
 
     protected $fillable = [
@@ -42,6 +44,8 @@ class VpnServer extends Model
         'deployment_log',
         'status',
         'status_log_path',
+        // NEW:
+        'deploy_key_id',
     ];
 
     protected $casts = [
@@ -75,6 +79,12 @@ class VpnServer extends Model
     {
         return $this->hasMany(VpnUserConnection::class, 'vpn_server_id')
             ->where('is_connected', true);
+    }
+
+    /** DB-backed SSH key (preferred over legacy ssh_key/ssh_type) */
+    public function deployKey(): BelongsTo
+    {
+        return $this->belongsTo(DeployKey::class, 'deploy_key_id');
     }
 
     /* ========= Deployment log helper ========= */
@@ -128,6 +138,13 @@ class VpnServer extends Model
         return 0;
     }
 
+    /**
+     * Preferred by ExecutesRemoteCommands.
+     * Order of precedence:
+     *  1) DeployKey (server->deployKey or default active) → key auth
+     *  2) Legacy ssh_type=password → sshpass
+     *  3) Legacy ssh_type=key → ssh_key absolute or storage/app/ssh_keys/<file>
+     */
     public function getSshCommand(): string
     {
         $ip = $this->ip_address;
@@ -136,25 +153,57 @@ class VpnServer extends Model
             throw new InvalidArgumentException("Server IP address is required to generate SSH command");
         }
 
-        $port = $this->ssh_port ?? 22;
-        $user = $this->ssh_user ?? 'root';
+        $port = (int) ($this->ssh_port ?: 22);
+        $user = (string) ($this->ssh_user ?: 'root');
 
         // Use a temp known_hosts file to avoid permission issues
         $tempSshDir = storage_path('app/temp_ssh');
         if (!is_dir($tempSshDir)) {
-            mkdir($tempSshDir, 0700, true);
+            @mkdir($tempSshDir, 0700, true);
+        }
+        $kh = escapeshellarg($tempSshDir.'/known_hosts');
+
+        $baseOpts = implode(' ', [
+            '-o StrictHostKeyChecking=no',
+            "-o UserKnownHostsFile={$kh}",
+            '-o ConnectTimeout=30',
+            '-o ServerAliveInterval=15',
+            '-o ServerAliveCountMax=4',
+            '-p ' . (int) $port,
+        ]);
+        $dest = escapeshellarg("{$user}@{$ip}");
+
+        // 1) DeployKey (DB-first)
+        $dk = $this->deployKey ?: DeployKey::active()->first();
+        if ($dk) {
+            $keyPath = $dk->privateAbsolutePath();
+            if (!is_file($keyPath)) {
+                throw new InvalidArgumentException("DeployKey file not found at {$keyPath} (name={$dk->name})");
+            }
+            @chmod($keyPath, 0600);
+            return "ssh -i " . escapeshellarg($keyPath) . " {$baseOpts} {$dest}";
         }
 
-        if ($this->ssh_type === 'key') {
-            $keyPath = (is_string($this->ssh_key) && (str_starts_with($this->ssh_key, '/') || str_contains($this->ssh_key, ':\\')))
-                ? $this->ssh_key
-                : storage_path('app/ssh_keys/' . ($this->ssh_key ?: 'id_rsa'));
-
-            return "ssh -i {$keyPath} -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o UserKnownHostsFile={$tempSshDir}/known_hosts -p {$port} {$user}@{$ip}";
+        // 2) Legacy: password auth
+        if ($this->ssh_type === 'password') {
+            $pass = (string) $this->ssh_password;
+            if ($pass === '') {
+                throw new InvalidArgumentException('SSH password not set for password auth.');
+            }
+            return "sshpass -p " . escapeshellarg($pass) . " ssh {$baseOpts} {$dest}";
         }
 
-        // Password auth
-        return "sshpass -p '{$this->ssh_password}' ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -o UserKnownHostsFile={$tempSshDir}/known_hosts -p {$port} {$user}@{$ip}";
+        // 3) Legacy: key auth
+        $keyPath = (is_string($this->ssh_key) && (str_starts_with($this->ssh_key, '/') || str_contains($this->ssh_key, ':\\')))
+            ? $this->ssh_key
+            : storage_path('app/ssh_keys/' . ($this->ssh_key ?: 'id_rsa'));
+
+        if (!is_file($keyPath)) {
+            throw new InvalidArgumentException("SSH key not found at {$keyPath}");
+        }
+        @chmod($keyPath, 0600);
+
+        return "ssh -i " . escapeshellarg($keyPath) . " {$baseOpts} {$dest}";
     }
 
     /* ========= Virtuals ========= */
@@ -167,7 +216,6 @@ class VpnServer extends Model
         }
 
         return Cache::remember("server:{$this->id}:is_online", 60, function () {
-            // Prefer the service method if present, else do a local probe
             if (method_exists(VpnConfigBuilder::class, 'testOpenVpnConnectivity')) {
                 $res = VpnConfigBuilder::testOpenVpnConnectivity($this);
                 return ($res['server_reachable'] ?? false)
@@ -191,7 +239,7 @@ class VpnServer extends Model
             $ssh = $this->executeRemoteCommand($this, 'echo ok');
             if (($ssh['status'] ?? 1) !== 0) return false;
 
-            // 2) service active?
+            // 2) OpenVPN active?
             $svc = $this->executeRemoteCommand(
                 $this,
                 'systemctl is-active openvpn@server || systemctl is-active openvpn || echo inactive'
@@ -199,12 +247,16 @@ class VpnServer extends Model
             $active = ($svc['status'] === 0)
                 && collect($svc['output'] ?? [])->contains(fn($l) => trim($l) === 'active');
 
-            // 3) port open?
-            $port = $this->executeRemoteCommand(
-                $this,
-                'ss -ulnp 2>/dev/null | grep ":1194" || netstat -ulnp 2>/dev/null | grep ":1194" || true'
+            // 3) Port open? Use configured proto/port
+            $proto = strtolower((string) ($this->protocol ?: 'udp'));
+            $port  = (int) ($this->port ?: 1194);
+            $ssOpt = $proto === 'tcp' ? '-tl' : '-ul';
+
+            $cmd = sprintf("ss %snp 2>/dev/null | grep ':%d' || netstat %snp 2>/dev/null | grep ':%d' || true",
+                $ssOpt, $port, $ssOpt, $port
             );
-            $portOpen = ($port['status'] === 0) && !empty($port['output']);
+            $portRes = $this->executeRemoteCommand($this, $cmd);
+            $portOpen = ($portRes['status'] === 0) && !empty($portRes['output']);
 
             return $active || $portOpen;
         } catch (\Throwable) {
@@ -217,7 +269,8 @@ class VpnServer extends Model
     protected static function booted(): void
     {
         $ensureKey = function (self $vpnServer) {
-            if ($vpnServer->ssh_type === 'key' && blank($vpnServer->ssh_key)) {
+            // Keep legacy default for old records
+            if (($vpnServer->ssh_type === 'key' || is_null($vpnServer->ssh_type)) && blank($vpnServer->ssh_key)) {
                 $vpnServer->ssh_key = 'id_rsa';
             }
         };
