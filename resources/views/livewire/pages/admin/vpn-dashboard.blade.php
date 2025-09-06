@@ -177,7 +177,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-white/10">
-          <template x-for="row in activeRows()" :key="row.key">
+          + <template x-for="row in activeRows()" :key="row.__key">
             <tr class="hover:bg-white/5">
               <td class="px-4 py-2"><span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span></td>
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
@@ -195,19 +195,58 @@
       </table>
     </div>
 
-    {{-- Mobile cards --}}
-    <div class="md:hidden divide-y divide-white/10">
-      <template x-for="row in activeRows()" :key="row.key">
-        <div class="p-4 flex items-start justify-between gap-3">
-          <div>
-            <div class="font-medium text-[var(--aio-ink)]" x-text="row.username"></div>
-            <div class="text-xs muted" x-text="row.server_name"></div>
+    {{-- Mobile cards (detailed) --}}
+<div class="md:hidden divide-y divide-white/10">
+  <template x-for="row in activeRows()" :key="row.__key">
+    <div class="p-4 space-y-3">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
+            <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
           </div>
-          <button class="aio-pill bg-red-500/15 text-red-300" @click.prevent="disconnect(row)">Disconnect</button>
+          <div class="text-xs muted" x-text="row.server_name"></div>
         </div>
-      </template>
+
+        <button class="aio-pill bg-red-500/15 text-red-300"
+                @click.prevent="disconnect(row)">
+          Disconnect
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+        <div>
+          <div class="text-[10px] muted">Client IP</div>
+          <div class="text-sm text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></div>
+        </div>
+
+        <div>
+          <div class="text-[10px] muted">Virtual IP</div>
+          <div class="text-sm text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></div>
+        </div>
+
+        <div>
+          <div class="text-[10px] muted">Connected</div>
+          <div class="text-sm text-[var(--aio-ink)]">
+            <span x-text="row.connected_human || '—'"></span>
+            <span class="text-[10px] muted"
+                  x-text="row.connected_fmt ? ' (' + row.connected_fmt + ')' : ''"></span>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-[10px] muted">Transfer</div>
+          <div class="text-sm text-[var(--aio-ink)]" x-text="row.formatted_bytes || '—'"></div>
+          <div class="text-[10px] muted">
+            ↓<span x-text="row.down_mb || '0.00'"></span>MB
+            ↑<span x-text="row.up_mb || '0.00'"></span>MB
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
+  </template>
+
+  <div x-show="activeRows().length===0" class="p-6 text-center muted">No active connections</div>
 </div>
 
 <script>
