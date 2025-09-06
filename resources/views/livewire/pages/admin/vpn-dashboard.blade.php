@@ -432,7 +432,6 @@ window.vpnDashboard = function () {
 
         // fallback to old endpoint if needed (username based)
         if (!res.ok) {
-          const fallback = {{ json_encode(route('admin.servers.disconnect')) }};
           const res2 = await fetch(fallback, {
             method: 'POST',
             headers: {
