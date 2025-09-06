@@ -212,135 +212,63 @@
 
 <script>
 window.vpnDashboard = function () {
+  // --- tiny formatters -------------------------------------------------------
+  const toMB = n => (n ? (n / (1024 * 1024)).toFixed(2) : '0.00');
+  const humanBytes = (inb, outb) => {
+    const total = (inb || 0) + (outb || 0);
+    if (total >= 1024 * 1024 * 1024) return (total / (1024*1024*1024)).toFixed(2) + ' GB';
+    if (total >= 1024 * 1024)        return (total / (1024*1024)).toFixed(2) + ' MB';
+    if (total >= 1024)               return (total / 1024).toFixed(2) + ' KB';
+    return (total || 0) + ' B';
+  };
+  const fmtDate = iso => {
+    try { return iso ? new Date(iso).toLocaleString() : '—'; } catch { return '—'; }
+  };
+  const ago = iso => {
+    try {
+      if (!iso) return '—';
+      const d = new Date(iso), diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
+      const m = Math.floor(diff/60), h = Math.floor(m/60), dyy = Math.floor(h/24);
+      if (dyy) return `${dyy} day${dyy>1?'s':''} ago`;
+      if (h)   return `${h} hour${h>1?'s':''} ago`;
+      if (m)   return `${m} min${m>1?'s':''} ago`;
+      return 'just now';
+    } catch { return '—'; }
+  };
+
+  // --- Alpine component ------------------------------------------------------
   return {
-    // --- state ---
-    serverMeta: {},
-    usersByServer: {},        // { [serverId]: Array<Row> }
+    serverMeta: {},                   // { [sid]: { id, name } }
+    // store as maps so we can merge updates by username
+    usersByServer: {},               // { [sid]: { [username]: row } }
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
+
     selectedServerId: null,
     showFilters: false,
     lastUpdated: new Date().toLocaleTimeString(),
+
     _pollTimer: null,
     _subscribed: false,
 
-    // --- init ---
+    // ---- lifecycle ----------------------------------------------------------
     init(meta, seedUsersByServer) {
       this.serverMeta = meta || {};
-      // build buckets
-      Object.keys(this.serverMeta).forEach((sid) => (this.usersByServer[sid] = []));
+      Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = {});
 
-      // seed from Blade (has rich fields)
+      // seed from Blade (rich rows)
       if (seedUsersByServer) {
         for (const k in seedUsersByServer) {
-          const sid = Number(k);
-          this.usersByServer[sid] = this._normaliseUsers(sid, seedUsersByServer[k]);
+          this._setExactList(+k, seedUsersByServer[k]);  // normalises + fills map
         }
       }
-
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
-      // Echo + polling
+      // subscribe & poll
       this._waitForEcho().then(() => { this._subscribeFleet(); this._subscribePerServer(); });
       this._startPolling(15000);
     },
 
-    // --- helpers / formatters ---
-    _keyFor(serverId, obj) {
-      // prefer stable connection_id; otherwise (serverId:username)
-      return (obj && obj.connection_id != null)
-        ? `c:${obj.connection_id}`
-        : `s:${serverId}:${(obj?.username ?? obj?.cn ?? '').toString().toLowerCase()}`;
-    },
-
-    _formatBytesMB(n) {
-      const mb = (Number(n || 0) / (1024 * 1024));
-      return `${mb.toFixed(2)} MB`;
-    },
-
-    _humanize(ts) {
-      if (!ts) return '—';
-      const d = new Date(ts);
-      const diff = Math.max(0, Date.now() - d.getTime()) / 1000;
-      const mins = Math.floor(diff / 60);
-      if (mins < 1) return 'just now';
-      if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
-      const hrs = Math.floor(mins / 60);
-      if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
-      const days = Math.floor(hrs / 24);
-      return `${days} day${days === 1 ? '' : 's'} ago`;
-    },
-
-    _fmtAbs(ts) {
-      if (!ts) return '';
-      const d = new Date(ts);
-      // YYYY-MM-DD HH:mm:ss
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
-    },
-
-    // normalise a heterogeneous list (objects or plain usernames)
-    _normaliseUsers(serverId, list) {
-      const arr = Array.isArray(list) ? list : [];
-
-      // build map of existing rows to preserve rich fields
-      const existingMap = Object.fromEntries(
-        (this.usersByServer[serverId] || []).map(r => [this._keyFor(serverId, r), r])
-      );
-
-      const next = arr.map(item => {
-        // allow "username" strings from events/polls
-        const base = (typeof item === 'string')
-          ? { username: item }
-          : (item || {});
-
-        const username = base.username ?? base.cn ?? 'unknown';
-        const bytesIn  = Number(base.bytes_in  ?? base.bytesReceived ?? 0);
-        const bytesOut = Number(base.bytes_out ?? base.bytesSent     ?? 0);
-
-        // merge with previous row if current payload is sparse
-        const key = this._keyFor(serverId, base);
-        const prev = existingMap[key] || {};
-
-        const connectedAt = base.connected_at ?? prev.connected_at ?? null;
-
-        const row = {
-          // identity
-          __key: key,
-          connection_id: base.connection_id ?? prev.connection_id ?? null,
-
-          // server
-          server_id: serverId,
-          server_name: base.server_name ?? prev.server_name ?? (this.serverMeta[serverId]?.name ?? `Server ${serverId}`),
-
-          // user / ips
-          username,
-          client_ip: base.client_ip ?? prev.client_ip ?? null,
-          virtual_ip: base.virtual_ip ?? prev.virtual_ip ?? null,
-
-          // times
-          connected_at: connectedAt,
-          connected_human: this._humanize(connectedAt),
-          connected_fmt: this._fmtAbs(connectedAt),
-
-          // transfer
-          bytes_in: bytesIn || prev.bytes_in || 0,
-          bytes_out: bytesOut || prev.bytes_out || 0,
-        };
-
-        const total = Number(row.bytes_in) + Number(row.bytes_out);
-        row.down_mb = (row.bytes_in / (1024 * 1024)).toFixed(2);
-        row.up_mb   = (row.bytes_out / (1024 * 1024)).toFixed(2);
-        row.formatted_bytes = this._formatBytesMB(total);
-
-        return row;
-      });
-
-      // de-dupe by __key
-      const seen = new Set();
-      return next.filter(r => (seen.has(r.__key) ? false : (seen.add(r.__key), true)));
-    },
-
-    // --- Echo integration ---
     _waitForEcho() {
       return new Promise(resolve => {
         const t = setInterval(() => { if (window.Echo) { clearInterval(t); resolve(); } }, 150);
@@ -352,9 +280,10 @@ window.vpnDashboard = function () {
       if (this._subscribed) return;
       try {
         window.Echo.private('servers.dashboard')
+          .subscribed(() => console.log('✅ subscribed servers.dashboard'))
           .listen('.mgmt.update', e => this.handleEvent(e))
           .listen('mgmt.update',   e => this.handleEvent(e));
-      } catch (_) {}
+      } catch (e) { console.warn('subscribe fleet failed', e); }
     },
 
     _subscribePerServer() {
@@ -362,85 +291,121 @@ window.vpnDashboard = function () {
       Object.keys(this.serverMeta).forEach(sid => {
         try {
           window.Echo.private(`servers.${sid}`)
+            .subscribed(() => console.log(`✅ subscribed servers.${sid}`))
             .listen('.mgmt.update', e => this.handleEvent(e))
             .listen('mgmt.update',   e => this.handleEvent(e));
-        } catch (_) {}
+        } catch (e) { console.warn(`subscribe ${sid} failed`, e); }
       });
       this._subscribed = true;
     },
 
+    _startPolling(ms) {
+      if (this._pollTimer) clearInterval(this._pollTimer);
+      this._pollTimer = setInterval(async () => {
+        if (!window.$wire?.getLiveStats) return;
+        try {
+          const res = await window.$wire.getLiveStats();
+          const incoming = res?.usersByServer || {};
+          for (const sidStr of Object.keys(this.serverMeta)) {
+            const sid = +sidStr;
+            this._setExactList(sid, incoming[sid] || []);
+          }
+          this.totals = this.computeTotals();
+          this.lastUpdated = new Date().toLocaleTimeString();
+        } catch {}
+      }, ms);
+    },
+
+    // ---- shaping & merging --------------------------------------------------
+    _shapeRow(serverId, raw) {
+      const meta = this.serverMeta[serverId] || {};
+      const username = (raw?.username ?? raw?.cn ?? 'unknown') + '';
+      const connected_at = raw?.connected_at || raw?.connectedAt || null;
+
+      const bytes_in  = Number(raw?.bytes_in  ?? raw?.bytesIn  ?? raw?.bytes_received ?? 0);
+      const bytes_out = Number(raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent     ?? 0);
+
+      const row = {
+        // identity
+        key: `${serverId}:${username}`,
+        connection_id: raw?.connection_id ?? raw?.id ?? null,   // mgmt client-id if you have it
+        username,
+        // server
+        server_id: Number(serverId),
+        server_name: meta.name || raw?.server_name || `Server ${serverId}`,
+        // networking
+        client_ip:  raw?.client_ip  ?? null,
+        virtual_ip: raw?.virtual_ip ?? null,
+        // time
+        connected_at,
+        connected_fmt: fmtDate(connected_at),
+        connected_human: ago(connected_at),
+        // traffic
+        bytes_in, bytes_out,
+        down_mb: toMB(bytes_in),
+        up_mb:   toMB(bytes_out),
+        formatted_bytes: humanBytes(bytes_in, bytes_out),
+      };
+      return row;
+    },
+
+    // Replace the list for a server with exactly the given users (merge details if we already have them)
+    _setExactList(serverId, list) {
+      const map = {};
+      const arr = Array.isArray(list) ? list : [];
+
+      // If we only get bare usernames (strings), turn them into objects first
+      const normalised = arr.map(u => typeof u === 'string' ? { username: u } : u);
+
+      // Build fresh map, merging with any existing details per username
+      const prev = this.usersByServer[serverId] || {};
+      normalised.forEach(raw => {
+        const shaped = this._shapeRow(serverId, { ...(prev[raw.username] || {}), ...raw });
+        map[shaped.username] = shaped;
+      });
+
+      this.usersByServer[serverId] = map;
+    },
+
+    // ---- events -------------------------------------------------------------
     handleEvent(e) {
       const sid = Number(e.server_id ?? e.serverId ?? 0);
       if (!sid) return;
 
-      // events may send: users: [string|object] OR cn_list: "a,b,c"
       let list = [];
-      if (Array.isArray(e.users)) list = e.users;
-      else if (typeof e.cn_list === 'string') {
-        list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean);
+      if (Array.isArray(e.users) && e.users.length) {
+        list = e.users;                      // may be rich objects
+      } else if (typeof e.cn_list === 'string') {
+        list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean); // usernames only
       }
 
-      // normalise & preserve rich fields
-      const next = this._normaliseUsers(sid, list);
-
-      // replace that server’s list (others untouched)
-      this.usersByServer[sid] = next;
+      this._setExactList(sid, list);
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
 
-    // --- polling ---
-    _startPolling(ms = 15000) {
-      if (this._pollTimer) clearInterval(this._pollTimer);
-      this._pollTimer = setInterval(() => {
-        if (!window.$wire?.getLiveStats) return;
-        window.$wire.getLiveStats()
-          .then(res => {
-            const incoming = res?.usersByServer || {};
-            const out = {};
-            for (const k in this.serverMeta) {
-              const sid = Number(k);
-              out[sid] = this._normaliseUsers(sid, incoming[k] || []);
-            }
-            this.usersByServer = out;
-            this.totals = this.computeTotals();
-            this.lastUpdated = new Date().toLocaleTimeString();
-          })
-          .catch(() => {});
-      }, ms);
-    },
-
-    // --- computed + view helpers ---
+    // ---- derived data for UI -----------------------------------------------
     computeTotals() {
       const unique = new Set();
-      let conns = 0;
-      let activeServers = 0;
-
+      let conns = 0, activeServers = 0;
       Object.keys(this.serverMeta).forEach(sid => {
-        const arr = this.usersByServer[sid] || [];
+        const map = this.usersByServer[sid] || {};
+        const arr = Object.values(map);
         if (arr.length) activeServers++;
         conns += arr.length;
         arr.forEach(u => unique.add(u.username));
       });
-
-      return {
-        online_users: unique.size,
-        active_connections: conns,
-        active_servers: activeServers
-      };
+      return { online_users: unique.size, active_connections: conns, active_servers: activeServers };
     },
 
-    serverUsersCount(id) { return (this.usersByServer[id] || []).length; },
+    serverUsersCount(id) { return Object.values(this.usersByServer[id] || {}).length; },
 
     activeRows() {
-      const ids = (this.selectedServerId == null)
-        ? Object.keys(this.serverMeta)
-        : [String(this.selectedServerId)];
-
+      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
       const rows = [];
-      ids.forEach(sid => {
-        (this.usersByServer[sid] || []).forEach(u => rows.push(u));
-      });
+      ids.forEach(sid => rows.push(...Object.values(this.usersByServer[sid] || {})));
+      // stable sort by server then username
+      rows.sort((a,b) => (a.server_name||'').localeCompare(b.server_name||'') || (a.username||'').localeCompare(b.username||''));
       return rows;
     },
 
@@ -449,42 +414,46 @@ window.vpnDashboard = function () {
       try { localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? ''); } catch {}
     },
 
-    // --- actions ---
+    // ---- actions ------------------------------------------------------------
     async disconnect(row) {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
       try {
-        const res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
+        // Prefer mgmt client_id route
+        const url = `/admin/servers/${row.server_id}/disconnect`;
+        const res = await fetch(url, {
           method: 'POST',
           headers: {
             'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            client_id: row.connection_id,     // mgmt client id (preferred)
-            username: row.username            // fallback for older controllers
-          }),
+          body: JSON.stringify({ client_id: row.connection_id }),
         });
 
-        let data;
-        try { data = await res.json(); } catch { data = { message: await res.text() }; }
-
+        // fallback to old endpoint if needed (username based)
         if (!res.ok) {
-          throw new Error(
-            Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error')
-          );
+          const fallback = {{ json_encode(route('admin.vpn.disconnect')) }};
+          const res2 = await fetch(fallback, {
+            method: 'POST',
+            headers: {
+              'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username: row.username, server_id: row.server_id }),
+          });
+          if (!res2.ok) {
+            let data2; try { data2 = await res2.json(); } catch { data2 = { message: await res2.text() }; }
+            throw new Error(Array.isArray(data2?.output) ? data2.output.join('\n') : (data2?.message || 'Unknown error'));
+          }
         }
 
-        // remove by connection_id if we have it; else by username
-        const sid = row.server_id;
-        this.usersByServer[sid] = (this.usersByServer[sid] || []).filter(u =>
-          (row.connection_id != null)
-            ? u.connection_id !== row.connection_id
-            : u.username !== row.username
-        );
-
+        // remove from UI
+        const map = this.usersByServer[row.server_id] || {};
+        delete map[row.username];
+        this.usersByServer[row.server_id] = map;
         this.totals = this.computeTotals();
-        alert(data.message || `Disconnected ${row.username}`);
+
+        alert(`Disconnected ${row.username}`);
       } catch (e) {
         console.error(e);
         alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
