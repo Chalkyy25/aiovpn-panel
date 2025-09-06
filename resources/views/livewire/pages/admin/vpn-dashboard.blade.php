@@ -324,7 +324,50 @@ window.vpnDashboard = function () {
       return rows;
     },
 
-    selectServer(id) { this.selectedServerId = id==null?null:Number(id); },
+          selectServer(id) {
+      this.selectedServerId = (id === null || id === '') ? null : Number(id);
+    },
 
     async disconnect(row) {
-      if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`
+      if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
+
+      try {
+        const res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
+          method: 'POST',
+          headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            client_id: row.connection_id, // mgmt client id
+          }),
+        });
+
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          data = { message: await res.text() };
+        }
+
+        if (!res.ok) {
+          throw new Error(
+            Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error')
+          );
+        }
+
+        // Remove from dashboard
+        this.usersByServer[row.server_id] =
+          (this.usersByServer[row.server_id] || []).filter(u => u.connection_id !== row.connection_id);
+
+        this.totals = this.computeTotals();
+
+        alert(data.message || `Disconnected ${row.username}`);
+      } catch (e) {
+        console.error(e);
+        alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
+      }
+    },
+  };
+};
+</script>
