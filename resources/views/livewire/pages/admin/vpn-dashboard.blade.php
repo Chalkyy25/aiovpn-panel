@@ -213,157 +213,243 @@
 <script>
 window.vpnDashboard = function () {
   return {
+    // --- state ---
     serverMeta: {},
-    usersByServer: {},
+    usersByServer: {},        // { [serverId]: Array<Row> }
     totals: { online_users: 0, active_connections: 0, active_servers: 0 },
-
     selectedServerId: null,
     showFilters: false,
     lastUpdated: new Date().toLocaleTimeString(),
-
     _pollTimer: null,
     _subscribed: false,
 
+    // --- init ---
     init(meta, seedUsersByServer) {
       this.serverMeta = meta || {};
+      // build buckets
+      Object.keys(this.serverMeta).forEach((sid) => (this.usersByServer[sid] = []));
 
-      // init servers with empty arrays
-      Object.keys(this.serverMeta).forEach(sid => this.usersByServer[sid] = []);
-
-      // load seed users from blade
+      // seed from Blade (has rich fields)
       if (seedUsersByServer) {
         for (const k in seedUsersByServer) {
-          this.usersByServer[+k] = this._normaliseUsers(+k, seedUsersByServer[k]);
+          const sid = Number(k);
+          this.usersByServer[sid] = this._normaliseUsers(sid, seedUsersByServer[k]);
         }
       }
 
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
 
-      // debug
-      console.log('Seeded usersByServer:', JSON.parse(JSON.stringify(this.usersByServer)));
-
-      this._waitForEcho().then(() => {
-        this._subscribeFleet();
-        this._subscribePerServer();
-      });
+      // Echo + polling
+      this._waitForEcho().then(() => { this._subscribeFleet(); this._subscribePerServer(); });
       this._startPolling(15000);
     },
 
+    // --- helpers / formatters ---
+    _keyFor(serverId, obj) {
+      // prefer stable connection_id; otherwise (serverId:username)
+      return (obj && obj.connection_id != null)
+        ? `c:${obj.connection_id}`
+        : `s:${serverId}:${(obj?.username ?? obj?.cn ?? '').toString().toLowerCase()}`;
+    },
+
+    _formatBytesMB(n) {
+      const mb = (Number(n || 0) / (1024 * 1024));
+      return `${mb.toFixed(2)} MB`;
+    },
+
+    _humanize(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts);
+      const diff = Math.max(0, Date.now() - d.getTime()) / 1000;
+      const mins = Math.floor(diff / 60);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+      const days = Math.floor(hrs / 24);
+      return `${days} day${days === 1 ? '' : 's'} ago`;
+    },
+
+    _fmtAbs(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      // YYYY-MM-DD HH:mm:ss
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    },
+
+    // normalise a heterogeneous list (objects or plain usernames)
+    _normaliseUsers(serverId, list) {
+      const arr = Array.isArray(list) ? list : [];
+
+      // build map of existing rows to preserve rich fields
+      const existingMap = Object.fromEntries(
+        (this.usersByServer[serverId] || []).map(r => [this._keyFor(serverId, r), r])
+      );
+
+      const next = arr.map(item => {
+        // allow "username" strings from events/polls
+        const base = (typeof item === 'string')
+          ? { username: item }
+          : (item || {});
+
+        const username = base.username ?? base.cn ?? 'unknown';
+        const bytesIn  = Number(base.bytes_in  ?? base.bytesReceived ?? 0);
+        const bytesOut = Number(base.bytes_out ?? base.bytesSent     ?? 0);
+
+        // merge with previous row if current payload is sparse
+        const key = this._keyFor(serverId, base);
+        const prev = existingMap[key] || {};
+
+        const connectedAt = base.connected_at ?? prev.connected_at ?? null;
+
+        const row = {
+          // identity
+          __key: key,
+          connection_id: base.connection_id ?? prev.connection_id ?? null,
+
+          // server
+          server_id: serverId,
+          server_name: base.server_name ?? prev.server_name ?? (this.serverMeta[serverId]?.name ?? `Server ${serverId}`),
+
+          // user / ips
+          username,
+          client_ip: base.client_ip ?? prev.client_ip ?? null,
+          virtual_ip: base.virtual_ip ?? prev.virtual_ip ?? null,
+
+          // times
+          connected_at: connectedAt,
+          connected_human: this._humanize(connectedAt),
+          connected_fmt: this._fmtAbs(connectedAt),
+
+          // transfer
+          bytes_in: bytesIn || prev.bytes_in || 0,
+          bytes_out: bytesOut || prev.bytes_out || 0,
+        };
+
+        const total = Number(row.bytes_in) + Number(row.bytes_out);
+        row.down_mb = (row.bytes_in / (1024 * 1024)).toFixed(2);
+        row.up_mb   = (row.bytes_out / (1024 * 1024)).toFixed(2);
+        row.formatted_bytes = this._formatBytesMB(total);
+
+        return row;
+      });
+
+      // de-dupe by __key
+      const seen = new Set();
+      return next.filter(r => (seen.has(r.__key) ? false : (seen.add(r.__key), true)));
+    },
+
+    // --- Echo integration ---
     _waitForEcho() {
       return new Promise(resolve => {
-        const t = setInterval(() => {
-          if (window.Echo) { clearInterval(t); resolve(); }
-        }, 150);
+        const t = setInterval(() => { if (window.Echo) { clearInterval(t); resolve(); } }, 150);
         setTimeout(() => { clearInterval(t); resolve(); }, 3000);
       });
     },
 
     _subscribeFleet() {
       if (this._subscribed) return;
-      window.Echo.private('servers.dashboard')
-        .subscribed(() => console.log('✅ subscribed servers.dashboard'))
-        .listen('.mgmt.update', e => this.handleEvent(e));
+      try {
+        window.Echo.private('servers.dashboard')
+          .listen('.mgmt.update', e => this.handleEvent(e))
+          .listen('mgmt.update',   e => this.handleEvent(e));
+      } catch (_) {}
     },
 
     _subscribePerServer() {
       if (this._subscribed) return;
       Object.keys(this.serverMeta).forEach(sid => {
-        window.Echo.private(`servers.${sid}`)
-          .subscribed(() => console.log(`✅ subscribed servers.${sid}`))
-          .listen('.mgmt.update', e => this.handleEvent(e));
+        try {
+          window.Echo.private(`servers.${sid}`)
+            .listen('.mgmt.update', e => this.handleEvent(e))
+            .listen('mgmt.update',   e => this.handleEvent(e));
+        } catch (_) {}
       });
       this._subscribed = true;
-    },
-
-    _startPolling(ms = 15000) {
-      if (this._pollTimer) clearInterval(this._pollTimer);
-      this._pollTimer = setInterval(() => {
-        if (!window.$wire?.getLiveStats) return;
-        window.$wire.getLiveStats().then(res => {
-          const incoming = res?.usersByServer || {};
-          const norm = {};
-          for (const k in this.serverMeta) {
-            norm[+k] = this._normaliseUsers(+k, incoming[k] || []);
-          }
-          this.usersByServer = norm;
-          this.totals = this.computeTotals();
-          this.lastUpdated = new Date().toLocaleTimeString();
-        }).catch(() => {});
-      }, ms);
-    },
-
-    _normaliseUsers(serverId, list) {
-      const arr = Array.isArray(list) ? list : [];
-      return arr.map(u => {
-        const name = u.username ?? u.cn ?? 'unknown';
-        return {
-          ...u,
-          username: name,
-          connection_id: u.connection_id ?? null,
-          __key: `${serverId}:${name}:${u.connection_id ?? ''}`,
-        };
-      });
     },
 
     handleEvent(e) {
       const sid = Number(e.server_id ?? e.serverId ?? 0);
       if (!sid) return;
 
+      // events may send: users: [string|object] OR cn_list: "a,b,c"
       let list = [];
       if (Array.isArray(e.users)) list = e.users;
       else if (typeof e.cn_list === 'string') {
         list = e.cn_list.split(',').map(s => s.trim()).filter(Boolean);
       }
 
-      this.usersByServer[sid] = this._normaliseUsers(sid, list);
+      // normalise & preserve rich fields
+      const next = this._normaliseUsers(sid, list);
+
+      // replace that server’s list (others untouched)
+      this.usersByServer[sid] = next;
       this.totals = this.computeTotals();
       this.lastUpdated = new Date().toLocaleTimeString();
     },
 
+    // --- polling ---
+    _startPolling(ms = 15000) {
+      if (this._pollTimer) clearInterval(this._pollTimer);
+      this._pollTimer = setInterval(() => {
+        if (!window.$wire?.getLiveStats) return;
+        window.$wire.getLiveStats()
+          .then(res => {
+            const incoming = res?.usersByServer || {};
+            const out = {};
+            for (const k in this.serverMeta) {
+              const sid = Number(k);
+              out[sid] = this._normaliseUsers(sid, incoming[k] || []);
+            }
+            this.usersByServer = out;
+            this.totals = this.computeTotals();
+            this.lastUpdated = new Date().toLocaleTimeString();
+          })
+          .catch(() => {});
+      }, ms);
+    },
+
+    // --- computed + view helpers ---
     computeTotals() {
       const unique = new Set();
       let conns = 0;
+      let activeServers = 0;
+
       Object.keys(this.serverMeta).forEach(sid => {
         const arr = this.usersByServer[sid] || [];
+        if (arr.length) activeServers++;
         conns += arr.length;
         arr.forEach(u => unique.add(u.username));
       });
-      const activeServers = Object.keys(this.serverMeta)
-        .filter(sid => (this.usersByServer[sid] || []).length > 0).length;
 
-      return { online_users: unique.size, active_connections: conns, active_servers: activeServers };
+      return {
+        online_users: unique.size,
+        active_connections: conns,
+        active_servers: activeServers
+      };
     },
 
-    serverUsersCount(id) {
-      return (this.usersByServer[id] || []).length;
-    },
+    serverUsersCount(id) { return (this.usersByServer[id] || []).length; },
 
     activeRows() {
-      const ids = this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
+      const ids = (this.selectedServerId == null)
+        ? Object.keys(this.serverMeta)
+        : [String(this.selectedServerId)];
+
       const rows = [];
       ids.forEach(sid => {
-        (this.usersByServer[sid] || []).forEach(u => {
-          rows.push({
-            key: u.__key,
-            connection_id: u.connection_id ?? null,
-            server_id: Number(sid),
-            server_name: this.serverMeta[sid]?.name ?? `Server ${sid}`,
-            username: u.username ?? 'unknown',
-            client_ip: u.client_ip ?? null,
-            virtual_ip: u.virtual_ip ?? null,
-            connected_human: u.connected_human ?? null,
-            formatted_bytes: u.formatted_bytes ?? null,
-          });
-        });
+        (this.usersByServer[sid] || []).forEach(u => rows.push(u));
       });
       return rows;
     },
 
     selectServer(id) {
       this.selectedServerId = (id === null || id === '') ? null : Number(id);
+      try { localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? ''); } catch {}
     },
 
+    // --- actions ---
     async disconnect(row) {
       if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
@@ -374,20 +460,28 @@ window.vpnDashboard = function () {
             'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ client_id: row.connection_id }),
+          body: JSON.stringify({
+            client_id: row.connection_id,     // mgmt client id (preferred)
+            username: row.username            // fallback for older controllers
+          }),
         });
 
         let data;
-        try { data = await res.json(); }
-        catch { data = { message: await res.text() }; }
+        try { data = await res.json(); } catch { data = { message: await res.text() }; }
 
         if (!res.ok) {
-          throw new Error(Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error'));
+          throw new Error(
+            Array.isArray(data.output) ? data.output.join('\n') : (data.message || 'Unknown error')
+          );
         }
 
-        // remove disconnected user
-        this.usersByServer[row.server_id] =
-          (this.usersByServer[row.server_id] || []).filter(u => u.connection_id !== row.connection_id);
+        // remove by connection_id if we have it; else by username
+        const sid = row.server_id;
+        this.usersByServer[sid] = (this.usersByServer[sid] || []).filter(u =>
+          (row.connection_id != null)
+            ? u.connection_id !== row.connection_id
+            : u.username !== row.username
+        );
 
         this.totals = this.computeTotals();
         alert(data.message || `Disconnected ${row.username}`);
