@@ -46,52 +46,58 @@ class DeployApiController extends Controller
         $vpn = \App\Models\VpnServer::findOrFail($server);
 
         if ($data['status'] === 'mgmt') {
-            $raw = $data['message'];
-            $ts  = now()->toIso8601String();
+    $raw = $data['message'];
+    $ts  = now()->toIso8601String();
 
-            $clients = 0; $cnList = '';
-            if (preg_match('/clients=(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
-                $clients = (int) $m[1];
-                $cnList  = trim($m[2] ?? '');
-            } elseif (preg_match('/\[mgmt\]\s*(\d+)\s*online:\s*\[([^\]]*)\]/i', $raw, $m)) {
-                $clients = (int) $m[1];
-                $cnList  = trim($m[2] ?? '');
-            }
+    // Try to parse "clients=2 [alice,bob]" or "[mgmt] 2 online: [alice,bob]"
+    $clients = 0; $cnList = '';
+    if (preg_match('/clients=(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
+        $clients = (int) $m[1];
+        $cnList  = trim($m[2] ?? '');
+    } elseif (preg_match('/\[mgmt\]\s*(\d+)\s*online:\s*\[([^\]]*)\]/i', $raw, $m)) {
+        $clients = (int) $m[1];
+        $cnList  = trim($m[2] ?? '');
+    }
 
-            $cnList = preg_replace('/\s+/', '', $cnList ?? '');
-            if ($cnList === '[]') $cnList = '';
+    $cnList = preg_replace('/\s+/', '', $cnList ?? '');
+    if ($cnList === '[]') $cnList = '';
 
-            cache()->put("servers:{$vpn->id}:clients", $clients, 300);
-            cache()->put("servers:{$vpn->id}:cn_list", $cnList, 300);
-            cache()->put("servers:{$vpn->id}:mgmt_last_seen", $ts, 300);
+    // (optional) keep these for quick counters/logs
+    cache()->put("servers:{$vpn->id}:clients",        $clients, 300);
+    cache()->put("servers:{$vpn->id}:cn_list",        $cnList, 300);
+    cache()->put("servers:{$vpn->id}:mgmt_last_seen", $ts, 300);
 
-            $lastKey   = "servers:{$vpn->id}:mgmt_last_log";
-            $lastState = cache()->get("servers:{$vpn->id}:mgmt_state");
-            $state     = "{$clients}|{$cnList}";
-            $shouldLog = false;
+    $lastKey   = "servers:{$vpn->id}:mgmt_last_log";
+    $lastState = cache()->get("servers:{$vpn->id}:mgmt_state");
+    $state     = "{$clients}|{$cnList}";
+    $shouldLog = $state !== $lastState || !cache()->has($lastKey);
+    if ($shouldLog) {
+        \Log::channel('vpn')->debug("[mgmt] {$clients} online: [{$cnList}]");
+        cache()->put($lastKey, 1, 60);
+        cache()->put("servers:{$vpn->id}:mgmt_state", $state, 300);
+    }
 
-            if ($state !== $lastState) {
-                $shouldLog = true;
-                cache()->put("servers:{$vpn->id}:mgmt_state", $state, 300);
-            } elseif (!cache()->has($lastKey)) {
-                $shouldLog = true;
-            }
-
-            if ($shouldLog) {
-                Log::channel('vpn')->debug("[mgmt] {$clients} online: [{$cnList}]");
-                cache()->put($lastKey, 1, 60);
-            }
-
-            event(new ServerMgmtEvent(
-                serverId: $vpn->id,
-                ts: $ts,
-                clients: $clients,
-                cnList: $cnList,
-                raw: $raw
-            ));
-
-            return response()->json(['ok' => true]);
+    // Build a minimal users[] array for the JSON controller
+    $users = [];
+    if ($cnList !== '') {
+        foreach (array_filter(explode(',', trim($cnList, '[]'))) as $name) {
+            $name = trim($name);
+            if ($name !== '') $users[] = ['username' => $name];
         }
+    }
+
+    // Forward to the new JSON handler (this will sync DB and broadcast rich payload)
+    $forward = \Illuminate\Http\Request::create('', 'POST', [
+        'status'  => 'mgmt',
+        'message' => $raw,
+        'ts'      => $ts,
+        'users'   => $users,
+        // 'clients' => $clients, // optional; store() derives count from users
+    ]);
+
+    return app(\App\Http\Controllers\Api\DeployEventController::class)
+        ->store($forward, $vpn);
+}
 
         // non-mgmt events
         $vpn->deployment_status = $data['status'] === 'info'
