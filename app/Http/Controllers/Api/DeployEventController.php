@@ -102,12 +102,12 @@ class DeployEventController extends Controller
                 VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
             }
 
-            $server->forceFill([
-                'online_users' => count($incoming),
-                'last_sync_at' => $now,
-            ])->saveQuietly();
-        });
-
+           $server->forceFill([
+            'online_count' => $clientCount,                                  // integer
+            'last_mgmt_at' => $now,                                          // datetime
+            'online_users' => array_column($clients, 'username'),            // optional: keep list in JSON
+        ])->saveQuietly();
+        
         // -------- enrich from DB so every row has full details --------------
         $enriched = $this->enrichFromDb($server);
 
