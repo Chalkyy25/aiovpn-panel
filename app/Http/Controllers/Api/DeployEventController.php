@@ -126,7 +126,7 @@ class DeployEventController extends Controller
             'clients'   => count($enriched),
             'users'     => $enriched,
         ]);
-    }
+    };
 
     // --- helpers ------------------------------------------------------------
 
