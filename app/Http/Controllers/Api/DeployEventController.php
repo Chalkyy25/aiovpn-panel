@@ -36,10 +36,10 @@ class DeployEventController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    // Normalise to canonical list
-    $incoming = $this->normaliseIncoming($data); // [{ username, client_ip, virtual_ip, bytes_in, bytes_out, connected_at }]
+    // Normalise incoming → [{ username, client_ip?, virtual_ip?, bytes_in?, bytes_out?, connected_at? }]
+    $incoming    = $this->normaliseIncoming($data);
     $clientCount = (int) ($data['clients'] ?? count($incoming));
-    $now = now();
+    $now         = now();
 
     Log::channel('vpn')->debug(sprintf(
         'MGMT EVENT server=%d ts=%s clients=%d [%s]',
@@ -57,10 +57,7 @@ class DeployEventController extends Controller
             $uid = $idByName[$username] ?? null;
 
             if (!$uid) {
-                $uid = VpnUser::create([
-                    'username'  => $username,
-                    'is_online' => false,
-                ])->id;
+                $uid = VpnUser::create(['username' => $username, 'is_online' => false])->id;
                 $idByName[$username] = $uid;
             }
 
@@ -98,6 +95,7 @@ class DeployEventController extends Controller
             ]);
         }
 
+        // Disconnect any users that vanished from this server
         $toDisconnect = VpnUserConnection::query()
             ->where('vpn_server_id', $server->id)
             ->where('is_connected', true)
@@ -113,23 +111,20 @@ class DeployEventController extends Controller
             VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
         }
 
-        // Conditionally persist snapshot fields to avoid 1054 errors
+        // 👉 Keep it simple & robust: persist COUNT only (int). Optionally last_mgmt_at.
         $update = [];
-        if (Schema::hasColumn('vpn_servers', 'last_mgmt_at')) {
+        if (\Schema::hasColumn('vpn_servers', 'online_users')) {
+            $update['online_users'] = $clientCount;   // int
+        }
+        if (\Schema::hasColumn('vpn_servers', 'last_mgmt_at')) {
             $update['last_mgmt_at'] = $now;
         }
-        if (Schema::hasColumn('vpn_servers', 'online_count')) {
-            $update['online_count'] = $clientCount;
-        }
-        if (Schema::hasColumn('vpn_servers', 'online_users')) {
-            $update['online_users'] = $names; // usernames only
-        }
-        if ($update) {
+        if (!empty($update)) {
             $server->forceFill($update)->saveQuietly();
         }
     });
 
-    // Enrich & broadcast
+    // Enrich & broadcast for the dashboard
     $enriched = $this->enrichFromDb($server);
 
     event(new ServerMgmtEvent(
