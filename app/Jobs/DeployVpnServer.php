@@ -107,15 +107,20 @@ class DeployVpnServer implements ShouldQueue
                 return; // buildSshBase already failed + logged
             }
 
-            // SSH sanity test
-            $testOutput = [];
-            $testStatus = 0;
-            exec($sshCmdBase . ' ' . escapeshellarg('echo CONNECTION_OK'), $testOutput, $testStatus);
-            if ($testStatus !== 0 || !in_array('CONNECTION_OK', $testOutput, true)) {
-                $this->failWith("❌ SSH connection failed to {$ip}");
-                return;
-            }
-            Log::info("✅ SSH test OK for {$ip}");
+            // SSH sanity test (capture stderr too)
+$testCmd = $sshCmdBase . ' ' . escapeshellarg('echo CONNECTION_OK') . ' 2>&1';
+$testOutput = [];
+$testStatus = 0;
+exec($testCmd, $testOutput, $testStatus);
+$testText = trim(implode("\n", $testOutput));
+Log::info("🧪 SSH test cmd: {$testCmd}");
+Log::info("🧪 SSH test out:\n" . $testText);
+
+if ($testStatus !== 0 || strpos($testText, 'CONNECTION_OK') === false) {
+    $this->failWith("❌ SSH connection failed to {$ip}\n{$testText}");
+    return;
+}
+Log::info("✅ SSH test OK for {$ip}");
 
             // Remote env (explicit beats implicit)
             $env = [
