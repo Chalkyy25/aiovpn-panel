@@ -230,14 +230,16 @@ BASH;
 {
     // Common, safe, explicit SSH options
     $sshOpts = implode(' ', [
-        '-o IdentitiesOnly=yes',                 // <-- IMPORTANT
-        '-o PreferredAuthentications=publickey', // force key auth
-        '-o StrictHostKeyChecking=accept-new',   // first connect: accept, later: verify
-        '-o ConnectTimeout=10',
-        '-o ServerAliveInterval=15',
-        '-o ServerAliveCountMax=3',
-        '-p ' . $port,
-    ]);
+    '-o IdentitiesOnly=yes',
+    '-o PreferredAuthentications=publickey',
+    '-o StrictHostKeyChecking=accept-new',
+    '-o UserKnownHostsFile=/dev/null',   // <--- force no writes
+    '-o GlobalKnownHostsFile=/dev/null', // <--- skip system-wide file too
+    '-o ConnectTimeout=10',
+    '-o ServerAliveInterval=15',
+    '-o ServerAliveCountMax=3',
+    '-p ' . $port,
+]);
 
     // 1) DB DeployKey (preferred)
     $dk = $this->vpnServer->deployKey ?: DeployKey::active()->first();
