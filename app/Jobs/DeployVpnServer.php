@@ -32,6 +32,10 @@ class DeployVpnServer implements ShouldQueue
 
     public VpnServer $vpnServer;
 
+    /** For diagnostics */
+    private ?string $lastKeyPath = null;
+    private ?string $lastKeyFingerprint = null;
+
     public function __construct(VpnServer $vpnServer)
     {
         $this->vpnServer = $vpnServer;
@@ -108,21 +112,46 @@ class DeployVpnServer implements ShouldQueue
             }
 
             // SSH sanity test (capture stderr too)
-$testCmd = $sshCmdBase . ' ' . escapeshellarg('echo CONNECTION_OK') . ' 2>&1';
-$testOutput = [];
-$testStatus = 0;
-exec($testCmd, $testOutput, $testStatus);
-$testText = trim(implode("\n", $testOutput));
-Log::info("🧪 SSH test cmd: {$testCmd}");
-Log::info("🧪 SSH test out:\n" . $testText);
+            $testCmd = $sshCmdBase . ' ' . escapeshellarg('echo CONNECTION_OK') . ' 2>&1';
+            $testOutput = [];
+            $testStatus = 0;
+            exec($testCmd, $testOutput, $testStatus);
+            $testText = trim(implode("\n", $testOutput));
+            Log::info("🧪 SSH test cmd: {$testCmd}");
+            if ($this->lastKeyFingerprint) {
+                Log::info("🧪 Using key fingerprint: {$this->lastKeyFingerprint}");
+            }
+            Log::info("🧪 SSH test out:\n" . $testText);
 
-if ($testStatus !== 0 || strpos($testText, 'CONNECTION_OK') === false) {
-    $this->failWith("❌ SSH connection failed to {$ip}\n{$testText}");
-    return;
-}
-Log::info("✅ SSH test OK for {$ip}");
+            if ($testStatus !== 0 || strpos($testText, 'CONNECTION_OK') === false) {
+                $hint = '';
+                if (str_contains($testText, 'Permission denied (publickey)')) {
+                    $pubPath = $this->lastKeyPath ? ($this->lastKeyPath . '.pub') : null;
+                    $preview = ($pubPath && is_file($pubPath))
+                        ? trim((string) shell_exec('head -c 64 ' . escapeshellarg($pubPath))) . '…'
+                        : '';
+                    $hint = "\n🛠 Fix:\n"
+                        . "  1) Ensure this public key is in /root/.ssh/authorized_keys on {$ip}\n"
+                        . "     {$pubPath}  (starts: {$preview})\n"
+                        . "  2) Permissions: chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys\n";
+                }
+                $this->failWith("❌ SSH connection failed to {$ip}\n{$testText}{$hint}");
+                return;
+            }
+            Log::info("✅ SSH test OK for {$ip}");
 
-            // Remote env (explicit beats implicit)
+            // Optional: peek server authorized_keys (first 5 lines)
+            try {
+                $ak = [];
+                exec($sshCmdBase . ' ' . escapeshellarg('head -n 5 /root/.ssh/authorized_keys || true'), $ak);
+                if (!empty($ak)) {
+                    Log::info("📥 Server authorized_keys (first 5):\n" . implode("\n", array_map('trim', $ak)));
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+
+            // Remote env
             $env = [
                 'PANEL_URL'   => $panelUrl,
                 'PANEL_TOKEN' => $panelToken,
@@ -140,20 +169,18 @@ Log::info("✅ SSH test OK for {$ip}");
                 'VPN_PASS'    => $vpnPass,
 
                 // agent envs
-                'STATUS_PATH'           => '/run/openvpn/server.status',
-                'STATUS_PUSH_INTERVAL'  => (string) (config('services.vpn.status_push_interval', 5)),
-                'PANEL_CALLBACKS'       => '1',  // POST back to panel
-                'PUSH_MGMT'             => '0',  // disable legacy mgmt pusher
+                'STATUS_PATH'          => '/run/openvpn/server.status',
+                'STATUS_PUSH_INTERVAL' => (string) (config('services.vpn.status_push_interval', 5)),
+                'PANEL_CALLBACKS'      => '1',  // POST back to panel
+                'PUSH_MGMT'            => '0',  // disable legacy mgmt pusher
             ];
 
-            // Build KEY='val' assignments
             $assigns = implode(' ', array_map(
                 fn ($k, $v) => $k . '=' . escapeshellarg($v),
                 array_keys($env),
                 array_values($env)
             ));
 
-            // Mask sensitive bits for logs only
             $maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
             Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' [ssh …]');
 
@@ -221,74 +248,102 @@ BASH;
     // Helpers
     // ────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Build the SSH base command:
-     * 1) Prefer server->deployKey or active default DeployKey (key auth).
-     * 2) Fallback to legacy ssh_type=password (sshpass) or ssh_type=key with ssh_key path.
-     */
+    /** Build the SSH base command (DeployKey preferred; then legacy). */
     private function buildSshBase(string $user, string $ip, int $port): ?string
-{
-    // Common, safe, explicit SSH options
-    $sshOpts = implode(' ', [
-    '-o IdentitiesOnly=yes',
-    '-o PreferredAuthentications=publickey',
-    '-o StrictHostKeyChecking=accept-new',
-    '-o UserKnownHostsFile=/dev/null',   // <--- force no writes
-    '-o GlobalKnownHostsFile=/dev/null', // <--- skip system-wide file too
-    '-o ConnectTimeout=10',
-    '-o ServerAliveInterval=15',
-    '-o ServerAliveCountMax=3',
-    '-p ' . $port,
-]);
+    {
+        // Common, safe, explicit SSH options
+        $sshOpts = implode(' ', [
+            '-o IdentitiesOnly=yes',
+            '-o PreferredAuthentications=publickey',
+            '-o StrictHostKeyChecking=accept-new',
+            '-o UserKnownHostsFile=/dev/null',
+            '-o GlobalKnownHostsFile=/dev/null',
+            '-o ConnectTimeout=10',
+            '-o ServerAliveInterval=15',
+            '-o ServerAliveCountMax=3',
+            '-p ' . $port,
+        ]);
 
-    // 1) DB DeployKey (preferred)
-    $dk = $this->vpnServer->deployKey ?: DeployKey::active()->first();
-    if ($dk) {
-        $keyPath = $dk->privateAbsolutePath();
+        // 1) DB DeployKey (preferred)
+        $dk = $this->vpnServer->deployKey ?: DeployKey::active()->first();
+        if ($dk) {
+            $keyPath = $dk->privateAbsolutePath();
+            if (!is_file($keyPath)) {
+                $this->failWith("❌ DeployKey not found at {$keyPath} (name={$dk->name})");
+                return null;
+            }
+            @chmod($keyPath, 0600);
+
+            $this->captureKeyDiagnostics($keyPath, 'DeployKey');
+            return 'ssh -i ' . escapeshellarg($keyPath) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+        }
+
+        // 2) Legacy: password or key
+        $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
+
+        if ($sshType === 'password') {
+            $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
+            if ($haveSshpass === '') {
+                $this->failWith('❌ sshpass is required on the panel host for password auth.');
+                return null;
+            }
+            $sshPass = (string) $this->vpnServer->ssh_password;
+            if ($sshPass === '') {
+                $this->failWith('❌ SSH password not set for password auth.');
+                return null;
+            }
+            Log::warning('🔑 Using legacy password SSH (consider switching to keys)');
+            $optsPwd = str_replace('-o IdentitiesOnly=yes', '', $sshOpts);
+            return 'sshpass -p ' . escapeshellarg($sshPass) . ' ssh ' . $optsPwd . ' ' . escapeshellarg("{$user}@{$ip}");
+        }
+
+        // Legacy key path (absolute or storage/app/ssh_keys/<file>)
+        $legacy  = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
+        $keyPath = str_starts_with($legacy, '/') || str_contains($legacy, ':\\')
+            ? $legacy
+            : storage_path('app/ssh_keys/' . $legacy);
+
         if (!is_file($keyPath)) {
-            $this->failWith("❌ DeployKey not found at {$keyPath} (name={$dk->name})");
+            $this->failWith("❌ SSH key not found at {$keyPath}");
             return null;
         }
         @chmod($keyPath, 0600);
-        Log::info("🔐 Using DeployKey: {$keyPath}");
+
+        $this->captureKeyDiagnostics($keyPath, 'Legacy key');
         return 'ssh -i ' . escapeshellarg($keyPath) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
     }
 
-    // 2) Legacy: password (sshpass) or key path
-    $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
+    /** Capture + log key fingerprint/comment for diagnostics. */
+    private function captureKeyDiagnostics(string $privateKeyPath, string $label): void
+    {
+        $this->lastKeyPath = $privateKeyPath;
 
-    if ($sshType === 'password') {
-        $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
-        if ($haveSshpass === '') {
-            $this->failWith('❌ sshpass is required on the panel host for password auth.');
-            return null;
+        // Ensure we have a .pub and fingerprint
+        $pubPath = str_ends_with($privateKeyPath, '.pub') ? $privateKeyPath : $privateKeyPath . '.pub';
+
+        if (!is_file($pubPath)) {
+            $pub = @shell_exec(sprintf('ssh-keygen -y -f %s 2>/dev/null', escapeshellarg($privateKeyPath))) ?: '';
+            $pub = trim($pub);
+            if ($pub !== '') {
+                file_put_contents($pubPath, $pub . PHP_EOL);
+                @chmod($pubPath, 0644);
+            }
         }
-        $sshPass = (string) $this->vpnServer->ssh_password;
-        if ($sshPass === '') {
-            $this->failWith('❌ SSH password not set for password auth.');
-            return null;
+
+        $fp = @shell_exec(sprintf('ssh-keygen -lf %s 2>/dev/null', escapeshellarg($pubPath))) ?: '';
+        $fp = trim($fp);
+        $this->lastKeyFingerprint = $fp ?: null;
+
+        Log::info("🔐 Using {$label}: {$privateKeyPath}");
+        if ($fp) Log::info("🔎 Key fingerprint: {$fp}");
+        if (is_file($pubPath)) {
+            $pubData = trim((string) @file_get_contents($pubPath));
+            if ($pubData !== '') {
+                $comment = trim(substr($pubData, strrpos($pubData, ' ') + 1));
+                Log::info("📝 Key comment: {$comment}");
+            }
         }
-        Log::warning('🔑 Using legacy password SSH (consider switching to keys)');
-        // For password mode we cannot use IdentitiesOnly; drop it to avoid confusion:
-        $optsPwd = str_replace('-o IdentitiesOnly=yes', '', $sshOpts);
-        return 'sshpass -p ' . escapeshellarg($sshPass) . ' ssh ' . $optsPwd . ' ' . escapeshellarg("{$user}@{$ip}");
     }
-
-    // Legacy key path (absolute or storage/app/ssh_keys/<file>)
-    $legacy = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
-    $keyPath = str_starts_with($legacy, '/') || str_contains($legacy, ':\\')
-        ? $legacy
-        : storage_path('app/ssh_keys/' . $legacy);
-
-    if (!is_file($keyPath)) {
-        $this->failWith("❌ SSH key not found at {$keyPath}");
-        return null;
-    }
-    @chmod($keyPath, 0600);
-    Log::info("🔐 Using legacy key: {$keyPath}");
-
-    return 'ssh -i ' . escapeshellarg($keyPath) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
-}
 
     /**
      * Run a long SSH command and stream output into the server's log.
