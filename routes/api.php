@@ -50,7 +50,7 @@ Route::post('/auth/login', [MobileAuthController::class, 'login']);   // return 
 Route::middleware('auth:sanctum')->get('/ping', function (Request $req) {
     return response()->json([
         'ok'   => true,
-        'user' => $req->user()->only('id','email')
+        'user' => $req->user()->only('id','username')
     ]);
 });
 
