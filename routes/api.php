@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
 use App\Http\Controllers\MobileAuthController;
+use App\Http\Controllers\MobileProfileController;
 use App\Http\Controllers\Api\DeployEventController;
 
 /*
@@ -47,6 +48,11 @@ Route::middleware('auth.panel-token')->group(function () {
 
 // ── Mobile client endpoints ───────────────────────────────────────────
 Route::post('/auth/login', [MobileAuthController::class, 'login']);   // return token
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/profiles', [MobileProfileController::class, 'index']);
+    Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
+});
+use App\Http\Controllers\MobileProfileController;
 Route::middleware('auth:sanctum')->get('/ping', function (Request $req) {
     return response()->json([
         'ok'   => true,
