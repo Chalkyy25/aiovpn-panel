@@ -3,16 +3,17 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\VpnUser;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Hash;
+use App\Models\VpnUser;
 
 class MobileAuthController extends Controller
 {
     public function login(Request $request)
     {
         $data = $request->validate([
-            'username' => ['required', 'string'],
-            'password' => ['required', 'string'],
+            'username' => ['required','string'],
+            'password' => ['required','string'],
         ]);
 
         $user = VpnUser::where('username', $data['username'])->first();
@@ -21,12 +22,24 @@ class MobileAuthController extends Controller
             return response()->json(['message' => 'Invalid username or password'], 401);
         }
 
-        // If your vpn_users.password is already hashed:
-        // if (!Hash::check($data['password'], $user->password)) { … }
+        $ok = false;
 
-        // If your vpn_users.password is plaintext (like psw-file):
-        if ($user->password !== $data['password']) {
+        // 1) Prefer hashed password check
+        if (!empty($user->password) && Hash::check($data['password'], $user->password)) {
+            $ok = true;
+        }
+
+        // 2) Fallback to plain_password column if present
+        if (!$ok && !empty($user->plain_password) && hash_equals($user->plain_password, $data['password'])) {
+            $ok = true;
+        }
+
+        if (!$ok) {
             return response()->json(['message' => 'Invalid username or password'], 401);
+        }
+
+        if (!$user->is_active || $user->isExpired) {
+            return response()->json(['message' => 'Account inactive or expired'], 403);
         }
 
         $token = $user->createToken('mobile')->plainTextToken;
@@ -34,10 +47,11 @@ class MobileAuthController extends Controller
         return response()->json([
             'token' => $token,
             'user'  => [
-                'id'       => $user->id,
-                'username' => $user->username,
-                'active'   => $user->active ?? true,
-                'expires'  => $user->expires_at ?? null,
+                'id'        => $user->id,
+                'username'  => $user->username,
+                'active'    => (bool) $user->is_active,
+                'expires'   => optional($user->expires_at)->toISOString(),
+                'max_conn'  => (int) $user->max_connections,
             ],
         ]);
     }
