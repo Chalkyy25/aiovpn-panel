@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
+use App\Http\Controllers\MobileAuthController;
 use App\Http\Controllers\Api\DeployEventController;
 
 /*
@@ -42,6 +43,15 @@ Route::middleware('auth.panel-token')->group(function () {
     // ── Auth file (script pulls + mirror back) ─────────────────────
     Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
     Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
+});
+
+// ── Mobile client endpoints ───────────────────────────────────────────
+Route::post('/auth/login', [MobileAuthController::class, 'login']);   // return token
+Route::middleware('auth:sanctum')->get('/ping', function (Request $req) {
+    return response()->json([
+        'ok'   => true,
+        'user' => $req->user()->only('id','email')
+    ]);
 });
 
 /*
