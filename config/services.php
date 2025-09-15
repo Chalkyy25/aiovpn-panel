@@ -18,6 +18,12 @@ return [
         'base'  => env('PANEL_BASE_URL', 'https://aiovpn.co.uk'),
         'token' => env('PANEL_TOKEN'),
     ],
+    
+    'vpn_nodes' => [
+    'ssh_user' => env('VPNNODE_SSH_USER', 'root'),
+    'ssh_key'  => env('VPNNODE_SSH_KEY',  '/root/.ssh/id_rsa'),
+    'ssh_port' => env('VPNNODE_SSH_PORT', 22),
+],
 
 
     'mailgun' => [
