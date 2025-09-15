@@ -83,90 +83,76 @@ class MobileProfileController extends Controller
      * SSH into the node and read server.conf, ca.crt, and key (ta.key or tls-crypt.key).
      */
     private function fetchOpenVPNAssetsOverSSH(string $host): array
-    {
-        try {
-            $sshUser = config('services.vpn_nodes.ssh_user', 'root');
-            $sshKeyPath = config('services.vpn_nodes.ssh_key', '/root/.ssh/id_rsa');
+{
+    try {
+        $sshUser   = config('services.vpn_nodes.ssh_user', 'root');
+        $sshKey    = config('services.vpn_nodes.ssh_key',  '/root/.ssh/id_rsa');
+        $sshPort   = (int) config('services.vpn_nodes.ssh_port', 22);
 
-            $key = @file_get_contents($sshKeyPath);
-            if ($key === false) return ['ok' => false, 'reason' => "Missing SSH key: $sshKeyPath"];
+        $keyStr = @file_get_contents($sshKey);
+        if ($keyStr === false) return ['ok' => false, 'reason' => "Missing SSH key: $sshKey"];
 
-            $priv = PublicKeyLoader::loadPrivateKey($key);
-            $ssh  = new SSH2($host, 22, 8); // 8s timeout
-            if (!$ssh->login($sshUser, $priv)) {
-                return ['ok' => false, 'reason' => 'SSH login failed'];
-            }
+        $priv = \phpseclib3\Crypt\PublicKeyLoader::loadPrivateKey($keyStr);
+        $ssh  = new \phpseclib3\Net\SSH2($host, $sshPort, 8);
+        if (!$ssh->login($sshUser, $priv)) return ['ok' => false, 'reason' => 'SSH login failed'];
 
-            // find conf path
-            $confCandidates = [
-                '/etc/openvpn/server/server.conf',
-                '/etc/openvpn/server.conf',
-                '/etc/openvpn/openvpn.conf',
-            ];
-            $conf = '';
-            foreach ($confCandidates as $p) {
-                $out = $ssh->exec("test -r $p && cat $p || true");
-                if ($out && trim($out) !== '') { $conf = $out; break; }
-            }
-            if ($conf === '') return ['ok' => false, 'reason' => 'server.conf not found'];
-
-            // detect proto/port
-            $proto = 'udp'; $port = 1194;
-            if (preg_match('/^\s*proto\s+(\S+)/mi', $conf, $m)) $proto = trim($m[1]);
-            if (preg_match('/^\s*port\s+(\d+)/mi', $conf, $m))  $port  = (int) $m[1];
-
-            // detect tls mode and key path
-            $mode = 'tls-auth';
-            $keyPath = null;
-            if (preg_match('/^\s*tls-crypt\s+(\S+)/mi', $conf, $m)) {
-                $mode = 'tls-crypt';
-                $keyPath = $m[1];
-            } elseif (preg_match('/^\s*tls-auth\s+(\S+)/mi', $conf, $m)) {
-                $mode = 'tls-auth';
-                $keyPath = $m[1];
-            } else {
-                // common fallbacks
-                $keyPath = '/etc/openvpn/server/ta.key';
-            }
-
-            // read CA and key (resolve relative key path if necessary)
-            $caPaths = [
-                '/etc/openvpn/server/ca.crt',
-                '/etc/openvpn/ca.crt',
-                '/etc/openvpn/easy-rsa/pki/ca.crt',
-                '/etc/openvpn/pki/ca.crt',
-            ];
-            $ca = '';
-            foreach ($caPaths as $p) {
-                $out = $ssh->exec("test -r $p && cat $p || true");
-                if ($out && trim($out) !== '') { $ca = $out; break; }
-            }
-
-            // If key path is relative, try under /etc/openvpn/server/
-            $kp = $keyPath;
-            if ($kp && str_starts_with($kp, './')) $kp = substr($kp, 2);
-            if ($kp && !str_starts_with($kp, '/')) $kp = "/etc/openvpn/server/$kp";
-
-            $key = '';
-            if ($kp) {
-                $key = $ssh->exec("test -r $kp && cat $kp || true");
-            }
-
-            if (trim($ca) === '' || trim($key) === '') {
-                return ['ok' => false, 'reason' => 'Empty CA or key'];
-            }
-
-            return [
-                'ok'              => true,
-                'proto'           => $proto,
-                'port'            => $port,
-                'mode'            => $mode,                 // tls-auth or tls-crypt
-                'ca'              => $ca,
-                'ta_or_tlscrypt'  => $key,
-            ];
-        } catch (\Throwable $e) {
-            Log::error('SSH fetch failed: '.$e->getMessage(), ['host' => $host]);
-            return ['ok' => false, 'reason' => $e->getMessage()];
+        // Prefer your path; keep a couple fallbacks
+        $confPaths = [
+            '/etc/openvpn/server.conf',          // your setup
+            '/etc/openvpn/server/server.conf',
+            '/etc/openvpn/openvpn.conf',
+        ];
+        $conf = ''; $confPath = '';
+        foreach ($confPaths as $p) {
+            $out = $ssh->exec("test -r $p && cat $p || true");
+            if ($out && trim($out) !== '') { $conf = $out; $confPath = $p; break; }
         }
+        if ($conf === '') return ['ok' => false, 'reason' => 'server.conf not found'];
+
+        $baseDir = rtrim(dirname($confPath), '/'); // e.g. /etc/openvpn
+
+        // Parse fields
+        $proto = 'udp'; $port = 1194; $mode = 'tls-auth';
+        $caPath = null; $keyPath = null;
+        if (preg_match('/^\s*proto\s+(\S+)/mi', $conf, $m)) $proto = trim($m[1]);
+        if (preg_match('/^\s*port\s+(\d+)/mi',  $conf, $m)) $port  = (int) $m[1];
+        if (preg_match('/^\s*ca\s+(\S+)/mi',    $conf, $m)) $caPath = trim($m[1]);
+
+        if (preg_match('/^\s*tls-crypt\s+(\S+)/mi', $conf, $m)) {
+            $mode = 'tls-crypt'; $keyPath = trim($m[1]);
+        } elseif (preg_match('/^\s*tls-auth\s+(\S+)/mi', $conf, $m)) {
+            $mode = 'tls-auth';  $keyPath = trim($m[1]);
+        }
+
+        // Resolve relative paths against $baseDir
+        $resolve = function (?string $p) use ($baseDir) {
+            if (!$p) return null;
+            if ($p[0] === '/') return $p;                // absolute
+            if (str_starts_with($p, './')) $p = substr($p, 2);
+            return "$baseDir/$p";                        // relative
+        };
+        $caResolved  = $resolve($caPath)  ?? "$baseDir/ca.crt";
+        $keyResolved = $resolve($keyPath) ?? "$baseDir/ta.key";
+
+        // Read files
+        $ca  = $ssh->exec("test -r '$caResolved'  && cat '$caResolved'  || true");
+        $key = $ssh->exec("test -r '$keyResolved' && cat '$keyResolved' || true");
+
+        if (trim($ca) === '' || trim($key) === '') {
+            return ['ok' => false, 'reason' => "Empty CA or key ($caResolved | $keyResolved)"];
+        }
+
+        return [
+            'ok'              => true,
+            'proto'           => $proto,
+            'port'            => $port,
+            'mode'            => $mode,               // tls-auth or tls-crypt
+            'ca'              => $ca,
+            'ta_or_tlscrypt'  => $key,
+        ];
+    } catch (\Throwable $e) {
+        \Log::error('SSH fetch failed: '.$e->getMessage(), ['host' => $host]);
+        return ['ok' => false, 'reason' => $e->getMessage()];
     }
+}
 }
