@@ -16,10 +16,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\HasApiTokens;
 
 class VpnUser extends Authenticatable
 {
-    use HasFactory, ExecutesRemoteCommands;
+    use HasFactory, ExecutesRemoteCommands, HasApiTokens;
 
     protected $table = 'vpn_users';
 
