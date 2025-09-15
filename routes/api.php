@@ -52,7 +52,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/profiles', [MobileProfileController::class, 'index']);
     Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
 });
-use App\Http\Controllers\MobileProfileController;
 Route::middleware('auth:sanctum')->get('/ping', function (Request $req) {
     return response()->json([
         'ok'   => true,
