@@ -151,41 +151,53 @@ class DeployVpnServer implements ShouldQueue
                 // ignore
             }
 
-            // Remote env
-            $env = [
-                'PANEL_URL'   => $panelUrl,
-                'PANEL_TOKEN' => $panelToken,
-                'SERVER_ID'   => (string) $this->vpnServer->id,
+            // Remote env (incl. Private DNS controls)
+$vpnIp   = $this->vpnServer->vpn_ip  ?? '10.8.0.1';
+$vpnNet  = $this->vpnServer->vpn_net ?? '10.8.0.0/24';
+$vpnDev  = 'tun0'; // OpenVPN uses tun0; switch to 'wg0' if you deploy WG-only
+$enablePrivateDns = ($this->vpnServer->enable_private_dns ?? true) ? '1' : '0';
 
-                // VPN/mgmt tunables
-                'MGMT_HOST'   => $mgmtHost,
-                'MGMT_PORT'   => (string) $mgmtPort,
-                'VPN_PORT'    => (string) $vpnPort,
-                'VPN_PROTO'   => $vpnProto,
-                'WG_PORT'     => (string) $wgPort,
+$env = [
+    // Panel
+    'PANEL_URL'   => $panelUrl,
+    'PANEL_TOKEN' => $panelToken,
+    'SERVER_ID'   => (string) $this->vpnServer->id,
 
-                // seed auth
-                'VPN_USER'    => $vpnUser,
-                'VPN_PASS'    => $vpnPass,
+    // VPN/mgmt tunables
+    'MGMT_HOST'   => $mgmtHost,
+    'MGMT_PORT'   => (string) $mgmtPort,
+    'VPN_PORT'    => (string) $vpnPort,
+    'VPN_PROTO'   => $vpnProto,
+    'WG_PORT'     => (string) $wgPort,
 
-                // agent envs
-                'STATUS_PATH'          => '/run/openvpn/server.status',
-                'STATUS_PUSH_INTERVAL' => (string) (config('services.vpn.status_push_interval', 5)),
-                'PANEL_CALLBACKS'      => '1',  // POST back to panel
-                'PUSH_MGMT'            => '0',  // disable legacy mgmt pusher
-            ];
+    // seed auth
+    'VPN_USER'    => $vpnUser,
+    'VPN_PASS'    => $vpnPass,
 
-            $assigns = implode(' ', array_map(
-                fn ($k, $v) => $k . '=' . escapeshellarg($v),
-                array_keys($env),
-                array_values($env)
-            ));
+    // status agent
+    'STATUS_PATH'          => '/run/openvpn/server.status',
+    'STATUS_PUSH_INTERVAL' => (string) (config('services.vpn.status_push_interval', 5)),
+    'PANEL_CALLBACKS'      => '1',  // POST back to panel
+    'PUSH_MGMT'            => '0',  // disable legacy mgmt pusher
 
-            $maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
-            Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' [ssh …]');
+    // 🔹 Private DNS (Unbound) for deploy script
+    'ENABLE_PRIVATE_DNS'   => $enablePrivateDns, // "1" or "0"
+    'VPN_IP'               => $vpnIp,            // e.g. 10.8.0.1
+    'VPN_NET'              => $vpnNet,           // e.g. 10.8.0.0/24
+    'VPN_DEV'              => $vpnDev,           // tun0 or wg0
+];
 
-            // Build one remote bash string and run with bash -lc
-            $remoteBash = <<<BASH
+$assigns = implode(' ', array_map(
+    fn ($k, $v) => $k . '=' . escapeshellarg($v),
+    array_keys($env),
+    array_values($env)
+));
+
+$maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
+Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' [ssh …]');
+
+// Build one remote bash string and run with bash -lc
+$remoteBash = <<<BASH
 set -e
 export {$assigns}
 bash -se <<'SCRIPT_EOF'
@@ -194,7 +206,7 @@ SCRIPT_EOF
 echo EXIT_CODE:$?
 BASH;
 
-            $remoteCmd = $sshCmdBase . ' ' . escapeshellarg('bash -lc ' . escapeshellarg($remoteBash));
+$remoteCmd = $sshCmdBase . ' ' . escapeshellarg('bash -lc ' . escapeshellarg($remoteBash));
 
             // Stream the remote output
             [$exitCode, $combined] = $this->runAndStream($remoteCmd);
