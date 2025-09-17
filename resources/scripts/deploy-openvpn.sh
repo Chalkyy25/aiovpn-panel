@@ -35,11 +35,13 @@ VPN_PASS="${VPN_PASS:-$(openssl rand -base64 18)}"
 WG_PORT="${WG_PORT:-51820}"
 
 ### ===== Logging =====
+# Logging (robust against ssh hangups)
 LOG_FILE="/root/vpn-deploy.log"
 mkdir -p "$(dirname "$LOG_FILE")"
-exec > >(tee -i "$LOG_FILE"); exec 2>&1
+trap '' PIPE                                 # ignore SIGPIPE
+exec > >(tee -i "$LOG_FILE" || true)         # swallow tee errors
+exec 2>&1
 echo -e "\n================= START $(date -Is) ================="
-
 ### ===== Helpers =====
 json_escape(){ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 json_kv(){ printf '"%s":"%s"' "$1" "$(printf '%s' "$2" | json_escape)"; }
