@@ -294,8 +294,6 @@ server:
   log-replies: no
   verbosity: 0
 
-  auto-trust-anchor-file: "/var/lib/unbound/root.key"
-
   access-control: ${VPN_NET} allow
   access-control: 0.0.0.0/0 refuse
 EOF
