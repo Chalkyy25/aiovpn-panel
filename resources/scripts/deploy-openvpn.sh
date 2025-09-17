@@ -240,15 +240,19 @@ fi
 ### ===== Private DNS: install + bind to VPN_IP + firewall =====
 install_private_dns() {
   if [[ "${ENABLE_PRIVATE_DNS}" != "1" ]]; then
-    echo "[DNS] Private DNS disabled"
-    return 0
+    echo "[DNS] Private DNS disabled"; return 0
   fi
 
   echo "[DNS] Configure Unbound on ${VPN_IP} (${VPN_NET})"
-  # Ensure trust anchor
+
+  # Ensure dirs + permissions (fixes: pidfile directory does not exist)
+  install -d -m 0755 /etc/unbound/unbound.conf.d
+  install -d -m 0755 -o unbound -g unbound /run/unbound
+  install -d -m 0755 -o unbound -g unbound /var/lib/unbound
+
+  # DNSSEC trust anchor
   unbound-anchor -a /var/lib/unbound/root.key || true
   chown unbound:unbound /var/lib/unbound/root.key || true
-  install -d -m 0755 /etc/unbound/unbound.conf.d
 
   cat >/etc/unbound/unbound.conf.d/aio.conf <<EOF
 server:
@@ -306,10 +310,8 @@ EOF
     nft add rule -a inet filter input iif "${VPN_DEV}" udp dport 53 ct state new,established accept 2>/dev/null || true
     nft add rule -a inet filter input iif "${VPN_DEV}" tcp dport 53 ct state new,established accept 2>/dev/null || true
   else
-    iptables -C INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT 2>/dev/null || \
-      iptables -A INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT
-    iptables -C INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT 2>/dev/null || \
-      iptables -A INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT
+    iptables -C INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT
+    iptables -C INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT
     iptables-save >/etc/iptables/rules.v4 || true
   fi
 
