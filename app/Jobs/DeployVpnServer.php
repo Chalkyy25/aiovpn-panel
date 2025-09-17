@@ -119,7 +119,7 @@ class DeployVpnServer implements ShouldQueue
                 if (str_contains($testText, 'Permission denied (publickey)')) {
                     Log::warning('🔐 Publickey failed — attempting legacy fallback to seed DeployKey');
 
-                    $legacyBase = $this->buildLegacySshBase($user, $ip, $port);
+                    $legacyBase = $this->buildLegacySshBase($user, $ip, $port, $this->lastKeyPath /*exclude*/);
                     if ($legacyBase) {
                         $deployPriv = $this->lastKeyPath ?? '';
                         if ($deployPriv === '' || !is_file($deployPriv)) {
@@ -332,46 +332,79 @@ BASH;
     }
 
     /** Build a legacy SSH base (password or legacy key) for seeding. */
-    private function buildLegacySshBase(string $user, string $ip, int $port): ?string
-    {
-        // Common options (password/key fallback)
-        $sshOpts = implode(' ', [
-            '-o StrictHostKeyChecking=accept-new',
-            '-o UserKnownHostsFile=/dev/null',
-            '-o GlobalKnownHostsFile=/dev/null',
-            '-o ConnectTimeout=10',
-            '-o ServerAliveInterval=15',
-            '-o ServerAliveCountMax=3',
-            '-p ' . $port,
-        ]);
+    /** Build a legacy SSH base (password or legacy key) for seeding, excluding a given key path. */
+private function buildLegacySshBase(string $user, string $ip, int $port, ?string $excludeKeyPath = null): ?string
+{
+    $sshOpts = implode(' ', [
+        '-o StrictHostKeyChecking=accept-new',
+        '-o UserKnownHostsFile=/dev/null',
+        '-o GlobalKnownHostsFile=/dev/null',
+        '-o ConnectTimeout=10',
+        '-o ServerAliveInterval=15',
+        '-o ServerAliveCountMax=3',
+        '-p ' . $port,
+    ]);
 
-        $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
+    // 1) Prefer explicit legacy key on the model if it exists and is NOT the deploy key
+    $legacyName  = (string) ($this->vpnServer->ssh_key ?: '');
+    $legacyPath  = $legacyName
+        ? (str_starts_with($legacyName, '/') || str_contains($legacyName, ':\\')
+            ? $legacyName
+            : storage_path('app/ssh_keys/' . $legacyName))
+        : '';
 
-        if ($sshType === 'password') {
-            $sshPass = (string) $this->vpnServer->ssh_password;
-            $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
-            if ($sshPass !== '' && $haveSshpass !== '') {
-                Log::warning('🪪 Using password SSH as legacy fallback');
-                return 'sshpass -p ' . escapeshellarg($sshPass) . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
-            }
-        } else {
-            // Legacy key path (absolute or storage/app/ssh_keys/<file>)
-            $legacy  = (string) ($this->vpnServer->ssh_key ?: 'id_rsa');
-            $keyPath = str_starts_with($legacy, '/') || str_contains($legacy, ':\\')
-                ? $legacy
-                : storage_path('app/ssh_keys/' . $legacy);
+    $useKey = function (?string $path) use ($excludeKeyPath, $sshOpts, $user, $ip) {
+        if (!$path || !is_file($path)) return null;
+        if ($excludeKeyPath && realpath($path) === realpath($excludeKeyPath)) return null;
+        @chmod($path, 0600);
+        Log::warning("🪪 Using legacy key as fallback: {$path}");
+        return 'ssh -i ' . escapeshellarg($path) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+    };
 
-            if (is_file($keyPath)) {
-                @chmod($keyPath, 0600);
-                Log::warning("🪪 Using legacy key as fallback: {$keyPath}");
-                // NOTE: this sets lastKeyPath to the legacy key for diag *only* if we call captureKeyDiagnostics,
-                // but we don't want to overwrite DeployKey diagnostics here.
-                return 'ssh -i ' . escapeshellarg($keyPath) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+    // try the model’s legacy key (if different from DeployKey)
+    if ($cmd = $useKey($legacyPath)) return $cmd;
+
+    // 2) Otherwise, search storage/app/ssh_keys for something that isn’t the DeployKey; prefer id_rsa
+    $dir = storage_path('app/ssh_keys');
+    $candidates = [];
+    if (is_dir($dir)) {
+        foreach (['id_rsa', 'id_ecdsa', 'id_ed25519'] as $base) {
+            $p = $dir . '/' . $base;
+            if (is_file($p)) $candidates[] = $p;
+        }
+        // Also consider any other private keys present
+        foreach (glob($dir . '/*') ?: [] as $p) {
+            if (is_file($p) && !preg_match('/\.pub$/', $p) && !in_array($p, $candidates, true)) {
+                $candidates[] = $p;
             }
         }
-
-        return null;
+        // Filter out the deploy key path
+        $candidates = array_values(array_filter($candidates, function ($p) use ($excludeKeyPath) {
+            return !$excludeKeyPath || realpath($p) !== realpath($excludeKeyPath);
+        }));
+        // Prefer id_rsa if present
+        usort($candidates, function ($a, $b) {
+            $rank = fn($x) => str_ends_with($x, 'id_rsa') ? 0 : (str_ends_with($x, 'id_ecdsa') ? 1 : (str_ends_with($x, 'id_ed25519') ? 2 : 3));
+            return $rank($a) <=> $rank($b);
+        });
+        foreach ($candidates as $p) {
+            if ($cmd = $useKey($p)) return $cmd;
+        }
     }
+
+    // 3) Password fallback (if configured)
+    $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
+    if ($sshType === 'password') {
+        $sshPass = (string) $this->vpnServer->ssh_password;
+        $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
+        if ($sshPass !== '' && $haveSshpass !== '') {
+            Log::warning('🪪 Using password SSH as legacy fallback');
+            return 'sshpass -p ' . escapeshellarg($sshPass) . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+        }
+    }
+
+    return null;
+}
 
     /** Append DeployKey .pub into /root/.ssh/authorized_keys over a working legacy session. */
     private function trySeedDeployKey(string $legacySshBase, string $deployPrivKeyPath): bool
