@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# AIOVPN deploy (OpenVPN + optional WireGuard + Private DNS) — tuned for throughput
-# Idempotent. Safe to re-run. Requires Ubuntu 22.04/24.04.
+# ╭──────────────────────────────────────────────────────────────────────────╮
+# │  A I O V P N   —   One-shot Deploy (OpenVPN + optional WireGuard + DNS)  │
+# │  Idempotent • Tuned for throughput • Ubuntu 22.04/24.04                   │
+# ╰──────────────────────────────────────────────────────────────────────────╯
+# - Re-runnable safely.
+# - Pushes status/logs back to panel (if PANEL_CALLBACKS=1).
+# - Private DNS: Unbound bound to VPN_IP and only reachable via VPN_DEV.
+# - Robust logging (no failures on broken SSH pipes).
 
 set -euo pipefail
 
@@ -27,21 +33,21 @@ VPN_IP="${VPN_IP:-10.8.0.1}"                    # server's VPN-side IP
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 VPN_PORT="${VPN_PORT:-1194}"
-VPN_PROTO="${VPN_PROTO:-udp}"            # udp|tcp   (udp strongly recommended)
+VPN_PROTO="${VPN_PROTO:-udp}"            # udp|tcp (udp strongly recommended)
 DNS1="${DNS1:-1.1.1.1}"
 DNS2="${DNS2:-8.8.8.8}"
 VPN_USER="${VPN_USER:-admin}"
 VPN_PASS="${VPN_PASS:-$(openssl rand -base64 18)}"
 WG_PORT="${WG_PORT:-51820}"
 
-### ===== Logging =====
-# Logging (robust against ssh hangups)
+### ===== Logging (robust to ssh pipe closes) =====
 LOG_FILE="/root/vpn-deploy.log"
 mkdir -p "$(dirname "$LOG_FILE")"
-trap '' PIPE                                 # ignore SIGPIPE
-exec > >(tee -i "$LOG_FILE" || true)         # swallow tee errors
+trap '' PIPE
+exec > >(tee -i "$LOG_FILE" || true)
 exec 2>&1
 echo -e "\n================= START $(date -Is) ================="
+
 ### ===== Helpers =====
 json_escape(){ sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 json_kv(){ printf '"%s":"%s"' "$1" "$(printf '%s' "$2" | json_escape)"; }
@@ -247,16 +253,17 @@ install_private_dns() {
 
   echo "[DNS] Configure Unbound on ${VPN_IP} (${VPN_NET})"
 
-  # Ensure dirs + permissions (fixes: pidfile directory does not exist)
+  # Ensure dirs + permissions
   install -d -m 0755 /etc/unbound/unbound.conf.d
   install -d -m 0755 -o unbound -g unbound /run/unbound
   install -d -m 0755 -o unbound -g unbound /var/lib/unbound
 
-# DNSSEC trust anchor (fresh file, no duplicates)
-rm -f /var/lib/unbound/root.key || true
-unbound-anchor -a /var/lib/unbound/root.key || true
-chown unbound:unbound /var/lib/unbound/root.key || true
+  # Fresh DNSSEC root key (default Unbound conf already points to /var/lib/unbound/root.key)
+  rm -f /var/lib/unbound/root.key || true
+  unbound-anchor -a /var/lib/unbound/root.key || true
+  chown unbound:unbound /var/lib/unbound/root.key || true
 
+  # Our Unbound instance bound only to the VPN IP; no duplicate trust-anchor line here.
   cat >/etc/unbound/unbound.conf.d/aio.conf <<EOF
 server:
   username: "unbound"
@@ -334,6 +341,7 @@ patch_openvpn_push_dns() {
     echo "[DNS] OpenVPN will push DNS ${VPN_IP}"
   fi
 }
+
 ### ===== WireGuard (optional skeleton; service up) =====
 logchunk "WireGuard base"
 install -d -m 0700 /etc/wireguard
@@ -352,7 +360,6 @@ systemctl enable --now wg-quick@wg0
 
 ### ===== OpenVPN service =====
 logchunk "Start OpenVPN"
-# Ensure DNS is set as desired before starting
 patch_openvpn_push_dns
 systemctl enable openvpn@server
 systemctl restart openvpn@server
