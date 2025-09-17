@@ -250,9 +250,9 @@ install_private_dns() {
   install -d -m 0755 -o unbound -g unbound /run/unbound
   install -d -m 0755 -o unbound -g unbound /var/lib/unbound
 
-  # DNSSEC trust anchor
+# DNSSEC trust anchor (always fresh, avoid duplicate entries)
 rm -f /var/lib/unbound/root.key || true
-unbound-anchor -v -a /var/lib/unbound/root.key || true
+unbound-anchor -n -a /var/lib/unbound/root.key || true
 chown unbound:unbound /var/lib/unbound/root.key || true
 
   cat >/etc/unbound/unbound.conf.d/aio.conf <<EOF
