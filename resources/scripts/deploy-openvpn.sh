@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AIOVPN deploy (OpenVPN + optional WireGuard) — tuned for throughput
+# AIOVPN deploy (OpenVPN + optional WireGuard + Private DNS) — tuned for throughput
 # Idempotent. Safe to re-run. Requires Ubuntu 22.04/24.04.
 
 set -euo pipefail
@@ -16,6 +16,12 @@ STATUS_PUSH_INTERVAL="${STATUS_PUSH_INTERVAL:-5}" # seconds
 PUSH_MGMT="${PUSH_MGMT:-0}"                       # legacy mgmt pusher (off)
 PUSH_INTERVAL="${PUSH_INTERVAL:-5}"
 PUSH_HEARTBEAT="${PUSH_HEARTBEAT:-60}"
+
+# --- Private DNS (Unbound) ---
+ENABLE_PRIVATE_DNS="${ENABLE_PRIVATE_DNS:-1}"   # 1=on, 0=off
+VPN_DEV="${VPN_DEV:-tun0}"                      # tun0 (OpenVPN) / wg0 (WireGuard)
+VPN_NET="${VPN_NET:-10.8.0.0/24}"               # must match your VPN subnet
+VPN_IP="${VPN_IP:-10.8.0.1}"                    # server's VPN-side IP
 
 ### ===== VPN defaults =====
 MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
@@ -84,7 +90,8 @@ logchunk "Install packages"
 apt_try apt-get update -y
 apt_try apt-get install -y \
   openvpn easy-rsa wireguard iproute2 iptables-persistent nftables curl \
-  ca-certificates python3 jq netcat-openbsd htop
+  ca-certificates python3 jq netcat-openbsd htop \
+  unbound dnsutils
 
 ### ===== Network facts =====
 DEF_IFACE="$(ip -4 route show default | awk '/default/ {print $5; exit}')" ; DEF_IFACE="${DEF_IFACE:-eth0}"
@@ -166,7 +173,6 @@ tls-auth ta.key 0
 data-ciphers AES-128-GCM:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
 auth SHA256
-# no compression
 ;compress
 ;push "compress lz4-v2"
 
@@ -189,7 +195,7 @@ verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 
-# Push routes + DNS
+# Push routes + DNS (will be patched if private DNS is enabled)
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS $DNS1"
 push "dhcp-option DNS $DNS2"
@@ -212,7 +218,7 @@ logchunk "NAT + firewall rules"
 # Masquerade
 iptables -t nat -C POSTROUTING -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || \
 iptables -t nat -A POSTROUTING -o "$DEF_IFACE" -j MASQUERADE
-# Open ports
+# Open VPN ports
 iptables -C INPUT -p "$VPN_PROTO" --dport "$VPN_PORT" -j ACCEPT 2>/dev/null || \
 iptables -A INPUT -p "$VPN_PROTO" --dport "$VPN_PORT" -j ACCEPT
 iptables -C INPUT -p udp --dport "$WG_PORT" -j ACCEPT 2>/dev/null || \
@@ -231,6 +237,100 @@ if systemctl is-active --quiet nftables 2>/dev/null; then
   nft -s list ruleset >/dev/null 2>&1 || true
 fi
 
+### ===== Private DNS: install + bind to VPN_IP + firewall =====
+install_private_dns() {
+  if [[ "${ENABLE_PRIVATE_DNS}" != "1" ]]; then
+    echo "[DNS] Private DNS disabled"
+    return 0
+  fi
+
+  echo "[DNS] Configure Unbound on ${VPN_IP} (${VPN_NET})"
+  # Ensure trust anchor
+  unbound-anchor -a /var/lib/unbound/root.key || true
+  chown unbound:unbound /var/lib/unbound/root.key || true
+  install -d -m 0755 /etc/unbound/unbound.conf.d
+
+  cat >/etc/unbound/unbound.conf.d/aio.conf <<EOF
+server:
+  username: "unbound"
+  directory: "/etc/unbound"
+  chroot: ""
+  pidfile: "/run/unbound/unbound.pid"
+
+  interface: ${VPN_IP}
+  so-reuseport: yes
+  port: 53
+  do-ip4: yes
+  do-ip6: no
+  do-udp: yes
+  do-tcp: yes
+
+  hide-identity: yes
+  hide-version: yes
+  qname-minimisation: yes
+  harden-glue: yes
+  harden-dnssec-stripped: yes
+  harden-algo-downgrade: yes
+  aggressive-nsec: yes
+  prefetch: yes
+  prefetch-key: yes
+  rrset-roundrobin: yes
+
+  cache-min-ttl: 0
+  cache-max-ttl: 86400
+  neg-cache-size: 8m
+  msg-cache-size: 64m
+  rrset-cache-size: 128m
+  outgoing-range: 512
+  num-threads: 2
+
+  logfile: ""
+  log-queries: no
+  log-replies: no
+  verbosity: 0
+
+  auto-trust-anchor-file: "/var/lib/unbound/root.key"
+
+  access-control: ${VPN_NET} allow
+  access-control: 0.0.0.0/0 refuse
+EOF
+
+  unbound-checkconf
+  systemctl enable --now unbound
+  systemctl restart unbound
+
+  # Allow DNS only from VPN interface
+  if command -v nft >/dev/null 2>&1 && systemctl is-active --quiet nftables 2>/dev/null; then
+    nft list table inet filter >/dev/null 2>&1 || nft add table inet filter
+    nft list chain inet filter input >/dev/null 2>&1 || nft add chain inet filter input { type filter hook input priority 0 \; policy drop \; }
+    nft add rule -a inet filter input iif "${VPN_DEV}" udp dport 53 ct state new,established accept 2>/dev/null || true
+    nft add rule -a inet filter input iif "${VPN_DEV}" tcp dport 53 ct state new,established accept 2>/dev/null || true
+  else
+    iptables -C INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT 2>/dev/null || \
+      iptables -A INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT
+    iptables -C INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT 2>/dev/null || \
+      iptables -A INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT
+    iptables-save >/etc/iptables/rules.v4 || true
+  fi
+
+  echo "[DNS] Unbound ready at ${VPN_IP}:53"
+}
+
+patch_openvpn_push_dns() {
+  if [[ "${ENABLE_PRIVATE_DNS}" != "1" ]]; then
+    echo "[DNS] Keeping external DNS push ($DNS1,$DNS2)"
+    return 0
+  fi
+  local conf="/etc/openvpn/server.conf"
+  [ -f "$conf" ] || conf="/etc/openvpn/server/server.conf"
+  if [[ -f "$conf" ]]; then
+    # Remove existing DNS pushes and replace with our private DNS
+    sed -i '/^push "dhcp-option DNS /d' "$conf"
+    echo "push \"dhcp-option DNS ${VPN_IP}\"" >> "$conf"
+    grep -q '^push "dhcp-option DOMAIN-ROUTE ' "$conf" || echo 'push "dhcp-option DOMAIN-ROUTE ."' >> "$conf"
+    echo "[DNS] OpenVPN will push DNS ${VPN_IP}"
+  fi
+}
 ### ===== WireGuard (optional skeleton; service up) =====
 logchunk "WireGuard base"
 install -d -m 0700 /etc/wireguard
@@ -249,9 +349,17 @@ systemctl enable --now wg-quick@wg0
 
 ### ===== OpenVPN service =====
 logchunk "Start OpenVPN"
+# Ensure DNS is set as desired before starting
+patch_openvpn_push_dns
 systemctl enable openvpn@server
 systemctl restart openvpn@server
 systemctl is-active --quiet openvpn@server || fail "OpenVPN failed to start"
+
+### ===== Private DNS install (after tun is up) + quick health =====
+install_private_dns
+if [[ "${ENABLE_PRIVATE_DNS}" = "1" ]]; then
+  dig @${VPN_IP} example.com +short || echo "[DNS] dig check failed (verify ${VPN_DEV} up and client can reach ${VPN_IP})"
+fi
 
 ### ===== Status v3 push agent =====
 logchunk "Install status push agent"
