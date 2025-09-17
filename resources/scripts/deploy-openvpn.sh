@@ -248,24 +248,29 @@ fi
 ### ===== Private DNS: install + bind to VPN_IP + firewall =====
 install_private_dns() {
   if [[ "${ENABLE_PRIVATE_DNS}" != "1" ]]; then
-    echo "[DNS] Private DNS disabled"; return 0
+    echo "[DNS] Private DNS disabled"
+    return 0
   fi
 
-  echo "[DNS] Configure Unbound on ${VPN_IP} (${VPN_NET})"
+  echo "[DNS] Setting up AIOVPN Resolver on ${VPN_IP} (${VPN_NET})"
 
-  # Ensure dirs + permissions
+  # Ensure required directories and permissions
   install -d -m 0755 /etc/unbound/unbound.conf.d
   install -d -m 0755 -o unbound -g unbound /run/unbound
   install -d -m 0755 -o unbound -g unbound /var/lib/unbound
 
-  # Fresh DNSSEC root key (default Unbound conf already points to /var/lib/unbound/root.key)
+  # Reset DNSSEC trust anchor (fresh copy, avoids duplicates)
   rm -f /var/lib/unbound/root.key || true
   unbound-anchor -a /var/lib/unbound/root.key || true
   chown unbound:unbound /var/lib/unbound/root.key || true
 
-  # Our Unbound instance bound only to the VPN IP; no duplicate trust-anchor line here.
+  # Write Unbound config with AIOVPN branding
   cat >/etc/unbound/unbound.conf.d/aio.conf <<EOF
 server:
+  # === AIOVPN Resolver Branding ===
+  identity: "AIOVPN Resolver"
+  version: "secure"
+
   username: "unbound"
   directory: "/etc/unbound"
   chroot: ""
@@ -279,6 +284,7 @@ server:
   do-udp: yes
   do-tcp: yes
 
+  # Security + hardening
   hide-identity: yes
   hide-version: yes
   qname-minimisation: yes
@@ -290,6 +296,7 @@ server:
   prefetch-key: yes
   rrset-roundrobin: yes
 
+  # Cache tuning
   cache-min-ttl: 0
   cache-max-ttl: 86400
   neg-cache-size: 8m
@@ -298,32 +305,38 @@ server:
   outgoing-range: 512
   num-threads: 2
 
+  # Logging
   logfile: ""
   log-queries: no
   log-replies: no
   verbosity: 0
 
+  # Access control
   access-control: ${VPN_NET} allow
   access-control: 0.0.0.0/0 refuse
 EOF
 
+  # Check config and start service
   unbound-checkconf
   systemctl enable --now unbound
   systemctl restart unbound
 
-  # Allow DNS only from VPN interface
+  # Firewall rules (VPN clients only)
   if command -v nft >/dev/null 2>&1 && systemctl is-active --quiet nftables 2>/dev/null; then
     nft list table inet filter >/dev/null 2>&1 || nft add table inet filter
-    nft list chain inet filter input >/dev/null 2>&1 || nft add chain inet filter input { type filter hook input priority 0 \; policy drop \; }
+    nft list chain inet filter input >/dev/null 2>&1 || \
+      nft add chain inet filter input { type filter hook input priority 0 \; policy drop \; }
     nft add rule -a inet filter input iif "${VPN_DEV}" udp dport 53 ct state new,established accept 2>/dev/null || true
     nft add rule -a inet filter input iif "${VPN_DEV}" tcp dport 53 ct state new,established accept 2>/dev/null || true
   else
-    iptables -C INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT
-    iptables -C INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT
+    iptables -C INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT 2>/dev/null || \
+      iptables -A INPUT -i "${VPN_DEV}" -p udp --dport 53 -j ACCEPT
+    iptables -C INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT 2>/dev/null || \
+      iptables -A INPUT -i "${VPN_DEV}" -p tcp --dport 53 -j ACCEPT
     iptables-save >/etc/iptables/rules.v4 || true
   fi
 
-  echo "[DNS] Unbound ready at ${VPN_IP}:53"
+  echo "[DNS] AIOVPN Resolver ready at ${VPN_IP}:53"
 }
 
 patch_openvpn_push_dns() {
