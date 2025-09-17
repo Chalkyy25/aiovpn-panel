@@ -469,69 +469,74 @@ private function buildLegacySshBase(string $user, string $ip, int $port, ?string
 
     /** Run a long SSH command and stream output into the server's log. */
     private function runAndStream(string $remoteCmd): array
-    {
-        $descriptors = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
-        $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
-
-        if (!is_resource($proc)) {
-            $this->failWith('❌ Failed to open SSH process');
-            return [1, ''];
-        }
-
-        fclose($pipes[0]); // nothing to send to STDIN
-
-        $out = '';
-        $err = '';
-        $streams = [$pipes[1], $pipes[2]];
-        $map = [(int) $pipes[1] => 'OUT', (int) $pipes[2] => 'ERR'];
-
-        $start = time();
-        $maxDuration = max(60, ($this->timeout ?? 900) - 30);
-
-        while (!empty($streams)) {
-            if ((time() - $start) > $maxDuration) {
-                $this->failWith("❌ Timeout while reading deployment output");
-                foreach ($streams as $s) @fclose($s);
-                @proc_terminate($proc);
-                return [1, $out . $err];
-            }
-
-            $read = $streams; $write = $except = null;
-            $select = @stream_select($read, $write, $except, 10);
-
-            if ($select === false) {
-                $this->failWith("❌ stream_select() failed during SSH session");
-                foreach ($streams as $s) @fclose($s);
-                @proc_terminate($proc);
-                return [1, $out . $err];
-            }
-
-            foreach ($read as $r) {
-                $line = fgets($r);
-                if ($line === false) {
-                    fclose($r);
-                    unset($streams[array_search($r, $streams, true)]);
-                    continue;
-                }
-
-                $clean = rtrim($line, "\r\n");
-                $this->vpnServer->appendLog($clean);
-
-                if ($map[(int) $r] === 'OUT') {
-                    $out .= $line;
-                } else {
-                    $err .= $line;
-                }
-            }
-        }
-
-        $exitCode = proc_close($proc);
-        return [$exitCode, ($this->vpnServer->deployment_log ?? '') . $out . $err];
+{
+    $descriptors = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
+    if (!is_resource($proc)) {
+        $this->failWith('❌ Failed to open SSH process');
+        return [1, ''];
     }
+
+    // nothing to send
+    fclose($pipes[0]);
+
+    // non-blocking reads
+    stream_set_blocking($pipes[1], false);
+    stream_set_blocking($pipes[2], false);
+
+    $out = '';
+    $err = '';
+    $start = time();
+    $maxDuration = max(60, ($this->timeout ?? 900) - 10);
+
+    while (true) {
+        // read whatever is available
+        $chunkOut = stream_get_contents($pipes[1]);
+        $chunkErr = stream_get_contents($pipes[2]);
+        if ($chunkOut !== false && $chunkOut !== '') {
+            foreach (explode("\n", $chunkOut) as $line) {
+                $line = rtrim($line, "\r");
+                if ($line !== '') $this->vpnServer->appendLog($line);
+            }
+            $out .= $chunkOut;
+        }
+        if ($chunkErr !== false && $chunkErr !== '') {
+            foreach (explode("\n", $chunkErr) as $line) {
+                $line = rtrim($line, "\r");
+                if ($line !== '') $this->vpnServer->appendLog($line);
+            }
+            $err .= $chunkErr;
+        }
+
+        // if both streams are at EOF, we can stop
+        $status = proc_get_status($proc);
+        if (($status === false || !$status['running']) && feof($pipes[1]) && feof($pipes[2])) {
+            break;
+        }
+
+        // timeout guard
+        if ((time() - $start) > $maxDuration) {
+            // Don’t hard-fail here; capture what we have and exit
+            Log::warning('⏱ runAndStream: soft timeout while reading SSH output');
+            break;
+        }
+
+        // light wait using select; tolerate EINTR or false
+        $read = [$pipes[1], $pipes[2]];
+        $write = $except = null;
+        @stream_select($read, $write, $except, 1); // ignore return; loop continues
+    }
+
+    // close pipes
+    foreach ([$pipes[1], $pipes[2]] as $p) { if (is_resource($p)) @fclose($p); }
+
+    $exitCode = proc_close($proc);
+    return [$exitCode, ($this->vpnServer->deployment_log ?? '') . $out . $err];
+}
 
     private function failWith(string $message, Throwable $e = null): void
     {
