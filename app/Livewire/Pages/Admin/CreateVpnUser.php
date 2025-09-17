@@ -113,7 +113,7 @@ class CreateVpnUser extends Component
         }
 
         // 2) Create VPN user with random password
-        $plain = Str::random(12);
+        $plain = Str::random(6);
 
         $vpnUser = VpnUser::create([
             'username'        => $this->username,
