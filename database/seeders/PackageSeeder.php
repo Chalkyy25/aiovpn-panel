@@ -1,88 +1,58 @@
 <?php
 
-namespace App\Models;
+namespace Database\Seeders;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
+use App\Models\Package;
+use Illuminate\Database\Seeder;
 
-class Package extends Model
+class PackageSeeder extends Seeder
 {
-    protected $fillable = [
-        'name',
-        'description',
-        // credits PER MONTH (e.g. 1, 3, 6, 12)
-        'price_credits',
-        // 0 = Unlimited
-        'max_connections',
-        // total months this package grants (e.g. 12)
-        'duration_months',
-        'is_featured',
-        'is_active',
-    ];
-
-    protected $casts = [
-        'price_credits'   => 'integer',
-        'max_connections' => 'integer',
-        'duration_months' => 'integer',
-        'is_featured'     => 'boolean',
-        'is_active'       => 'boolean',
-    ];
-
-    // Include helpful virtuals when toArray()/JSON
-    protected $appends = [
-        'max_connections_text',
-        'is_unlimited',
-        'total_credits',
-        'label',
-    ];
-
-    /* ----------------- Query Scopes ----------------- */
-    public function scopeActive(Builder $q): Builder
+    public function run(): void
     {
-        return $q->where('is_active', true);
-    }
+        $packages = [
+            [
+                'name'            => 'Starter (1 Device) — Annual',
+                'description'     => 'Single device plan, valid for 12 months.',
+                'price_credits'   => 1,   // per month
+                'max_connections' => 1,
+                'duration_months' => 12,
+                'is_featured'     => false,
+                'is_active'       => true,
+            ],
+            [
+                'name'            => 'Standard (3 Devices) — Annual',
+                'description'     => 'Covers phone + TV + tablet for 12 months.',
+                'price_credits'   => 3,
+                'max_connections' => 3,
+                'duration_months' => 12,
+                'is_featured'     => true,  // highlight this one
+                'is_active'       => true,
+            ],
+            [
+                'name'            => 'Family (6 Devices) — Annual',
+                'description'     => 'Perfect for households with multiple devices.',
+                'price_credits'   => 6,
+                'max_connections' => 6,
+                'duration_months' => 12,
+                'is_featured'     => false,
+                'is_active'       => true,
+            ],
+            [
+                'name'            => 'Premium (Unlimited Devices) — Annual',
+                'description'     => 'Unlimited devices, valid for 12 months.',
+                'price_credits'   => 12,
+                'max_connections' => 0,   // 0 = Unlimited
+                'duration_months' => 12,
+                'is_featured'     => false,
+                'is_active'       => true,
+            ],
+        ];
 
-    public function scopeFeatured(Builder $q): Builder
-    {
-        return $q->active()->where('is_featured', true);
-    }
-
-    /* ----------------- Accessors ----------------- */
-    public function getMaxConnectionsTextAttribute(): string
-    {
-        return $this->max_connections === 0 ? 'Unlimited' : (string) $this->max_connections;
-    }
-
-    public function getIsUnlimitedAttribute(): bool
-    {
-        return $this->max_connections === 0;
-    }
-
-    public function getTotalCreditsAttribute(): int
-    {
-        // credits per month × months
-        return (int) $this->price_credits * (int) $this->duration_months;
-    }
-
-    public function getLabelAttribute(): string
-    {
-        return sprintf(
-            '%s — %d months • %s devices • %d cr/mo (total %d)',
-            $this->name,
-            $this->duration_months,
-            $this->max_connections_text,
-            $this->price_credits,
-            $this->total_credits
-        );
-    }
-
-    /* ----------------- Guards / Mutators (optional hardening) ----------------- */
-    protected static function booted(): void
-    {
-        static::saving(function (self $p) {
-            $p->price_credits   = max(0, (int) $p->price_credits);
-            $p->duration_months = max(1, (int) $p->duration_months);
-            $p->max_connections = max(0, (int) $p->max_connections); // 0 = Unlimited
-        });
+        foreach ($packages as $data) {
+            Package::updateOrCreate(
+                ['name' => $data['name']], // unique key
+                $data
+            );
+        }
     }
 }
