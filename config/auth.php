@@ -29,6 +29,12 @@ return [
             'driver' => 'session',
             'provider' => 'vpn_users',
         ],
+        
+        'api' => [
+            'driver'   => 'sanctum',
+            'provider' => 'vpn_users',
+        ],
+    
     ],
 
     /*
