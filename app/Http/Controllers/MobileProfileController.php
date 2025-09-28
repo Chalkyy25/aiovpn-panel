@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use App\Models\VpnUser;
+use App\Models\VpnServer;
 use App\Services\VpnConfigBuilder;
 
 class MobileProfileController extends Controller
@@ -19,14 +21,14 @@ class MobileProfileController extends Controller
 
         $servers = $user->vpnServers->map(function ($s) {
             return [
-                'id'   => $s->id,
+                'id'   => (int) $s->id,
                 'name' => $s->name ?? ('Server '.$s->id),
                 'ip'   => $s->ip_address ?? $s->ip ?? null,
             ];
-        });
+        })->values();
 
         return response()->json([
-            'id'       => $user->id,
+            'id'       => (int) $user->id,
             'username' => $user->username,
             'expires'  => $user->expires_at,
             'max_conn' => (int) $user->max_connections,
@@ -41,7 +43,7 @@ class MobileProfileController extends Controller
     public function show(Request $request, VpnUser $user)
     {
         // only allow the logged-in vpn_user to fetch their own profile
-        if ($request->user()->id !== $user->id) {
+        if ((int) $request->user()->id !== (int) $user->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
@@ -70,6 +72,63 @@ class MobileProfileController extends Controller
             'Content-Type'        => 'application/x-openvpn-profile',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
             'Cache-Control'       => 'no-store',
+        ]);
+    }
+
+    /**
+     * GET /api/ovpn?user_id=7&server_id=99  (auth:sanctum)
+     * Minimal, mobile-friendly endpoint that returns raw .ovpn text.
+     * Matches what your Android app expects.
+     */
+    public function ovpn(Request $request)
+    {
+        $data = $request->validate([
+            'user_id'   => 'required|integer',
+            'server_id' => 'required|integer',
+        ]);
+
+        /** @var VpnUser|null $authed */
+        $authed = $request->user();
+        if (!$authed || (int) $authed->id !== (int) $data['user_id']) {
+            return response('Unauthorized', 401);
+        }
+
+        /** @var VpnUser $vpnUser */
+        $vpnUser = VpnUser::findOrFail($data['user_id']);
+        /** @var VpnServer $vpnServer */
+        $vpnServer = VpnServer::findOrFail($data['server_id']);
+
+        // Ensure the user is assigned to this server
+        $assigned = $vpnUser->vpnServers()->whereKey($vpnServer->id)->exists();
+        if (!$assigned) {
+            return response('Server not assigned to this user.', 403);
+        }
+
+        try {
+            $ovpn = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+        } catch (\Throwable $e) {
+            Log::error('OVPN build failed', [
+                'u' => $vpnUser->id, 's' => $vpnServer->id, 'err' => $e->getMessage(),
+            ]);
+            return response('Failed to generate config', 502);
+        }
+
+        // quick sanity checks (also visible in server logs)
+        $checks = [
+            'bytes'      => strlen($ovpn),
+            'has_remote' => (bool) preg_match('/^remote\s+\S+\s+\d+/mi', $ovpn),
+            'has_ca'     => str_contains($ovpn, '<ca>'),
+            'has_ta'     => str_contains($ovpn, '<tls-auth>'),
+            'key_dir'    => str_contains($ovpn, 'key-direction'),
+            'auth_up'    => str_contains($ovpn, 'auth-user-pass'),
+        ];
+        Log::info('OVPN served', ['u' => $vpnUser->id, 's' => $vpnServer->id] + $checks);
+
+        return response($ovpn, 200, [
+            'Content-Type'  => 'text/plain; charset=utf-8',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma'        => 'no-cache',
+            'Expires'       => '0',
         ]);
     }
 }
