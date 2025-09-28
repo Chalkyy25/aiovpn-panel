@@ -2,73 +2,80 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
+use App\Http\Controllers\Api\DeployEventController;
+
 use App\Http\Controllers\MobileAuthController;
 use App\Http\Controllers\MobileProfileController;
-use App\Http\Controllers\Api\DeployEventController;
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-| Endpoints used by your remote deployment script and the panel.
-| Protected with the custom 'auth.panel-token' middleware (Bearer token).
-|
-| NOTE: route-model binding for {server} will inject App\Models\VpnServer
-| because your controller action type-hints VpnServer $server.
+| - Panel/Deploy endpoints: protected by custom 'auth.panel-token'
+| - Mobile client endpoints: protected by Sanctum (except /auth/login)
 */
 
+/* ========================== PANEL / DEPLOY ========================== */
+
 Route::middleware('auth.panel-token')->group(function () {
-    // ── Provisioning pings ─────────────────────────────────────────
+    // Provisioning lifecycle
     Route::post('/servers/{server}/provision/start',  [ProvisioningController::class, 'start']);
     Route::post('/servers/{server}/provision/update', [ProvisioningController::class, 'update']);
     Route::post('/servers/{server}/provision/finish', [ProvisioningController::class, 'finish']);
 
-    // ── Deployment/events + logs streaming ─────────────────────────
+    // Deployment events + streamed logs
     Route::post('/servers/{server}/deploy/events', [DeployApiController::class, 'event']);
     Route::post('/servers/{server}/deploy/logs',   [DeployApiController::class, 'log']);
 
-    // ── Realtime management status (preferred unified endpoint) ────
-    // This feeds your ServerMgmtEvent broadcast used by the dashboard.
+    // Unified realtime management status (preferred)
     Route::post('/servers/{server}/events', [DeployEventController::class, 'store'])
         ->name('api.servers.events.store');
 
-    // (optional) If your script already posts here, keep them:
+    // (Optional legacy) separate mgmt feeds
     Route::post('/servers/{server}/mgmt/push',     [DeployApiController::class, 'pushMgmt']);
     Route::post('/servers/{server}/mgmt/snapshot', [DeployApiController::class, 'pushMgmtSnapshot']);
 
-    // ── Facts reported after install ───────────────────────────────
+    // Facts posted after install completes
     Route::post('/servers/{server}/deploy/facts',  [DeployApiController::class, 'facts']);
 
-    // ── Auth file (script pulls + mirror back) ─────────────────────
-    Route::get ('/servers/{server}/authfile',      [DeployApiController::class, 'authFile']);
-    Route::post('/servers/{server}/authfile',      [DeployApiController::class, 'uploadAuthFile']);
+    // Server auth file (pull + mirror back)
+    Route::get ('/servers/{server}/authfile', [DeployApiController::class, 'authFile']);
+    Route::post('/servers/{server}/authfile', [DeployApiController::class, 'uploadAuthFile']);
 });
 
-// ── Mobile client endpoints ───────────────────────────────────────────
-Route::post('/auth/login', [MobileAuthController::class, 'login']);   // return token
+/* ========================== MOBILE CLIENT =========================== */
+
+// Login (returns Sanctum token + user info)
+Route::post('/auth/login', [MobileAuthController::class, 'login']);
+
+// Authenticated mobile routes
 Route::middleware('auth:sanctum')->group(function () {
+
+    // Profile summary + assigned servers
     Route::get('/profiles', [MobileProfileController::class, 'index']);
+
+    // Return a ready-to-import .ovpn for the given (or first) server
     Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
-});
-Route::middleware('auth:sanctum')->get('/ping', function (Request $req) {
-    return response()->json([
-        'ok'   => true,
-        'user' => $req->user()->only('id','username')
-    ]);
+
+    // *** Android app expects THIS endpoint: raw .ovpn text ***
+    // Example: /api/ovpn?user_id=7&server_id=99
+    Route::get('/ovpn', [MobileProfileController::class, 'ovpn']);
+
+    // Simple ping for token checks
+    Route::get('/ping', function (Request $req) {
+        return response()->json([
+            'ok'   => true,
+            'user' => $req->user()->only('id', 'username'),
+        ]);
+    });
 });
 
-/*
-| If (and only if) you need a Sanctum-secured alias for testing from the panel,
-| you can uncomment this. Your deploy script should prefer the Bearer token route above.
-|
-| Route::middleware('auth:sanctum')
-|     ->post('/servers/{server}/events', [DeployEventController::class, 'store'])
-|     ->name('api.servers.events.store.sanctum');
-*/
+/* ========================== MISC / PUBLIC ========================== */
 
-// Simple device registration endpoint (unchanged)
+// Device registration (kept as-is)
 Route::post('/device/register', function (Request $request) {
     $request->validate([
         'username'    => 'required|string',
@@ -81,3 +88,12 @@ Route::post('/device/register', function (Request $request) {
 
     return response()->json(['status' => 'success']);
 });
+
+/* -------------------------------------------------------------------
+| If you also want a Sanctum-only alias for events (testing from panel),
+| you can re-enable this safely:
+|
+| Route::middleware('auth:sanctum')
+|     ->post('/servers/{server}/events', [DeployEventController::class, 'store'])
+|     ->name('api.servers.events.store.sanctum');
+|--------------------------------------------------------------------*/
