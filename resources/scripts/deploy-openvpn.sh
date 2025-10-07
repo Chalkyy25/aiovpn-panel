@@ -165,20 +165,22 @@ SH
 chmod 0755 /etc/openvpn/auth/checkpsw.sh
 
 ### ===== server.conf (tuned) =====
-logchunk "Write server.conf (UDP + GCM + buffers + mssfix)"
+logchunk "Write server.conf (UDP + GCM/ChaCha + buffers + mssfix)"
 cat >/etc/openvpn/server.conf <<CONF
 port $VPN_PORT
 proto $VPN_PROTO
 dev tun
 
+# PKI
 ca ca.crt
 cert server.crt
 key server.key
 dh dh.pem
 tls-auth ta.key 0
+tls-version-min 1.2
 
-# Modern + fast
-data-ciphers AES-128-GCM:AES-256-GCM
+# Modern + fast (prefer AES-128-GCM; allow ChaCha20 for ARM/Firestick)
+data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
 auth SHA256
 ;compress
@@ -187,7 +189,14 @@ auth SHA256
 topology subnet
 server 10.8.0.0 255.255.255.0
 ifconfig-pool-persist ipp.txt
-keepalive 10 120
+
+# Keepalive: faster path-failure detection
+keepalive 10 60
+
+# Fewer renegotiations (pick one)
+reneg-sec 0          # fastest; OK for consumer use
+#reneg-sec 36000     # or long rekey if you prefer periodic rekeying
+
 persist-key
 persist-tun
 
@@ -203,21 +212,22 @@ verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 
-# Push routes + DNS (will be patched if private DNS is enabled)
+# Push routes + DNS (private DNS patch may override)
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS $DNS1"
 push "dhcp-option DNS $DNS2"
 
-# Throughput helpers (OS autotune socket buffers)
+# Throughput helpers (use OS autotuned socket buffers)
 sndbuf 0
 rcvbuf 0
 push "sndbuf 0"
 push "rcvbuf 0"
 
-# Avoid TCP stalls on funky carrier paths
+# MTU/MSS sizing for typical WAN paths
+tun-mtu 1500
 mssfix 1450
 
-# Mobile cleanup
+# Mobile/UDP cleanup
 explicit-exit-notify 3
 CONF
 
