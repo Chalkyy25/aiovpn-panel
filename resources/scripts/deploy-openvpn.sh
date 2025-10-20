@@ -209,9 +209,36 @@ server:
   access-control: 0.0.0.0/0 refuse
 EOF
 
-  unbound-checkconf
-  systemctl enable --now unbound
-  systemctl restart unbound
+  # --- Start Unbound only after wg0 has the VPN IP ---
+WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
+
+unbound-checkconf
+
+# Wait briefly for wg0 to be up and have the IP (race-safe on fresh boots)
+for i in {1..20}; do
+  if ip -4 addr show dev wg0 | grep -q " ${WG_DNS_IP}/"; then
+    break
+  fi
+  sleep 0.5
+done
+
+# Ensure systemd always orders Unbound after WireGuard on reboots
+mkdir -p /etc/systemd/system/unbound.service.d
+cat >/etc/systemd/system/unbound.service.d/override.conf <<EOF
+[Unit]
+After=wg-quick@wg0.service network-online.target
+Wants=wg-quick@wg0.service network-online.target
+
+[Service]
+# Refuse to start unless wg0 has the expected IP
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 20); do ip -4 addr show wg0 | grep -q "${WG_DNS_IP}/" && exit 0; sleep 0.5; done; echo "wg0 not ready"; exit 1'
+EOF
+
+systemctl daemon-reload
+systemctl enable unbound
+systemctl stop unbound 2>/dev/null || true
+systemctl start unbound
+systemctl is-active --quiet unbound || fail "unbound failed to start (wg0 DNS bind)"
 
   # Allow DNS only from VPN interface
   iptables -C INPUT -i wg0 -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i wg0 -p udp --dport 53 -j ACCEPT
