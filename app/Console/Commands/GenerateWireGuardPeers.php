@@ -2,42 +2,137 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use App\Models\VpnUser;
-use App\Models\VpnServer;
 use App\Jobs\AddWireGuardPeer;
+use App\Models\VpnServer;
+use App\Models\VpnUser;
+use Illuminate\Bus\Batch;
+use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class GenerateWireGuardPeers extends Command
 {
-    protected $signature = 'wg:generate {--server=} {--user=}';
+    protected $signature = 'wg:generate 
+                            {--server= : Only generate for a specific server ID}
+                            {--user=   : Only generate for a specific user ID}
+                            {--dry     : Show what would be queued, but don\'t enqueue}';
+
     protected $description = 'Generate WireGuard peers for existing VPN users';
 
-    public function handle()
+    public function handle(): int
     {
-        $serverId = $this->option('server');
-        $userId   = $this->option('user');
+        // single-run guard (5-minute lock window)
+        $lock = Cache::lock('cmd:wg:generate', 300);
 
-        $servers = $serverId
-            ? VpnServer::where('id', $serverId)->get()
-            : VpnServer::all();
-
-        $users = $userId
-            ? VpnUser::where('id', $userId)->get()
-            : VpnUser::all();
-
-        foreach ($servers as $server) {
-            foreach ($users as $user) {
-                // Skip if peer already exists
-                if ($user->wgPeers()->where('server_id', $server->id)->exists()) {
-                    $this->line("⏩ {$user->username} already has a peer on {$server->name}");
-                    continue;
-                }
-
-                $this->info("⚙️  Creating WireGuard peer for {$user->username} on {$server->name}");
-                AddWireGuardPeer::dispatchSync($user, $server);
-            }
+        if (! $lock->get()) {
+            $this->warn('Another wg:generate is running. Exiting.');
+            return self::FAILURE;
         }
 
-        $this->info("✅ Done generating WireGuard peers.");
+        try {
+            $serverId = $this->option('server');
+            $userId   = $this->option('user');
+            $dryRun   = (bool) $this->option('dry');
+
+            // servers scope
+            $servers = $serverId
+                ? VpnServer::query()->whereKey($serverId)->get()
+                : VpnServer::all();
+
+            if ($servers->isEmpty()) {
+                $this->warn('No servers matched the selection.');
+                return self::SUCCESS;
+            }
+
+            // users scope (only those that have WG keys/addr)
+            $usersQuery = VpnUser::query()
+                ->when($userId, fn ($q) => $q->whereKey($userId))
+                ->whereNotNull('wireguard_public_key')
+                ->where('wireguard_public_key', '!=', '')
+                ->whereNotNull('wireguard_address')
+                ->where('wireguard_address', '!=', '');
+
+            // Load user->vpnServers relation only when needed
+            // Here we’ll iterate by chunks for memory safety
+            $totalJobs = 0;
+            $preparedJobs = [];
+
+            $this->info(sprintf(
+                'Preparing peers%s%s (dry=%s)…',
+                $serverId ? " for server #{$serverId}" : '',
+                $userId   ? " for user #{$userId}"     : '',
+                $dryRun ? 'yes' : 'no'
+            ));
+
+            $usersQuery->chunkById(500, function (Collection $users) use ($servers, &$totalJobs, &$preparedJobs) {
+                foreach ($users as $user) {
+                    // If a user-to-server pivot drives assignment, prefer that.
+                    // Otherwise, default to all selected servers.
+                    $targetServers = $user->relationLoaded('vpnServers')
+                        ? $user->vpnServers
+                        : $servers;
+
+                    foreach ($targetServers as $server) {
+                        // Skip if peer already exists for (user, server)
+                        if (method_exists($user, 'wgPeers') &&
+                            $user->wgPeers()->where('server_id', $server->id)->exists()) {
+                            $this->line("⏩ {$user->username} already has a peer on {$server->name}");
+                            continue;
+                        }
+
+                        $this->line("⚙️  Queue {$user->username} on {$server->name}");
+                        $preparedJobs[] = (new AddWireGuardPeer($user, $server))->onQueue('wg-peers');
+                        $totalJobs++;
+                    }
+                }
+            });
+
+            if ($totalJobs === 0) {
+                $this->warn('Nothing to do (no missing peers for the selection).');
+                return self::SUCCESS;
+            }
+
+            if ($dryRun) {
+                $this->info("DRY RUN: {$totalJobs} job(s) would be enqueued.");
+                return self::SUCCESS;
+            }
+
+            // Split into manageable batches to avoid gigantic single batches
+            $batchSize = 500; // tune as you like
+            $batches   = array_chunk($preparedJobs, $batchSize);
+
+            $this->info("Dispatching {$totalJobs} job(s) in ".count($batches)." batch(es)…");
+
+            foreach ($batches as $i => $jobs) {
+                /** @var Batch $batch */
+                $batch = Bus::batch($jobs)
+                    ->name('WG Generate Peers (chunk '.($i+1).'/'.count($batches).')')
+                    ->allowFailures()
+                    ->onQueue('wg-peers')
+                    ->then(function (Batch $batch) {
+                        Log::info("✅ Batch finished: {$batch->id} (total: {$batch->totalJobs}, failed: {$batch->failedJobs})");
+                    })
+                    ->catch(function (Batch $batch, Throwable $e) {
+                        Log::error("❌ Batch error: {$batch->id} - {$e->getMessage()}", ['trace' => $e->getTraceAsString()]);
+                    })
+                    ->dispatch();
+
+                $this->line("→ Batch ID: {$batch->id}");
+            }
+
+            $this->info('✅ Done. Monitor progress in Horizon or logs.');
+            return self::SUCCESS;
+
+        } catch (Throwable $e) {
+            Log::error('wg:generate failed: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            $this->error('Command failed: '.$e->getMessage());
+            return self::FAILURE;
+
+        } finally {
+            optional($lock)->release();
+        }
     }
 }
