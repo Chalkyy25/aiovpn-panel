@@ -31,7 +31,7 @@ MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 STATUS_PATH="${STATUS_PATH:-/run/openvpn/server.status}"
 
-# DNS given to clients (overridden to private DNS when ENABLE_PRIVATE_DNS=1)
+# DNS given to clients (overridden by private DNS when ENABLE_PRIVATE_DNS=1)
 DNS1="${DNS1:-1.1.1.1}"
 DNS2="${DNS2:-8.8.8.8}"
 
@@ -107,10 +107,13 @@ apt_try apt-get install -y \
 ### ===== Facts =====
 DEF_IFACE="$(ip -4 route show default | awk '/default/ {print $5; exit}')" ; DEF_IFACE="${DEF_IFACE:-eth0}"
 
-### ===== Enable IP forwarding (quiet) =====
-logchunk "Enable IPv4 forwarding"
+### ===== Enable IP forwarding (quiet) + tiny socket buffs =====
+logchunk "Enable IPv4 forwarding & tune sockets"
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
 echo 'net.ipv4.ip_forward=1' >/etc/sysctl.d/99-aiovpn.conf
+# optional snappiness (safe defaults)
+echo 'net.core.rmem_max=2500000' >> /etc/sysctl.d/99-aiovpn.conf
+echo 'net.core.wmem_max=2500000' >> /etc/sysctl.d/99-aiovpn.conf
 sysctl --system >/dev/null
 
 ### ===== Discover/confirm WG endpoint =====
@@ -126,7 +129,7 @@ logchunk "WG endpoint = ${WG_ENDPOINT_HOST}:${WG_PORT}"
 logchunk "Configure WireGuard (wg0)"
 install -d -m 0700 /etc/wireguard
 
-# Ensure kernel module exists/loaded (common cloud image snag)
+# Ensure kernel module exists/loaded
 modprobe wireguard 2>/dev/null || true
 if ! lsmod | grep -q '^wireguard'; then
   logchunk "WireGuard module missing; installing linux-modules-extra-$(uname -r)"
@@ -158,15 +161,12 @@ PostDown = iptables -t nat -D POSTROUTING -o ${DEF_IFACE} -j MASQUERADE 2>/dev/n
 PostUp   = sysctl -w net.ipv4.ip_forward=1
 WG
 
-# Bring up wg0 and verify it actually exists + has the expected IP
-# Secure the config and (re)load the service so it picks up new settings
 chmod 600 /etc/wireguard/wg0.conf
 systemctl daemon-reload
 systemctl enable wg-quick@wg0
 systemctl stop wg-quick@wg0 2>/dev/null || true
 systemctl start wg-quick@wg0 || systemctl restart wg-quick@wg0
 
-# Log status for troubleshooting
 systemctl --no-pager --full status wg-quick@wg0 2>&1 | sed -e 's/"/\"/g' | while IFS= read -r L; do logchunk "$L"; done
 
 WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
@@ -185,7 +185,7 @@ fi
 iptables -C INPUT -p udp --dport "$WG_PORT" -j ACCEPT 2>/dev/null || iptables -A INPUT -p udp --dport "$WG_PORT" -j ACCEPT
 iptables-save >/etc/iptables/rules.v4 || true
 
-# Push WG facts to panel (and DB columns if supported)
+# Push WG facts to panel
 panel POST "/api/servers/$SERVER_ID/provision/update" --json \
   "{ $(json_kv wg_endpoint_host "$WG_ENDPOINT_HOST"), \"wg_port\": $WG_PORT, $(json_kv wg_subnet "$WG_SUBNET"), $(json_kv wg_public_key "$WG_PUB") }" >/dev/null || true
 
@@ -203,7 +203,7 @@ install_private_dns() {
   unbound-anchor -a /var/lib/unbound/root.key || true
   chown unbound:unbound /var/lib/unbound/root.key || true
 
-    # --- Unbound recursive resolver bound to WG IP (privacy-first) ---
+  # --- Unbound recursive resolver bound to WG IP (privacy-first) ---
   cat >/etc/unbound/unbound.conf.d/aio.conf <<EOF
 server:
   # === AIOVPN Resolver (Recursive) ===
@@ -224,9 +224,8 @@ server:
   do-udp: yes
   do-tcp: yes
 
-  # Outbound recursion over the default route (eth0)
+  # Outbound recursion over the default route
   outgoing-interface: 0.0.0.0
-  # Don’t forbid contacting local stub if present (harmless here)
   do-not-query-localhost: no
 
   # Hardening + performance
@@ -242,7 +241,7 @@ server:
   rrset-roundrobin: yes
 
   # Cache tuning
-  cache-min-ttl: 0
+  cache-min-ttl: 60
   cache-max-ttl: 86400
   neg-cache-size: 8m
   msg-cache-size: 64m
@@ -254,14 +253,24 @@ server:
   logfile: ""
   verbosity: 0
 
-  # Only VPN clients may query
-  access-control: ${WG_SUBNET} allow
+  # Allow both VPN subnets
+  access-control: ${WG_SUBNET} allow        # WireGuard
+  access-control: ${OVPN_SUBNET} allow      # OpenVPN
   access-control: 0.0.0.0/0 refuse
+
+# Use DNS-over-TLS upstreams for privacy
+forward-zone:
+  name: "."
+  forward-tls-upstream: yes
+  forward-addr: 1.1.1.1@853
+  forward-addr: 1.0.0.1@853
+  forward-addr: 9.9.9.9@853
+  forward-addr: 149.112.112.112@853
 EOF
 
   unbound-checkconf
 
-  # Ensure Unbound only starts after wg0 has the IP (boot & runtime)
+  # Ensure Unbound only starts after wg0 has the IP
   mkdir -p /etc/systemd/system/unbound.service.d
   cat >/etc/systemd/system/unbound.service.d/override.conf <<EOF
 [Unit]
@@ -278,11 +287,14 @@ EOF
   systemctl start unbound
   systemctl is-active --quiet unbound || fail "unbound failed to start (wg0 DNS bind)"
 
-  # Allow DNS only from VPN interface
+  # Allow DNS from VPN interfaces
   iptables -C INPUT -i wg0 -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i wg0 -p udp --dport 53 -j ACCEPT
   iptables -C INPUT -i wg0 -p tcp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i wg0 -p tcp --dport 53 -j ACCEPT
-  iptables-save >/etc/iptables/rules.v4 || true
+  # NEW: allow OVPN clients on tun0 to reach DNS bound to 10.66.66.1
+  iptables -C INPUT -i tun0 -d ${bind_ip} -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i tun0 -d ${bind_ip} -p udp --dport 53 -j ACCEPT
+  iptables -C INPUT -i tun0 -d ${bind_ip} -p tcp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i tun0 -d ${bind_ip} -p tcp --dport 53 -j ACCEPT
 
+  iptables-save >/etc/iptables/rules.v4 || true
   echo "[DNS] AIOVPN Resolver ready at ${bind_ip}:53"
 }
 install_private_dns
@@ -374,7 +386,7 @@ verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 
-# Default DNS (overridden by private DNS below if enabled)
+# Default DNS (will be replaced by 10.66.66.1 if ENABLE_PRIVATE_DNS=1)
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS $DNS1"
 push "dhcp-option DNS $DNS2"
@@ -410,7 +422,7 @@ systemctl enable openvpn@server
 systemctl restart openvpn@server
 systemctl is-active --quiet openvpn@server || fail "OpenVPN failed to start"
 
-### ===== Quick DNS sanity (optional) =====
+### ===== Quick DNS sanity =====
 if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
   dig @"$WG_DNS_IP" example.com +short || echo "[DNS] dig check failed (verify wg0 up and client reachability)"
 fi
