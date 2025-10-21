@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ╭──────────────────────────────────────────────────────────────────────────╮
-# │  A I O V P N  —  WG-first Deploy (WireGuard + OpenVPN fallback + DNS)    │
-# │  Idempotent • Tuned for throughput • Ubuntu 22.04/24.04                  │
+# │  A I O V P N — WG-first Deploy (WireGuard + OpenVPN fallback + DNS)      │
+# │  Idempotent • Hardened • Ubuntu 22.04/24.04                              │
 # ╰──────────────────────────────────────────────────────────────────────────╯
 set -euo pipefail
 
@@ -11,18 +11,16 @@ set -euo pipefail
 : "${SERVER_ID:?set SERVER_ID (panel id for this server)}"
 
 ### ===== Behaviour toggles =====
-PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"            # 1=notify panel, 0=quiet
-STATUS_PUSH_INTERVAL="${STATUS_PUSH_INTERVAL:-5s}" # OpenVPN status push interval
-ENABLE_PRIVATE_DNS="${ENABLE_PRIVATE_DNS:-1}"      # 1=Unbound bound to VPN IP
-# WG is the primary/default stack; OVPN is kept as fallback.
+PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"              # 1=notify panel, 0=quiet
+STATUS_PUSH_INTERVAL="${STATUS_PUSH_INTERVAL:-5s}"   # OpenVPN status push interval
+ENABLE_PRIVATE_DNS="${ENABLE_PRIVATE_DNS:-1}"        # 1=Unbound bound to WG VPN IP
 
 ### ===== Network/VPN defaults =====
 # WireGuard (primary)
 WG_SUBNET="${WG_SUBNET:-10.66.66.0/24}"
-WG_SRV_IP="${WG_SRV_IP:-10.66.66.1/24}"     # server address on wg0
+WG_SRV_IP="${WG_SRV_IP:-10.66.66.1/24}"   # server address on wg0
 WG_PORT="${WG_PORT:-51820}"
-# Optional hostname for endpoint; if empty we’ll auto-detect public IP
-WG_ENDPOINT_HOST="${WG_ENDPOINT_HOST:-}"
+WG_ENDPOINT_HOST="${WG_ENDPOINT_HOST:-}"   # auto-detect if empty
 
 # OpenVPN (fallback)
 OVPN_SUBNET="${OVPN_SUBNET:-10.8.0.0/24}"
@@ -33,7 +31,7 @@ MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
 MGMT_PORT="${MGMT_PORT:-7505}"
 STATUS_PATH="${STATUS_PATH:-/run/openvpn/server.status}"
 
-# DNS pushed to clients (if private DNS enabled, we’ll override to VPN IP)
+# DNS given to clients (overridden to private DNS when ENABLE_PRIVATE_DNS=1)
 DNS1="${DNS1:-1.1.1.1}"
 DNS2="${DNS2:-8.8.8.8}"
 
@@ -58,16 +56,12 @@ panel(){    # panel <METHOD> <PATH> [--json '{...}'] [--file /path]
   local path="$1";   shift
   local url="${PANEL_URL%/}${path}"
   [[ "$PANEL_CALLBACKS" = "1" ]] || { [[ "${1-}" == "--file" ]] || true; return 0; }
-  if [[ "${1-}" == "--file" ]]; then
-    curl_auth -X "$method" -F "file=@$2" "$url" || true; return
-  fi
-  if [[ "${1-}" == "--json" ]]; then
-    curl_auth -X "$method" -H "Content-Type: application/json" -d "$2" "$url" || true; return
-  fi
+  if [[ "${1-}" == "--file" ]]; then curl_auth -X "$method" -F "file=@$2" "$url" || true; return; fi
+  if [[ "${1-}" == "--json" ]]; then curl_auth -X "$method" -H "Content-Type: application/json" -d "$2" "$url" || true; return; fi
   curl_auth -X "$method" "$url" || true
 }
 announce(){ panel POST "/api/servers/$SERVER_ID/deploy/events" --json \
-  "{ $(json_kv status "$1"), $(json_kv message "$2") }" ; }
+  "{ $(json_kv status "$1"), $(json_kv message "$2") }"; }
 logchunk(){ panel POST "/api/servers/$SERVER_ID/deploy/logs" --json \
   "{ $(json_kv line "$1") }" >/dev/null; }
 fail(){ announce failed "$1"; exit 1; }
@@ -76,18 +70,36 @@ announce running "Starting WG-first deployment"
 
 ### ===== System checks =====
 [[ $EUID -eq 0 ]] || fail "Run as root"
-[[ -c /dev/net/tun ]] || true  # WG does not require /dev/net/tun, OVPN does
 command -v apt-get >/dev/null || fail "Debian/Ubuntu apt required"
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 apt_try(){ local t=3 i=1; until "$@"; do (( i>=t )) && return 1; sleep $((i*2)); ((i++)); done; }
 
+preflight() {
+  local ok=1
+  for p in \
+    "/api/servers/$SERVER_ID/deploy/events" \
+    "/api/servers/$SERVER_ID/deploy/logs" \
+    "/api/servers/$SERVER_ID/deploy/facts" \
+    "/api/servers/$SERVER_ID/authfile" \
+    "/api/servers/$SERVER_ID/provision/update" \
+    "/api/servers/$SERVER_ID/events"
+  do
+    code=$(curl -s -o /dev/null -w '%{http_code}' \
+      -H "Authorization: Bearer $PANEL_TOKEN" \
+      -X OPTIONS "${PANEL_URL%/}${p}" || true)
+    [[ "$code" =~ ^20[0-9]$|^405$ ]] || { echo "Preflight $p -> $code"; ok=0; }
+  done
+  [[ $ok -eq 1 ]] || { echo "Panel API preflight failed"; exit 1; }
+}
+preflight
+
 ### ===== Base packages =====
-logchunk "Install packages"
+logchunk "Install/verify packages"
 apt_try apt-get update -y
 apt_try apt-get install -y \
-  wireguard iproute2 iptables-persistent nftables \
+  wireguard iproute2 iptables-persistent \
   openvpn easy-rsa \
   unbound dnsutils \
   curl ca-certificates jq python3 netcat-openbsd htop
@@ -95,7 +107,7 @@ apt_try apt-get install -y \
 ### ===== Facts =====
 DEF_IFACE="$(ip -4 route show default | awk '/default/ {print $5; exit}')" ; DEF_IFACE="${DEF_IFACE:-eth0}"
 
-### ===== Enable IP forwarding =====
+### ===== Enable IP forwarding (quiet) =====
 logchunk "Enable IPv4 forwarding"
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
 echo 'net.ipv4.ip_forward=1' >/etc/sysctl.d/99-aiovpn.conf
@@ -113,6 +125,14 @@ logchunk "WG endpoint = ${WG_ENDPOINT_HOST}:${WG_PORT}"
 ### ===== WireGuard (primary) =====
 logchunk "Configure WireGuard (wg0)"
 install -d -m 0700 /etc/wireguard
+
+# Ensure kernel module exists/loaded (common cloud image snag)
+modprobe wireguard 2>/dev/null || true
+if ! lsmod | grep -q '^wireguard'; then
+  logchunk "WireGuard module missing; installing linux-modules-extra-$(uname -r)"
+  apt_try apt-get install -y "linux-modules-extra-$(uname -r)" || true
+  modprobe wireguard 2>/dev/null || true
+fi
 
 # Keys (idempotent)
 if [[ ! -f /etc/wireguard/server_private_key ]]; then
@@ -138,25 +158,37 @@ PostDown = iptables -t nat -D POSTROUTING -o ${DEF_IFACE} -j MASQUERADE 2>/dev/n
 PostUp   = sysctl -w net.ipv4.ip_forward=1
 WG
 
-systemctl enable --now wg-quick@wg0
+# Bring up wg0 and verify it actually exists + has the expected IP
+systemctl enable --now wg-quick@wg0 || true
+systemctl --no-pager --full status wg-quick@wg0 2>&1 | sed -e 's/"/\"/g' | while IFS= read -r L; do logchunk "$L"; done
+
+WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
+ok_iface=0
+for i in {1..20}; do
+  if ip -4 addr show dev wg0 2>/dev/null | grep -q " ${WG_DNS_IP}/"; then ok_iface=1; break; fi
+  sleep 0.5
+done
+if [ "$ok_iface" -ne 1 ]; then
+  logchunk "wg0 did not come up with ${WG_DNS_IP}. Dumping journal:"
+  journalctl -u wg-quick@wg0 --no-pager -n 100 2>&1 | sed -e 's/"/\"/g' | while IFS= read -r L; do logchunk "$L"; done
+  fail "WireGuard (wg0) failed to start; check wg0.conf or kernel module"
+fi
 
 # Open WG firewall (udp)
 iptables -C INPUT -p udp --dport "$WG_PORT" -j ACCEPT 2>/dev/null || iptables -A INPUT -p udp --dport "$WG_PORT" -j ACCEPT
 iptables-save >/etc/iptables/rules.v4 || true
 
-# Push WG facts to panel (also updates DB columns if backend supports it)
+# Push WG facts to panel (and DB columns if supported)
 panel POST "/api/servers/$SERVER_ID/provision/update" --json \
   "{ $(json_kv wg_endpoint_host "$WG_ENDPOINT_HOST"), \"wg_port\": $WG_PORT, $(json_kv wg_subnet "$WG_SUBNET"), $(json_kv wg_public_key "$WG_PUB") }" >/dev/null || true
 
-### ===== AIO Private DNS (bound to VPN IP) =====
+### ===== AIO Private DNS (bound to WG IP) =====
 install_private_dns() {
   [[ "$ENABLE_PRIVATE_DNS" = "1" ]] || { echo "[DNS] Private DNS disabled"; return 0; }
 
-  # Pick WG IP as DNS bind (primary). Extract bare IP (no /mask).
-  local bind_ip
-  bind_ip="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
-
+  local bind_ip; bind_ip="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
   echo "[DNS] Setting up AIOVPN Resolver on ${bind_ip} (${WG_SUBNET})"
+
   install -d -m 0755 /etc/unbound/unbound.conf.d
   install -d -m 0755 -o unbound -g unbound /run/unbound /var/lib/unbound || true
 
@@ -209,36 +241,24 @@ server:
   access-control: 0.0.0.0/0 refuse
 EOF
 
-  # --- Start Unbound only after wg0 has the VPN IP ---
-WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
+  unbound-checkconf
 
-unbound-checkconf
-
-# Wait briefly for wg0 to be up and have the IP (race-safe on fresh boots)
-for i in {1..20}; do
-  if ip -4 addr show dev wg0 | grep -q " ${WG_DNS_IP}/"; then
-    break
-  fi
-  sleep 0.5
-done
-
-# Ensure systemd always orders Unbound after WireGuard on reboots
-mkdir -p /etc/systemd/system/unbound.service.d
-cat >/etc/systemd/system/unbound.service.d/override.conf <<EOF
+  # Ensure Unbound only starts after wg0 has the IP (boot & runtime)
+  mkdir -p /etc/systemd/system/unbound.service.d
+  cat >/etc/systemd/system/unbound.service.d/override.conf <<EOF
 [Unit]
 After=wg-quick@wg0.service network-online.target
 Wants=wg-quick@wg0.service network-online.target
 
 [Service]
-# Refuse to start unless wg0 has the expected IP
-ExecStartPre=/bin/sh -c 'for i in \$(seq 1 20); do ip -4 addr show wg0 | grep -q "${WG_DNS_IP}/" && exit 0; sleep 0.5; done; echo "wg0 not ready"; exit 1'
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 20); do ip -4 addr show wg0 | grep -q "${bind_ip}/" && exit 0; sleep 0.5; done; echo "wg0 not ready"; exit 1'
 EOF
 
-systemctl daemon-reload
-systemctl enable unbound
-systemctl stop unbound 2>/dev/null || true
-systemctl start unbound
-systemctl is-active --quiet unbound || fail "unbound failed to start (wg0 DNS bind)"
+  systemctl daemon-reload
+  systemctl enable unbound
+  systemctl stop unbound 2>/dev/null || true
+  systemctl start unbound
+  systemctl is-active --quiet unbound || fail "unbound failed to start (wg0 DNS bind)"
 
   # Allow DNS only from VPN interface
   iptables -C INPUT -i wg0 -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i wg0 -p udp --dport 53 -j ACCEPT
@@ -336,7 +356,7 @@ verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
 
-# Default DNS (overridden to private DNS below if enabled)
+# Default DNS (overridden by private DNS below if enabled)
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS $DNS1"
 push "dhcp-option DNS $DNS2"
@@ -358,19 +378,14 @@ if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
   OVPN_CONF="/etc/openvpn/server.conf"
   sed -i '/^push "dhcp-option DNS /d' "$OVPN_CONF"
   sed -i '/^push "dhcp-option DOMAIN-ROUTE /d' "$OVPN_CONF"
-  WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
   echo "push \"dhcp-option DNS ${WG_DNS_IP}\"" >> "$OVPN_CONF"
   echo "push \"dhcp-option DOMAIN-ROUTE .\""   >> "$OVPN_CONF"
 fi
 
 # NAT + OVPN firewall
-iptables -t nat -C POSTROUTING -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null \
-  || iptables -t nat -A POSTROUTING -o "$DEF_IFACE" -j MASQUERADE
-iptables -C INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT 2>/dev/null \
-  || iptables -A INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT
-# clamp MSS (safe duplicate-guarded)
-iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null \
-  || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+iptables -t nat -C POSTROUTING -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o "$DEF_IFACE" -j MASQUERADE
+iptables -C INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT 2>/dev/null || iptables -A INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT
+iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 iptables-save >/etc/iptables/rules.v4 || true
 
 systemctl enable openvpn@server
@@ -379,7 +394,6 @@ systemctl is-active --quiet openvpn@server || fail "OpenVPN failed to start"
 
 ### ===== Quick DNS sanity (optional) =====
 if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
-  WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
   dig @"$WG_DNS_IP" example.com +short || echo "[DNS] dig check failed (verify wg0 up and client reachability)"
 fi
 
@@ -472,11 +486,10 @@ SERVER_ID="$SERVER_ID"
 STATUS_PATH="$STATUS_PATH"
 ENV
 
-# Interval tweak
 sed -i "s/OnUnitActiveSec=.*/OnUnitActiveSec=${STATUS_PUSH_INTERVAL}/" /etc/systemd/system/ovpn-status-push.timer || true
 systemctl daemon-reload
 systemctl enable --now ovpn-status-push.timer
-systemctl status --no-pager ovpn-status-push.timer >/dev/null 2>&1 || true
+systemctl status --no-pager --full ovpn-status-push.timer >/dev/null 2>&1 || true
 
 ### ===== Mirror OVPN auth back to panel (optional) =====
 panel POST "/api/servers/$SERVER_ID/authfile" --file /etc/openvpn/auth/psw-file >/dev/null || true
