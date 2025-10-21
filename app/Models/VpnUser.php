@@ -58,43 +58,36 @@ class VpnUser extends Authenticatable
         'updated_at'   => 'datetime',
     ];
 
-    /* ========= Auth (username + hashed password) ========= */
+    /* ========= Auth fields ========= */
 
-    public function getAuthIdentifierName(): string
-    {
-        return 'username';
-    }
+    public function getAuthIdentifierName(): string { return 'username'; }
+    public function getAuthPassword(): string { return $this->password; }
 
-    public function getAuthPassword(): string
-    {
-        return $this->password;
-    }
-
-    // Hash on set; keep bcrypt as-is
+    // Hash when setting ->password; preserve existing bcrypt
     protected function password(): Attribute
     {
         return Attribute::set(function ($value) {
             if (blank($value)) {
-                return $this->password;
+                return $this->password; // keep current if not provided
             }
-            return (is_string($value) && strlen($value) === 60 && str_starts_with($value, '$2y$'))
-                ? $value
-                : Hash::make($value);
+            $v = (string) $value;
+            $isBcrypt = strlen($v) === 60 && str_starts_with($v, '$2y$');
+            return $isBcrypt ? $v : Hash::make($v);
         });
     }
 
-    // Mirror plain_password -> password (hashed)
+    // When plain_password is set, hash into password too
     protected function plainPassword(): Attribute
     {
         return Attribute::set(function ($value) {
             if (!blank($value)) {
-                $this->attributes['password'] = Hash::make($value);
+                $this->attributes['password'] = Hash::make((string) $value);
             }
             return $value;
         });
     }
 
-    // This table has no remember_token column
+    // This table has no remember token
     public function setRememberToken($value): void {}
     public function getRememberToken(): ?string { return null; }
     public function getRememberTokenName(): string { return 'remember_token'; }
@@ -191,55 +184,69 @@ class VpnUser extends Authenticatable
 
     protected static function booted(): void
     {
-        static::creating(function (self $vpnUser) {
-            $vpnUser->max_connections ??= 1;
-            $vpnUser->is_active      ??= true;
-
-            if (blank($vpnUser->username)) {
-                $vpnUser->username = 'wg-' . Str::random(6);
+        static::creating(function (self $u) {
+            // Username: required & valid
+            $u->username = trim((string) ($u->username ?? ''));
+            if ($u->username === '' || strtoupper($u->username) === 'UNDEF') {
+                // fall back to a generated username
+                $u->username = 'wg-' . Str::lower(Str::random(10));
             }
 
-            // WG disabled for launch unless explicitly enabled
+            // Ensure a password always exists before insert
+            // Prefer any caller-provided plain_password; otherwise generate one
+            if (blank($u->plain_password) && blank($u->password)) {
+                $generated = Str::random(20);
+                $u->plain_password = $generated;      // for one-time display if you use it
+                $u->password       = Hash::make($generated);
+            } elseif (!blank($u->plain_password) && blank($u->password)) {
+                $u->password = Hash::make($u->plain_password);
+            }
+
+            // Sensible defaults
+            $u->max_connections ??= 1;
+            $u->is_active       ??= true;
+
+            // WireGuard autogen (kept from your original)
             if (config('services.wireguard.autogen', false)) {
-                if (blank($vpnUser->wireguard_private_key) || blank($vpnUser->wireguard_public_key)) {
+                if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
                     $keys = self::generateWireGuardKeys();
-                    $vpnUser->wireguard_private_key = $keys['private'];
-                    $vpnUser->wireguard_public_key  = $keys['public'];
+                    $u->wireguard_private_key = $keys['private'];
+                    $u->wireguard_public_key  = $keys['public'];
                 }
 
-                if (blank($vpnUser->wireguard_address)) {
+                if (blank($u->wireguard_address)) {
                     do {
                         $last = random_int(2, 254);
                         $ip = "10.66.66.$last/32";
                     } while (self::where('wireguard_address', $ip)->exists());
-                    $vpnUser->wireguard_address = $ip;
+                    $u->wireguard_address = $ip;
                 }
             }
         });
 
-        static::created(function (self $vpnUser) {
-            if ($vpnUser->vpnServers()->exists()) {
-                foreach ($vpnUser->vpnServers as $server) {
+        static::created(function (self $u) {
+            if ($u->vpnServers()->exists()) {
+                foreach ($u->vpnServers as $server) {
                     SyncOpenVPNCredentials::dispatch($server);
                     Log::info("🚀 OpenVPN creds synced to {$server->name} ({$server->ip_address})");
                 }
             }
         });
 
-        static::deleting(function (self $vpnUser) {
-            Log::info("🗑️ Cleanup for VPN user: {$vpnUser->username}");
-            $vpnUser->loadMissing('vpnServers');
+        static::deleting(function (self $u) {
+            Log::info("🗑️ Cleanup for VPN user: {$u->username}");
+            $u->loadMissing('vpnServers');
 
-            if (config('services.wireguard.autogen', false) && !blank($vpnUser->wireguard_public_key)) {
-                foreach ($vpnUser->vpnServers as $server) {
-                    RemoveWireGuardPeer::dispatch(clone $vpnUser, $server);
+            if (config('services.wireguard.autogen', false) && !blank($u->wireguard_public_key)) {
+                foreach ($u->vpnServers as $server) {
+                    RemoveWireGuardPeer::dispatch(clone $u, $server);
                 }
-                Log::info("🔧 WG peer removal queued for {$vpnUser->username}");
+                Log::info("🔧 WG peer removal queued for {$u->username}");
             }
 
-            if ($vpnUser->vpnServers()->exists()) {
-                RemoveOpenVPNUser::dispatch($vpnUser);
-                Log::info("🔧 OpenVPN cleanup queued for {$vpnUser->username}");
+            if ($u->vpnServers()->exists()) {
+                RemoveOpenVPNUser::dispatch($u);
+                Log::info("🔧 OpenVPN cleanup queued for {$u->username}");
             }
         });
     }
