@@ -203,9 +203,10 @@ install_private_dns() {
   unbound-anchor -a /var/lib/unbound/root.key || true
   chown unbound:unbound /var/lib/unbound/root.key || true
 
+    # --- Unbound recursive resolver bound to WG IP (privacy-first) ---
   cat >/etc/unbound/unbound.conf.d/aio.conf <<EOF
 server:
-  # === AIOVPN Resolver Branding ===
+  # === AIOVPN Resolver (Recursive) ===
   identity: "AIOVPN Resolver"
   version: "secure"
 
@@ -214,6 +215,7 @@ server:
   chroot: ""
   pidfile: "/run/unbound/unbound.pid"
 
+  # Bind only to WireGuard IP
   interface: ${bind_ip}
   so-reuseport: yes
   port: 53
@@ -222,6 +224,12 @@ server:
   do-udp: yes
   do-tcp: yes
 
+  # Outbound recursion over the default route (eth0)
+  outgoing-interface: 0.0.0.0
+  # Don’t forbid contacting local stub if present (harmless here)
+  do-not-query-localhost: no
+
+  # Hardening + performance
   hide-identity: yes
   hide-version: yes
   qname-minimisation: yes
@@ -233,6 +241,7 @@ server:
   prefetch-key: yes
   rrset-roundrobin: yes
 
+  # Cache tuning
   cache-min-ttl: 0
   cache-max-ttl: 86400
   neg-cache-size: 8m
@@ -241,9 +250,11 @@ server:
   outgoing-range: 512
   num-threads: 2
 
+  # Quiet logging
   logfile: ""
   verbosity: 0
 
+  # Only VPN clients may query
   access-control: ${WG_SUBNET} allow
   access-control: 0.0.0.0/0 refuse
 EOF
