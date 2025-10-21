@@ -58,25 +58,20 @@ class VpnUser extends Authenticatable
         'updated_at'   => 'datetime',
     ];
 
-    /* ========= Auth fields ========= */
+    /* ========= Auth ========= */
 
     public function getAuthIdentifierName(): string { return 'username'; }
     public function getAuthPassword(): string { return $this->password; }
 
-    // Hash when setting ->password; preserve existing bcrypt
     protected function password(): Attribute
     {
         return Attribute::set(function ($value) {
-            if (blank($value)) {
-                return $this->password; // keep current if not provided
-            }
+            if (blank($value)) return $this->password;
             $v = (string) $value;
-            $isBcrypt = strlen($v) === 60 && str_starts_with($v, '$2y$');
-            return $isBcrypt ? $v : Hash::make($v);
+            return (strlen($v) === 60 && str_starts_with($v, '$2y$')) ? $v : Hash::make($v);
         });
     }
 
-    // When plain_password is set, hash into password too
     protected function plainPassword(): Attribute
     {
         return Attribute::set(function ($value) {
@@ -87,7 +82,7 @@ class VpnUser extends Authenticatable
         });
     }
 
-    // This table has no remember token
+    // No remember token column
     public function setRememberToken($value): void {}
     public function getRememberToken(): ?string { return null; }
     public function getRememberTokenName(): string { return 'remember_token'; }
@@ -129,10 +124,7 @@ class VpnUser extends Authenticatable
     public function onlineSince(): Attribute
     {
         return Attribute::get(function () {
-            $coll = $this->relationLoaded('activeConnections')
-                ? $this->activeConnections
-                : $this->activeConnections()->get();
-
+            $coll = $this->relationLoaded('activeConnections') ? $this->activeConnections : $this->activeConnections()->get();
             $ts = $coll->min('connected_at');
             return $ts ? Carbon::parse($ts) : null;
         });
@@ -141,10 +133,7 @@ class VpnUser extends Authenticatable
     public function lastDisconnectedAt(): Attribute
     {
         return Attribute::get(function () {
-            $coll = $this->relationLoaded('connections')
-                ? $this->connections
-                : $this->connections()->get();
-
+            $coll = $this->relationLoaded('connections') ? $this->connections : $this->connections()->get();
             $ts = $coll->where('is_connected', false)->max('disconnected_at');
             return $ts ? Carbon::parse($ts) : null;
         });
@@ -162,10 +151,9 @@ class VpnUser extends Authenticatable
     /** 0 = unlimited devices */
     public function canConnect(): bool
     {
-        if ((int) $this->max_connections === 0) {
-            return true;
-        }
-        return $this->activeConnectionsCount < (int) $this->max_connections;
+        return (int) $this->max_connections === 0
+            ? true
+            : $this->activeConnectionsCount < (int) $this->max_connections;
     }
 
     public function getConnectionLimitTextAttribute(): string
@@ -185,33 +173,35 @@ class VpnUser extends Authenticatable
     protected static function booted(): void
     {
         static::creating(function (self $u) {
-            // Username: required & valid
+            // Username (avoid UNDEF / blanks)
             $u->username = trim((string) ($u->username ?? ''));
             if ($u->username === '' || strtoupper($u->username) === 'UNDEF') {
-                // fall back to a generated username
                 $u->username = 'wg-' . Str::lower(Str::random(10));
             }
 
-            // Ensure a password always exists before insert
-            // Prefer any caller-provided plain_password; otherwise generate one
+            // Always ensure a password exists
             if (blank($u->plain_password) && blank($u->password)) {
                 $generated = Str::random(20);
-                $u->plain_password = $generated;      // for one-time display if you use it
+                $u->plain_password = $generated;
                 $u->password       = Hash::make($generated);
             } elseif (!blank($u->plain_password) && blank($u->password)) {
                 $u->password = Hash::make($u->plain_password);
             }
 
-            // Sensible defaults
+            // Defaults
             $u->max_connections ??= 1;
             $u->is_active       ??= true;
 
-            // WireGuard autogen (kept from your original)
+            // WireGuard autogen
             if (config('services.wireguard.autogen', false)) {
-                if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
+                if (blank($u->wireguard_private_key)) {
                     $keys = self::generateWireGuardKeys();
                     $u->wireguard_private_key = $keys['private'];
                     $u->wireguard_public_key  = $keys['public'];
+                } elseif (blank($u->wireguard_public_key)) {
+                    // derive public if only private provided
+                    $pub = self::wgPublicFromPrivate($u->wireguard_private_key);
+                    if ($pub) $u->wireguard_public_key = $pub;
                 }
 
                 if (blank($u->wireguard_address)) {
@@ -251,13 +241,68 @@ class VpnUser extends Authenticatable
         });
     }
 
-    /* ========= Helpers ========= */
+    /* ========= WireGuard helpers ========= */
 
+    /**
+     * Generate a valid X25519 keypair for WireGuard.
+     * Prefers libsodium; falls back to `wg` tools if available.
+     */
     public static function generateWireGuardKeys(): array
     {
-        Log::warning('⚠️ WG tools disabled; using fallback key generation');
-        $private = base64_encode(random_bytes(32));
-        $public  = base64_encode(hash('sha256', $private, true));
-        return ['private' => $private, 'public' => $public];
+        // Prefer libsodium (pure PHP, no shell)
+        if (function_exists('sodium_crypto_box_keypair')) {
+            try {
+                $kp   = sodium_crypto_box_keypair();
+                $priv = sodium_crypto_box_secretkey($kp);           // 32 bytes
+                $pub  = sodium_crypto_scalarmult_base($priv);       // derive X25519 public key
+                return [
+                    'private' => base64_encode($priv),
+                    'public'  => base64_encode($pub),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('WireGuard: sodium generation failed, falling back to wg tools: '.$e->getMessage());
+            }
+        }
+
+        // Fallback to system wg binaries
+        $priv = trim((string) @shell_exec('wg genkey 2>/dev/null'));
+        if ($priv !== '') {
+            $pub = trim((string) @shell_exec('printf %s '.escapeshellarg($priv).' | wg pubkey 2>/dev/null'));
+            if ($pub !== '') {
+                // wg tools output base64 already
+                return ['private' => $priv, 'public' => $pub];
+            }
+        }
+
+        // Last resort: random, but still derive proper public via sodium if present
+        Log::warning('WireGuard: no sodium/wg tools available; generating random private and attempting sodium derive.');
+        $rawPriv = random_bytes(32);
+        $public  = function_exists('sodium_crypto_scalarmult_base')
+            ? base64_encode(sodium_crypto_scalarmult_base($rawPriv))
+            : null;
+
+        return [
+            'private' => base64_encode($rawPriv),
+            'public'  => $public ?? base64_encode($rawPriv), // placeholder only if we truly cannot derive
+        ];
+    }
+
+    /**
+     * Derive a base64 public key from a base64 (or raw) private key.
+     */
+    public static function wgPublicFromPrivate(string $private): ?string
+    {
+        try {
+            $raw = base64_decode($private, true);
+            if ($raw === false) {
+                // might already be raw
+                $raw = $private;
+            }
+            if (!is_string($raw) || strlen($raw) !== 32) return null;
+            if (!function_exists('sodium_crypto_scalarmult_base')) return null;
+            return base64_encode(sodium_crypto_scalarmult_base($raw));
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }
