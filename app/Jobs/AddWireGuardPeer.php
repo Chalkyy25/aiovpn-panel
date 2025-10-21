@@ -5,14 +5,14 @@ namespace App\Jobs;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Traits\ExecutesRemoteCommands;
+use Illuminate\Bus\Batchable;
 use Illuminate\Bus\Queueable;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Bus\Batchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class AddWireGuardPeer implements ShouldQueue
 {
@@ -21,40 +21,40 @@ class AddWireGuardPeer implements ShouldQueue
     protected VpnUser $vpnUser;
     protected ?VpnServer $server;
 
+    /** sensible defaults */
+    public int $tries = 2;
+    public int $timeout = 120;
+
     /**
-     * @param VpnUser $vpnUser
-     * @param VpnServer|null $server  If provided, add peer only to this server
+     * @param  VpnUser       $vpnUser
+     * @param  VpnServer|null $server  If provided, add peer only to this server
      */
     public function __construct(VpnUser $vpnUser, ?VpnServer $server = null)
     {
+        // use 'wg' queue on Redis (no property redeclarations!)
+        $this->onConnection('redis');
+        $this->onQueue('wg');
+
         // Only eager-load servers if we weren't given a specific one
         $this->vpnUser = $server ? $vpnUser : $vpnUser->load('vpnServers');
         $this->server  = $server;
     }
-    
-    // Make sure this job uses the same queue Horizon is watching
-        public string $connection = 'redis';
-        public string $queue = 'wg';
-        
-        // sensible defaults
-        public int $tries = 2;
-        public int $timeout = 120;
-        
-        public function tags(): array
-        {
-            return [
-                'wg',
-                'user:'.$this->vpnUser->id,
-                'server:'.($this->server->id ?? 'all'),
-            ];
-        }
+
+    public function tags(): array
+    {
+        return [
+            'wg',
+            'user:'.$this->vpnUser->id,
+            'server:'.($this->server->id ?? 'all'),
+        ];
+    }
 
     public function handle(): void
     {
         $u = $this->vpnUser;
         Log::info("🔧 [WG] Add peer for user={$u->username}");
 
-        $pub = $u->wireguard_public_key ?? null;
+        $pub  = $u->wireguard_public_key ?? null;
         $addr = $u->wireguard_address ?? null;
 
         if (!$pub || !$addr) {
@@ -104,6 +104,8 @@ class AddWireGuardPeer implements ShouldQueue
 
         $script = $this->buildAddPeerScript($publicKey, $ip32);
 
+        // ExecutesRemoteCommands should accept either a host string or the model;
+        // here we pass host for clarity.
         $res = $this->executeRemoteCommand($host, $script);
 
         if (($res['status'] ?? 1) !== 0) {
@@ -117,14 +119,13 @@ class AddWireGuardPeer implements ShouldQueue
     }
 
     /**
-     * Build a safe, idempotent remote script that:
+     * Remote script:
      *  - verifies wg0 exists
      *  - adds/updates the peer with the given allowed-ips
-     *  - persists using wg-quick save (respects SaveConfig=true)
+     *  - persists using wg-quick save (requires SaveConfig=true in wg0.conf)
      */
     private function buildAddPeerScript(string $publicKey, string $ip32): string
     {
-        // Escape before injection
         $PUB = escapeshellarg($publicKey);
         $IP  = escapeshellarg($ip32);
 
@@ -140,17 +141,10 @@ if ! wg show "\$IFACE" >/dev/null 2>&1; then
 fi
 
 # Add or update peer idempotently
-if wg show "\$IFACE" peers | grep -qx "\$PUB"; then
-  wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32"
-else
-  wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32"
-fi
+wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32"
 
-# Persist peers to disk safely (requires SaveConfig=true in wg0.conf)
+# Persist peers to disk safely (SaveConfig=true)
 wg-quick save "\$IFACE" >/dev/null 2>&1 || true
-
-# Optional: small confirmation output for logs
-wg show "\$IFACE" | sed -n '1,60p' >/dev/null 2>&1 || true
 BASH;
     }
 }
