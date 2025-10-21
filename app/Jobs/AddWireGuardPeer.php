@@ -6,6 +6,7 @@ use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Traits\ExecutesRemoteCommands;
 use Illuminate\Bus\Queueable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
@@ -17,141 +18,121 @@ class AddWireGuardPeer implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ExecutesRemoteCommands;
 
     protected VpnUser $vpnUser;
-    protected ?VpnServer $server = null;
+    protected ?VpnServer $server;
 
     /**
-     * Create a new job instance.
-     *
      * @param VpnUser $vpnUser
-     * @param VpnServer|null $server
+     * @param VpnServer|null $server  If provided, add peer only to this server
      */
     public function __construct(VpnUser $vpnUser, ?VpnServer $server = null)
     {
-        $this->vpnUser = $vpnUser->load('vpnServers');
-        $this->server = $server;
+        // Only eager-load servers if we weren't given a specific one
+        $this->vpnUser = $server ? $vpnUser : $vpnUser->load('vpnServers');
+        $this->server  = $server;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
-        Log::info("🔧 Adding WireGuard peer for user: {$this->vpnUser->username}");
+        $u = $this->vpnUser;
+        Log::info("🔧 [WG] Add peer for user={$u->username}");
 
-        // Validate user has required WireGuard keys
-        $userKeys = $this->vpnUser->only(['wireguard_public_key', 'wireguard_address']);
-        if (empty($userKeys['wireguard_public_key']) || empty($userKeys['wireguard_address'])) {
-            Log::error("❌ [WG] Missing WireGuard keys for {$this->vpnUser->username}, cannot add peer.");
+        $pub = $u->wireguard_public_key ?? null;
+        $addr = $u->wireguard_address ?? null;
+
+        if (!$pub || !$addr) {
+            Log::error("❌ [WG] Missing keys/address for {$u->username} (public_key or address).");
             return;
         }
 
-        // If a specific server is provided, add peer only to that server
-        if ($this->server) {
-            $success = $this->addPeerToServer($this->server, $userKeys);
+        /** @var Collection<int,VpnServer> $servers */
+        $servers = $this->server
+            ? collect([$this->server])
+            : ($u->vpnServers ?? collect());
 
-            // Log final status for single server case
-            if ($success) {
-                Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username} on server: {$this->server->name}");
-            } else {
-                Log::error("❌ WireGuard peer setup failed for user: {$this->vpnUser->username} on server: {$this->server->name}");
-            }
-
+        if ($servers->isEmpty()) {
+            Log::warning("⚠️ [WG] No servers associated with user {$u->username}.");
             return;
         }
 
-        // Otherwise, add peer to all servers associated with the user
-        if ($this->vpnUser->vpnServers->isEmpty()) {
-            Log::warning("⚠️ No VPN servers associated with user {$this->vpnUser->username}");
-            return;
+        $ok = 0;
+        foreach ($servers as $server) {
+            $ok += $this->addPeerToServer($server, $pub, $addr) ? 1 : 0;
         }
 
-        $successCount = 0;
-        $totalServers = $this->vpnUser->vpnServers->count();
-
-        foreach ($this->vpnUser->vpnServers as $server) {
-            $success = $this->addPeerToServer($server, $userKeys);
-            if ($success) {
-                $successCount++;
-            }
-        }
-
-        $allSuccessful = ($successCount === $totalServers);
-        $failedServers = $totalServers - $successCount;
-
-        // Log completion message regardless of whether all servers succeeded
-        Log::info("✅ Completed WireGuard peer setup for user: {$this->vpnUser->username}");
-
-        // If there were failures, log them explicitly
-        if (!$allSuccessful) {
-            Log::warning("⚠️ WireGuard peer setup had partial failures for user: {$this->vpnUser->username} - Failed on $failedServers/$totalServers servers");
+        $total = $servers->count();
+        if ($ok === $total) {
+            Log::info("✅ [WG] Peer added/updated for {$u->username} on {$total}/{$total} server(s).");
+        } else {
+            Log::warning("⚠️ [WG] Partial success for {$u->username}: {$ok}/{$total} servers updated.");
         }
     }
 
     /**
-     * Add WireGuard peer to a specific server.
-     *
-     * @param VpnServer $server
-     * @param array $userKeys
-     * @return bool Whether the operation was successful
+     * Add (or update) the WireGuard peer on a given server.
      */
-    protected function addPeerToServer(VpnServer $server, array $userKeys): bool
+    protected function addPeerToServer(VpnServer $server, string $publicKey, string $address): bool
     {
-        Log::info("🔧 Adding WireGuard peer to server: $server->name ($server->ip_address)");
-
-        // Create peer configuration
-        $peerConfig = [
-            'PublicKey' => $userKeys['wireguard_public_key'],
-            'AllowedIPs' => $userKeys['wireguard_address'],
-        ];
-
-        // First, clean up any existing CIDR notation to get just the IP
-        $ipOnly = preg_replace('/\/\d+$/', '', $peerConfig['AllowedIPs']);
-
-        // Then apply a single /32 CIDR suffix
-        $peerConfig['AllowedIPs'] = $ipOnly . '/32';
-
-        Log::info("🔧 Configured AllowedIPs for WireGuard peer: {$peerConfig['AllowedIPs']}");
-
-        // Add peer to server
-        $result = $this->executeRemoteCommand(
-            $server->ip_address,
-            $this->buildAddPeerCommand($peerConfig)
-        );
-
-        if ($result['status'] !== 0) {
-            Log::error("❌ [WG] Failed to add peer for {$this->vpnUser->username} on $server->name");
-            $errorMsg = !empty($result['output']) ? implode("\n", $result['output']) : "SSH command failed with status code {$result['status']}";
-            Log::error("Error: " . $errorMsg);
+        $host = $server->ip_address ?? $server->ip ?? $server->host ?? null;
+        if (!$host) {
+            Log::error("❌ [WG] Server {$server->id} has no SSH host field (ip_address/ip/host).");
             return false;
         }
 
-        Log::info("✅ [WG] Successfully added peer for {$this->vpnUser->username} on $server->name");
+        // Normalize address to a single /32
+        $ipOnly = preg_replace('/\/\d+$/', '', trim($address));
+        $ip32   = "{$ipOnly}/32";
+
+        Log::info("🔧 [WG] Server={$server->name} ({$host}) user={$this->vpnUser->username} allowed-ips={$ip32}");
+
+        $script = $this->buildAddPeerScript($publicKey, $ip32);
+
+        $res = $this->executeRemoteCommand($host, $script);
+
+        if (($res['status'] ?? 1) !== 0) {
+            $out = trim(implode("\n", (array)($res['output'] ?? [])));
+            Log::error("❌ [WG] Failed on {$server->name} ({$host}). Exit={$res['status']}. Output:\n{$out}");
+            return false;
+        }
+
+        Log::info("✅ [WG] Added/updated peer for {$this->vpnUser->username} on {$server->name}");
         return true;
     }
 
     /**
-     * Build the WireGuard command to add a peer.
-     *
-     * @param array $peerConfig
-     * @return string
+     * Build a safe, idempotent remote script that:
+     *  - verifies wg0 exists
+     *  - adds/updates the peer with the given allowed-ips
+     *  - persists using wg-quick save (respects SaveConfig=true)
      */
-    private function buildAddPeerCommand(array $peerConfig): string
+    private function buildAddPeerScript(string $publicKey, string $ip32): string
     {
-        $interface = 'wg0'; // Default WireGuard interface
-        $commands = ["wg set $interface"];
+        // Escape before injection
+        $PUB = escapeshellarg($publicKey);
+        $IP  = escapeshellarg($ip32);
 
-        // Add peer with public key and allowed IPs
-        $commands[] = "peer {$peerConfig['PublicKey']}";
-        $commands[] = "allowed-ips {$peerConfig['AllowedIPs']}";
+        return <<<BASH
+set -euo pipefail
+IFACE="wg0"
+PUB={$PUB}
+IP32={$IP}
 
-        // Join commands with spaces
-        $wgCommand = implode(' ', $commands);
+# Ensure interface exists
+if ! wg show "\$IFACE" >/dev/null 2>&1; then
+  echo "[WG] Interface \$IFACE not up"; exit 1
+fi
 
-        // Save configuration permanently - use correct WireGuard command
-        $saveCommand = "wg showconf $interface > /etc/wireguard/$interface.conf";
+# Add or update peer idempotently
+if wg show "\$IFACE" peers | grep -qx "\$PUB"; then
+  wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32"
+else
+  wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32"
+fi
 
-        return "$wgCommand && $saveCommand";
+# Persist peers to disk safely (requires SaveConfig=true in wg0.conf)
+wg-quick save "\$IFACE" >/dev/null 2>&1 || true
+
+# Optional: small confirmation output for logs
+wg show "\$IFACE" | sed -n '1,60p' >/dev/null 2>&1 || true
+BASH;
     }
-
-    // executeRemoteCommand method moved to ExecutesRemoteCommands trait
 }
