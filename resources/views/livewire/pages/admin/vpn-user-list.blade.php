@@ -105,6 +105,34 @@
               <td class="px-6 py-4 whitespace-nowrap text-xs space-x-2">
                 <a href="{{ route('admin.vpn-users.edit', $user->id) }}" class="text-[var(--aio-neon)] hover:underline">Edit</a>
                 <button wire:click="generateOvpn({{ $user->id }})" class="text-[var(--aio-cya)] hover:underline">OpenVPN</button>
+                
+                @php $linked = $user->vpnServers ?? collect(); @endphp
+
+{{-- WireGuard download --}}
+@if($linked->count() === 1)
+  <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $linked->first()->id]) }}"
+     class="text-[var(--aio-cya)] hover:underline"
+     title="Download WireGuard config">
+    WG Download
+  </a>
+@elseif($linked->count() > 1)
+  <details class="inline-block align-middle">
+    <summary class="cursor-pointer text-[var(--aio-cya)] hover:underline inline">
+      WG Download ▾
+    </summary>
+    <div class="mt-1 border border-white/10 rounded bg-white/5 shadow-lg">
+      @foreach($linked as $s)
+        <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $s->id]) }}"
+           class="block px-3 py-2 hover:bg-white/10">
+          {{ $s->name }}
+        </a>
+      @endforeach
+    </div>
+  </details>
+@else
+  <span class="text-gray-500">WG (no servers)</span>
+@endif
+                
                 <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
                   @csrf
                   <button type="submit" class="text-[var(--aio-pup)] hover:underline" title="Login as this client">Login</button>
@@ -188,6 +216,30 @@
             <div class="mt-3 flex flex-wrap gap-3 text-xs">
               <a href="{{ route('admin.vpn-users.edit', $user->id) }}" class="text-[var(--aio-neon)] underline">Edit</a>
               <button wire:click="generateOvpn({{ $user->id }})" class="text-[var(--aio-cya)] underline">OpenVPN</button>
+            
+            @php $linked = $user->vpnServers ?? collect(); @endphp
+
+@if($linked->count() === 1)
+  <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $linked->first()->id]) }}"
+     class="text-[var(--aio-cya)] underline">
+    WG Download
+  </a>
+@elseif($linked->count() > 1)
+  <details class="inline-block">
+    <summary class="cursor-pointer text-[var(--aio-cya)] underline">WG Download ▾</summary>
+    <div class="mt-1 border border-white/10 rounded bg-white/5">
+      @foreach($linked as $s)
+        <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $s->id]) }}"
+           class="block px-3 py-2 hover:bg-white/10">
+          {{ $s->name }}
+        </a>
+      @endforeach
+    </div>
+  </details>
+@else
+  <span class="text-gray-500">WG (no servers)</span>
+@endif
+            
               <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
                 @csrf
                 <button type="submit" class="text-[var(--aio-pup)] underline" title="Login as this client">Login</button>
