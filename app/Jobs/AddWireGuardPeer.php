@@ -31,6 +31,23 @@ class AddWireGuardPeer implements ShouldQueue
         $this->vpnUser = $server ? $vpnUser : $vpnUser->load('vpnServers');
         $this->server  = $server;
     }
+    
+    // Make sure this job uses the same queue Horizon is watching
+        public string $connection = 'redis';
+        public string $queue = 'wg';
+        
+        // sensible defaults
+        public int $tries = 2;
+        public int $timeout = 120;
+        
+        public function tags(): array
+        {
+            return [
+                'wg',
+                'user:'.$this->vpnUser->id,
+                'server:'.($this->server->id ?? 'all'),
+            ];
+        }
 
     public function handle(): void
     {
