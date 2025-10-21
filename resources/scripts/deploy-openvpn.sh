@@ -159,7 +159,14 @@ PostUp   = sysctl -w net.ipv4.ip_forward=1
 WG
 
 # Bring up wg0 and verify it actually exists + has the expected IP
-systemctl enable --now wg-quick@wg0 || true
+# Secure the config and (re)load the service so it picks up new settings
+chmod 600 /etc/wireguard/wg0.conf
+systemctl daemon-reload
+systemctl enable wg-quick@wg0
+systemctl stop wg-quick@wg0 2>/dev/null || true
+systemctl start wg-quick@wg0 || systemctl restart wg-quick@wg0
+
+# Log status for troubleshooting
 systemctl --no-pager --full status wg-quick@wg0 2>&1 | sed -e 's/"/\"/g' | while IFS= read -r L; do logchunk "$L"; done
 
 WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
