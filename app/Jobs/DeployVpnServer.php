@@ -13,6 +13,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Jobs\SyncOpenVPNCredentials;
+use App\Jobs\AddWireGuardPeer;
 
 class DeployVpnServer implements ShouldQueue
 {
@@ -69,7 +70,7 @@ class DeployVpnServer implements ShouldQueue
         $mgmtPort = (int) ($this->vpnServer->mgmt_port ?: 7505);
         $wgPort   = 51820;
 
-        // Load deploy script
+        // Load deploy script (your WG-first script; update path if needed)
         $scriptPath = base_path('resources/scripts/deploy-openvpn.sh');
         if (!is_file($scriptPath)) {
             $this->failWith("❌ Missing deployment script at {$scriptPath}");
@@ -270,8 +271,22 @@ BASH;
                 // Kick one immediate status push (best-effort)
                 @exec($sshCmdBase . ' ' . escapeshellarg('systemctl start ovpn-status-push.service'));
 
-                // Keep your credential sync if you use it elsewhere
+                // OpenVPN creds (existing behavior)
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
+
+                // ─────────────────────────────────────────────────────────
+                // WireGuard: hydrate facts + resync peers (idempotent)
+                // ─────────────────────────────────────────────────────────
+                if (config('services.wireguard.resync_on_deploy', true)) {
+                    try {
+                        $this->hydrateWireGuardFacts();
+                        $resynced = $this->resyncWireGuardPeers();
+                        $finalLog .= "\n🔁 WG resync queued for {$resynced} user(s)";
+                    } catch (\Throwable $wgE) {
+                        Log::warning('⚠️ WG resync threw: '.$wgE->getMessage());
+                        $finalLog .= "\n⚠️ WG resync warning: ".$wgE->getMessage();
+                    }
+                }
             } else {
                 $finalLog .= "\n❌ Deployment failed (exit code: {$exitCode})";
             }
@@ -331,80 +346,79 @@ BASH;
         return $this->buildLegacySshBase($user, $ip, $port);
     }
 
-    /** Build a legacy SSH base (password or legacy key) for seeding. */
     /** Build a legacy SSH base (password or legacy key) for seeding, excluding a given key path. */
-private function buildLegacySshBase(string $user, string $ip, int $port, ?string $excludeKeyPath = null): ?string
-{
-    $sshOpts = implode(' ', [
-        '-o StrictHostKeyChecking=accept-new',
-        '-o UserKnownHostsFile=/dev/null',
-        '-o GlobalKnownHostsFile=/dev/null',
-        '-o ConnectTimeout=10',
-        '-o ServerAliveInterval=15',
-        '-o ServerAliveCountMax=3',
-        '-p ' . $port,
-    ]);
+    private function buildLegacySshBase(string $user, string $ip, int $port, ?string $excludeKeyPath = null): ?string
+    {
+        $sshOpts = implode(' ', [
+            '-o StrictHostKeyChecking=accept-new',
+            '-o UserKnownHostsFile=/dev/null',
+            '-o GlobalKnownHostsFile=/dev/null',
+            '-o ConnectTimeout=10',
+            '-o ServerAliveInterval=15',
+            '-o ServerAliveCountMax=3',
+            '-p ' . $port,
+        ]);
 
-    // 1) Prefer explicit legacy key on the model if it exists and is NOT the deploy key
-    $legacyName  = (string) ($this->vpnServer->ssh_key ?: '');
-    $legacyPath  = $legacyName
-        ? (str_starts_with($legacyName, '/') || str_contains($legacyName, ':\\')
-            ? $legacyName
-            : storage_path('app/ssh_keys/' . $legacyName))
-        : '';
+        // 1) Prefer explicit legacy key on the model if it exists and is NOT the deploy key
+        $legacyName  = (string) ($this->vpnServer->ssh_key ?: '');
+        $legacyPath  = $legacyName
+            ? (str_starts_with($legacyName, '/') || str_contains($legacyName, ':\\')
+                ? $legacyName
+                : storage_path('app/ssh_keys/' . $legacyName))
+            : '';
 
-    $useKey = function (?string $path) use ($excludeKeyPath, $sshOpts, $user, $ip) {
-        if (!$path || !is_file($path)) return null;
-        if ($excludeKeyPath && realpath($path) === realpath($excludeKeyPath)) return null;
-        @chmod($path, 0600);
-        Log::warning("🪪 Using legacy key as fallback: {$path}");
-        return 'ssh -i ' . escapeshellarg($path) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
-    };
+        $useKey = function (?string $path) use ($excludeKeyPath, $sshOpts, $user, $ip) {
+            if (!$path || !is_file($path)) return null;
+            if ($excludeKeyPath && realpath($path) === realpath($excludeKeyPath)) return null;
+            @chmod($path, 0600);
+            Log::warning("🪪 Using legacy key as fallback: {$path}");
+            return 'ssh -i ' . escapeshellarg($path) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+        };
 
-    // try the model’s legacy key (if different from DeployKey)
-    if ($cmd = $useKey($legacyPath)) return $cmd;
+        // try the model’s legacy key (if different from DeployKey)
+        if ($cmd = $useKey($legacyPath)) return $cmd;
 
-    // 2) Otherwise, search storage/app/ssh_keys for something that isn’t the DeployKey; prefer id_rsa
-    $dir = storage_path('app/ssh_keys');
-    $candidates = [];
-    if (is_dir($dir)) {
-        foreach (['id_rsa', 'id_ecdsa', 'id_ed25519'] as $base) {
-            $p = $dir . '/' . $base;
-            if (is_file($p)) $candidates[] = $p;
-        }
-        // Also consider any other private keys present
-        foreach (glob($dir . '/*') ?: [] as $p) {
-            if (is_file($p) && !preg_match('/\.pub$/', $p) && !in_array($p, $candidates, true)) {
-                $candidates[] = $p;
+        // 2) Otherwise, search storage/app/ssh_keys for something that isn’t the DeployKey; prefer id_rsa
+        $dir = storage_path('app/ssh_keys');
+        $candidates = [];
+        if (is_dir($dir)) {
+            foreach (['id_rsa', 'id_ecdsa', 'id_ed25519'] as $base) {
+                $p = $dir . '/' . $base;
+                if (is_file($p)) $candidates[] = $p;
+            }
+            // Also consider any other private keys present
+            foreach (glob($dir . '/*') ?: [] as $p) {
+                if (is_file($p) && !preg_match('/\.pub$/', $p) && !in_array($p, $candidates, true)) {
+                    $candidates[] = $p;
+                }
+            }
+            // Filter out the deploy key path
+            $candidates = array_values(array_filter($candidates, function ($p) use ($excludeKeyPath) {
+                return !$excludeKeyPath || realpath($p) !== realpath($excludeKeyPath);
+            }));
+            // Prefer id_rsa if present
+            usort($candidates, function ($a, $b) {
+                $rank = fn($x) => str_ends_with($x, 'id_rsa') ? 0 : (str_ends_with($x, 'id_ecdsa') ? 1 : (str_ends_with($x, 'id_ed25519') ? 2 : 3));
+                return $rank($a) <=> $rank($b);
+            });
+            foreach ($candidates as $p) {
+                if ($cmd = $useKey($p)) return $cmd;
             }
         }
-        // Filter out the deploy key path
-        $candidates = array_values(array_filter($candidates, function ($p) use ($excludeKeyPath) {
-            return !$excludeKeyPath || realpath($p) !== realpath($excludeKeyPath);
-        }));
-        // Prefer id_rsa if present
-        usort($candidates, function ($a, $b) {
-            $rank = fn($x) => str_ends_with($x, 'id_rsa') ? 0 : (str_ends_with($x, 'id_ecdsa') ? 1 : (str_ends_with($x, 'id_ed25519') ? 2 : 3));
-            return $rank($a) <=> $rank($b);
-        });
-        foreach ($candidates as $p) {
-            if ($cmd = $useKey($p)) return $cmd;
-        }
-    }
 
-    // 3) Password fallback (if configured)
-    $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
-    if ($sshType === 'password') {
-        $sshPass = (string) $this->vpnServer->ssh_password;
-        $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
-        if ($sshPass !== '' && $haveSshpass !== '') {
-            Log::warning('🪪 Using password SSH as legacy fallback');
-            return 'sshpass -p ' . escapeshellarg($sshPass) . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+        // 3) Password fallback (if configured)
+        $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
+        if ($sshType === 'password') {
+            $sshPass = (string) $this->vpnServer->ssh_password;
+            $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
+            if ($sshPass !== '' && $haveSshpass !== '') {
+                Log::warning('🪪 Using password SSH as legacy fallback');
+                return 'sshpass -p ' . escapeshellarg($sshPass) . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+            }
         }
-    }
 
-    return null;
-}
+        return null;
+    }
 
     /** Append DeployKey .pub into /root/.ssh/authorized_keys over a working legacy session. */
     private function trySeedDeployKey(string $legacySshBase, string $deployPrivKeyPath): bool
@@ -447,7 +461,7 @@ private function buildLegacySshBase(string $user, string $ip, int $port, ?string
             $pub = @shell_exec(sprintf('ssh-keygen -y -f %s 2>/dev/null', escapeshellarg($privateKeyPath))) ?: '';
             $pub = trim($pub);
             if ($pub !== '') {
-                file_put_contents($pubPath, $pub + PHP_EOL);
+                file_put_contents($pubPath, $pub . PHP_EOL); // <-- fixed concatenation
                 @chmod($pubPath, 0644);
             }
         }
@@ -469,74 +483,73 @@ private function buildLegacySshBase(string $user, string $ip, int $port, ?string
 
     /** Run a long SSH command and stream output into the server's log. */
     private function runAndStream(string $remoteCmd): array
-{
-    $descriptors = [
-        0 => ['pipe', 'r'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
-    $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
-    if (!is_resource($proc)) {
-        $this->failWith('❌ Failed to open SSH process');
-        return [1, ''];
-    }
+    {
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
+        if (!is_resource($proc)) {
+            $this->failWith('❌ Failed to open SSH process');
+            return [1, ''];
+        }
 
-    // nothing to send
-    fclose($pipes[0]);
+        // nothing to send
+        fclose($pipes[0]);
 
-    // non-blocking reads
-    stream_set_blocking($pipes[1], false);
-    stream_set_blocking($pipes[2], false);
+        // non-blocking reads
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
 
-    $out = '';
-    $err = '';
-    $start = time();
-    $maxDuration = max(60, ($this->timeout ?? 900) - 10);
+        $out = '';
+        $err = '';
+        $start = time();
+        $maxDuration = max(60, ($this->timeout ?? 900) - 10);
 
-    while (true) {
-        // read whatever is available
-        $chunkOut = stream_get_contents($pipes[1]);
-        $chunkErr = stream_get_contents($pipes[2]);
-        if ($chunkOut !== false && $chunkOut !== '') {
-            foreach (explode("\n", $chunkOut) as $line) {
-                $line = rtrim($line, "\r");
-                if ($line !== '') $this->vpnServer->appendLog($line);
+        while (true) {
+            // read whatever is available
+            $chunkOut = stream_get_contents($pipes[1]);
+            $chunkErr = stream_get_contents($pipes[2]);
+            if ($chunkOut !== false && $chunkOut !== '') {
+                foreach (explode("\n", $chunkOut) as $line) {
+                    $line = rtrim($line, "\r");
+                    if ($line !== '') $this->vpnServer->appendLog($line);
+                }
+                $out .= $chunkOut;
             }
-            $out .= $chunkOut;
-        }
-        if ($chunkErr !== false && $chunkErr !== '') {
-            foreach (explode("\n", $chunkErr) as $line) {
-                $line = rtrim($line, "\r");
-                if ($line !== '') $this->vpnServer->appendLog($line);
+            if ($chunkErr !== false && $chunkErr !== '') {
+                foreach (explode("\n", $chunkErr) as $line) {
+                    $line = rtrim($line, "\r");
+                    if ($line !== '') $this->vpnServer->appendLog($line);
+                }
+                $err .= $chunkErr;
             }
-            $err .= $chunkErr;
+
+            // if both streams are at EOF, we can stop
+            $status = proc_get_status($proc);
+            if (($status === false || !$status['running']) && feof($pipes[1]) && feof($pipes[2])) {
+                break;
+            }
+
+            // timeout guard
+            if ((time() - $start) > $maxDuration) {
+                Log::warning('⏱ runAndStream: soft timeout while reading SSH output');
+                break;
+            }
+
+            // light wait
+            $read = [$pipes[1], $pipes[2]];
+            $write = $except = null;
+            @stream_select($read, $write, $except, 1);
         }
 
-        // if both streams are at EOF, we can stop
-        $status = proc_get_status($proc);
-        if (($status === false || !$status['running']) && feof($pipes[1]) && feof($pipes[2])) {
-            break;
-        }
+        // close pipes
+        foreach ([$pipes[1], $pipes[2]] as $p) { if (is_resource($p)) @fclose($p); }
 
-        // timeout guard
-        if ((time() - $start) > $maxDuration) {
-            // Don’t hard-fail here; capture what we have and exit
-            Log::warning('⏱ runAndStream: soft timeout while reading SSH output');
-            break;
-        }
-
-        // light wait using select; tolerate EINTR or false
-        $read = [$pipes[1], $pipes[2]];
-        $write = $except = null;
-        @stream_select($read, $write, $except, 1); // ignore return; loop continues
+        $exitCode = proc_close($proc);
+        return [$exitCode, ($this->vpnServer->deployment_log ?? '') . $out . $err];
     }
-
-    // close pipes
-    foreach ([$pipes[1], $pipes[2]] as $p) { if (is_resource($p)) @fclose($p); }
-
-    $exitCode = proc_close($proc);
-    return [$exitCode, ($this->vpnServer->deployment_log ?? '') . $out . $err];
-}
 
     private function failWith(string $message, Throwable $e = null): void
     {
@@ -562,5 +575,86 @@ private function buildLegacySshBase(string $user, string $ip, int $port, ?string
             $keep[] = $t;
         }
         return implode("\n", $keep);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // WireGuard helpers
+    // ─────────────────────────────────────────────────────────────
+
+    /**
+     * Ensure server WG facts are sane post-deploy (endpoint & private DNS).
+     * Endpoint: prefer wg_endpoint_host, fall back to server IP
+     * DNS: set wg_dns_ip to 10.66.66.1 (your Unbound on wg0)
+     */
+    private function hydrateWireGuardFacts(): void
+    {
+        $server = $this->vpnServer->fresh();
+
+        $endpoint = $server->wg_endpoint_host ?: $server->ip_address;
+        $dnsIp    = $server->wg_dns_ip ?: '10.66.66.1';
+
+        $dirty = false;
+
+        if (!$server->wg_endpoint_host && $endpoint) {
+            $server->wg_endpoint_host = $endpoint;
+            $dirty = true;
+        }
+        if (!$server->wg_port) {
+            $server->wg_port = 51820;
+            $dirty = true;
+        }
+        if (!$server->wg_dns_ip && $dnsIp) {
+            $server->wg_dns_ip = $dnsIp;
+            $dirty = true;
+        }
+
+        if ($dirty) {
+            $server->saveQuietly();
+            Log::info("🧭 WG facts hydrated for server #{$server->id} (endpoint={$server->wg_endpoint_host}:{$server->wg_port}, dns={$server->wg_dns_ip})");
+        }
+    }
+
+    /**
+     * Re-push WG peers for all active, attached users (idempotent).
+     * Returns the number of jobs dispatched.
+     */
+    private function resyncWireGuardPeers(): int
+    {
+        $server = $this->vpnServer->fresh(['vpnUsers']);
+        $users  = $server->vpnUsers()
+            ->where('is_active', true)
+            ->get(['id','username','wireguard_private_key','wireguard_public_key','wireguard_address','is_active']);
+
+        $count = 0;
+
+        foreach ($users as $u) {
+            $dirty = false;
+
+            // Ensure keys present (use your model helper)
+            if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
+                $keys = \App\Models\VpnUser::generateWireGuardKeys();
+                $u->wireguard_private_key = $keys['private'];
+                $u->wireguard_public_key  = $keys['public'];
+                $dirty = true;
+            }
+
+            // Ensure address present (simple allocator in /24)
+            if (blank($u->wireguard_address)) {
+                $taken = \App\Models\VpnUser::whereNotNull('wireguard_address')->pluck('wireguard_address')->all();
+                for ($i=2; $i<=254; $i++) {
+                    $candidate = "10.66.66.$i/32";
+                    if (!in_array($candidate, $taken, true)) { $u->wireguard_address = $candidate; $dirty = true; break; }
+                }
+            }
+
+            if ($dirty) $u->saveQuietly();
+
+            // Push peer (your job should update/replace existing peer)
+            AddWireGuardPeer::dispatch($u);
+            $count++;
+        }
+
+        Log::info("🔁 Dispatched WG peer sync for {$count} user(s) on server #{$server->id}");
+        return $count;
     }
 }
