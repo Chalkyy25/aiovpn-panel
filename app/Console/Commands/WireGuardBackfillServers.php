@@ -66,18 +66,27 @@ class WireGuardBackfillServers extends Command
         return self::SUCCESS;
     }
 
-    private function runRemote(VpnServer $server, string $cmd): string
-    {
-        // Try your trait’s (server, cmd) signature first; fall back to (host, cmd)
-        try {
-            $res = app(\App\Traits\ExecutesRemoteCommands::class)
-                ? $server->executeRemoteCommand($server, "bash -lc ".escapeshellarg($cmd))
-                : ['status'=>1,'output'=>[]];
-        } catch (\Throwable $e) {
-            $res = $server->executeRemoteCommand((string) $server->ip_address, "bash -lc ".escapeshellarg($cmd));
-        }
+    private function runRemote(\App\Models\VpnServer $server, string $cmd): string
+{
+    // Build the full SSH + bash command using the server’s own SSH options
+    $ssh = $server->getSshCommand();                    // throws if key missing
+    $remote = $ssh.' '.escapeshellarg('bash -lc '.escapeshellarg($cmd).' 2>/dev/null');
 
-        if (($res['status'] ?? 1) !== 0) return '';
-        return trim(implode("\n", $res['output'] ?? []));
+    // Run it and capture output + exit code (portable, no extra deps)
+    $descriptorSpec = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    $proc = proc_open($remote, $descriptorSpec, $pipes, base_path());
+    if (!\is_resource($proc)) {
+        throw new \RuntimeException('Failed to start SSH process');
     }
+    $out = stream_get_contents($pipes[1]);
+    $err = stream_get_contents($pipes[2]);
+    foreach ($pipes as $p) { @fclose($p); }
+    $code = proc_close($proc);
+
+    if ($code !== 0) {
+        \Log::error("Backfill SSH error on {$server->name}: exit={$code}; stderr={$err}");
+        return '';
+    }
+    return trim($out);
+}
 }
