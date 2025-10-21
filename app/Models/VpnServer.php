@@ -19,7 +19,7 @@ class VpnServer extends Model
 {
     use HasFactory, ExecutesRemoteCommands;
 
-    // Compute is_online even if not persisted
+    /** Computed at runtime if not persisted */
     protected $appends = ['is_online'];
 
     protected $fillable = [
@@ -44,13 +44,22 @@ class VpnServer extends Model
         'deployment_log',
         'status',
         'status_log_path',
-        // NEW:
         'deploy_key_id',
+
+        // ---- WireGuard facts ----
+        'wg_endpoint_host',
+        'wg_public_key',
+        'wg_port',
+        'wg_subnet',
     ];
 
     protected $casts = [
         'last_sync_at' => 'datetime',
         'is_online'    => 'boolean',
+        'enable_ipv6'  => 'boolean',
+        'enable_proxy' => 'boolean',
+        'enable_logging' => 'boolean',
+        'wg_port'      => 'integer',
     ];
 
     /* ========= Relationships ========= */
@@ -93,16 +102,52 @@ class VpnServer extends Model
     {
         Log::info("APPEND_LOG: ".$line);
 
-        $existing = trim($this->deployment_log ?? '');
+        $existing = trim((string) $this->deployment_log);
         $lines = $existing === '' ? [] : explode("\n", $existing);
 
+        // avoid dup spam
         if (!in_array($line, $lines, true)) {
             $lines[] = $line;
-            $this->update(['deployment_log' => implode("\n", $lines)]);
+            $this->forceFill(['deployment_log' => implode("\n", $lines)])->save();
         }
     }
 
-    /* ========= Helpers ========= */
+    /* ========= WireGuard helpers ========= */
+
+    public function hasWireGuard(): bool
+    {
+        return !empty($this->wg_public_key) && !empty($this->wg_port);
+    }
+
+    public function wgEndpoint(): ?string
+    {
+        if (empty($this->wg_endpoint_host) || empty($this->wg_port)) {
+            return null;
+        }
+        return "{$this->wg_endpoint_host}:{$this->wg_port}";
+    }
+
+    /**
+     * Persist WG facts safely (used by your API controllers).
+     */
+    public function saveWireGuardFacts(array $facts): void
+    {
+        $this->fill(array_intersect_key($facts, array_flip([
+            'wg_endpoint_host', 'wg_public_key', 'wg_port', 'wg_subnet',
+        ])));
+
+        // basic normalization
+        if (isset($this->wg_port)) {
+            $this->wg_port = (int) $this->wg_port ?: 51820;
+        }
+        if (isset($this->wg_subnet) && $this->wg_subnet === '') {
+            $this->wg_subnet = null;
+        }
+
+        $this->save();
+    }
+
+    /* ========= Online metrics / probes ========= */
 
     public function getOnlineUserCount(): int
     {
@@ -140,7 +185,7 @@ class VpnServer extends Model
 
     /**
      * Preferred by ExecutesRemoteCommands.
-     * Order of precedence:
+     * Precedence:
      *  1) DeployKey (server->deployKey or default active) → key auth
      *  2) Legacy ssh_type=password → sshpass
      *  3) Legacy ssh_type=key → ssh_key absolute or storage/app/ssh_keys/<file>
@@ -169,7 +214,7 @@ class VpnServer extends Model
             '-o ConnectTimeout=30',
             '-o ServerAliveInterval=15',
             '-o ServerAliveCountMax=4',
-            '-p ' . (int) $port,
+            '-p ' . $port,
         ]);
         $dest = escapeshellarg("{$user}@{$ip}");
 
@@ -210,7 +255,7 @@ class VpnServer extends Model
 
     public function getIsOnlineAttribute($value): bool
     {
-        // If you persist is_online in DB, respect it when present
+        // Respect persisted is_online if you store it
         if (!is_null($this->attributes['is_online'] ?? null)) {
             return (bool) $this->attributes['is_online'];
         }
@@ -252,7 +297,8 @@ class VpnServer extends Model
             $port  = (int) ($this->port ?: 1194);
             $ssOpt = $proto === 'tcp' ? '-tl' : '-ul';
 
-            $cmd = sprintf("ss %snp 2>/dev/null | grep ':%d' || netstat %snp 2>/dev/null | grep ':%d' || true",
+            $cmd = sprintf(
+                "ss %snp 2>/dev/null | grep ':%d' || netstat %snp 2>/dev/null | grep ':%d' || true",
                 $ssOpt, $port, $ssOpt, $port
             );
             $portRes = $this->executeRemoteCommand($this, $cmd);
