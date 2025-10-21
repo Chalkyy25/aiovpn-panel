@@ -4,22 +4,38 @@ namespace App\Http\Controllers;
 
 use App\Models\VpnServer;
 use App\Models\VpnUser;
-use App\Services\VpnConfigBuilder;
+use App\Services\WireGuardConfigBuilder;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 
 class WireGuardConfigController extends Controller
 {
-    public function download(VpnUser $user, VpnServer $server)
+    public function download(Request $request, VpnUser $user, VpnServer $server)
     {
-        // Only allow if the user is linked to this server
-        abort_unless($user->vpnServers()->whereKey($server->id)->exists(), 403);
+        // Only admins reach this route per your middleware, but keep a safety check
+        if (Gate::denies('view-vpn-user', $user)) {
+            abort(403);
+        }
 
-        // Build the client config (uses fields already in DB)
-        $conf = \App\Services\VpnConfigBuilder::generateWireGuardConfig($user, $server);
+        // Ensure the user is actually linked to the server
+        if (! $user->vpnServers()->whereKey($server->id)->exists()) {
+            abort(404, 'User is not associated with this server.');
+        }
 
+        // Build config text
+        $conf = WireGuardConfigBuilder::build($user, $server);
+
+        // Save to a predictable path and stream as a download
         $filename = sprintf('%s-%s.conf', $user->username, str_replace(' ', '-', $server->name));
-        return response($conf, 200, [
-            'Content-Type'        => 'text/plain; charset=utf-8',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-        ]);
+        $path = "configs/wireguard/{$filename}";
+
+        Storage::put($path, $conf); // uses default disk; change to 'local' if you prefer
+
+        return response()->download(
+            Storage::path($path),
+            $filename,
+            ['Content-Type' => 'text/plain']
+        );
     }
 }
