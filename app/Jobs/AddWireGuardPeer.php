@@ -106,7 +106,7 @@ class AddWireGuardPeer implements ShouldQueue
 
         // ExecutesRemoteCommands should accept either a host string or the model;
         // here we pass host for clarity.
-        $res = $this->executeRemoteCommand($host, $script);
+        $res = $this->executeRemoteCommand($server, $script);
 
         if (($res['status'] ?? 1) !== 0) {
             $out = trim(implode("\n", (array)($res['output'] ?? [])));
