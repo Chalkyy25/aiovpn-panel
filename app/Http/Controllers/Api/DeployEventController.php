@@ -12,136 +12,153 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 class DeployEventController extends Controller
 {
     public function store(Request $request, VpnServer $server): JsonResponse
-{
-    $data = $request->validate([
-        'status'   => 'required|string',   // e.g. "mgmt"
-        'message'  => 'nullable|string',
-        'ts'       => 'nullable|string',
-        'users'    => 'nullable|array',    // array<string|object>
-        'cn_list'  => 'nullable|string',
-        'clients'  => 'nullable|integer',
-    ]);
+    {
+        $data = $request->validate([
+            'status'   => 'required|string',   // e.g. "mgmt"
+            'message'  => 'nullable|string',
+            'ts'       => 'nullable|string',
+            'users'    => 'nullable|array',    // array<string|object>
+            'cn_list'  => 'nullable|string',
+            'clients'  => 'nullable|integer',
+        ]);
 
-    $status = strtolower($data['status']);
-    $ts     = $data['ts'] ?? now()->toIso8601String();
-    $raw    = $data['message'] ?? $status;
+        $status = strtolower($data['status']);
+        $ts     = $data['ts'] ?? now()->toIso8601String();
+        $raw    = $data['message'] ?? $status;
 
-    if ($status !== 'mgmt') {
-        Log::channel('vpn')->debug("DeployEventController: non-mgmt status='{$status}' for server #{$server->id}");
-        return response()->json(['ok' => true]);
-    }
+        if ($status !== 'mgmt') {
+            Log::channel('vpn')->debug("DeployEventController: non-mgmt status='{$status}' for server #{$server->id}");
+            return response()->json(['ok' => true]);
+        }
 
-    // Normalise incoming → [{ username, client_ip?, virtual_ip?, bytes_in?, bytes_out?, connected_at? }]
-    $incoming    = $this->normaliseIncoming($data);
-    $clientCount = (int) ($data['clients'] ?? count($incoming));
-    $now         = now();
+        // Normalize incoming → [{ username, client_ip?, virtual_ip?, bytes_in?, bytes_out?, connected_at? }]
+        $incomingAll = $this->normaliseIncoming($data);
 
-    Log::channel('vpn')->debug(sprintf(
-        'MGMT EVENT server=%d ts=%s clients=%d [%s]',
-        $server->id, $ts, $clientCount, implode(',', array_column($incoming, 'username'))
-    ));
-
-    DB::transaction(function () use ($server, $incoming, $now, $clientCount) {
-        $names    = array_column($incoming, 'username');
-        $idByName = VpnUser::whereIn('username', $names)->pluck('id', 'username');
-
-        $stillConnectedUserIds = [];
-
-        foreach ($incoming as $c) {
-            $username = $c['username'];
-            $uid = $idByName[$username] ?? null;
-
-            if (!$uid) {
-                $uid = VpnUser::create(['username' => $username, 'is_online' => false])->id;
-                $idByName[$username] = $uid;
+        // Filter to *valid-looking* usernames only (avoid blanks/UNDEF/etc.)
+        $incoming = array_values(array_filter($incomingAll, function ($r) {
+            $name = trim((string)($r['username'] ?? ''));
+            if ($name === '' || strcasecmp($name, 'UNDEF') === 0 || strcasecmp($name, 'unknown') === 0) {
+                return false;
             }
+            // Optional: policy (3–32 chars letters/digits/._-)
+            return (bool) preg_match('/^[A-Za-z0-9._-]{3,32}$/', $name);
+        }));
 
-            $stillConnectedUserIds[] = $uid;
+        $now = now();
 
-            $row = VpnUserConnection::firstOrCreate([
-                'vpn_user_id'   => $uid,
-                'vpn_server_id' => $server->id,
-            ]);
+        Log::channel('vpn')->debug(sprintf(
+            'MGMT EVENT server=%d ts=%s incoming=%d filtered=%d [%s]',
+            $server->id, $ts, count($incomingAll), count($incoming), implode(',', array_column($incoming, 'username'))
+        ));
 
-            if (!$row->is_connected) {
-                $row->connected_at    = $now;
-                $row->disconnected_at = null;
-            }
+        DB::transaction(function () use ($server, $incoming, $now) {
+            // Only consider users that already exist in DB (panel-created).
+            $names    = array_column($incoming, 'username');
+            $idByName = VpnUser::whereIn('username', $names)->pluck('id', 'username');
 
-            $row->is_connected = true;
+            $stillConnectedUserIds = [];
 
-            if (!empty($c['client_ip']))  $row->client_ip  = $c['client_ip'];
-            if (!empty($c['virtual_ip'])) $row->virtual_ip = $c['virtual_ip'];
+            foreach ($incoming as $c) {
+                $username = trim((string) $c['username']);
+                $uid      = $idByName[$username] ?? null;
 
-            if (array_key_exists('bytes_in', $c))  $row->bytes_received = (int) $c['bytes_in'];
-            if (array_key_exists('bytes_out', $c)) $row->bytes_sent     = (int) $c['bytes_out'];
-
-            if (!empty($c['connected_at'])) {
-                if ($parsed = $this->parseConnectedAt($c['connected_at'])) {
-                    $row->connected_at = $parsed;
+                // If user is not known, skip silently (do NOT create).
+                if (!$uid) {
+                    Log::channel('vpn')->notice("MGMT: skipping unknown user '{$username}' on server {$server->id}");
+                    continue;
                 }
+
+                $stillConnectedUserIds[] = $uid;
+
+                /** @var VpnUserConnection $row */
+                $row = VpnUserConnection::firstOrCreate([
+                    'vpn_user_id'   => $uid,
+                    'vpn_server_id' => $server->id,
+                ]);
+
+                if (!$row->is_connected) {
+                    $row->connected_at    = $now;
+                    $row->disconnected_at = null;
+                }
+
+                $row->is_connected = true;
+
+                if (!empty($c['client_ip']))  $row->client_ip  = $c['client_ip'];
+                if (!empty($c['virtual_ip'])) $row->virtual_ip = $c['virtual_ip'];
+
+                if (array_key_exists('bytes_in', $c))  $row->bytes_received = (int) $c['bytes_in'];
+                if (array_key_exists('bytes_out', $c)) $row->bytes_sent     = (int) $c['bytes_out'];
+
+                if (!empty($c['connected_at'])) {
+                    if ($parsed = $this->parseConnectedAt($c['connected_at'])) {
+                        $row->connected_at = $parsed;
+                    }
+                }
+
+                $row->save();
+
+                VpnUser::whereKey($uid)->update([
+                    'is_online' => true,
+                    'last_ip'   => $row->client_ip,
+                ]);
             }
 
-            $row->save();
+            // Disconnect any users that vanished from this server (only consider rows we track)
+            $toDisconnect = VpnUserConnection::query()
+                ->where('vpn_server_id', $server->id)
+                ->where('is_connected', true)
+                ->when(!empty($stillConnectedUserIds), fn ($q) => $q->whereNotIn('vpn_user_id', $stillConnectedUserIds))
+                ->get();
 
-            VpnUser::whereKey($uid)->update([
-                'is_online' => true,
-                'last_ip'   => $row->client_ip,
-            ]);
-        }
+            foreach ($toDisconnect as $row) {
+                $row->update([
+                    'is_connected'     => false,
+                    'disconnected_at'  => $now,
+                    'session_duration' => $row->connected_at ? $now->diffInSeconds($row->connected_at) : null,
+                ]);
+                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
+            }
 
-        // Disconnect any users that vanished from this server
-        $toDisconnect = VpnUserConnection::query()
-            ->where('vpn_server_id', $server->id)
-            ->where('is_connected', true)
-            ->when(!empty($stillConnectedUserIds), fn ($q) => $q->whereNotIn('vpn_user_id', $stillConnectedUserIds))
-            ->get();
+            // Persist live count as the number of known (panel) users currently connected on this server
+            $liveKnown = VpnUserConnection::query()
+                ->where('vpn_server_id', $server->id)
+                ->where('is_connected', true)
+                ->count();
 
-        foreach ($toDisconnect as $row) {
-            $row->update([
-                'is_connected'     => false,
-                'disconnected_at'  => $now,
-                'session_duration' => $row->connected_at ? $now->diffInSeconds($row->connected_at) : null,
-            ]);
-            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
-        }
+            $update = [];
+            if (\Schema::hasColumn('vpn_servers', 'online_users')) {
+                $update['online_users'] = $liveKnown;
+            }
+            if (\Schema::hasColumn('vpn_servers', 'last_mgmt_at')) {
+                $update['last_mgmt_at'] = $now;
+            }
+            if (!empty($update)) {
+                $server->forceFill($update)->saveQuietly();
+            }
+        });
 
-        // 👉 Keep it simple & robust: persist COUNT only (int). Optionally last_mgmt_at.
-        $update = [];
-        if (\Schema::hasColumn('vpn_servers', 'online_users')) {
-            $update['online_users'] = $clientCount;   // int
-        }
-        if (\Schema::hasColumn('vpn_servers', 'last_mgmt_at')) {
-            $update['last_mgmt_at'] = $now;
-        }
-        if (!empty($update)) {
-            $server->forceFill($update)->saveQuietly();
-        }
-    });
+        // Enrich & broadcast for the dashboard
+        $enriched = $this->enrichFromDb($server);
 
-    // Enrich & broadcast for the dashboard
-    $enriched = $this->enrichFromDb($server);
+        event(new ServerMgmtEvent(
+            $server->id,
+            $ts,
+            $enriched,
+            implode(',', array_column($enriched, 'username')),
+            $raw
+        ));
 
-    event(new ServerMgmtEvent(
-        $server->id,
-        $ts,
-        $enriched,
-        implode(',', array_column($enriched, 'username')),
-        $raw
-    ));
-
-    return response()->json([
-        'ok'        => true,
-        'server_id' => $server->id,
-        'clients'   => count($enriched),
-        'users'     => $enriched,
-    ]);
-}
+        return response()->json([
+            'ok'        => true,
+            'server_id' => $server->id,
+            'clients'   => count($enriched), // only known/panel users
+            'users'     => $enriched,
+        ]);
+    }
 
     // ───────────────────────────── helpers ─────────────────────────────
 
