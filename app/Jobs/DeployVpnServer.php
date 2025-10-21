@@ -587,32 +587,36 @@ BASH;
      * DNS: set wg_dns_ip to 10.66.66.1 (your Unbound on wg0)
      */
     private function hydrateWireGuardFacts(): void
-    {
-        $server = $this->vpnServer->fresh();
+{
+    $server = $this->vpnServer->fresh();
 
-        $endpoint = $server->wg_endpoint_host ?: $server->ip_address;
-        $dnsIp    = $server->wg_dns_ip ?: '10.66.66.1';
+    // Prefer existing endpoint host, otherwise fall back to server IP
+    $endpoint = $server->wg_endpoint_host ?: $server->ip_address;
 
-        $dirty = false;
+    $dirty = false;
 
-        if (!$server->wg_endpoint_host && $endpoint) {
-            $server->wg_endpoint_host = $endpoint;
-            $dirty = true;
-        }
-        if (!$server->wg_port) {
-            $server->wg_port = 51820;
-            $dirty = true;
-        }
-        if (!$server->wg_dns_ip && $dnsIp) {
-            $server->wg_dns_ip = $dnsIp;
-            $dirty = true;
-        }
-
-        if ($dirty) {
-            $server->saveQuietly();
-            Log::info("🧭 WG facts hydrated for server #{$server->id} (endpoint={$server->wg_endpoint_host}:{$server->wg_port}, dns={$server->wg_dns_ip})");
-        }
+    if (!$server->wg_endpoint_host && $endpoint) {
+        $server->wg_endpoint_host = $endpoint;
+        $dirty = true;
     }
+    if (!$server->wg_port) {
+        $server->wg_port = 51820;
+        $dirty = true;
+    }
+
+    // Put private-DNS IP into the existing 'dns' field if it's empty.
+    // Your WireGuardConfigBuilder uses $server->dns already.
+    if (blank($server->dns)) {
+        // Unbound on wg0 is bound to server's wg IP (10.66.66.1)
+        $server->dns = '10.66.66.1';
+        $dirty = true;
+    }
+
+    if ($dirty) {
+        $server->saveQuietly();
+        \Log::info("🧭 WG facts hydrated for server #{$server->id} (endpoint={$server->wg_endpoint_host}:{$server->wg_port}, dns={$server->dns})");
+    }
+}
 
     /**
      * Re-push WG peers for all active, attached users (idempotent).
