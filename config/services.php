@@ -19,6 +19,10 @@ return [
         'token' => env('PANEL_TOKEN'),
     ],
     
+    'wireguard' => [
+    'resync_on_deploy' => env('WG_RESYNC_ON_DEPLOY', true),
+],
+    
     'vpn_nodes' => [
     'ssh_user' => env('VPNNODE_SSH_USER', 'root'),
     'ssh_key'  => env('VPNNODE_SSH_KEY',  '/root/.ssh/id_rsa'),
