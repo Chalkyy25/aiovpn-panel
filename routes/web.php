@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Models\VpnUser;
 
 // ✅ Controllers
+use App\Http\Controllers\WireGuardConfigController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\DashboardController;
@@ -83,7 +84,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Users
         Route::get('/users', UserList::class)->name('users.index');
         Route::get('/users/create', CreateUser::class)->name('users.create');
-
+        
+        // WireGuard: per-user, per-server config download (admin)
+        Route::get('/vpn-users/{user}/wg/{server}/download', [WireGuardConfigController::class, 'download'])
+            ->name('vpn-users.wg.download');
+        
         // Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
         
@@ -151,13 +156,6 @@ Route::get('/clients/{vpnuser}/configs/download-all', [VpnConfigController::clas
 
 Route::get('/vpn-users/{vpnuser}/configs', VpnUserConfigs::class)
     ->name('clients.configs.index');
-
-// ✅ WireGuard Config Downloads
-Route::get('/wireguard/configs/{filename}', function ($filename) {
-    $path = storage_path("app/configs/$filename");
-    abort_unless(file_exists($path), 404);
-    return response()->download($path);
-})->name('wireguard.configs.download');
 
 
 // ============================
