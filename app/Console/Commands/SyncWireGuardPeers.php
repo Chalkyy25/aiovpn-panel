@@ -103,7 +103,9 @@ class SyncWireGuardPeers extends Command
             ? VpnServer::select(['id', 'name', 'ip_address', 'wg_public_key', 'wg_port', 'wg_endpoint_host'])->findOrFail($serverId)
             : null;
 
-        $job = (new AddWireGuardPeer($user, $server))->onQueue($queue);
+        $job = (new AddWireGuardPeer($user, $server))
+        ->setQuiet(true)
+        ->onQueue($queue);
 
         if (method_exists($job, 'setForce')) {
             $job->setForce($force);
