@@ -80,11 +80,11 @@ class AddWireGuardPeer implements ShouldQueue
         }
 
         // Single summary line per user
-        if ($ok === $total) {
-            Log::info("✅ [WG] {$u->username}: {$ok}/{$total} server(s) updated.");
-        } else {
-            Log::warning("⚠️ [WG] {$u->username}: partial success {$ok}/{$total}.");
-        }
+        //if ($ok === $total) {
+            //Log::info("✅ [WG] {$u->username}: {$ok}/{$total} server(s) updated.");
+      //  } else {
+            //Log::warning("⚠️ [WG] {$u->username}: partial success {$ok}/{$total}.");
+        //}
     }
 
     protected function addPeerToServer(VpnServer $server, string $publicKey, string $address): bool
