@@ -540,55 +540,74 @@ BASH;
     }
 
     private function resyncWireGuardPeers(): int
-    {
-        $server = $this->vpnServer->fresh(['vpnUsers']);
+{
+    $server = $this->vpnServer->fresh(['vpnUsers']);
 
-        $users  = $server->vpnUsers()
-            ->where('vpn_users.is_active', true) // qualify to avoid ambiguous column
-            ->select([
-                'vpn_users.id',
-                'vpn_users.username',
-                'vpn_users.wireguard_private_key',
-                'vpn_users.wireguard_public_key',
-                'vpn_users.wireguard_address',
-                'vpn_users.is_active',
-            ])
-            ->get();
+    // Pull all active users attached to THIS server with only the columns we need
+    $users = $server->vpnUsers()
+        ->where('vpn_users.is_active', true) // qualify to avoid ambiguity
+        ->select([
+            'vpn_users.id',
+            'vpn_users.username',
+            'vpn_users.wireguard_private_key',
+            'vpn_users.wireguard_public_key',
+            'vpn_users.wireguard_address',
+        ])
+        ->orderBy('vpn_users.id')
+        ->get();
 
-        $count = 0;
+    if ($users->isEmpty()) {
+        Log::info("🔁 No active users to WG-sync on server #{$server->id}");
+        return 0;
+    }
 
-        foreach ($users as $u) {
-            $dirty = false;
+    // Build a fast lookup set of all taken /32s once (not inside the loop)
+    $takenAddrs = \App\Models\VpnUser::whereNotNull('wireguard_address')
+        ->pluck('wireguard_address')
+        ->all();
+    $taken = array_fill_keys($takenAddrs, true);
 
-            if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
-                $keys = \App\Models\VpnUser::generateWireGuardKeys();
-                $u->wireguard_private_key = $keys['private'];
-                $u->wireguard_public_key  = $keys['public'];
-                $dirty = true;
-            }
+    $count = 0;
 
-            if (blank($u->wireguard_address)) {
-                $taken = \App\Models\VpnUser::whereNotNull('wireguard_address')->pluck('wireguard_address')->all();
-                for ($i = 2; $i <= 254; $i++) {
-                    $candidate = "10.66.66.$i/32";
-                    if (!in_array($candidate, $taken, true)) {
-                        $u->wireguard_address = $candidate;
-                        $dirty = true;
-                        break;
-                    }
-                }
-            }
+    foreach ($users as $u) {
+        $dirty = false;
 
-            if ($dirty) {
-                $u->saveQuietly();
-            }
-
-            // Explicitly queue on 'wg'
-            AddWireGuardPeer::dispatch($u)->onQueue('wg');
-            $count++;
+        // Ensure keys
+        if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
+            $keys = \App\Models\VpnUser::generateWireGuardKeys();
+            $u->wireguard_private_key = $keys['private'];
+            $u->wireguard_public_key  = $keys['public'];
+            $dirty = true;
         }
 
-        Log::info("🔁 Dispatched WG peer sync for {$count} user(s) on server #{$server->id}");
-        return $count;
+        // Ensure /32 address (10.66.66.0/24 pool)
+        if (blank($u->wireguard_address)) {
+            for ($i = 2; $i <= 254; $i++) {
+                $candidate = "10.66.66.$i/32";
+                if (!isset($taken[$candidate])) {
+                    $u->wireguard_address = $candidate;
+                    $taken[$candidate] = true; // mark as used immediately
+                    $dirty = true;
+                    break;
+                }
+            }
+        }
+
+        if ($dirty) {
+            $u->saveQuietly();
+        }
+
+        // Build the job so we can set quiet + queue/connection explicitly
+        $job = (new \App\Jobs\AddWireGuardPeer($u, $server))
+            ->setQuiet(true)           // suppress per-server success logs
+            ->onConnection('redis')
+            ->onQueue('wg');
+
+        dispatch($job);
+        $count++;
     }
+
+    Log::info("🔁 Dispatched WG peer sync for {$count} user(s) on server #{$server->id}");
+    return $count;
+}
 }
