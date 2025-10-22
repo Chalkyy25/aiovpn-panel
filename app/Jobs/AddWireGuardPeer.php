@@ -32,6 +32,7 @@ class AddWireGuardPeer implements ShouldQueue
         $this->onConnection('redis');
         $this->onQueue('wg');
 
+        // Only eager-load servers when none is provided
         $this->vpnUser = $server ? $vpnUser : $vpnUser->load('vpnServers');
         $this->server  = $server;
     }
@@ -45,14 +46,18 @@ class AddWireGuardPeer implements ShouldQueue
 
     public function tags(): array
     {
-        return ['wg', 'user:'.$this->vpnUser->id, 'server:'.($this->server->id ?? 'all')];
+        return [
+            'wg',
+            'user:' . $this->vpnUser->id,
+            'server:' . ($this->server ? $this->server->id : 'all'), // ← fix null deref
+        ];
     }
 
     public function handle(): void
     {
-        $u   = $this->vpnUser;
-        $pub = $u->wireguard_public_key ?? null;
-        $addr= $u->wireguard_address ?? null;
+        $u    = $this->vpnUser;
+        $pub  = $u->wireguard_public_key ?: null;
+        $addr = $u->wireguard_address ? trim((string)$u->wireguard_address) : null;
 
         if (!$pub || !$addr) {
             Log::warning("⚠️ [WG] Skipping {$u->username}: missing public_key or address.");
@@ -60,7 +65,8 @@ class AddWireGuardPeer implements ShouldQueue
         }
 
         /** @var Collection<int,VpnServer> $servers */
-        $servers = $this->server ? collect([$this->server]) : ($u->vpnServers ?? collect());
+        $servers = $this->server ? collect([$this->server]) : collect($u->vpnServers ?? []);
+        $servers = $servers->filter();               // drop nulls just in case
         $total   = $servers->count();
 
         if ($total === 0) {
@@ -84,12 +90,12 @@ class AddWireGuardPeer implements ShouldQueue
     protected function addPeerToServer(VpnServer $server, string $publicKey, string $address): bool
     {
         // Normalize to /32
-        $ipOnly = preg_replace('/\/\d+$/', '', trim($address));
+        $ipOnly = preg_replace('/\/\d+$/', '', $address);
         $ip32   = "{$ipOnly}/32";
 
         $script = $this->buildAddPeerScript($publicKey, $ip32);
 
-        // IMPORTANT: pass the model (trait expects VpnServer)
+        // Pass the model; ExecutesRemoteCommands expects VpnServer
         $res = $this->executeRemoteCommand($server, $script);
 
         if (($res['status'] ?? 1) !== 0) {
@@ -98,7 +104,6 @@ class AddWireGuardPeer implements ShouldQueue
             return false;
         }
 
-        // keep per-server success silent in quiet mode
         if (!$this->quiet) {
             Log::info("✅ [WG] {$this->vpnUser->username} on {$server->name} ({$ip32})");
         }
