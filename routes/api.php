@@ -60,14 +60,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Return a ready-to-import .ovpn for the given (or first) server
     Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
     
-     // WireGuard: list WG-capable servers the user is linked to
-    Route::get('/wg/servers', [\App\Http\Controllers\MobileWireGuardController::class, 'servers']);
-
-    // WireGuard: return ready-to-import client .conf (text)
-    // Usage: GET /api/wg/config?server_id=99
-    Route::get('/wg/config',  [\App\Http\Controllers\MobileWireGuardController::class, 'config']);
-
-
+     // WireGuard for mobile
+    Route::get('/wg/servers', [\App\Http\Controllers\WireGuardConfigController::class, 'servers']);
+    Route::get('/wg/config',  [\App\Http\Controllers\WireGuardConfigController::class, 'config']);
+    
     // *** Android app expects THIS endpoint: raw .ovpn text ***
     // Example: /api/ovpn?user_id=7&server_id=99
     Route::get('/ovpn', [MobileProfileController::class, 'ovpn']);
