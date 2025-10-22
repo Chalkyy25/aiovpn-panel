@@ -543,7 +543,7 @@ BASH;
 {
     $server = $this->vpnServer->fresh(['vpnUsers']);
 
-    // Pull all active users attached to THIS server with only the columns we need
+    // Active users on THIS server (only needed columns)
     $users = $server->vpnUsers()
         ->where('vpn_users.is_active', true) // qualify to avoid ambiguity
         ->select([
@@ -561,13 +561,16 @@ BASH;
         return 0;
     }
 
-    // Build a fast lookup set of all taken /32s once (not inside the loop)
-    $takenAddrs = \App\Models\VpnUser::whereNotNull('wireguard_address')
-        ->pluck('wireguard_address')
-        ->all();
-    $taken = array_fill_keys($takenAddrs, true);
+    $serversCount = 1; // we're resyncing this single redeployed server
+    Log::info("🔧 Starting WG sync for {$users->count()} users across {$serversCount} server(s)...");
 
-    $count = 0;
+    // One-time lookup of taken /32s to avoid duplicates
+    $taken = array_fill_keys(
+        \App\Models\VpnUser::whereNotNull('wireguard_address')->pluck('wireguard_address')->all(),
+        true
+    );
+
+    $dispatched = 0;
 
     foreach ($users as $u) {
         $dirty = false;
@@ -580,13 +583,13 @@ BASH;
             $dirty = true;
         }
 
-        // Ensure /32 address (10.66.66.0/24 pool)
+        // Ensure /32 address from 10.66.66.0/24
         if (blank($u->wireguard_address)) {
             for ($i = 2; $i <= 254; $i++) {
                 $candidate = "10.66.66.$i/32";
                 if (!isset($taken[$candidate])) {
                     $u->wireguard_address = $candidate;
-                    $taken[$candidate] = true; // mark as used immediately
+                    $taken[$candidate] = true;
                     $dirty = true;
                     break;
                 }
@@ -597,17 +600,18 @@ BASH;
             $u->saveQuietly();
         }
 
-        // Build the job so we can set quiet + queue/connection explicitly
-        $job = (new \App\Jobs\AddWireGuardPeer($u, $server))
-            ->setQuiet(true)           // suppress per-server success logs
-            ->onConnection('redis')
-            ->onQueue('wg');
+        // Queue quiet WG peer push for THIS server
+        dispatch(
+            (new \App\Jobs\AddWireGuardPeer($u, $server))
+                ->setQuiet(true)
+                ->onConnection('redis')
+                ->onQueue('wg')
+        );
 
-        dispatch($job);
-        $count++;
+        $dispatched++;
     }
 
-    Log::info("🔁 Dispatched WG peer sync for {$count} user(s) on server #{$server->id}");
-    return $count;
+    Log::info("✅ [WG] Added {$dispatched} user(s) across {$serversCount}/{$serversCount} server(s).");
+    return $dispatched;
 }
 }
