@@ -303,8 +303,12 @@ echo "$TS: FAIL $USER" >>"$LOG_FILE"; exit 1
 SH
 chmod 0755 /etc/openvpn/auth/checkpsw.sh
 
+# === Ensure proper directory structure for systemd services ===
+install -d -m 0755 /etc/openvpn/server
+install -d -m 0755 /etc/openvpn/client
+
 # === UDP server.conf (CHANGED: consistent status path) ===
-cat >/etc/openvpn/server.conf <<CONF
+cat >/etc/openvpn/server/server.conf <<CONF
 # === AIOVPN • OpenVPN (Fallback, UDP) ===
 port $OVPN_PORT
 proto $OVPN_PROTO
@@ -349,10 +353,10 @@ CONF
 
 # Private DNS for UDP
 if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
-  sed -i '/^push "dhcp-option DNS /d' /etc/openvpn/server.conf
-  sed -i '/^push "dhcp-option DOMAIN-ROUTE /d' /etc/openvpn/server.conf
-  echo "push \"dhcp-option DNS ${WG_DNS_IP}\""  >> /etc/openvpn/server.conf
-  echo "push \"dhcp-option DOMAIN-ROUTE .\""    >> /etc/openvpn/server.conf
+  sed -i '/^push "dhcp-option DNS /d' /etc/openvpn/server/server.conf
+  sed -i '/^push "dhcp-option DOMAIN-ROUTE /d' /etc/openvpn/server/server.conf
+  echo "push \"dhcp-option DNS ${WG_DNS_IP}\""  >> /etc/openvpn/server/server.conf
+  echo "push \"dhcp-option DOMAIN-ROUTE .\""    >> /etc/openvpn/server/server.conf
 fi
 
 # Firewall
@@ -365,14 +369,15 @@ iptables-save >/etc/iptables/rules.v4 || true
 install -o root -g root -m 644 /dev/null "${STATUS_UDP_PATH}"
 install -o root -g root -m 644 /dev/null "${STATUS_TCP_PATH}" 2>/dev/null || true
 
-systemctl enable openvpn@server
-systemctl restart openvpn@server
-systemctl is-active --quiet openvpn@server || fail "OpenVPN (UDP) failed to start"
+# Use openvpn-server@ (not openvpn@) for systemd service
+systemctl enable openvpn-server@server
+systemctl restart openvpn-server@server
+systemctl is-active --quiet openvpn-server@server || fail "OpenVPN (UDP) failed to start"
 
 # === TCP stealth (CHANGED: consistent status path + mgmt port) ===
 if [[ "${ENABLE_TCP_STEALTH}" = "1" ]]; then
   logchunk "Configuring OpenVPN TCP stealth on :${TCP_PORT}"
-  TCP_CONF="/etc/openvpn/server-tcp.conf"
+  TCP_CONF="/etc/openvpn/server/server-tcp.conf"
   [[ -s /etc/openvpn/ta.key ]] || { openvpn --genkey --secret /etc/openvpn/ta.key; chmod 600 /etc/openvpn/ta.key; }
   cat >"$TCP_CONF" <<CONF
 # === AIOVPN • OpenVPN (Stealth, TCP 443) ===
@@ -428,9 +433,10 @@ CONF
   iptables -t nat -C POSTROUTING -s "${TCP_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s "${TCP_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE
   iptables-save >/etc/iptables/rules.v4 || true
 
-  systemctl enable openvpn@server-tcp 2>/dev/null || true
-  systemctl enable openvpn-server@server-tcp 2>/dev/null || true
-  systemctl restart openvpn@server-tcp 2>/dev/null || systemctl restart openvpn-server@server-tcp || true
+  # Use openvpn-server@ for systemd (requires config in /etc/openvpn/server/)
+  systemctl enable openvpn-server@server-tcp
+  systemctl restart openvpn-server@server-tcp
+  systemctl is-active --quiet openvpn-server@server-tcp || logchunk "WARNING: TCP stealth service failed to start"
 fi
 
 ### ===== Quick DNS sanity =====
@@ -534,7 +540,7 @@ TIM
 cat >/etc/systemd/system/ovpn-status-push-tcp.service <<SVC
 [Unit]
 Description=Post OpenVPN TCP status (v3) to panel
-After=openvpn@server-tcp.service openvpn-server@server-tcp.service
+After=openvpn-server@server-tcp.service
 [Service]
 Type=oneshot
 Environment="STATUS_PATH=${STATUS_TCP_PATH}"
