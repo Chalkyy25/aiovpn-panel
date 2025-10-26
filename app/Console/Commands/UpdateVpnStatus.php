@@ -17,14 +17,14 @@ class UpdateVpnStatus extends Command
     {
         $serverId = $this->option('server_id');
 
-        $q = VpnServer::query()->where('deployment_status', 'succeeded');
+        $q = VpnServer::query()->whereIn('deployment_status', ['succeeded', 'deployed']);
         if ($serverId) {
             $q->where('id', (int) $serverId);
         }
 
         $servers = $q->get();
         if ($servers->isEmpty()) {
-            $this->warn('No succeeded VPN servers found.');
+            $this->warn('No deployed VPN servers found.');
             return self::SUCCESS;
         }
 
@@ -94,38 +94,47 @@ class UpdateVpnStatus extends Command
     }
 
     /**
-     * Read full status from the management socket.
+     * Read full status from the management socket (checks both UDP and TCP ports).
      */
     private function readStatusFromMgmt(VpnServer $server): string
     {
         $ssh = $server->getSshCommand();
+        $mgmtPort = (int)($server->mgmt_port ?? 7505);
+        
+        // Check both UDP (7505) and TCP (7506) management interfaces
+        $mgmtPorts = [$mgmtPort];
+        if ($mgmtPort == 7505) {
+            $mgmtPorts[] = 7506; // Add TCP stealth server management port
+        }
 
-        // Ask mgmt for status v3, then quit. Small sleep lets OpenVPN flush.
-        $script = <<<'BASH'
+        foreach ($mgmtPorts as $port) {
+            // Ask mgmt for status v3, then quit. Small sleep lets OpenVPN flush.
+            $script = <<<BASH
 set -e
-MGMT_HOST="${MGMT_HOST:-127.0.0.1}"
-MGMT_PORT="${MGMT_PORT:-7505}"
+MGMT_HOST="\${MGMT_HOST:-127.0.0.1}"
+MGMT_PORT="{$port}"
 { printf "status 3\r\n"; sleep 0.3; printf "quit\r\n"; } \
-  | nc -w 2 "$MGMT_HOST" "$MGMT_PORT" 2>/dev/null || true
+  | nc -w 2 "\$MGMT_HOST" "\$MGMT_PORT" 2>/dev/null || true
 BASH;
 
-        $cmd = $ssh . " bash -s <<'BASH'\n" . $script . "\nBASH";
+            $cmd = $ssh . " bash -s <<'BASH'\n" . $script . "\nBASH";
 
-        [$status, $out] = $this->runCmd($cmd);
-        if ($status !== 0) {
-            Log::warning("⚠️ {$server->name}: mgmt socket read failed");
-            return '';
+            [$status, $out] = $this->runCmd($cmd);
+            if ($status === 0) {
+                $raw = trim(implode("\n", $out));
+                if ($raw !== '' && str_contains($raw, 'CLIENT_LIST')) {
+                    Log::info("📡 {$server->name}: read status via mgmt :{$port}");
+                    return $raw;
+                }
+            }
         }
-
-        $raw = trim(implode("\n", $out));
-        if ($raw !== '') {
-            Log::info("📡 {$server->name}: read status via mgmt :7505");
-        }
-        return $raw;
+        
+        Log::warning("⚠️ {$server->name}: mgmt socket read failed on all ports");
+        return '';
     }
 
     /**
-     * Read status from common file paths (v3 / v2).
+     * Read status from common file paths (v3 / v2) - includes TCP status files.
      */
     private function readStatusFromFiles(VpnServer $server): string
     {
@@ -133,10 +142,12 @@ BASH;
 
         $candidates = array_values(array_unique(array_filter([
             $server->status_log_path,            // per-server override
-            '/run/openvpn/server.status',        // systemd template default
+            '/run/openvpn/server.status',        // systemd template default (UDP)
+            '/run/openvpn/server-tcp.status',    // TCP stealth server
             '/run/openvpn/openvpn.status',
             '/run/openvpn/server/server.status', // some distros nest it
             '/var/log/openvpn-status.log',       // classic v2
+            '/var/log/openvpn-status-tcp.log',   // TCP log
         ], fn ($p) => is_string($p) && $p !== '')));
 
         foreach ($candidates as $path) {

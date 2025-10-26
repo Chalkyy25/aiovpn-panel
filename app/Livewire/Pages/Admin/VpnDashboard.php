@@ -43,7 +43,7 @@ class VpnDashboard extends Component
     public function getServersProperty()
     {
         return VpnServer::query()
-            ->where('deployment_status', 'succeeded')
+            ->whereIn('deployment_status', ['succeeded', 'deployed'])
             ->withCount('activeConnections')
             ->orderBy('name')
             ->get(['id', 'name']);
@@ -190,7 +190,7 @@ class VpnDashboard extends Component
     {
         // Servers (only deployed ones)
         $servers = VpnServer::query()
-            ->where('deployment_status', 'succeeded')
+            ->whereIn('deployment_status', ['succeeded', 'deployed'])
             ->orderBy('id')
             ->get(['id', 'name']);
 
