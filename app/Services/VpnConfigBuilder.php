@@ -128,7 +128,6 @@ auth-nocache
 verb 3
 
 # Connection attempts with fast failover for ISP testing
-remote-random
 connect-retry 1
 connect-retry-max 1
 connect-timeout 4
