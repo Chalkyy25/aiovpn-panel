@@ -110,9 +110,15 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     protected function fetchStatusWithSource(VpnServer $server): array
 {
     $mgmtPort = (int)($server->mgmt_port ?? 7505);
+    
+    // Check both UDP (7505) and TCP (7506) management interfaces
+    $mgmtPorts = [$mgmtPort];
+    if ($mgmtPort == 7505) {
+        $mgmtPorts[] = 7506; // Add TCP stealth server management port
+    }
 
     Log::channel('vpn')->debug("🔍 {$server->name}: Starting status fetch", [
-        'mgmt_port' => $mgmtPort,
+        'mgmt_ports' => $mgmtPorts,
         'ip'        => $server->ip_address,
         'ssh_user'  => $server->ssh_user ?? 'root',
     ]);
@@ -128,26 +134,35 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         return ['', 'ssh_failed'];
     }
 
-    // --- Try mgmt interface first ---
-    $mgmtCmds = [
-        '( printf "status 3\n"; sleep 1; printf "quit\n" ) | nc -w 5 127.0.0.1 ' . $mgmtPort,
-        'echo -e "status 3\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
-        'echo -e "status\nquit\n" | nc -w 3 127.0.0.1 ' . $mgmtPort,
-    ];
+    // --- Try mgmt interface first (check both UDP and TCP ports) ---
+    foreach ($mgmtPorts as $port) {
+        $mgmtCmds = [
+            '( printf "status 3\n"; sleep 1; printf "quit\n" ) | nc -w 5 127.0.0.1 ' . $port,
+            'echo -e "status 3\nquit\n" | nc -w 3 127.0.0.1 ' . $port,
+            'echo -e "status\nquit\n" | nc -w 3 127.0.0.1 ' . $port,
+        ];
 
-    foreach ($mgmtCmds as $cmd) {
-        $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
-        $out = trim(implode("\n", $res['output'] ?? []));
-        if (($res['status'] ?? 1) === 0 && str_contains($out, "CLIENT_LIST")) {
-            Log::channel('vpn')->debug("📡 {$server->name}: mgmt responded (" . strlen($out) . " bytes)", [
-                'preview' => substr($out, 0, 200) . '...',
-            ]);
-            return [$out, "mgmt:{$mgmtPort}"];
+        foreach ($mgmtCmds as $cmd) {
+            $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
+            $out = trim(implode("\n", $res['output'] ?? []));
+            if (($res['status'] ?? 1) === 0 && str_contains($out, "CLIENT_LIST")) {
+                Log::channel('vpn')->debug("📡 {$server->name}: mgmt responded on port {$port} (" . strlen($out) . " bytes)", [
+                    'preview' => substr($out, 0, 200) . '...',
+                ]);
+                return [$out, "mgmt:{$port}"];
+            }
         }
     }
 
-    // --- Fallback: status log files ---
-    foreach (['/run/openvpn/server.status','/etc/openvpn/openvpn-status.log'] as $path) {
+    // --- Fallback: status log files (check both UDP and TCP status files) ---
+    $statusFiles = [
+        '/run/openvpn/server.status',           // UDP server
+        '/run/openvpn/server-tcp.status',       // TCP stealth server  
+        '/var/log/openvpn-status-tcp.log',      // TCP server log
+        '/etc/openvpn/openvpn-status.log'       // Generic status file
+    ];
+    
+    foreach ($statusFiles as $path) {
         $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
         $res = $this->executeRemoteCommand($server, $cmd);
         $data = trim(implode("\n", $res['output'] ?? []));
