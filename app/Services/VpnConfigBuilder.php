@@ -95,11 +95,12 @@ class VpnConfigBuilder
         }
 
         $username = $vpnUser->username;
+        $password = $vpnUser->plain_password; // For embedded auth
 
         return match ($variant) {
-            'unified' => $builder->buildUnifiedConfig($username, $server->name, $endpoint, $ca, $ta),
-            'stealth' => $builder->buildStealthConfig($username, $server->name, $endpoint, $ca, $ta),
-            'udp'     => $builder->buildUdpConfig($username, $server->name, $endpoint, $ca, $ta),
+            'unified' => $builder->buildUnifiedConfig($username, $password, $server->name, $endpoint, $ca, $ta),
+            'stealth' => $builder->buildStealthConfig($username, $password, $server->name, $endpoint, $ca, $ta),
+            'udp'     => $builder->buildUdpConfig($username, $password, $server->name, $endpoint, $ca, $ta),
             default   => throw new Exception("Unknown variant: {$variant}")
         };
     }
@@ -107,7 +108,7 @@ class VpnConfigBuilder
     /**
      * Build unified profile (TCP 443 primary + UDP fallback) - RECOMMENDED
      */
-    private function buildUnifiedConfig(string $username, string $serverName, string $endpoint, string $ca, string $ta): string
+    private function buildUnifiedConfig(string $username, string $password, string $serverName, string $endpoint, string $ca, string $ta): string
     {
         $cfg = <<<OVPN
 # === AIOVPN • {$serverName} (Unified Stealth) ===
@@ -139,6 +140,7 @@ connect-timeout 8
 hand-window 20
 
 # Modern cipher negotiation (OpenVPN 2.6+ optimized)
+data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
 pull-filter ignore "cipher"
 
@@ -147,6 +149,11 @@ comp-lzo no
 mute-replay-warnings
 tun-mtu 1500
 mssfix 1450
+
+<auth-user-pass>
+{$username}
+{$password}
+</auth-user-pass>
 
 <tls-crypt>
 {$ta}
@@ -170,7 +177,7 @@ OVPN;
     /**
      * Build TCP 443 stealth-only config
      */
-    private function buildStealthConfig(string $username, string $serverName, string $endpoint, string $ca, string $ta): string
+    private function buildStealthConfig(string $username, string $password, string $serverName, string $endpoint, string $ca, string $ta): string
     {
         $cfg = <<<OVPN
 # === AIOVPN • {$serverName} (TCP 443 Stealth) ===
@@ -198,6 +205,7 @@ connect-timeout 10
 hand-window 30
 
 # Modern cipher negotiation and performance
+data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
 pull-filter ignore "cipher"
 comp-lzo no
@@ -206,6 +214,11 @@ mute-replay-warnings
 # TCP-optimized MTU
 tun-mtu 1500
 mssfix 1450
+
+<auth-user-pass>
+{$username}
+{$password}
+</auth-user-pass>
 
 <tls-crypt>
 {$ta}
@@ -229,7 +242,7 @@ OVPN;
     /**
      * Build traditional UDP config (fallback only)
      */
-    private function buildUdpConfig(string $username, string $serverName, string $endpoint, string $ca, string $ta): string
+    private function buildUdpConfig(string $username, string $password, string $serverName, string $endpoint, string $ca, string $ta): string
     {
         $cfg = <<<OVPN
 # === AIOVPN • {$serverName} (UDP Traditional) ===
@@ -251,6 +264,7 @@ auth-nocache
 verb 3
 
 # Modern cipher negotiation (OpenVPN 2.6+)
+data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
 pull-filter ignore "cipher"
 
@@ -258,6 +272,11 @@ pull-filter ignore "cipher"
 explicit-exit-notify 3
 tun-mtu 1500
 mssfix 1450
+
+<auth-user-pass>
+{$username}
+{$password}
+</auth-user-pass>
 
 <tls-crypt>
 {$ta}

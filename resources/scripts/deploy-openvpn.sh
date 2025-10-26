@@ -387,6 +387,7 @@ tls-version-min 1.2
 
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
+ncp-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 auth SHA256
 
 topology subnet
@@ -467,6 +468,7 @@ tls-version-min 1.2
 
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
+ncp-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 auth SHA256
 
 topology subnet
