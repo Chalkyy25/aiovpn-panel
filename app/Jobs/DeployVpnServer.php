@@ -58,21 +58,28 @@ class DeployVpnServer implements ShouldQueue
             return;
         }
 
+        // Model’s preferred proto/port (still respected for the UDP instance)
         $modelProto = strtolower((string) ($this->vpnServer->protocol ?: 'udp'));
         $vpnProto   = $modelProto === 'tcp' ? 'tcp' : 'udp';
+        $vpnPort    = (int) ($this->vpnServer->port ?: 1194);
 
-        $vpnPort  = (int) ($this->vpnServer->port ?: 1194);
         $mgmtHost = '127.0.0.1';
         $mgmtPort = (int) ($this->vpnServer->mgmt_port ?: 7505);
         $wgPort   = 51820;
 
-        $scriptPath = base_path('resources/scripts/deploy-openvpn.sh');
+        // Prefer new script name; fallback to legacy path for compatibility
+        $scriptPath = base_path('resources/scripts/deploy-vpn.sh');
+        if (!is_file($scriptPath)) {
+            $legacy = base_path('resources/scripts/deploy-openvpn.sh');
+            if (is_file($legacy)) $scriptPath = $legacy;
+        }
         if (!is_file($scriptPath)) {
             $this->failWith("❌ Missing deployment script at {$scriptPath}");
             return;
         }
         $script = file_get_contents($scriptPath);
 
+        // Seed/Reuse VPN user
         $vpnUser = 'admin';
         $vpnPass = substr(bin2hex(random_bytes(16)), 0, 16);
         if ($existing = $this->vpnServer->vpnUsers()->where('is_active', true)->first()) {
@@ -95,6 +102,7 @@ class DeployVpnServer implements ShouldQueue
                 return;
             }
 
+            // Quick SSH sanity
             $testCmd = $sshCmdBase . ' ' . escapeshellarg('echo CONNECTION_OK') . ' 2>&1';
             $testOutput = [];
             $testStatus = 0;
@@ -146,6 +154,7 @@ class DeployVpnServer implements ShouldQueue
             }
             Log::info("✅ SSH test OK for {$ip}");
 
+            // Ensure our DeployKey is present
             try {
                 $pubPath = $this->lastKeyPath ? $this->lastKeyPath . '.pub' : null;
                 if ($pubPath && is_file($pubPath)) {
@@ -163,6 +172,7 @@ class DeployVpnServer implements ShouldQueue
                 // ignore
             }
 
+            // (Optional) peek authorized_keys first few lines
             try {
                 $ak = [];
                 exec($sshCmdBase . ' ' . escapeshellarg('head -n 5 /root/.ssh/authorized_keys || true'), $ak);
@@ -171,30 +181,56 @@ class DeployVpnServer implements ShouldQueue
                 }
             } catch (\Throwable) {}
 
+            // ── Build environment for the new deploy script
             $vpnIp   = $this->vpnServer->vpn_ip  ?? '10.8.0.1';
             $vpnNet  = $this->vpnServer->vpn_net ?? '10.8.0.0/24';
             $vpnDev  = 'tun0';
+
             $enablePrivateDns = ($this->vpnServer->enable_private_dns ?? true) ? '1' : '0';
+
+            // interval must be "Ns" even if config returns an int
+            $interval = config('services.vpn.status_push_interval', '5s');
+            if (is_numeric($interval)) { $interval = "{$interval}s"; }
+
+            // Where clients will dial; prefer server hostname if set
+            $ovpnEndpoint = $this->vpnServer->hostname ?: $ip;
+
+            // Per-server toggle (default ON). Add a boolean column enable_tcp_stealth if you want UI control.
+            $enableTcpStealth = $this->vpnServer->enable_tcp_stealth ?? true;
 
             $env = [
                 'PANEL_URL'   => $panelUrl,
                 'PANEL_TOKEN' => $panelToken,
                 'SERVER_ID'   => (string) $this->vpnServer->id,
 
+                // Management
                 'MGMT_HOST'   => $mgmtHost,
                 'MGMT_PORT'   => (string) $mgmtPort,
-                'VPN_PORT'    => (string) $vpnPort,
-                'VPN_PROTO'   => $vpnProto,
+
+                // WireGuard
                 'WG_PORT'     => (string) $wgPort,
 
+                // OpenVPN — note OVPN_* (not VPN_*)
+                'OVPN_PORT'   => (string) $vpnPort,
+                'OVPN_PROTO'  => $vpnProto,
+                'OVPN_ENDPOINT_HOST' => $ovpnEndpoint,
+
+                // Stealth TCP/443 instance
+                'ENABLE_TCP_STEALTH' => $enableTcpStealth ? '1' : '0',
+                'TCP_PORT'           => '443',
+                'TCP_SUBNET'         => '10.8.100.0/24',
+
+                // Auth seeding
                 'VPN_USER'    => $vpnUser,
                 'VPN_PASS'    => $vpnPass,
 
+                // Status push
                 'STATUS_PATH'          => '/run/openvpn/server.status',
-                'STATUS_PUSH_INTERVAL' => (string) (config('services.vpn.status_push_interval', 5)),
+                'STATUS_PUSH_INTERVAL' => $interval,
                 'PANEL_CALLBACKS'      => '1',
                 'PUSH_MGMT'            => '0',
 
+                // DNS + misc
                 'ENABLE_PRIVATE_DNS'   => $enablePrivateDns,
                 'VPN_IP'               => $vpnIp,
                 'VPN_NET'              => $vpnNet,
@@ -239,8 +275,11 @@ BASH;
                     $finalLog .= "\n👥 Auto-assigned {$existingUsers->count()} existing users to server";
                 }
 
-                @exec($sshCmdBase . ' ' . escapeshellarg('systemctl start ovpn-status-push.service'));
+                // Start the TIMER (not the one-shot service); also push once right now
+                @exec($sshCmdBase . ' ' . escapeshellarg('systemctl start ovpn-status-push.timer || true'));
+                @exec($sshCmdBase . ' ' . escapeshellarg('/usr/local/bin/ovpn-status-push.sh || true'));
 
+                // Keep your existing syncs
                 SyncOpenVPNCredentials::dispatch($this->vpnServer);
 
                 if (config('services.wireguard.resync_on_deploy', true)) {
@@ -448,7 +487,7 @@ BASH;
 
         $out = '';
         $err = '';
-        $start = time();
+               $start = time();
         $maxDuration = max(60, ($this->timeout ?? 900) - 10);
 
         while (true) {
@@ -540,78 +579,73 @@ BASH;
     }
 
     private function resyncWireGuardPeers(): int
-{
-    $server = $this->vpnServer->fresh(['vpnUsers']);
+    {
+        $server = $this->vpnServer->fresh(['vpnUsers']);
 
-    // Active users on THIS server (only needed columns)
-    $users = $server->vpnUsers()
-        ->where('vpn_users.is_active', true) // qualify to avoid ambiguity
-        ->select([
-            'vpn_users.id',
-            'vpn_users.username',
-            'vpn_users.wireguard_private_key',
-            'vpn_users.wireguard_public_key',
-            'vpn_users.wireguard_address',
-        ])
-        ->orderBy('vpn_users.id')
-        ->get();
+        $users = $server->vpnUsers()
+            ->where('vpn_users.is_active', true)
+            ->select([
+                'vpn_users.id',
+                'vpn_users.username',
+                'vpn_users.wireguard_private_key',
+                'vpn_users.wireguard_public_key',
+                'vpn_users.wireguard_address',
+            ])
+            ->orderBy('vpn_users.id')
+            ->get();
 
-    if ($users->isEmpty()) {
-        Log::info("🔁 No active users to WG-sync on server #{$server->id}");
-        return 0;
-    }
-
-    $serversCount = 1; // we're resyncing this single redeployed server
-    Log::info("🔧 Starting WG sync for {$users->count()} users across {$serversCount} server(s)...");
-
-    // One-time lookup of taken /32s to avoid duplicates
-    $taken = array_fill_keys(
-        \App\Models\VpnUser::whereNotNull('wireguard_address')->pluck('wireguard_address')->all(),
-        true
-    );
-
-    $dispatched = 0;
-
-    foreach ($users as $u) {
-        $dirty = false;
-
-        // Ensure keys
-        if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
-            $keys = \App\Models\VpnUser::generateWireGuardKeys();
-            $u->wireguard_private_key = $keys['private'];
-            $u->wireguard_public_key  = $keys['public'];
-            $dirty = true;
+        if ($users->isEmpty()) {
+            Log::info("🔁 No active users to WG-sync on server #{$server->id}");
+            return 0;
         }
 
-        // Ensure /32 address from 10.66.66.0/24
-        if (blank($u->wireguard_address)) {
-            for ($i = 2; $i <= 254; $i++) {
-                $candidate = "10.66.66.$i/32";
-                if (!isset($taken[$candidate])) {
-                    $u->wireguard_address = $candidate;
-                    $taken[$candidate] = true;
-                    $dirty = true;
-                    break;
-                }
-            }
-        }
+        $serversCount = 1;
+        Log::info("🔧 Starting WG sync for {$users->count()} users across {$serversCount} server(s)...");
 
-        if ($dirty) {
-            $u->saveQuietly();
-        }
-
-        // Queue quiet WG peer push for THIS server
-        dispatch(
-            (new \App\Jobs\AddWireGuardPeer($u, $server))
-                ->setQuiet(true)
-                ->onConnection('redis')
-                ->onQueue('wg')
+        $taken = array_fill_keys(
+            \App\Models\VpnUser::whereNotNull('wireguard_address')->pluck('wireguard_address')->all(),
+            true
         );
 
-        $dispatched++;
-    }
+        $dispatched = 0;
 
-    Log::info("✅ [WG] Added {$dispatched} user(s) across {$serversCount}/{$serversCount} server(s).");
-    return $dispatched;
-}
+        foreach ($users as $u) {
+            $dirty = false;
+
+            if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
+                $keys = \App\Models\VpnUser::generateWireGuardKeys();
+                $u->wireguard_private_key = $keys['private'];
+                $u->wireguard_public_key  = $keys['public'];
+                $dirty = true;
+            }
+
+            if (blank($u->wireguard_address)) {
+                for ($i = 2; $i <= 254; $i++) {
+                    $candidate = "10.66.66.$i/32";
+                    if (!isset($taken[$candidate])) {
+                        $u->wireguard_address = $candidate;
+                        $taken[$candidate] = true;
+                        $dirty = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($dirty) {
+                $u->saveQuietly();
+            }
+
+            dispatch(
+                (new \App\Jobs\AddWireGuardPeer($u, $server))
+                    ->setQuiet(true)
+                    ->onConnection('redis')
+                    ->onQueue('wg')
+            );
+
+            $dispatched++;
+        }
+
+        Log::info("✅ [WG] Added {$dispatched} user(s) across {$serversCount}/{$serversCount} server(s).");
+        return $dispatched;
+    }
 }
