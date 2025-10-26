@@ -39,7 +39,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
         /** @var Collection<int,VpnServer> $servers */
         $servers = VpnServer::query()
-            ->where('deployment_status', 'succeeded')
+            ->whereIn('deployment_status', ['succeeded', 'deployed'])
             ->when($this->serverId, fn($q) => $q->where('id', $this->serverId))
             ->get();
 
@@ -146,12 +146,27 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
             $out = trim(implode("\n", $res['output'] ?? []));
             if (($res['status'] ?? 1) === 0 && str_contains($out, "CLIENT_LIST")) {
-                Log::channel('vpn')->debug("📡 {$server->name}: mgmt responded on port {$port} (" . strlen($out) . " bytes)", [
+                // Count actual client connections (exclude header line)
+                $clientCount = substr_count($out, "CLIENT_LIST") - 1;
+                
+                Log::channel('vpn')->debug("📡 {$server->name}: mgmt responded on port {$port} ({$clientCount} clients, " . strlen($out) . " bytes)", [
                     'preview' => substr($out, 0, 200) . '...',
                 ]);
-                return [$out, "mgmt:{$port}"];
+                
+                // If we found connections, use this data; otherwise continue checking other ports
+                if ($clientCount > 0) {
+                    return [$out, "mgmt:{$port}"];
+                }
+                
+                // Store the response in case no other port has connections
+                $fallbackResponse = [$out, "mgmt:{$port}"];
             }
         }
+    }
+    
+    // If we found a response but no active connections, use the last valid response
+    if (isset($fallbackResponse)) {
+        return $fallbackResponse;
     }
 
     // --- Fallback: status log files (check both UDP and TCP status files) ---
