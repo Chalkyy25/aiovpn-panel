@@ -8,6 +8,7 @@ use App\Services\VpnConfigBuilder;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use ZipArchive;
 
 class VpnConfigController extends Controller
@@ -30,11 +31,12 @@ class VpnConfigController extends Controller
         );
 
         $proto = $request->string('proto')->lower()->value(); // 'ovpn'|'wg'|''
+        $variant = $request->string('variant')->lower()->value() ?: 'unified'; // 'unified'|'stealth'|'udp'
 
         try {
             if ($proto === 'wg') {
                 // Build WG config on-demand; return as download
-                $content = VpnConfigBuilder::generateWireGuardString($client, $vpnserver);
+                $content = VpnConfigBuilder::generateWireGuardConfigString($client, $vpnserver);
                 $name    = $this->safeName("{$vpnserver->name}_{$client->username}.conf");
 
                 return response($content, 200, [
@@ -46,9 +48,10 @@ class VpnConfigController extends Controller
                 ]);
             }
 
-            // Default: OpenVPN config (no cleartext bcrypt!)
-            $content = VpnConfigBuilder::generateOpenVpnConfigString($client, $vpnserver);
-            $name    = $this->safeName("{$vpnserver->name}_{$client->username}.ovpn");
+            // Default: OpenVPN config with variant support
+            $content = VpnConfigBuilder::generateOpenVpnConfigString($client, $vpnserver, $variant);
+            $variantSuffix = $variant === 'unified' ? 'unified' : $variant;
+            $name = $this->safeName("{$vpnserver->name}_{$client->username}_{$variantSuffix}.ovpn");
 
             return response($content, 200, [
                 'Content-Type'        => 'application/x-openvpn-profile',
@@ -67,11 +70,14 @@ class VpnConfigController extends Controller
      * Admin: generate config for a specific server (on-demand).
      * Route: admin/clients/{vpnUser}/config/{vpnServer}
      */
-    public function downloadForServer(VpnUser $vpnUser, VpnServer $vpnServer)
+    public function downloadForServer(Request $request, VpnUser $vpnUser, VpnServer $vpnServer)
     {
+        $variant = $request->string('variant')->lower()->value() ?: 'unified';
+        
         try {
-            $content = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
-            $name    = $this->safeName("{$vpnServer->name}_{$vpnUser->username}.ovpn");
+            $content = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer, $variant);
+            $variantSuffix = $variant === 'unified' ? 'unified' : $variant;
+            $name = $this->safeName("{$vpnServer->name}_{$vpnUser->username}_{$variantSuffix}.ovpn");
 
             return response($content, 200, [
                 'Content-Type'        => 'application/x-openvpn-profile',
@@ -109,19 +115,35 @@ class VpnConfigController extends Controller
         }
 
         try {
-            // WG (optional)
-            if (method_exists(VpnConfigBuilder::class, 'generateWireGuardString')) {
-                $wg = VpnConfigBuilder::generateWireGuardString($vpnUser, null);
-                if ($wg) {
-                    $zip->addFromString($this->safeName("{$vpnUser->username}_wg.conf"), $wg);
-                }
-            }
-
-            // OVPN per server
+            // Add configs for all variants
             foreach ($servers as $server) {
-                $ovpn = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server);
-                $file = $this->safeName("{$server->name}_{$vpnUser->username}.ovpn");
-                $zip->addFromString($file, $ovpn);
+                $variants = [
+                    'unified' => 'Smart Profile (TCP+UDP)',
+                    'stealth' => 'TCP 443 Stealth',
+                    'udp' => 'UDP Traditional'
+                ];
+                
+                foreach ($variants as $variant => $description) {
+                    try {
+                        $ovpn = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server, $variant);
+                        $file = $this->safeName("{$server->name}_{$vpnUser->username}_{$variant}.ovpn");
+                        $zip->addFromString($file, $ovpn);
+                    } catch (Exception $e) {
+                        // Log error but continue with other configs
+                        Log::warning("Failed to generate {$variant} config for {$server->name}: " . $e->getMessage());
+                    }
+                }
+                
+                // Add WireGuard if supported
+                if ($server->wg_public_key) {
+                    try {
+                        $wg = VpnConfigBuilder::generateWireGuardConfigString($vpnUser, $server);
+                        $wgFile = $this->safeName("{$server->name}_{$vpnUser->username}_wireguard.conf");
+                        $zip->addFromString($wgFile, $wg);
+                    } catch (Exception $e) {
+                        Log::warning("Failed to generate WireGuard config for {$server->name}: " . $e->getMessage());
+                    }
+                }
             }
 
             $zip->close();
@@ -139,22 +161,32 @@ class VpnConfigController extends Controller
     }
 
     /**
-     * Live sessions JSON (unchanged, just type-hinted).
+     * Live sessions JSON - using enhanced connectivity check
      */
     public function showLiveSessions(VpnServer $vpnServer)
     {
         try {
-            $sessions = VpnConfigBuilder::getLiveOpenVpnSessions($vpnServer);
+            // Use the enhanced connectivity check which includes session info
+            $connectivity = VpnConfigBuilder::testOpenVpnConnectivity($vpnServer);
 
             return response()->json([
                 'success'        => true,
-                'server'         => ['id' => $vpnServer->id, 'name' => $vpnServer->name, 'ip_address' => $vpnServer->ip_address],
-                'sessions'       => $sessions,
-                'total_sessions' => count($sessions),
+                'server'         => [
+                    'id' => $vpnServer->id, 
+                    'name' => $vpnServer->name, 
+                    'ip_address' => $vpnServer->ip_address
+                ],
+                'connectivity'   => $connectivity,
+                'stealth_available' => $connectivity['openvpn_tcp_stealth'] ?? false,
+                'wireguard_available' => $connectivity['wireguard'] ?? false,
+                'private_dns_enabled' => $connectivity['private_dns'] ?? false,
                 'timestamp'      => now()->toISOString(),
             ]);
         } catch (Exception $e) {
-            return response()->json(['success' => false, 'error' => 'Failed to fetch live sessions: '.$e->getMessage()], 500);
+            return response()->json([
+                'success' => false, 
+                'error' => 'Failed to fetch server status: '.$e->getMessage()
+            ], 500);
         }
     }
 

@@ -85,6 +85,7 @@ class MobileProfileController extends Controller
         $data = $request->validate([
             'user_id'   => 'required|integer',
             'server_id' => 'required|integer',
+            'variant'   => 'nullable|string|in:unified,stealth,udp', // Support variant selection
         ]);
 
         /** @var VpnUser|null $authed */
@@ -104,11 +105,14 @@ class MobileProfileController extends Controller
             return response('Server not assigned to this user.', 403);
         }
 
+        // Default to unified (stealth + fallback) for best ISP bypass
+        $variant = $data['variant'] ?? 'unified';
+
         try {
-            $ovpn = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer);
+            $ovpn = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer, $variant);
         } catch (\Throwable $e) {
             Log::error('OVPN build failed', [
-                'u' => $vpnUser->id, 's' => $vpnServer->id, 'err' => $e->getMessage(),
+                'u' => $vpnUser->id, 's' => $vpnServer->id, 'variant' => $variant, 'err' => $e->getMessage(),
             ]);
             return response('Failed to generate config', 502);
         }

@@ -41,8 +41,8 @@ class VpnUsers extends Component
 
     public function generateOvpn(VpnUser $user)
     {
-        // 🔄 Dispatch job to generate OVPN file
+        // �️ Dispatch job to generate modern stealth OVPN configs
         \App\Jobs\GenerateOvpnFile::dispatch($user);
-        session()->flash('message', "OVPN file generation for {$user->username} has been queued.");
+        session()->flash('message', "Modern stealth OVPN configs for {$user->username} have been queued. Includes unified (TCP 443 + UDP fallback), stealth, and traditional variants.");
     }
 }

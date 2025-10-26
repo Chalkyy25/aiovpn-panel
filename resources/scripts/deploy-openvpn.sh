@@ -391,7 +391,7 @@ auth SHA256
 
 topology subnet
 server ${OVPN_SUBNET%/*} 255.255.255.0
-ifconfig-pool-persist ipp.txt
+ifconfig-pool-persist /etc/openvpn/ipp-udp.txt
 
 keepalive 10 60
 reneg-sec 0
@@ -471,7 +471,7 @@ auth SHA256
 
 topology subnet
 server ${TCP_SUBNET%/*} 255.255.255.0
-ifconfig-pool-persist /etc/openvpn/ipp.txt
+ifconfig-pool-persist /etc/openvpn/ipp-tcp.txt
 
 keepalive 10 60
 reneg-sec 0
@@ -482,13 +482,36 @@ persist-tun
 status /var/log/openvpn-status-tcp.log 10
 status-version 3
 verb 3
+management 127.0.0.1 7506
 script-security 3
 
 verify-client-cert none
 username-as-common-name
 auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
+
+# Routing and DNS
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS ${DNS1:-1.1.1.1}"
+push "dhcp-option DNS ${DNS2:-8.8.8.8}"
+
+# Throughput optimization
+sndbuf 0
+rcvbuf 0
+push "sndbuf 0"
+push "rcvbuf 0"
+
+tun-mtu 1500
+mssfix 1450
 CONF
     chmod 0644 "$TCP_CONF"
+  fi
+
+  # If private DNS is enabled, update TCP server DNS settings too
+  if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
+    sed -i '/^push "dhcp-option DNS /d' "$TCP_CONF"
+    sed -i '/^push "dhcp-option DOMAIN-ROUTE /d' "$TCP_CONF"
+    echo "push \"dhcp-option DNS ${WG_DNS_IP}\"" >> "$TCP_CONF"
+    echo "push \"dhcp-option DOMAIN-ROUTE .\""   >> "$TCP_CONF"
   fi
 
   # Firewall/NAT for TCP 443 and TCP subnet
@@ -608,6 +631,40 @@ systemctl disable --now ovpn-status-push.service 2>/dev/null || true
 systemctl enable --now ovpn-status-push.timer
 systemctl status --no-pager --full ovpn-status-push.timer >/dev/null 2>&1 || true
 
+# Add TCP status push if TCP stealth is enabled
+if [[ "${ENABLE_TCP_STEALTH}" = "1" ]]; then
+  logchunk "Install TCP OVPN status push agent"
+  cat >/etc/systemd/system/ovpn-status-push-tcp.service <<'SVC'
+[Unit]
+Description=Post OpenVPN TCP status (v3) to panel
+After=openvpn@server-tcp.service openvpn-server@server-tcp.service
+
+[Service]
+Type=oneshot
+Environment="STATUS_PATH=/var/log/openvpn-status-tcp.log"
+EnvironmentFile=-/etc/default/ovpn-status-push
+ExecStart=/usr/local/bin/ovpn-status-push.sh
+SVC
+
+  cat >/etc/systemd/system/ovpn-status-push-tcp.timer <<'TIM'
+[Unit]
+Description=Post OpenVPN TCP status (v3) to panel
+[Timer]
+OnBootSec=7s
+OnUnitActiveSec=5s
+AccuracySec=1s
+Unit=ovpn-status-push-tcp.service
+[Install]
+WantedBy=timers.target
+TIM
+
+  sed -i "s/OnUnitActiveSec=.*/OnUnitActiveSec=${STATUS_PUSH_INTERVAL}/" /etc/systemd/system/ovpn-status-push-tcp.timer || true
+  systemctl daemon-reload
+  systemctl disable --now ovpn-status-push-tcp.service 2>/dev/null || true
+  systemctl enable --now ovpn-status-push-tcp.timer
+  systemctl status --no-pager --full ovpn-status-push-tcp.timer >/dev/null 2>&1 || true
+fi
+
 ### ===== Mirror OVPN auth back to panel (optional) =====
 panel POST "/api/servers/$SERVER_ID/authfile" --file /etc/openvpn/auth/psw-file >/dev/null || true
 
@@ -617,7 +674,7 @@ mkdir -p "$GEN_DIR"
 CA_CONTENT="$(cat /etc/openvpn/ca.crt)"
 TA_CONTENT="$(cat /etc/openvpn/ta.key)"
 
-# UDP profile (stealthier control via tls-crypt)
+# UDP profile (modern crypto negotiation)
 cat > "${GEN_DIR}/aio-udp${OVPN_PORT}.ovpn" <<OVPN
 client
 dev tun
@@ -632,6 +689,11 @@ auth SHA256
 auth-user-pass
 auth-nocache
 verb 3
+
+# Modern cipher negotiation (OpenVPN 2.6+)
+data-ciphers-fallback AES-128-GCM
+pull-filter ignore "cipher"
+
 <tls-crypt>
 ${TA_CONTENT}
 </tls-crypt>
@@ -656,6 +718,19 @@ auth SHA256
 auth-user-pass
 auth-nocache
 verb 3
+
+# Enhanced TCP settings for better reliability
+connect-retry 3
+connect-retry-max 5
+connect-timeout 10
+hand-window 30
+
+# Modern cipher negotiation and performance
+data-ciphers-fallback AES-128-GCM
+pull-filter ignore "cipher"
+comp-lzo no
+mute-replay-warnings
+
 <tls-crypt>
 ${TA_CONTENT}
 </tls-crypt>
@@ -664,6 +739,46 @@ ${CA_CONTENT}
 </ca>
 OVPN
 fi
+
+# Unified profile with TCP 443 primary + UDP fallback
+cat > "${GEN_DIR}/aio-unified.ovpn" <<OVPN
+client
+dev tun
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+auth SHA256
+auth-user-pass
+auth-nocache
+verb 3
+
+# Primary: TCP 443 (stealth)
+remote ${OVPN_ENDPOINT_HOST} ${TCP_PORT} tcp
+
+# Fallback: UDP ${OVPN_PORT}
+remote ${OVPN_ENDPOINT_HOST} ${OVPN_PORT} ${OVPN_PROTO}
+
+# Enhanced connection settings
+connect-retry 2
+connect-retry-max 3
+connect-timeout 8
+hand-window 20
+
+# Modern cipher negotiation and performance
+data-ciphers-fallback AES-128-GCM
+pull-filter ignore "cipher"
+comp-lzo no
+mute-replay-warnings
+
+<tls-crypt>
+${TA_CONTENT}
+</tls-crypt>
+<ca>
+${CA_CONTENT}
+</ca>
+OVPN
 
 ### ===== Final facts =====
 panel POST "/api/servers/$SERVER_ID/deploy/facts" --json \
@@ -674,6 +789,10 @@ panel POST "/api/servers/$SERVER_ID/deploy/facts" --json \
    $(json_kv wg_public_key "$WG_PUB"),
    $(json_kv wg_endpoint_host "$WG_ENDPOINT_HOST"),
    $(json_kv ovpn_endpoint_host "$OVPN_ENDPOINT_HOST"),
+   \"ovpn_udp_port\": $OVPN_PORT,
+   \"tcp_stealth_enabled\": $([ "$ENABLE_TCP_STEALTH" = "1" ] && echo "true" || echo "false"),
+   \"tcp_port\": $TCP_PORT,
+   $(json_kv tcp_subnet "$TCP_SUBNET"),
    \"ip_forward\": 1 }" >/dev/null || true
 
 announce succeeded "WG-first + Stealth deployment complete"

@@ -68,11 +68,17 @@ public function download($id)
             'password' => $client->password
         ];
 
-        $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server);
+        // Default to unified stealth config for best ISP bypass
+        $variant = request()->get('variant', 'unified');
+        $configContent = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $server, $variant);
+
+        $filename = $variant === 'unified' ? 
+            "{$client->username}_stealth_unified.ovpn" : 
+            "{$client->username}_{$variant}.ovpn";
 
         return response($configContent)
             ->header('Content-Type', 'application/x-openvpn-profile')
-            ->header('Content-Disposition', "attachment; filename=\"{$client->username}.ovpn\"")
+            ->header('Content-Disposition', "attachment; filename=\"{$filename}\"")
             ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
             ->header('Pragma', 'no-cache')
             ->header('Expires', '0');

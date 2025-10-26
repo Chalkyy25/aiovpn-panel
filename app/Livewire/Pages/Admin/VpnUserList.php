@@ -52,17 +52,18 @@ class VpnUserList extends Component
     }
 
     /**
-     * Generate an OpenVPN config file for this user.
+     * Generate modern stealth-enabled OpenVPN configs for this user.
      */
     public function generateOvpn($id): void
     {
         $user = VpnUser::findOrFail($id);
 
+        // Use the updated GenerateOvpnFile job which now supports stealth configs
         GenerateOvpnFile::dispatch($user);
 
-        Log::info("📄 OVPN generation queued for user $user->username");
+        Log::info("�️ Modern stealth OVPN generation queued for user $user->username");
 
-        session()->flash('message', "OVPN file generation for $user->username has been queued.");
+        session()->flash('message', "Modern stealth OVPN configs for $user->username have been queued. Includes unified (TCP 443 + UDP fallback), stealth, and traditional variants.");
     }
 
     /**

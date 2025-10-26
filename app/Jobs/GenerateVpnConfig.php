@@ -3,9 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\VpnUser;
+use App\Services\VpnConfigBuilder;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -20,9 +20,9 @@ class GenerateVpnConfig implements ShouldQueue
 
     /**
      * @param VpnUser $vpnUser
-     * @param string $protocol ('openvpn' or 'wireguard')
+     * @param string $protocol ('openvpn', 'wireguard', or 'all')
      */
-    public function __construct(VpnUser $vpnUser, string $protocol)
+    public function __construct(VpnUser $vpnUser, string $protocol = 'all')
     {
         $this->vpnUser = $vpnUser->load('vpnServers');
         $this->protocol = strtolower($protocol);
@@ -30,128 +30,108 @@ class GenerateVpnConfig implements ShouldQueue
 
     public function handle(): void
     {
-        Log::info("🚀 Generating VPN configuration for {$this->vpnUser->username} using $this->protocol protocol.");
+        Log::info("🚀 Generating modern stealth VPN configs for {$this->vpnUser->username} using {$this->protocol} protocol(s).");
 
         foreach ($this->vpnUser->vpnServers as $server) {
-            if ($this->protocol === 'openvpn') {
-                $this->generateOvpnConfig($server);
-            } elseif ($this->protocol === 'wireguard') {
-                $this->generateWireguardConfig($server);
-            } else {
-                Log::warning("❌ Unknown VPN protocol: $this->protocol");
+            $serverConnectivity = VpnConfigBuilder::testOpenVpnConnectivity($server);
+            
+            if ($this->protocol === 'openvpn' || $this->protocol === 'all') {
+                $this->generateModernOvpnConfigs($server, $serverConnectivity);
+            }
+            
+            if ($this->protocol === 'wireguard' || $this->protocol === 'all') {
+                $this->generateWireguardConfig($server, $serverConnectivity);
             }
         }
 
-        Log::info("🎉 Finished generating configurations for {$this->vpnUser->username}.");
+        Log::info("🎉 Finished generating modern VPN configurations for {$this->vpnUser->username}.");
     }
 
-    protected function generateOvpnConfig($server): void
+    /**
+     * Generate modern OpenVPN configs with stealth support
+     */
+    protected function generateModernOvpnConfigs($server, $connectivity): void
     {
-        Log::info("🔧 Generating OVPN config for server: $server->name ($server->ip_address)");
+        Log::info("🔧 Generating modern OVPN configs for server: {$server->name} ({$server->ip_address})");
 
-        // Fetch server certificate files
-        $files = [
-            'ca' => '/etc/openvpn/ca.crt',
-            'ta' => '/etc/openvpn/ta.key',
-        ];
+        $variants = [];
+        
+        // Determine which variants to generate based on server capabilities
+        if ($connectivity['openvpn_tcp_stealth'] && $connectivity['openvpn_udp']) {
+            $variants[] = 'unified'; // Best option: stealth + fallback
+        }
+        
+        if ($connectivity['openvpn_tcp_stealth']) {
+            $variants[] = 'stealth'; // TCP 443 stealth
+        }
+        
+        if ($connectivity['openvpn_udp']) {
+            $variants[] = 'udp'; // Traditional UDP
+        }
 
-        $fetched = [];
-        foreach ($files as $label => $path) {
-            $content = $this->fetchRemoteFile($server->ip_address, $path, strtoupper($label));
-            if (!$content) {
-                Log::error("❌ [OVPN] Missing $label for server $server->name, skipping.");
-                return;
+        if (empty($variants)) {
+            Log::warning("❌ No OpenVPN services detected on {$server->name}");
+            return;
+        }
+
+        $generatedConfigs = [];
+        
+        foreach ($variants as $variant) {
+            try {
+                $config = VpnConfigBuilder::generateOpenVpnConfigString($this->vpnUser, $server, $variant);
+                
+                $generatedConfigs[] = [
+                    'variant' => $variant,
+                    'size' => strlen($config),
+                    'has_stealth' => str_contains($config, '443 tcp'),
+                    'is_unified' => substr_count($config, 'remote ') > 1
+                ];
+                
+                Log::info("✅ Generated {$variant} OpenVPN config", [
+                    'server' => $server->name,
+                    'user' => $this->vpnUser->username,
+                    'size_bytes' => strlen($config),
+                    'variant' => $variant
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::error("❌ Failed to generate {$variant} config for {$server->name}: " . $e->getMessage());
             }
-            $fetched[$label] = $content;
         }
 
-        // Build OVPN config
-        $username = $this->vpnUser->username;
-        $ip = $server->ip_address;
-
-        $config = <<<EOL
-# Auto-generated by AIOVPN
-client
-dev tun
-proto udp
-remote $ip 1194
-nobind
-persist-key
-persist-tun
-remote-cert-tls server
-auth SHA256
-cipher AES-256-GCM
-ncp-ciphers AES-256-GCM: AES-128-GCM
-auth-user-pass
-verb 3
-
-<ca>
-{$fetched['ca']}
-</ca>
-
-<tls-auth>
-{$fetched['ta']}
-</tls-auth>
-key-direction 1
-EOL;
-
-        // ✅ SECURITY FIX: No longer save configs to disk
-        // Configs are now generated on-demand via authenticated routes
-        $fileName = "{$server->name}_$username.ovpn";
-
-        Log::info("✅ [OVPN] Config prepared for on-demand generation: $fileName");
+        Log::info("📊 OpenVPN config generation summary", [
+            'server' => $server->name,
+            'user' => $this->vpnUser->username,
+            'configs_generated' => count($generatedConfigs),
+            'variants' => array_column($generatedConfigs, 'variant'),
+            'stealth_enabled' => in_array('stealth', array_column($generatedConfigs, 'variant')) || 
+                               in_array('unified', array_column($generatedConfigs, 'variant'))
+        ]);
     }
 
-    protected function generateWireguardConfig($server): void
+    /**
+     * Generate WireGuard config using modern builder
+     */
+    protected function generateWireguardConfig($server, $connectivity): void
     {
-        Log::info("🔧 Generating WireGuard config for server: $server->name ($server->ip_address)");
-
-        // Fetch public IP and keys
-        $userKeys = $this->vpnUser->only(['wireguard_private_key', 'wireguard_public_key', 'wireguard_address']);
-        if (empty($userKeys['wireguard_public_key']) || empty($userKeys['wireguard_address'])) {
-            Log::error("❌ [WG] Missing WireGuard keys for {$this->vpnUser->username}, skipping.");
+        if (!($connectivity['wireguard'] ?? false)) {
+            Log::info("ℹ️ WireGuard not available on {$server->name}, skipping");
             return;
         }
 
-        $serverPublicKey = $this->fetchRemoteFile($server->ip_address, '/etc/wireguard/server_public_key', 'SERVER_PUBLIC_KEY');
-        if (!$serverPublicKey) {
-            Log::error("❌ [WG] Failed to fetch server public key for $server->name, skipping.");
-            return;
+        Log::info("🔧 Generating WireGuard config for server: {$server->name} ({$server->ip_address})");
+
+        try {
+            $config = VpnConfigBuilder::generateWireGuardConfigString($this->vpnUser, $server);
+            
+            Log::info("✅ Generated WireGuard config", [
+                'server' => $server->name,
+                'user' => $this->vpnUser->username,
+                'size_bytes' => strlen($config)
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error("❌ Failed to generate WireGuard config for {$server->name}: " . $e->getMessage());
         }
-
-        // Generate WireGuard config
-        $clientConfig = <<<EOL
-[Interface]
-PrivateKey = {$userKeys['wireguard_private_key']}
-Address = {$userKeys['wireguard_address']}
-DNS = 8.8.8.8, 1.1.1.1
-
-[Peer]
-PublicKey = {$serverPublicKey}
-Endpoint = $server->ip_address:51820
-AllowedIPs = 0.0.0.0/0
-PersistentKeepalive = 15
-EOL;
-
-        // ✅ SECURITY FIX: No longer save configs to disk
-        // Configs are now generated on-demand via authenticated routes
-        $fileName = "{$server->name}_{$this->vpnUser->username}.conf";
-
-        Log::info("✅ [WG] Config prepared for on-demand generation: $fileName");
-    }
-
-    private function fetchRemoteFile(string $ip, string $remotePath, string $label): ?string
-    {
-        $sshKey = storage_path('app/ssh_keys/id_rsa');
-        $sshUser = 'root';
-        $command = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip 'cat $remotePath'";
-
-        exec($command, $output, $status);
-        if ($status !== 0 || empty($output)) {
-            Log::error("❌ Failed to fetch $label from $ip.");
-            return null;
-        }
-
-        return implode("\n", $output);
     }
 }

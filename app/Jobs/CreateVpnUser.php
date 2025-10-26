@@ -60,10 +60,15 @@ class CreateVpnUser implements ShouldQueue
             dispatch(new \App\Jobs\GenerateOvpnFile($vpnUser, $server));
         }
 
-        // 🛠️ Generate configs locally (optional if handled in jobs above)
-        VpnConfigBuilder::generate($vpnUser);
-        VpnConfigBuilder::generateWireGuard($vpnUser);
+        // 🛠️ Generate modern stealth configs (prioritizes unified profiles)
+        $configList = VpnConfigBuilder::generate($vpnUser);
+        
+        Log::info("🎯 Generated config list for {$this->username}", [
+            'total_configs' => count($configList),
+            'variants' => array_unique(array_column($configList, 'variant')),
+            'servers' => array_unique(array_column($configList, 'server_name'))
+        ]);
 
-        Log::info("🎉 Finished creating VPN user {$this->username} with config files.");
+        Log::info("🎉 Finished creating VPN user {$this->username} with stealth config files.");
     }
 }
