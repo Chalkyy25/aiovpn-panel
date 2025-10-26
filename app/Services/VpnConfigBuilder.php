@@ -300,6 +300,78 @@ OVPN;
     }
 
     /**
+     * Generate a generic stealth config for server (no user-specific auth)
+     * Perfect for mobile apps that will handle authentication separately
+     */
+    public static function generateGenericStealthConfig(VpnServer $server): string
+    {
+        $builder = new static();
+        [$ca, $ta] = $builder->fetchCertificatesFromServer($server);
+
+        if ($ca === '' || $ta === '') {
+            throw new Exception("Missing CA or TLS key for server {$server->name}");
+        }
+
+        $endpoint = $server->wg_endpoint_host ?: $server->hostname ?: $server->ip_address;
+        if (!$endpoint) {
+            throw new Exception("Server {$server->name} has no endpoint host/IP");
+        }
+
+        $cfg = <<<OVPN
+# === AIOVPN • {$server->name} (Stealth Mode) ===
+# Generic TCP 443 stealth config for AIO Smarters App
+# Bypasses ISP blocks by appearing as HTTPS traffic
+
+client
+dev tun
+proto tcp
+remote {$endpoint} 443
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+auth SHA256
+auth-user-pass
+auth-nocache
+verb 3
+
+# Optimized for mobile apps and ISP bypass
+connect-retry 1
+connect-retry-max 2
+connect-timeout 4
+
+# Modern cipher suite (iOS/Android compatible)
+data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
+data-ciphers-fallback AES-128-GCM
+cipher AES-128-GCM
+pull-filter ignore "cipher"
+pull-filter ignore "auth"
+
+# Mobile-optimized settings
+mute-replay-warnings
+tun-mtu 1500
+mssfix 1450
+
+<tls-crypt>
+{$ta}
+</tls-crypt>
+
+<ca>
+{$ca}
+</ca>
+OVPN;
+
+        Log::info('✅ Built generic stealth config for mobile app', [
+            'server' => $server->name,
+            'endpoint' => "{$endpoint}:443",
+            'mode' => 'GENERIC_TCP443_STEALTH'
+        ]);
+
+        return $cfg;
+    }
+
+    /**
      * Generate WireGuard config (if server supports it)
      */
     public static function generateWireGuardConfigString(VpnUser $vpnUser, VpnServer $server): string

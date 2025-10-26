@@ -51,6 +51,13 @@ Route::middleware('auth.panel-token')->group(function () {
 // Login (returns Sanctum token + user info)
 Route::post('/auth/login', [MobileAuthController::class, 'login']);
 
+// Public generic stealth configs (for AIO Smarters app)
+Route::prefix('stealth')->group(function () {
+    Route::get('/servers', [\App\Http\Controllers\Api\GenericStealthConfigController::class, 'servers']);
+    Route::get('/config/{serverId}', [\App\Http\Controllers\Api\GenericStealthConfigController::class, 'config']);
+    Route::get('/info/{serverId}', [\App\Http\Controllers\Api\GenericStealthConfigController::class, 'configInfo']);
+});
+
 // Authenticated mobile routes
 Route::middleware('auth:sanctum')->group(function () {
 
