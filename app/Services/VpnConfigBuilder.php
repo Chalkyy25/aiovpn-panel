@@ -28,24 +28,24 @@ class VpnConfigBuilder
         foreach ($vpnUser->vpnServers as $server) {
             $safeName = preg_replace('/[^\w\-]+/u', '_', $server->name);
             
-            // Priority 1: Unified profile (TCP 443 + UDP fallback) - RECOMMENDED
-            $items[] = [
-                'server_id'   => $server->id,
-                'server_name' => $server->name,
-                'filename'    => "{$safeName}_{$vpnUser->username}_unified.ovpn",
-                'variant'     => 'unified',
-                'priority'    => 1,
-                'description' => 'Smart profile: TCP 443 stealth with UDP fallback'
-            ];
-
-            // Priority 2: TCP 443 Stealth only
+            // Priority 1: TCP 443 Stealth only - RECOMMENDED for ISP bypass
             $items[] = [
                 'server_id'   => $server->id,
                 'server_name' => $server->name,
                 'filename'    => "{$safeName}_{$vpnUser->username}_stealth.ovpn",
                 'variant'     => 'stealth',
-                'priority'    => 2,
+                'priority'    => 1,
                 'description' => 'TCP 443 stealth mode (bypasses most ISP blocks)'
+            ];
+
+            // Priority 2: Unified profile (TCP 443 + UDP fallback)
+            $items[] = [
+                'server_id'   => $server->id,
+                'server_name' => $server->name,
+                'filename'    => "{$safeName}_{$vpnUser->username}_unified.ovpn",
+                'variant'     => 'unified',
+                'priority'    => 2,
+                'description' => 'Smart profile: TCP 443 stealth with UDP fallback'
             ];
 
             // Priority 3: UDP fallback
@@ -127,17 +127,17 @@ auth-user-pass
 auth-nocache
 verb 3
 
+# Connection attempts with fast failover for ISP testing
+remote-random
+connect-retry 1
+connect-retry-max 1
+connect-timeout 4
+
 # Primary: TCP 443 (stealth mode - bypasses ISP blocks)
 remote {$endpoint} 443 tcp
 
-# Fallback: UDP 1194 (traditional mode - faster)
+# Fallback: UDP 1194 (traditional mode - faster)  
 remote {$endpoint} 1194 udp
-
-# Enhanced connection settings for fast ISP block testing
-connect-retry 1
-connect-retry-max 2
-connect-timeout 5
-hand-window 20
 
 # Modern cipher negotiation (OpenVPN 2.6+ optimized)
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
@@ -199,11 +199,10 @@ auth-user-pass
 auth-nocache
 verb 3
 
-# Enhanced TCP settings for fast ISP block testing
+# Fast connection for ISP block testing
 connect-retry 1
-connect-retry-max 2
-connect-timeout 6
-hand-window 30
+connect-retry-max 1
+connect-timeout 4
 
 # Modern cipher negotiation and performance
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
@@ -231,12 +230,12 @@ mssfix 1450
 </ca>
 OVPN;
 
-        Log::info('✅ Built stealth OpenVPN config (TCP 443)', [
-            'user' => $username,
-            'server' => $serverName,
-            'endpoint' => "{$endpoint}:443",
-            'mode' => 'TCP443_STEALTH'
-        ]);
+        // Log::info('✅ Built stealth OpenVPN config (TCP 443)', [
+        //     'user' => $username,
+        //     'server' => $serverName,
+        //     'endpoint' => "{$endpoint}:443",
+        //     'mode' => 'TCP443_STEALTH'
+        // ]);
 
         return $cfg;
     }
