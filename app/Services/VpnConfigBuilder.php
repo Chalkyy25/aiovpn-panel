@@ -142,10 +142,11 @@ hand-window 20
 # Modern cipher negotiation (OpenVPN 2.6+ optimized)
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
+cipher AES-128-GCM
 pull-filter ignore "cipher"
+pull-filter ignore "auth"
 
 # Performance optimizations
-comp-lzo no
 mute-replay-warnings
 tun-mtu 1500
 mssfix 1450
@@ -207,8 +208,9 @@ hand-window 30
 # Modern cipher negotiation and performance
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
+cipher AES-128-GCM
 pull-filter ignore "cipher"
-comp-lzo no
+pull-filter ignore "auth"
 mute-replay-warnings
 
 # TCP-optimized MTU
@@ -266,7 +268,9 @@ verb 3
 # Modern cipher negotiation (OpenVPN 2.6+)
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
+cipher AES-128-GCM
 pull-filter ignore "cipher"
+pull-filter ignore "auth"
 
 # UDP optimizations
 explicit-exit-notify 3
