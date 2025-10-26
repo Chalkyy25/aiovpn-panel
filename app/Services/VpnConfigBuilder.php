@@ -133,10 +133,10 @@ remote {$endpoint} 443 tcp
 # Fallback: UDP 1194 (traditional mode - faster)
 remote {$endpoint} 1194 udp
 
-# Enhanced connection settings for reliability
-connect-retry 2
-connect-retry-max 3
-connect-timeout 8
+# Enhanced connection settings for fast ISP block testing
+connect-retry 1
+connect-retry-max 2
+connect-timeout 5
 hand-window 20
 
 # Modern cipher negotiation (OpenVPN 2.6+ optimized)
@@ -165,12 +165,12 @@ mssfix 1450
 </ca>
 OVPN;
 
-        Log::info('✅ Built unified OpenVPN config (stealth+fallback)', [
-            'user' => $username,
-            'server' => $serverName,
-            'endpoint' => $endpoint,
-            'mode' => 'TCP443+UDP1194'
-        ]);
+        // Log::info('✅ Built unified OpenVPN config (stealth+fallback)', [
+        //     'user' => $username,
+        //     'server' => $serverName,
+        //     'endpoint' => $endpoint,
+        //     'mode' => 'TCP443+UDP1194'
+        // ]);
 
         return $cfg;
     }
@@ -199,10 +199,10 @@ auth-user-pass
 auth-nocache
 verb 3
 
-# Enhanced TCP settings for better reliability through ISP throttling
-connect-retry 3
-connect-retry-max 5
-connect-timeout 10
+# Enhanced TCP settings for fast ISP block testing
+connect-retry 1
+connect-retry-max 2
+connect-timeout 6
 hand-window 30
 
 # Modern cipher negotiation and performance
