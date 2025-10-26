@@ -181,13 +181,26 @@ systemctl --no-pager --full status wg-quick@wg0 2>&1 | sed -e 's/"/\"/g' | while
 
 WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
 ok_iface=0
-for i in {1..20}; do
-  if ip -4 addr show dev wg0 2>/div/null | grep -q " ${WG_DNS_IP}/"; then ok_iface=1; break; fi
+for i in {1..30}; do
+  # Check if wg0 interface exists and has the expected IP
+  if ip -4 addr show dev wg0 2>/dev/null | grep -q " ${WG_DNS_IP}/"; then 
+    ok_iface=1
+    logchunk "wg0 interface verified with IP ${WG_DNS_IP}"
+    break
+  fi
+  # Also check if interface exists at all
+  if ip link show wg0 2>/dev/null >/dev/null; then
+    logchunk "wg0 interface exists, waiting for IP assignment... (attempt $i/30)"
+  else
+    logchunk "wg0 interface not found, waiting... (attempt $i/30)"
+  fi
   sleep 0.5
 done
 if [ "$ok_iface" -ne 1 ]; then
-  logchunk "wg0 did not come up with ${WG_DNS_IP}. Dumping journal:"
-  journalctl -u wg-quick@wg0 --no-pager -n 100 2>&1 | sed -e 's/"/\"/g' | while IFS= read -r L; do logchunk "$L"; done
+  logchunk "wg0 did not come up with ${WG_DNS_IP}. Current interface status:"
+  ip -4 addr show dev wg0 2>/dev/null || logchunk "wg0 interface not found"
+  logchunk "Dumping systemd journal:"
+  journalctl -u wg-quick@wg0 --no-pager -n 100 2>&1 | sed -e 's/"/\\"/g' | while IFS= read -r L; do logchunk "$L"; done
   fail "WireGuard (wg0) failed to start; check wg0.conf or kernel module"
 fi
 
