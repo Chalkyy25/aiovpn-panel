@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ╭──────────────────────────────────────────────────────────────────────────╮
-# │  A I O V P N — WG-first Deploy (WireGuard + OpenVPN fallback + DNS)      │
+# │  A I O V P N — WG-first Deploy (WireGuard + OpenVPN+Stealth + DNS)       │
 # │  Idempotent • Hardened • Ubuntu 22.04/24.04                              │
 # ╰──────────────────────────────────────────────────────────────────────────╯
 set -euo pipefail
@@ -14,6 +14,12 @@ set -euo pipefail
 PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"              # 1=notify panel, 0=quiet
 STATUS_PUSH_INTERVAL="${STATUS_PUSH_INTERVAL:-5s}"   # OpenVPN status push interval
 ENABLE_PRIVATE_DNS="${ENABLE_PRIVATE_DNS:-1}"        # 1=Unbound bound to WG VPN IP
+
+# Stealth/OpenVPN extras
+ENABLE_TCP_STEALTH="${ENABLE_TCP_STEALTH:-1}"        # 1=add parallel TCP/443 instance
+TCP_PORT="${TCP_PORT:-443}"
+TCP_SUBNET="${TCP_SUBNET:-10.8.100.0/24}"
+OVPN_ENDPOINT_HOST="${OVPN_ENDPOINT_HOST:-}"         # Defaults to WG endpoint if empty
 
 ### ===== Network/VPN defaults =====
 # WireGuard (primary)
@@ -124,6 +130,10 @@ if [[ -z "$WG_ENDPOINT_HOST" ]]; then
   [[ -n "$WG_ENDPOINT_HOST" ]] || fail "Could not detect public IPv4; set WG_ENDPOINT_HOST"
 fi
 logchunk "WG endpoint = ${WG_ENDPOINT_HOST}:${WG_PORT}"
+# Use WG endpoint as OpenVPN endpoint if not explicitly set
+if [[ -z "${OVPN_ENDPOINT_HOST}" ]]; then
+  OVPN_ENDPOINT_HOST="${WG_ENDPOINT_HOST}"
+fi
 
 ### ===== WireGuard (primary) =====
 logchunk "Configure WireGuard (wg0)"
@@ -172,7 +182,7 @@ systemctl --no-pager --full status wg-quick@wg0 2>&1 | sed -e 's/"/\"/g' | while
 WG_DNS_IP="$(printf '%s\n' "$WG_SRV_IP" | cut -d/ -f1)"
 ok_iface=0
 for i in {1..20}; do
-  if ip -4 addr show dev wg0 2>/dev/null | grep -q " ${WG_DNS_IP}/"; then ok_iface=1; break; fi
+  if ip -4 addr show dev wg0 2>/div/null | grep -q " ${WG_DNS_IP}/"; then ok_iface=1; break; fi
   sleep 0.5
 done
 if [ "$ok_iface" -ne 1 ]; then
@@ -290,7 +300,7 @@ EOF
   # Allow DNS from VPN interfaces
   iptables -C INPUT -i wg0 -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i wg0 -p udp --dport 53 -j ACCEPT
   iptables -C INPUT -i wg0 -p tcp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i wg0 -p tcp --dport 53 -j ACCEPT
-  # NEW: allow OVPN clients on tun0 to reach DNS bound to 10.66.66.1
+  # Allow OVPN clients on tun0 to reach DNS bound to WG IP
   iptables -C INPUT -i tun0 -d ${bind_ip} -p udp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i tun0 -d ${bind_ip} -p udp --dport 53 -j ACCEPT
   iptables -C INPUT -i tun0 -d ${bind_ip} -p tcp --dport 53 -j ACCEPT 2>/dev/null || iptables -A INPUT -i tun0 -d ${bind_ip} -p tcp --dport 53 -j ACCEPT
 
@@ -299,8 +309,8 @@ EOF
 }
 install_private_dns
 
-### ===== OpenVPN (fallback) =====
-logchunk "Configure OpenVPN (fallback)"
+### ===== OpenVPN (fallback + stealth) =====
+logchunk "Configure OpenVPN (fallback & stealth)"
 install -d -m 0755 /etc/openvpn/easy-rsa
 cp -a /usr/share/easy-rsa/* /etc/openvpn/easy-rsa 2>/dev/null || true
 pushd /etc/openvpn/easy-rsa >/dev/null
@@ -348,9 +358,9 @@ echo "$TS: FAIL $USER" >>"$LOG_FILE"; exit 1
 SH
 chmod 0755 /etc/openvpn/auth/checkpsw.sh
 
-# server.conf
+# server.conf (UDP Fallback) — switched to tls-crypt
 cat >/etc/openvpn/server.conf <<CONF
-# === AIOVPN • OpenVPN (Fallback) ===
+# === AIOVPN • OpenVPN (Fallback, UDP) ===
 port $OVPN_PORT
 proto $OVPN_PROTO
 dev tun
@@ -359,7 +369,7 @@ ca ca.crt
 cert server.crt
 key server.key
 dh dh.pem
-tls-auth ta.key 0
+tls-crypt ta.key
 tls-version-min 1.2
 
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
@@ -412,7 +422,7 @@ if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
   echo "push \"dhcp-option DOMAIN-ROUTE .\""   >> "$OVPN_CONF"
 fi
 
-# NAT + OVPN firewall
+# NAT + OVPN firewall (UDP)
 iptables -t nat -C POSTROUTING -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o "$DEF_IFACE" -j MASQUERADE
 iptables -C INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT 2>/dev/null || iptables -A INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT
 iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
@@ -420,7 +430,65 @@ iptables-save >/etc/iptables/rules.v4 || true
 
 systemctl enable openvpn@server
 systemctl restart openvpn@server
-systemctl is-active --quiet openvpn@server || fail "OpenVPN failed to start"
+systemctl is-active --quiet openvpn@server || fail "OpenVPN (UDP) failed to start"
+
+# Optional: parallel TCP/443 stealth instance
+if [[ "${ENABLE_TCP_STEALTH}" = "1" ]]; then
+  logchunk "Configuring OpenVPN TCP stealth on :${TCP_PORT}"
+  TCP_CONF="/etc/openvpn/server-tcp.conf"
+  [[ -s /etc/openvpn/ta.key ]] || { openvpn --genkey --secret /etc/openvpn/ta.key; chmod 600 /etc/openvpn/ta.key; }
+
+  if [[ ! -f "$TCP_CONF" ]]; then
+    cat >"$TCP_CONF" <<CONF
+# === AIOVPN • OpenVPN (Stealth, TCP 443) ===
+port ${TCP_PORT}
+proto tcp
+dev tun
+
+ca /etc/openvpn/ca.crt
+cert /etc/openvpn/server.crt
+key /etc/openvpn/server.key
+dh /etc/openvpn/dh.pem
+tls-crypt /etc/openvpn/ta.key
+tls-version-min 1.2
+
+data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
+data-ciphers-fallback AES-128-GCM
+auth SHA256
+
+topology subnet
+server ${TCP_SUBNET%/*} 255.255.255.0
+ifconfig-pool-persist /etc/openvpn/ipp.txt
+
+keepalive 10 60
+reneg-sec 0
+
+persist-key
+persist-tun
+
+status /var/log/openvpn-status-tcp.log 10
+status-version 3
+verb 3
+script-security 3
+
+verify-client-cert none
+username-as-common-name
+auth-user-pass-verify /etc/openvpn/auth/checkpsw.sh via-file
+CONF
+    chmod 0644 "$TCP_CONF"
+  fi
+
+  # Firewall/NAT for TCP 443 and TCP subnet
+  iptables -C INPUT -p tcp --dport "${TCP_PORT}" -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport "${TCP_PORT}" -j ACCEPT
+  iptables -t nat -C POSTROUTING -s "${TCP_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -A POSTROUTING -s "${TCP_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE
+  iptables-save >/etc/iptables/rules.v4 || true
+
+  # Start TCP instance (handle both unit naming styles)
+  systemctl enable openvpn@server-tcp 2>/dev/null || true
+  systemctl enable openvpn-server@server-tcp 2>/dev/null || true
+  systemctl restart openvpn@server-tcp 2>/dev/null || systemctl restart openvpn-server@server-tcp || true
+fi
 
 ### ===== Quick DNS sanity =====
 if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
@@ -458,13 +526,17 @@ try:
         if not cn: continue
         real=col('Real Address') or None
         real_ip=real.split(':')[0] if real else None
-        rx=int(col('Bytes Received','0') or 0); tx=int(col('Bytes Sent','0') or 0)
+        def to_int(x): 
+          try: return int(x)
+          except: return None
+        rx=to_int(col('Bytes Received','0') or 0) or 0
+        tx=to_int(col('Bytes Sent','0') or 0) or 0
         ts=col('Connected Since (time_t)','') or ''
         cid=col('Client ID','') or None
         clients[cn]={"username":cn,"client_ip":real_ip,"virtual_ip":None,
                      "bytes_received":rx,"bytes_sent":tx,
-                     "connected_at": int(ts) if ts.isdigit() else None,
-                     "client_id": int(cid) if (cid and cid.isdigit()) else None}
+                     "connected_at": to_int(ts),
+                     "client_id": to_int(cid)}
       elif tag=='ROUTING_TABLE':
         def col(h,default=''):
           i=hdr_RT.get(h); return row[i] if i is not None and i<len(row) else default
@@ -518,21 +590,78 @@ ENV
 
 sed -i "s/OnUnitActiveSec=.*/OnUnitActiveSec=${STATUS_PUSH_INTERVAL}/" /etc/systemd/system/ovpn-status-push.timer || true
 systemctl daemon-reload
+# ensure only the timer runs the oneshot
+systemctl disable --now ovpn-status-push.service 2>/dev/null || true
 systemctl enable --now ovpn-status-push.timer
 systemctl status --no-pager --full ovpn-status-push.timer >/dev/null 2>&1 || true
 
 ### ===== Mirror OVPN auth back to panel (optional) =====
 panel POST "/api/servers/$SERVER_ID/authfile" --file /etc/openvpn/auth/psw-file >/dev/null || true
 
+### ===== Emit client profiles (tls-crypt) =====
+GEN_DIR="/root/clients"
+mkdir -p "$GEN_DIR"
+CA_CONTENT="$(cat /etc/openvpn/ca.crt)"
+TA_CONTENT="$(cat /etc/openvpn/ta.key)"
+
+# UDP profile (stealthier control via tls-crypt)
+cat > "${GEN_DIR}/aio-udp${OVPN_PORT}.ovpn" <<OVPN
+client
+dev tun
+proto ${OVPN_PROTO}
+remote ${OVPN_ENDPOINT_HOST} ${OVPN_PORT}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+auth SHA256
+auth-user-pass
+auth-nocache
+verb 3
+<tls-crypt>
+${TA_CONTENT}
+</tls-crypt>
+<ca>
+${CA_CONTENT}
+</ca>
+OVPN
+
+# TCP stealth profile (if enabled)
+if [[ "${ENABLE_TCP_STEALTH}" = "1" ]]; then
+cat > "${GEN_DIR}/aio-tcp${TCP_PORT}.ovpn" <<OVPN
+client
+dev tun
+proto tcp
+remote ${OVPN_ENDPOINT_HOST} ${TCP_PORT}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+auth SHA256
+auth-user-pass
+auth-nocache
+verb 3
+<tls-crypt>
+${TA_CONTENT}
+</tls-crypt>
+<ca>
+${CA_CONTENT}
+</ca>
+OVPN
+fi
+
 ### ===== Final facts =====
 panel POST "/api/servers/$SERVER_ID/deploy/facts" --json \
 "{ $(json_kv iface "$DEF_IFACE"),
-   $(json_kv proto "wireguard+openvpn"),
+   $(json_kv proto "wireguard+openvpn-stealth"),
    \"mgmt_port\": $MGMT_PORT,
    \"wg_port\": $WG_PORT,
    $(json_kv wg_public_key "$WG_PUB"),
    $(json_kv wg_endpoint_host "$WG_ENDPOINT_HOST"),
+   $(json_kv ovpn_endpoint_host "$OVPN_ENDPOINT_HOST"),
    \"ip_forward\": 1 }" >/dev/null || true
 
-announce succeeded "WG-first deployment complete"
+announce succeeded "WG-first + Stealth deployment complete"
 echo "✅ Done $(date -Is)"
