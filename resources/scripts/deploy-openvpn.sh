@@ -260,6 +260,14 @@ install_private_dns
 
 ### ===== OpenVPN (fallback + stealth) =====
 logchunk "Configure OpenVPN (fallback & stealth)"
+
+# Stop and disable legacy openvpn@ services to avoid port conflicts
+logchunk "Stopping legacy openvpn@ services if present"
+systemctl stop openvpn@server 2>/dev/null || true
+systemctl disable openvpn@server 2>/dev/null || true
+systemctl stop openvpn@server-tcp 2>/dev/null || true
+systemctl disable openvpn@server-tcp 2>/dev/null || true
+
 install -d -m 0755 /etc/openvpn/easy-rsa
 cp -a /usr/share/easy-rsa/* /etc/openvpn/easy-rsa 2>/dev/null || true
 pushd /etc/openvpn/easy-rsa >/dev/null
@@ -307,17 +315,23 @@ chmod 0755 /etc/openvpn/auth/checkpsw.sh
 install -d -m 0755 /etc/openvpn/server
 install -d -m 0755 /etc/openvpn/client
 
+# Stop and disable legacy openvpn@ services to avoid port conflicts
+systemctl stop openvpn@server 2>/dev/null || true
+systemctl disable openvpn@server 2>/dev/null || true
+systemctl stop openvpn@server-tcp 2>/dev/null || true
+systemctl disable openvpn@server-tcp 2>/dev/null || true
+
 # === UDP server.conf (CHANGED: consistent status path) ===
 cat >/etc/openvpn/server/server.conf <<CONF
 # === AIOVPN • OpenVPN (Fallback, UDP) ===
 port $OVPN_PORT
 proto $OVPN_PROTO
 dev tun
-ca ca.crt
-cert server.crt
-key server.key
-dh dh.pem
-tls-crypt ta.key
+ca /etc/openvpn/ca.crt
+cert /etc/openvpn/server.crt
+key /etc/openvpn/server.key
+dh /etc/openvpn/dh.pem
+tls-crypt /etc/openvpn/ta.key
 tls-version-min 1.2
 data-ciphers AES-128-GCM:CHACHA20-POLY1305:AES-256-GCM
 data-ciphers-fallback AES-128-GCM
