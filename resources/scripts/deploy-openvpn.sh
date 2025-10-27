@@ -2,7 +2,7 @@
 # ╭──────────────────────────────────────────────────────────────────────────╮
 # │  A I O V P N — WG-first Deploy (WireGuard + OpenVPN+Stealth + DNS)       │
 # │  Idempotent • Hardened • Ubuntu 22.04/24.04                              │
-# │  CHANGE: Consistent OpenVPN status paths in /var/log for UDP & TCP       │
+# │  CHANGE: Merged UDP+TCP monitoring via mgmt interface (real-time hooks)  │
 # ╰──────────────────────────────────────────────────────────────────────────╯
 set -euo pipefail
 
@@ -444,128 +444,117 @@ if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
   dig @"$WG_DNS_IP" example.com +short || echo "[DNS] dig check failed (verify wg0 up and client reachability)"
 fi
 
-### ===== OpenVPN status push agents (CHANGED defaults) =====
-logchunk "Install OVPN status push agent(s)"
-cat >/usr/local/bin/ovpn-status-push.sh <<'AGENT'
+### ===== OpenVPN merged status push (UDP + TCP) =====
+logchunk "Install merged OVPN status push agent"
+cat >/usr/local/bin/ovpn-mgmt-push.sh <<'AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
-PANEL_URL="${PANEL_URL:?}"; SERVER_ID="${SERVER_ID:?}"; PANEL_TOKEN="${PANEL_TOKEN:?}"
-STATUS_PATH="${STATUS_PATH:?}"
-JSON_PAYLOAD="$(
-/usr/bin/env python3 - <<'PY'
-import sys,csv,json,datetime,os
-p=os.environ.get("STATUS_PATH","")
-clients,virt={},{}
-hdr_CL, hdr_RT = {}, {}
-try:
-  with open(p,'r',newline='') as f:
-    s=f.read(4096); f.seek(0)
-    d=',' if s.count(',')>=s.count('\t') else '\t'
-    r=csv.reader(f,delimiter=d)
-    for row in r:
-      if not row: continue
-      tag=row[0]
-      if tag=='HEADER' and len(row)>2:
-        if row[1]=='CLIENT_LIST': hdr_CL={n:i for i,n in enumerate(row)}
-        elif row[1]=='ROUTING_TABLE': hdr_RT={n:i for i,n in enumerate(row)}
-        continue
-      if tag=='CLIENT_LIST':
-        def col(h,default=''):
-          i=hdr_CL.get(h); return row[i] if i is not None and i<len(row) else default
-        cn=col('Common Name') or col('Username') or ''
-        if not cn: continue
-        real=col('Real Address') or None
-        real_ip=real.split(':')[0] if real else None
-        def to_int(x):
-          try: return int(x)
-          except: return None
-        rx=to_int(col('Bytes Received','0') or 0) or 0
-        tx=to_int(col('Bytes Sent','0') or 0) or 0
-        ts=to_int(col('Connected Since (time_t)','') or 0) or None
-        cid=to_int(col('Client ID','') or 0) or None
-        clients[cn]={"username":cn,"client_ip":real_ip,"virtual_ip":None,
-                     "bytes_received":rx,"bytes_sent":tx,
-                     "connected_at": ts,"client_id": cid}
-      elif tag=='ROUTING_TABLE':
-        def col(h,default=''):
-          i=hdr_RT.get(h); return row[i] if i is not None and i<len(row) else default
-        virt[col('Common Name','')]=col('Virtual Address') or None
-except FileNotFoundError:
-  pass
-for cn,ip in virt.items():
-  if cn in clients and ip: clients[cn]["virtual_ip"]=ip
-u=list(clients.values())
-print(json.dumps({"status":"mgmt","ts":datetime.datetime.utcnow().isoformat()+"Z",
-                  "clients":len(u),"users":u,
-                  "cn_list":",".join([x["username"] for x in u])}, separators=(",",":")))
-PY
-)"
-curl -sS -X POST -H "Authorization: Bearer ${PANEL_TOKEN}" -H "Content-Type: application/json" \
-  --data-raw "${JSON_PAYLOAD}" \
-  "${PANEL_URL%/}/api/servers/${SERVER_ID}/events" >/dev/null 2>&1 || true
-AGENT
-chmod 0755 /usr/local/bin/ovpn-status-push.sh
+. /etc/default/ovpn-status-push 2>/dev/null || true
+: "${PANEL_URL:?}"; : "${PANEL_TOKEN:?}"; : "${SERVER_ID:?}"
 
-# Default env (UDP path)
+parse() { python3 - "$@" <<'PY'
+import sys,csv,json,datetime
+def parse_status(txt):
+    clients,virt,hCL,hRT={}, {}, {}, {}
+    for row in csv.reader(txt.splitlines()):
+        if not row: continue
+        tag=row[0]
+        if tag=='HEADER' and len(row)>2:
+            if row[1]=='CLIENT_LIST': hCL={n:i for i,n in enumerate(row)}
+            elif row[1]=='ROUTING_TABLE': hRT={n:i for i,n in enumerate(row)}
+            continue
+        if tag=='CLIENT_LIST':
+            def col(h,d=''): i=hCL.get(h); return row[i] if i is not None and i<len(row) else d
+            cn=col('Common Name') or col('Username')
+            if not cn: continue
+            real=col('Real Address') or ''
+            real_ip=real.split(':')[0] if real else None
+            def toint(x):
+                try: return int(x)
+                except: return 0
+            clients[cn]={"username":cn,"client_ip":real_ip,"virtual_ip":None,
+                         "bytes_received":toint(col('Bytes Received','0')),
+                         "bytes_sent":toint(col('Bytes Sent','0')),
+                         "connected_at":toint(col('Connected Since (time_t)','0'))}
+        elif tag=='ROUTING_TABLE':
+            def col(h,d=''): i=hRT.get(h); return row[i] if i is not None and i<len(row) else d
+            virt[col('Common Name','')]=col('Virtual Address') or None
+    for cn,ip in virt.items():
+        if cn in clients and ip: clients[cn]["virtual_ip"]=ip
+    return list(clients.values())
+
+merged=[]
+for txt in sys.stdin.read().split("\n===SPLIT===\n"):
+    if txt.strip():
+        merged.extend(parse_status(txt))
+print(json.dumps({"status":"mgmt","ts":datetime.datetime.utcnow().isoformat()+"Z",
+                  "clients":len(merged),"users":merged}, separators=(',',':')))
+PY
+}
+post(){ curl -fsS -X POST -H "Authorization: Bearer ${PANEL_TOKEN}" \
+        -H "Content-Type: application/json" \
+        --data-raw "$(cat)" "${PANEL_URL%/}/api/servers/${SERVER_ID}/events" >/dev/null || true; }
+
+collect() {
+  local out=""
+  for p in ${MGMT_PORT} ${MGMT_TCP_PORT}; do
+    if nc -z 127.0.0.1 "$p" 2>/dev/null; then
+      out+=$( ( printf "status 3\nquit\n" | nc -w 2 127.0.0.1 "$p" ) || true )
+      out+="\n===SPLIT===\n"
+    fi
+  done
+  printf "%b" "$out"
+}
+collect | parse | post
+AGENT
+chmod 0755 /usr/local/bin/ovpn-mgmt-push.sh
+
+# Environment variables
 cat >/etc/default/ovpn-status-push <<ENV
 PANEL_URL="$PANEL_URL"
 PANEL_TOKEN="$PANEL_TOKEN"
 SERVER_ID="$SERVER_ID"
-STATUS_PATH="${STATUS_UDP_PATH}"
+MGMT_PORT="${MGMT_PORT}"
+MGMT_TCP_PORT="${MGMT_TCP_PORT}"
 ENV
 
-# UDP status push timer
-cat >/etc/systemd/system/ovpn-status-push.service <<'SVC'
+# Systemd service (oneshot)
+cat >/etc/systemd/system/ovpn-mgmt-push.service <<'SVC'
 [Unit]
-Description=Post OpenVPN status (v3) to panel
-After=openvpn@server.service
+Description=Push merged OpenVPN mgmt status to panel
+After=openvpn-server@server.service openvpn-server@server-tcp.service
 [Service]
 Type=oneshot
 EnvironmentFile=-/etc/default/ovpn-status-push
-ExecStart=/usr/local/bin/ovpn-status-push.sh
+ExecStart=/usr/local/bin/ovpn-mgmt-push.sh
 SVC
-cat >/etc/systemd/system/ovpn-status-push.timer <<'TIM'
+
+# Systemd timer (2s fallback + real-time hooks)
+cat >/etc/systemd/system/ovpn-mgmt-push.timer <<'TIM'
 [Unit]
-Description=Post OpenVPN status (v3) to panel
+Description=Push OpenVPN mgmt status every 2s (fallback)
 [Timer]
-OnBootSec=5s
-OnUnitActiveSec=5s
+OnBootSec=3s
+OnUnitActiveSec=2s
 AccuracySec=1s
-Unit=ovpn-status-push.service
+Unit=ovpn-mgmt-push.service
 [Install]
 WantedBy=timers.target
 TIM
 
-# TCP status push timer with explicit path override
-cat >/etc/systemd/system/ovpn-status-push-tcp.service <<SVC
-[Unit]
-Description=Post OpenVPN TCP status (v3) to panel
-After=openvpn-server@server-tcp.service
-[Service]
-Type=oneshot
-Environment="STATUS_PATH=${STATUS_TCP_PATH}"
-EnvironmentFile=-/etc/default/ovpn-status-push
-ExecStart=/usr/local/bin/ovpn-status-push.sh
-SVC
-cat >/etc/systemd/system/ovpn-status-push-tcp.timer <<'TIM'
-[Unit]
-Description=Post OpenVPN TCP status (v3) to panel
-[Timer]
-OnBootSec=7s
-OnUnitActiveSec=5s
-AccuracySec=1s
-Unit=ovpn-status-push-tcp.service
-[Install]
-WantedBy=timers.target
-TIM
+# Add real-time hooks to OpenVPN configs
+for conf in /etc/openvpn/server/server.conf /etc/openvpn/server/server-tcp.conf; do
+  if [[ -f "$conf" ]]; then
+    sed -i '/^client-connect\|^client-disconnect/d' "$conf"
+    echo 'client-connect "/usr/local/bin/ovpn-mgmt-push.sh"' >> "$conf"
+    echo 'client-disconnect "/usr/local/bin/ovpn-mgmt-push.sh"' >> "$conf"
+  fi
+done
 
-# Apply interval override
-sed -i "s/OnUnitActiveSec=.*/OnUnitActiveSec=${STATUS_PUSH_INTERVAL}/" /etc/systemd/system/ovpn-status-push.timer
-sed -i "s/OnUnitActiveSec=.*/OnUnitActiveSec=${STATUS_PUSH_INTERVAL}/" /etc/systemd/system/ovpn-status-push-tcp.timer
+# Enable the merged timer and disable old separate timers
 systemctl daemon-reload
-systemctl disable --now ovpn-status-push.service ovpn-status-push-tcp.service 2>/dev/null || true
-systemctl enable --now ovpn-status-push.timer
-[[ "${ENABLE_TCP_STEALTH}" = "1" ]] && systemctl enable --now ovpn-status-push-tcp.timer || true
+systemctl disable --now ovpn-status-push.timer ovpn-status-push-tcp.timer 2>/dev/null || true
+systemctl enable --now ovpn-mgmt-push.timer
 
 ### ===== Mirror OVPN auth back to panel (optional) =====
 panel POST "/api/servers/$SERVER_ID/authfile" --file /etc/openvpn/auth/psw-file >/dev/null || true
@@ -683,5 +672,5 @@ panel POST "/api/servers/$SERVER_ID/deploy/facts" --json \
    $(json_kv status_tcp "$STATUS_TCP_PATH"),
    \"ip_forward\": 1 }" >/dev/null || true
 
-announce succeeded "WG-first + Stealth deployment complete (consistent status paths)"
+announce succeeded "WG-first + Stealth deployment complete (merged UDP+TCP monitoring)"
 echo "✅ Done $(date -Is)"
