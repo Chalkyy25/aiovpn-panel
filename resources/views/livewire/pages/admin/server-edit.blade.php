@@ -79,7 +79,7 @@
 
       <div class="md:col-span-2">
         <label class="block text-xs text-[var(--aio-sub)] mb-1">Health Check Command</label>
-        <input type="text" wire:model.defer="health_check_cmd" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="systemctl is-active openvpn@server">
+        <input type="text" wire:model.defer="health_check_cmd" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="systemctl is-active openvpn-server@server">
         @error('health_check_cmd') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
       </div>
       <div>

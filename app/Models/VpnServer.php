@@ -284,10 +284,10 @@ class VpnServer extends Model
             $ssh = $this->executeRemoteCommand($this, 'echo ok');
             if (($ssh['status'] ?? 1) !== 0) return false;
 
-            // 2) OpenVPN active?
+            // 2) OpenVPN active? Check modern service first, fallback to legacy
             $svc = $this->executeRemoteCommand(
                 $this,
-                'systemctl is-active openvpn@server || systemctl is-active openvpn || echo inactive'
+                'systemctl is-active openvpn-server@server || systemctl is-active openvpn@server || systemctl is-active openvpn || echo inactive'
             );
             $active = ($svc['status'] === 0)
                 && collect($svc['output'] ?? [])->contains(fn($l) => trim($l) === 'active');

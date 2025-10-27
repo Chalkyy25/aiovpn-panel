@@ -131,8 +131,9 @@ class ServerShow extends Component
     public function restartVpn(): void
     {
         try {
-            $this->makeSshClient()->exec('systemctl restart openvpn@server');
-            session()->flash('message', '✅ OpenVPN restarted.');
+            // Restart both modern services (UDP and TCP if enabled)
+            $this->makeSshClient()->exec('systemctl restart openvpn-server@server; systemctl is-enabled openvpn-server@server-tcp 2>/dev/null && systemctl restart openvpn-server@server-tcp || true');
+            session()->flash('message', '✅ OpenVPN services restarted.');
         } catch (Throwable $e) {
             session()->flash('message', '❌ Restart failed: ' . $e->getMessage());
         }

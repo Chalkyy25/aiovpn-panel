@@ -315,3 +315,84 @@ After applying the fix, you should see:
 The fix ensures that if the refreshed data is missing the IP address, the component will try to get the server directly from the database and use that instead. This ensures that the IP address is always available for SSH commands and UI display.
 
 The added logging will help diagnose any future issues with server data retrieval.
+
+---
+
+# Legacy OpenVPN Service Name Fix - October 27, 2025
+
+## Additional Issue: Wrong SystemD Service Names
+
+Panel jobs and health checks were also failing with:
+```
+❌ [OpenVPN] Restart OpenVPN failed on 5.22.212.177
+SSH command failed: Restart OpenVPN
+```
+
+### Root Cause
+
+The codebase was using **legacy systemd service names** (`openvpn@server`) instead of **modern service names** (`openvpn-server@server`).
+
+| Legacy (Old) | Modern (New) | Config Path |
+|-------------|-------------|-------------|
+| `openvpn@server` | `openvpn-server@server` | `/etc/openvpn/server/` |
+| `openvpn@server-tcp` | `openvpn-server@server-tcp` | `/etc/openvpn/server/` |
+
+### Files Fixed for Service Names
+
+#### 1. app/Jobs/SyncOpenVPNCredentials.php ⚠️ CRITICAL
+
+**Line 75-76:** Changed from:
+```php
+$this->runSsh("systemctl restart openvpn@server", ...);
+```
+
+To:
+```php
+$this->runSsh("systemctl restart openvpn-server@server", $ip, $sshKey, $sshUser, "Restart OpenVPN UDP");
+$this->runSsh("systemctl is-enabled openvpn-server@server-tcp && systemctl restart openvpn-server@server-tcp || true", $ip, $sshKey, $sshUser, "Restart OpenVPN TCP");
+```
+
+#### 2. app/Livewire/Pages/Admin/ServerShow.php
+
+**Line 134:** Manual restart button now restarts both services:
+```php
+$this->makeSshClient()->exec('systemctl restart openvpn-server@server; systemctl is-enabled openvpn-server@server-tcp 2>/dev/null && systemctl restart openvpn-server@server-tcp || true');
+```
+
+#### 3. app/Models/VpnServer.php
+
+**Line 290:** Health check tries modern service first:
+```php
+'systemctl is-active openvpn-server@server || systemctl is-active openvpn@server || systemctl is-active openvpn || echo inactive'
+```
+
+#### 4. app/Livewire/Pages/Admin/ServerCreate.php
+
+**Line 65:** Default health check updated:
+```php
+public $health_check_cmd = 'systemctl is-active openvpn-server@server';
+```
+
+#### 5. UI Placeholders
+
+Updated in:
+- `resources/views/livewire/pages/admin/server-edit.blade.php`
+- `resources/views/livewire/pages/admin/vpn-server-edit.blade.php`
+
+### Testing
+
+```bash
+# Sync credentials (should work now)
+php artisan queue:work --once
+
+# Verify services
+systemctl is-active openvpn-server@server      # ✅ active
+systemctl is-active openvpn-server@server-tcp  # ✅ active
+systemctl is-active openvpn@server             # ❌ inactive (legacy stopped)
+```
+
+### Backwards Compatibility
+
+Health checks try **all service name variants** for compatibility with old and new servers.
+
+````

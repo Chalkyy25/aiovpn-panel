@@ -62,7 +62,7 @@ class ServerCreate extends Component
     public $api_endpoint        = 'N/A';
     public $api_token           = 'N/A';
     public $monitoring_enabled  = true;
-    public $health_check_cmd    = 'systemctl is-active openvpn@server';
+    public $health_check_cmd    = 'systemctl is-active openvpn-server@server';
     public $install_branch      = 'stable';
     public $statusOverride      = null;  // if you want to seed a status immediately
     public $max_clients         = null;

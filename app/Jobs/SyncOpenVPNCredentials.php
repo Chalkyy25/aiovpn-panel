@@ -71,8 +71,9 @@ class SyncOpenVPNCredentials implements ShouldQueue
             // 🔒 Set remote file permissions
             $this->runSsh("chmod 600 $remoteFile", $ip, $sshKey, $sshUser, "Set file permissions");
 
-            // 🔁 Restart OpenVPN
-            $this->runSsh("systemctl restart openvpn@server", $ip, $sshKey, $sshUser, "Restart OpenVPN");
+            // 🔁 Restart OpenVPN services (both UDP and TCP if present)
+            $this->runSsh("systemctl restart openvpn-server@server", $ip, $sshKey, $sshUser, "Restart OpenVPN UDP");
+            $this->runSsh("systemctl is-enabled openvpn-server@server-tcp && systemctl restart openvpn-server@server-tcp || true", $ip, $sshKey, $sshUser, "Restart OpenVPN TCP");
 
             // 🧹 Cleanup
             @unlink($tmpFile);
