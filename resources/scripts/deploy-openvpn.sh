@@ -15,7 +15,7 @@ set -euo pipefail
 PANEL_CALLBACKS="${PANEL_CALLBACKS:-1}"              # 1=notify panel, 0=quiet
 STATUS_PUSH_INTERVAL="${STATUS_PUSH_INTERVAL:-5s}"   # OpenVPN status push interval
 ENABLE_PRIVATE_DNS="${ENABLE_PRIVATE_DNS:-1}"        # 1=Unbound bound to WG VPN IP
-ENABLE_TCP_STEALTH="${ENABLE_TCP_STEALTH:-1}"        # 1=add parallel TCP/443 instance
+ENABLE_TCP_STEALTH="${ENABLE_TCP_STEALTH:-0}"        # 0=UDP only (simpler), 1=add TCP/443
 
 ### ===== Ports/Subnets =====
 TCP_PORT="${TCP_PORT:-443}"

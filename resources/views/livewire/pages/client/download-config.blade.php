@@ -57,15 +57,15 @@
 
                 @if($config['variant'] === 'unified')
                     <div class="mt-2 p-3 bg-blue-50 rounded text-sm">
-                        <strong>Smart Profile:</strong> Automatically tries TCP 443 (stealth) first, then falls back to UDP if blocked. Best for bypassing ISP restrictions.
+                        <strong>Smart Profile:</strong> Automatically tries TCP 443 (stealth) first, then falls back to UDP if blocked. Good for bypassing strict firewalls.
                     </div>
                 @elseif($config['variant'] === 'stealth')
                     <div class="mt-2 p-3 bg-green-50 rounded text-sm">
-                        <strong>Stealth Mode:</strong> Uses TCP port 443 to appear as HTTPS traffic. Excellent for bypassing firewalls and ISP blocks.
+                        <strong>Stealth Mode:</strong> Uses TCP port 443 to appear as HTTPS traffic. Best for bypassing firewalls, but slower than UDP.
                     </div>
                 @elseif($config['variant'] === 'udp')
-                    <div class="mt-2 p-3 bg-yellow-50 rounded text-sm">
-                        <strong>Traditional Mode:</strong> Standard UDP connection. Fastest option but may be blocked by some ISPs.
+                    <div class="mt-2 p-3 bg-green-50 rounded text-sm">
+                        <strong>iPhone/Mobile Optimized:</strong> Simple UDP connection. Fast, reliable, and works perfectly with OpenVPN Connect app on iOS/Android. ⭐ Recommended for mobile devices.
                     </div>
                 @elseif($config['variant'] === 'wireguard')
                     <div class="mt-2 p-3 bg-purple-50 rounded text-sm">

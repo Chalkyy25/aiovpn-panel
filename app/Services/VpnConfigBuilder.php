@@ -28,34 +28,34 @@ class VpnConfigBuilder
         foreach ($vpnUser->vpnServers as $server) {
             $safeName = preg_replace('/[^\w\-]+/u', '_', $server->name);
             
-            // Priority 1: TCP 443 Stealth only - RECOMMENDED for ISP bypass
+            // Priority 1: UDP - RECOMMENDED for iPhone/Mobile
             $items[] = [
                 'server_id'   => $server->id,
                 'server_name' => $server->name,
-                'filename'    => "{$safeName}_{$vpnUser->username}_stealth.ovpn",
-                'variant'     => 'stealth',
+                'filename'    => "{$safeName}_{$vpnUser->username}_UDP.ovpn",
+                'variant'     => 'udp',
                 'priority'    => 1,
-                'description' => 'TCP 443 stealth mode (bypasses most ISP blocks)'
+                'description' => 'Best for iPhone & mobile devices (fast, simple, works great)'
             ];
 
             // Priority 2: Unified profile (TCP 443 + UDP fallback)
             $items[] = [
                 'server_id'   => $server->id,
                 'server_name' => $server->name,
-                'filename'    => "{$safeName}_{$vpnUser->username}_unified.ovpn",
+                'filename'    => "{$safeName}_{$vpnUser->username}_Unified.ovpn",
                 'variant'     => 'unified',
                 'priority'    => 2,
-                'description' => 'Smart profile: TCP 443 stealth with UDP fallback'
+                'description' => 'Smart profile: TCP 443 stealth with UDP fallback (for ISP blocks)'
             ];
 
-            // Priority 3: UDP fallback
+            // Priority 3: TCP 443 Stealth only
             $items[] = [
                 'server_id'   => $server->id,
                 'server_name' => $server->name,
-                'filename'    => "{$safeName}_{$vpnUser->username}_udp.ovpn",
-                'variant'     => 'udp',
+                'filename'    => "{$safeName}_{$vpnUser->username}_Stealth.ovpn",
+                'variant'     => 'stealth',
                 'priority'    => 3,
-                'description' => 'Traditional UDP mode (fastest, may be blocked)'
+                'description' => 'TCP 443 only (bypasses strict firewalls, slower)'
             ];
 
             // Priority 4: WireGuard (if available)
@@ -63,10 +63,10 @@ class VpnConfigBuilder
                 $items[] = [
                     'server_id'   => $server->id,
                     'server_name' => $server->name,
-                    'filename'    => "{$safeName}_{$vpnUser->username}_wireguard.conf",
+                    'filename'    => "{$safeName}_{$vpnUser->username}_WireGuard.conf",
                     'variant'     => 'wireguard',
                     'priority'    => 4,
-                    'description' => 'WireGuard VPN (modern, fast, requires app support)'
+                    'description' => 'WireGuard VPN (modern, requires WireGuard app)'
                 ];
             }
         }

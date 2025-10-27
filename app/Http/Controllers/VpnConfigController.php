@@ -31,7 +31,7 @@ class VpnConfigController extends Controller
         );
 
         $proto = $request->string('proto')->lower()->value(); // 'ovpn'|'wg'|''
-        $variant = $request->string('variant')->lower()->value() ?: 'unified'; // 'unified'|'stealth'|'udp'
+        $variant = $request->string('variant')->lower()->value() ?: 'udp'; // Default to UDP for iPhone compatibility
 
         try {
             if ($proto === 'wg') {
@@ -50,7 +50,14 @@ class VpnConfigController extends Controller
 
             // Default: OpenVPN config with variant support
             $content = VpnConfigBuilder::generateOpenVpnConfigString($client, $vpnserver, $variant);
-            $variantSuffix = $variant === 'unified' ? 'unified' : $variant;
+            
+            // Friendly names for variants
+            $variantNames = [
+                'udp' => 'UDP',
+                'unified' => 'Unified',
+                'stealth' => 'Stealth'
+            ];
+            $variantSuffix = $variantNames[$variant] ?? $variant;
             $name = $this->safeName("{$vpnserver->name}_{$client->username}_{$variantSuffix}.ovpn");
 
             return response($content, 200, [
@@ -72,11 +79,18 @@ class VpnConfigController extends Controller
      */
     public function downloadForServer(Request $request, VpnUser $vpnUser, VpnServer $vpnServer)
     {
-        $variant = $request->string('variant')->lower()->value() ?: 'unified';
+        $variant = $request->string('variant')->lower()->value() ?: 'udp'; // Default to UDP
         
         try {
             $content = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer, $variant);
-            $variantSuffix = $variant === 'unified' ? 'unified' : $variant;
+            
+            // Friendly names for variants
+            $variantNames = [
+                'udp' => 'UDP',
+                'unified' => 'Unified',
+                'stealth' => 'Stealth'
+            ];
+            $variantSuffix = $variantNames[$variant] ?? $variant;
             $name = $this->safeName("{$vpnServer->name}_{$vpnUser->username}_{$variantSuffix}.ovpn");
 
             return response($content, 200, [
@@ -148,10 +162,11 @@ class VpnConfigController extends Controller
 
             $zip->close();
 
-            return response()->download($zipPath)->deleteFileAfterSend()
-                ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
-                ->header('Pragma', 'no-cache')
-                ->header('Expires', '0');
+            return response()->download($zipPath, basename($zipPath), [
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
+            ])->deleteFileAfterSend();
         } catch (Exception $e) {
             // ensure we close/remove on error
             try { $zip->close(); } catch (\Throwable $t) {}

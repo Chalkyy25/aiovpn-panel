@@ -37,30 +37,55 @@
         @else
             <div class="space-y-3">
                 @foreach ($vpnServers as $server)
-                    <div class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg p-4">
-                        <div>
-                            <div class="text-[var(--aio-ink)] font-medium text-lg">{{ $server->name }}</div>
-                            <div class="text-sm text-[var(--aio-sub)]">
-                                Status:
-                                <span class="{{ $server->is_online ? 'text-green-400' : 'text-red-400' }} font-semibold">
-                                    {{ $server->is_online ? 'Online' : 'Offline' }}
-                                </span>
-                                @if($server->location) · <span>{{ $server->location }}</span>@endif
+                    <div class="bg-white/5 border border-white/10 rounded-lg p-4">
+                        {{-- Server Header --}}
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <div class="text-[var(--aio-ink)] font-medium text-lg">{{ $server->name }}</div>
+                                <div class="text-sm text-[var(--aio-sub)]">
+                                    Status:
+                                    <span class="{{ $server->is_online ? 'text-green-400' : 'text-red-400' }} font-semibold">
+                                        {{ $server->is_online ? 'Online' : 'Offline' }}
+                                    </span>
+                                    @if($server->location) · <span>{{ $server->location }}</span>@endif
+                                </div>
                             </div>
                         </div>
 
-                        <div class="flex gap-2">
-                            {{-- OpenVPN download --}}
-                            <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id]) }}"
-                               class="aio-pill bg-blue-600/90 hover:shadow-glow">📥 Download OpenVPN</a>
+                        {{-- Download Options --}}
+                        <div class="flex flex-wrap gap-2">
+                            {{-- UDP - Recommended for iPhone/Mobile --}}
+                            <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id, 'variant' => 'udp']) }}"
+                               class="aio-pill bg-green-600/90 hover:shadow-glow">
+                               � Download UDP <span class="text-xs opacity-75">(iPhone)</span>
+                            </a>
 
-                            {{-- Optional WireGuard download if you add route later --}}
+                            {{-- Unified - Smart Profile --}}
+                            <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id, 'variant' => 'unified']) }}"
+                               class="aio-pill bg-blue-600/90 hover:shadow-glow">
+                               🛡️ Unified
+                            </a>
+
+                            {{-- Stealth - TCP 443 --}}
+                            <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id, 'variant' => 'stealth']) }}"
+                               class="aio-pill bg-purple-600/90 hover:shadow-glow">
+                               🥷 Stealth
+                            </a>
+
+                            {{-- WireGuard (if user has key) --}}
                             @if(!empty($user->wireguard_public_key))
                                 <a href="{{ route('client.vpn.download', ['vpnserver' => $server->id, 'proto' => 'wg']) }}"
-                                   class="aio-pill bg-indigo-600/90 hover:shadow-glow hidden md:inline-flex">
+                                   class="aio-pill bg-indigo-600/90 hover:shadow-glow">
                                    ⚡ WireGuard
                                 </a>
                             @endif
+                        </div>
+
+                        {{-- Info text --}}
+                        <div class="mt-2 text-xs text-[var(--aio-sub)]">
+                            💡 <span class="text-green-400">UDP</span> recommended for mobile • 
+                            <span class="text-blue-400">Unified</span> for firewall bypass • 
+                            <span class="text-purple-400">Stealth</span> for strict networks
                         </div>
                     </div>
                 @endforeach
