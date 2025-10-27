@@ -3,6 +3,7 @@
 namespace App\Console;
 
 use App\Jobs\DisableExpiredVpnUsers;
+use App\Jobs\UpdateVpnConnectionStatus;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
@@ -22,11 +23,10 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
         // === VPN Fleet Sync (run everywhere) ===
-        // 1) Fast status — every minute
-        $schedule->command('vpn:update-status')
+        // 1) Fast status — every minute (using job that posts to API)
+        $schedule->job(UpdateVpnConnectionStatus::class)
             ->everyMinute()
             ->withoutOverlapping()
-            ->runInBackground()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
         // 2) Sync Users

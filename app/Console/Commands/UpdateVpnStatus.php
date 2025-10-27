@@ -142,12 +142,13 @@ BASH;
 
         $candidates = array_values(array_unique(array_filter([
             $server->status_log_path,            // per-server override
+            '/var/log/openvpn-status-udp.log',   // UDP server log (primary)
+            '/var/log/openvpn-status-tcp.log',   // TCP server log  
             '/run/openvpn/server.status',        // systemd template default (UDP)
             '/run/openvpn/server-tcp.status',    // TCP stealth server
             '/run/openvpn/openvpn.status',
             '/run/openvpn/server/server.status', // some distros nest it
             '/var/log/openvpn-status.log',       // classic v2
-            '/var/log/openvpn-status-tcp.log',   // TCP log
         ], fn ($p) => is_string($p) && $p !== '')));
 
         foreach ($candidates as $path) {

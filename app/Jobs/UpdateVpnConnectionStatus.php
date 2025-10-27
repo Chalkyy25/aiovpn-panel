@@ -143,22 +143,30 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         '/etc/openvpn/openvpn-status.log'       // Generic status file
     ];
     
+    Log::channel('vpn')->debug("🔍 {$server->name}: Checking " . count($statusFiles) . " status files...");
+    
     foreach ($statusFiles as $path) {
         $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
         $res = $this->executeRemoteCommand($server, $cmd);
         $data = trim(implode("\n", $res['output'] ?? []));
+        
+        Log::channel('vpn')->debug("  ├─ {$path}: status={$res['status']}, data_len=" . strlen($data) . ", has_CLIENT_LIST=" . (str_contains($data, 'CLIENT_LIST') ? 'YES' : 'NO'));
+        
         if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__' && str_contains($data, 'CLIENT_LIST')) {
             Log::channel('vpn')->info("📄 {$server->name}: using status file {$path} (" . strlen($data) . " bytes)");
             return [$data, $path];
         }
     }
+    
+    Log::channel('vpn')->warning("⚠️ {$server->name}: No valid status file found, falling back to mgmt interface");
 
     // --- Fallback to mgmt interface (check both UDP and TCP ports) ---
     foreach ($mgmtPorts as $port) {
+        // Use -q 1 to properly close connection after quit command
+        // This prevents CLOSE_WAIT zombie connections that block future queries
         $mgmtCmds = [
-            '( printf "status 3\n"; sleep 1; printf "quit\n" ) | nc -w 5 127.0.0.1 ' . $port,
-            'echo -e "status 3\nquit\n" | nc -w 3 127.0.0.1 ' . $port,
-            'echo -e "status\nquit\n" | nc -w 3 127.0.0.1 ' . $port,
+            '(echo "status 3"; sleep 1; echo "quit") | nc -q 1 -w 3 127.0.0.1 ' . $port,
+            '(echo "status"; sleep 1; echo "quit") | nc -q 1 -w 3 127.0.0.1 ' . $port,
         ];
 
         foreach ($mgmtCmds as $cmd) {
