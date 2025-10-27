@@ -556,12 +556,20 @@ Unit=ovpn-mgmt-push.service
 WantedBy=timers.target
 TIM
 
-# Add real-time hooks to OpenVPN configs
+# NOTE: client-connect/disconnect hooks disabled - they cause AUTH_FAILED errors
+# The ovpn-mgmt-push.sh script is designed to run via timer, not per-client
+# for conf in /etc/openvpn/server/server.conf /etc/openvpn/server/server-tcp.conf; do
+#   if [[ -f "$conf" ]]; then
+#     sed -i '/^client-connect\|^client-disconnect/d' "$conf"
+#     echo 'client-connect "/usr/local/bin/ovpn-mgmt-push.sh"' >> "$conf"
+#     echo 'client-disconnect "/usr/local/bin/ovpn-mgmt-push.sh"' >> "$conf"
+#   fi
+# done
+
+# Remove any existing client-connect/disconnect hooks
 for conf in /etc/openvpn/server/server.conf /etc/openvpn/server/server-tcp.conf; do
   if [[ -f "$conf" ]]; then
     sed -i '/^client-connect\|^client-disconnect/d' "$conf"
-    echo 'client-connect "/usr/local/bin/ovpn-mgmt-push.sh"' >> "$conf"
-    echo 'client-disconnect "/usr/local/bin/ovpn-mgmt-push.sh"' >> "$conf"
   fi
 done
 

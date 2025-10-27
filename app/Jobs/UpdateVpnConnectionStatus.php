@@ -134,7 +134,26 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         return ['', 'ssh_failed'];
     }
 
-    // --- Try mgmt interface first (check both UDP and TCP ports) ---
+    // --- Try status log files FIRST (more reliable than broken mgmt interface) ---
+    $statusFiles = [
+        '/var/log/openvpn-status-udp.log',      // UDP server log (primary)
+        '/var/log/openvpn-status-tcp.log',      // TCP server log
+        '/run/openvpn/server.status',           // UDP server (fallback)
+        '/run/openvpn/server-tcp.status',       // TCP stealth server  
+        '/etc/openvpn/openvpn-status.log'       // Generic status file
+    ];
+    
+    foreach ($statusFiles as $path) {
+        $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
+        $res = $this->executeRemoteCommand($server, $cmd);
+        $data = trim(implode("\n", $res['output'] ?? []));
+        if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__' && str_contains($data, 'CLIENT_LIST')) {
+            Log::channel('vpn')->info("📄 {$server->name}: using status file {$path} (" . strlen($data) . " bytes)");
+            return [$data, $path];
+        }
+    }
+
+    // --- Fallback to mgmt interface (check both UDP and TCP ports) ---
     foreach ($mgmtPorts as $port) {
         $mgmtCmds = [
             '( printf "status 3\n"; sleep 1; printf "quit\n" ) | nc -w 5 127.0.0.1 ' . $port,
@@ -164,32 +183,12 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
     
-    // If we found a response but no active connections, use the last valid response
+    // If we found a mgmt response but no active connections, use it
     if (isset($fallbackResponse)) {
         return $fallbackResponse;
     }
 
-    // --- Fallback: status log files (check both UDP and TCP status files) ---
-    $statusFiles = [
-        '/run/openvpn/server.status',           // UDP server
-        '/run/openvpn/server-tcp.status',       // TCP stealth server  
-        '/var/log/openvpn-status-tcp.log',      // TCP server log
-        '/etc/openvpn/openvpn-status.log'       // Generic status file
-    ];
-    
-    foreach ($statusFiles as $path) {
-        $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
-        $res = $this->executeRemoteCommand($server, $cmd);
-        $data = trim(implode("\n", $res['output'] ?? []));
-        if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__') {
-            Log::channel('vpn')->debug("📄 {$server->name}: using status file {$path} (" . strlen($data) . " bytes)", [
-                'preview' => substr($data, 0, 200) . '...',
-            ]);
-            return [$data, $path];
-        }
-    }
-
-    Log::channel('vpn')->error("❌ {$server->name}: All methods failed - no mgmt or status file available");
+    Log::channel('vpn')->warning("⚠️ {$server->name}: No status data found - all methods failed");
     return ['', 'none'];
 }
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $clients): void
