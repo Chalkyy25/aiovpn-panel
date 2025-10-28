@@ -23,9 +23,9 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
         // === VPN Fleet Sync (run everywhere) ===
-        // 1) Fast status — every minute (using job that posts to API)
+        // 1) Fast status — every 15 seconds for near real-time updates
         $schedule->job(UpdateVpnConnectionStatus::class)
-            ->everyMinute()
+            ->everyFifteenSeconds()
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
