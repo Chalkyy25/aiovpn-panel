@@ -573,10 +573,16 @@ for conf in /etc/openvpn/server/server.conf /etc/openvpn/server/server-tcp.conf;
   fi
 done
 
-# Enable the merged timer and disable old separate timers
+# === DISABLED: Server-side polling conflicts with panel-side real-time poller ===
+# The panel now runs a unified real-time poller (vpn-poller-realtime) that polls all
+# servers every 3 seconds. Server-side timers cause conflicts and duplicate/empty events.
+# 
+# Keep the service/timer files in place for manual troubleshooting if needed,
+# but DO NOT enable them automatically during deployment.
 systemctl daemon-reload
 systemctl disable --now ovpn-status-push.timer ovpn-status-push-tcp.timer 2>/dev/null || true
-systemctl enable --now ovpn-mgmt-push.timer
+systemctl disable --now ovpn-mgmt-push.timer ovpn-mgmt-push.service 2>/dev/null || true
+logchunk "Server-side OVPN polling DISABLED (panel handles it)"
 
 ### ===== Mirror OVPN auth back to panel (optional) =====
 panel POST "/api/servers/$SERVER_ID/authfile" --file /etc/openvpn/auth/psw-file >/dev/null || true
