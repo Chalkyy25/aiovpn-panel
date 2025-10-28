@@ -24,6 +24,7 @@ class MobileProfileController extends Controller
                 'id'   => (int) $s->id,
                 'name' => $s->name ?? ('Server '.$s->id),
                 'ip'   => $s->ip_address ?? $s->ip ?? null,
+                'protocol' => $s->protocol,
             ];
         })->values();
 
