@@ -341,11 +341,11 @@ auth SHA256
 topology subnet
 server ${OVPN_SUBNET%/*} 255.255.255.0
 ifconfig-pool-persist /etc/openvpn/ipp-udp.txt
-keepalive 10 60
+keepalive 3 10
 reneg-sec 0
 persist-key
 persist-tun
-status ${STATUS_UDP_PATH} 10
+status ${STATUS_UDP_PATH} 1
 status-version 3
 verb 3
 management ${MGMT_HOST} ${MGMT_PORT}
@@ -412,11 +412,11 @@ auth SHA256
 topology subnet
 server ${TCP_SUBNET%/*} 255.255.255.0
 ifconfig-pool-persist /etc/openvpn/ipp-tcp.txt
-keepalive 10 60
+keepalive 3 10
 reneg-sec 0
 persist-key
 persist-tun
-status ${STATUS_TCP_PATH} 10
+status ${STATUS_TCP_PATH} 1
 status-version 3
 verb 3
 management ${MGMT_HOST} ${MGMT_TCP_PORT}
