@@ -54,13 +54,15 @@ class VpnServer extends Model
     ];
 
     protected $casts = [
-        'last_sync_at' => 'datetime',
-        'is_online'    => 'boolean',
-        'enable_ipv6'  => 'boolean',
-        'enable_proxy' => 'boolean',
-        'enable_logging' => 'boolean',
-        'wg_port'      => 'integer',
-    ];
+    'last_sync_at'   => 'datetime',
+    'is_online'      => 'boolean',
+    'enable_ipv6'    => 'boolean',
+    'enable_proxy'   => 'boolean',
+    'enable_logging' => 'boolean',
+    'wg_port'        => 'integer',
+    'protocol'       => 'string',
+    'transport'      => 'string',
+];
 
     /* ========= Relationships ========= */
 
