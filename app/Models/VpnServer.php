@@ -19,21 +19,22 @@ class VpnServer extends Model
 {
     use HasFactory, ExecutesRemoteCommands;
 
-    /** Computed at runtime if not persisted */
+    /** Virtuals appended when casting to array/json */
     protected $appends = ['is_online'];
 
+    /** Mass-assignable fields */
     protected $fillable = [
         'name',
         'ip_address',
-        'protocol',
+        'protocol',        // 'openvpn' | 'wireguard'
         'ssh_port',
-        'ssh_type',
+        'ssh_type',        // 'key' | 'password'
         'ssh_key',
         'ssh_password',
         'ssh_user',
-        'port',
+        'port',            // OpenVPN port (udp/tcp)
         'mgmt_port',
-        'transport',
+        'transport',       // 'udp' | 'tcp' (null for WireGuard)
         'dns',
         'enable_ipv6',
         'enable_logging',
@@ -46,30 +47,50 @@ class VpnServer extends Model
         'status_log_path',
         'deploy_key_id',
 
-        // ---- WireGuard facts ----
+        // WireGuard facts
         'wg_endpoint_host',
         'wg_public_key',
         'wg_port',
         'wg_subnet',
     ];
 
-    protected $casts = [
-    'last_sync_at'   => 'datetime',
-    'is_online'      => 'boolean',
-    'enable_ipv6'    => 'boolean',
-    'enable_proxy'   => 'boolean',
-    'enable_logging' => 'boolean',
-    'wg_port'        => 'integer',
-    'protocol'       => 'string',
-    'transport'      => 'string',
-];
+    /** Hide sensitive stuff by default from API responses */
+    protected $hidden = [
+        'ssh_password',
+        'ssh_key',
+        'deploy_key_id',
+        'deployment_log',
+        'status_log_path',
+    ];
 
-    /* ========= Relationships ========= */
+    /** Defaults for new rows */
+    protected $attributes = [
+        'protocol'  => 'openvpn',
+        'transport' => 'udp',
+    ];
+
+    /** Type casts */
+    protected $casts = [
+        'last_sync_at'   => 'datetime',
+        'is_online'      => 'boolean',
+        'enable_ipv6'    => 'boolean',
+        'enable_proxy'   => 'boolean',
+        'enable_logging' => 'boolean',
+        'wg_port'        => 'integer',
+        'port'           => 'integer',
+        'mgmt_port'      => 'integer',
+        'protocol'       => 'string',
+        'transport'      => 'string',
+    ];
+
+    /* ========= Route binding ========= */
 
     public function getRouteKeyName(): string
     {
         return 'id';
     }
+
+    /* ========= Relationships ========= */
 
     public function clients(): BelongsToMany
     {
@@ -98,23 +119,46 @@ class VpnServer extends Model
         return $this->belongsTo(DeployKey::class, 'deploy_key_id');
     }
 
-    /* ========= Deployment log helper ========= */
+    /* ========= Query scopes ========= */
+
+    public function scopeOpenVpn($q)   { return $q->where('protocol', 'openvpn'); }
+    public function scopeWireGuard($q) { return $q->where('protocol', 'wireguard'); }
+    public function scopeOnline($q)    { return $q->where('status', 'online'); } // adjust if you persist differently
+
+    /* ========= Mutators / Helpers ========= */
 
     public function appendLog(string $line): void
     {
-        Log::info("APPEND_LOG: ".$line);
+        Log::info("APPEND_LOG: " . $line);
 
         $existing = trim((string) $this->deployment_log);
         $lines = $existing === '' ? [] : explode("\n", $existing);
 
-        // avoid dup spam
         if (!in_array($line, $lines, true)) {
             $lines[] = $line;
             $this->forceFill(['deployment_log' => implode("\n", $lines)])->save();
         }
     }
 
-    /* ========= WireGuard helpers ========= */
+    public function isWireGuard(): bool { return strtolower((string)$this->protocol) === 'wireguard'; }
+    public function isOpenVPN(): bool   { return strtolower((string)$this->protocol) === 'openvpn'; }
+
+    public function displayTransport(): ?string
+    {
+        return $this->isOpenVPN() ? ($this->transport ?: 'udp') : null;
+    }
+
+    public function displayPort(): int
+    {
+        if ($this->isWireGuard()) return (int) ($this->wg_port ?: 51820);
+        // OpenVPN
+        if (($this->displayTransport() ?? 'udp') === 'tcp') {
+            return (int) ($this->port ?: 443);
+        }
+        return (int) ($this->port ?: 1194);
+    }
+
+    /* ========= WireGuard ========= */
 
     public function hasWireGuard(): bool
     {
@@ -129,16 +173,12 @@ class VpnServer extends Model
         return "{$this->wg_endpoint_host}:{$this->wg_port}";
     }
 
-    /**
-     * Persist WG facts safely (used by your API controllers).
-     */
     public function saveWireGuardFacts(array $facts): void
     {
         $this->fill(array_intersect_key($facts, array_flip([
             'wg_endpoint_host', 'wg_public_key', 'wg_port', 'wg_subnet',
         ])));
 
-        // basic normalization
         if (isset($this->wg_port)) {
             $this->wg_port = (int) $this->wg_port ?: 51820;
         }
@@ -147,6 +187,25 @@ class VpnServer extends Model
         }
 
         $this->save();
+    }
+
+    /* ========= API DTO ========= */
+
+    public function toApiArray(): array
+    {
+        return array_filter([
+            'id'        => (int) $this->id,
+            'name'      => $this->name,
+            'ip'        => $this->ip_address,
+            'protocol'  => $this->protocol,
+            'transport' => $this->displayTransport(),
+            'port'      => $this->displayPort(),
+            'wg'        => $this->isWireGuard() ? array_filter([
+                'endpoint'   => $this->wgEndpoint(),
+                'public_key' => $this->wg_public_key,
+                'subnet'     => $this->wg_subnet,
+            ]) : null,
+        ], static function ($v) { return !is_null($v); });
     }
 
     /* ========= Online metrics / probes ========= */
@@ -179,19 +238,12 @@ class VpnServer extends Model
                 return (int) trim((string) $result2['output'][0]);
             }
         } catch (Exception $e) {
-            Log::error("❌ Failed to get online user count for {$this->name}: ".$e->getMessage());
+            Log::error("❌ Failed to get online user count for {$this->name}: " . $e->getMessage());
         }
 
         return 0;
     }
 
-    /**
-     * Preferred by ExecutesRemoteCommands.
-     * Precedence:
-     *  1) DeployKey (server->deployKey or default active) → key auth
-     *  2) Legacy ssh_type=password → sshpass
-     *  3) Legacy ssh_type=key → ssh_key absolute or storage/app/ssh_keys/<file>
-     */
     public function getSshCommand(): string
     {
         $ip = $this->ip_address;
@@ -203,12 +255,11 @@ class VpnServer extends Model
         $port = (int) ($this->ssh_port ?: 22);
         $user = (string) ($this->ssh_user ?: 'root');
 
-        // Use a temp known_hosts file to avoid permission issues
         $tempSshDir = storage_path('app/temp_ssh');
         if (!is_dir($tempSshDir)) {
             @mkdir($tempSshDir, 0700, true);
         }
-        $kh = escapeshellarg($tempSshDir.'/known_hosts');
+        $kh = escapeshellarg($tempSshDir . '/known_hosts');
 
         $baseOpts = implode(' ', [
             '-o StrictHostKeyChecking=no',
@@ -231,7 +282,7 @@ class VpnServer extends Model
             return "ssh -i " . escapeshellarg($keyPath) . " {$baseOpts} {$dest}";
         }
 
-        // 2) Legacy: password auth
+        // 2) Legacy: password
         if ($this->ssh_type === 'password') {
             $pass = (string) $this->ssh_password;
             if ($pass === '') {
@@ -240,7 +291,7 @@ class VpnServer extends Model
             return "sshpass -p " . escapeshellarg($pass) . " ssh {$baseOpts} {$dest}";
         }
 
-        // 3) Legacy: key auth
+        // 3) Legacy: key path
         $keyPath = (is_string($this->ssh_key) && (str_starts_with($this->ssh_key, '/') || str_contains($this->ssh_key, ':\\')))
             ? $this->ssh_key
             : storage_path('app/ssh_keys/' . ($this->ssh_key ?: 'id_rsa'));
@@ -253,29 +304,25 @@ class VpnServer extends Model
         return "ssh -i " . escapeshellarg($keyPath) . " {$baseOpts} {$dest}";
     }
 
-    /* ========= Virtuals ========= */
+    /* ========= Computed attributes ========= */
 
     public function getIsOnlineAttribute($value): bool
     {
-        // Respect persisted is_online if you store it
         if (!is_null($this->attributes['is_online'] ?? null)) {
             return (bool) $this->attributes['is_online'];
         }
 
         return Cache::remember("server:{$this->id}:is_online", 60, function () {
-            if (method_exists(VpnConfigBuilder::class, 'testOpenVpnConnectivity')) {
+            if (method_exists(VpnConfigBuilder::class, 'testOpenVpnConnectivity') && $this->isOpenVPN()) {
                 $res = VpnConfigBuilder::testOpenVpnConnectivity($this);
                 return ($res['server_reachable'] ?? false)
                     && (($res['openvpn_running'] ?? false) || ($res['port_open'] ?? false));
             }
-
             return $this->quickOnlineProbe();
         });
     }
 
-    /**
-     * Minimal inline probe if the service method isn't available.
-     */
+    /** Minimal inline probe (OpenVPN or WireGuard) */
     private function quickOnlineProbe(): bool
     {
         $ip = $this->ip_address;
@@ -286,7 +333,27 @@ class VpnServer extends Model
             $ssh = $this->executeRemoteCommand($this, 'echo ok');
             if (($ssh['status'] ?? 1) !== 0) return false;
 
-            // 2) OpenVPN active? Check modern service first, fallback to legacy
+            if ($this->isWireGuard()) {
+                // WireGuard service (common unit names) or port
+                $svc = $this->executeRemoteCommand(
+                    $this,
+                    'systemctl is-active wg-quick@wg0 || systemctl is-active wg-quick@server || echo inactive'
+                );
+                $active = ($svc['status'] === 0)
+                    && collect($svc['output'] ?? [])->contains(fn($l) => trim($l) === 'active');
+
+                $port = $this->displayPort(); // 51820 default
+                $cmd = sprintf(
+                    "ss -ulnp 2>/dev/null | grep ':%d' || netstat -ulnp 2>/dev/null | grep ':%d' || true",
+                    $port, $port
+                );
+                $portRes = $this->executeRemoteCommand($this, $cmd);
+                $portOpen = ($portRes['status'] === 0) && !empty($portRes['output']);
+
+                return $active || $portOpen;
+            }
+
+            // OpenVPN
             $svc = $this->executeRemoteCommand(
                 $this,
                 'systemctl is-active openvpn-server@server || systemctl is-active openvpn@server || systemctl is-active openvpn || echo inactive'
@@ -294,10 +361,9 @@ class VpnServer extends Model
             $active = ($svc['status'] === 0)
                 && collect($svc['output'] ?? [])->contains(fn($l) => trim($l) === 'active');
 
-            // 3) Port open? Use configured proto/port
-            $proto = strtolower((string) ($this->protocol ?: 'udp'));
-            $port  = (int) ($this->port ?: 1194);
-            $ssOpt = $proto === 'tcp' ? '-tl' : '-ul';
+            $transport = $this->displayTransport() ?? 'udp';
+            $port      = $this->displayPort();
+            $ssOpt     = $transport === 'tcp' ? '-tl' : '-ul';
 
             $cmd = sprintf(
                 "ss %snp 2>/dev/null | grep ':%d' || netstat %snp 2>/dev/null | grep ':%d' || true",
@@ -307,6 +373,7 @@ class VpnServer extends Model
             $portOpen = ($portRes['status'] === 0) && !empty($portRes['output']);
 
             return $active || $portOpen;
+
         } catch (\Throwable) {
             return false;
         }
@@ -323,7 +390,21 @@ class VpnServer extends Model
             }
         };
 
-        static::creating($ensureKey);
-        static::updating($ensureKey);
+        static::creating(function (self $m) use ($ensureKey) {
+            $m->protocol  = $m->protocol ? strtolower($m->protocol) : 'openvpn';
+            $m->transport = $m->transport ? strtolower($m->transport) : 'udp';
+            if ($m->protocol === 'wireguard') $m->transport = null;
+            $ensureKey($m);
+        });
+
+        static::updating(function (self $m) use ($ensureKey) {
+            if ($m->protocol)  $m->protocol  = strtolower($m->protocol);
+            if ($m->transport) $m->transport = strtolower($m->transport);
+
+            if ($m->isDirty('protocol') && $m->protocol === 'wireguard') {
+                $m->transport = null; // WG has no udp/tcp transport concept
+            }
+            $ensureKey($m);
+        });
     }
 }
