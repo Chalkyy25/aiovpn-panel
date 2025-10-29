@@ -15,28 +15,34 @@ class MobileProfileController extends Controller
      * Basic account info + assigned servers.
      */
     public function index(Request $request)
-    {
-        /** @var VpnUser $user */
-        $user = $request->user()->loadMissing('vpnServers');
+{
+    /** @var VpnUser $user */
+    $user = $request->user()->loadMissing('vpnServers');
 
-        $servers = $user->vpnServers->map(function ($s) {
-            return [
-                'id'   => (int) $s->id,
-                'name' => $s->name ?? ('Server '.$s->id),
-                'ip'   => $s->ip_address ?? $s->ip ?? null,
-                'protocol'  => $type,        // ← "openvpn" or "wireguard"
-                'transport' => $transport,   // ← "udp"/"tcp" (null for wireguard)
-            ];
-        })->values();
+    $servers = $user->vpnServers->map(function ($s) {
+        $raw = strtolower((string) $s->protocol); // e.g. "udp", "tcp", "wireguard"
 
-        return response()->json([
-            'id'       => (int) $user->id,
-            'username' => $user->username,
-            'expires'  => $user->expires_at,
-            'max_conn' => (int) $user->max_connections,
-            'servers'  => $servers,
-        ]);
-    }
+        // Normalise the protocol type for Android app
+        $type = in_array($raw, ['udp', 'tcp']) ? 'openvpn' : ($raw ?: 'openvpn');
+        $transport = in_array($raw, ['udp', 'tcp']) ? $raw : null;
+
+        return [
+            'id'        => (int) $s->id,
+            'name'      => $s->name ?? ('Server ' . $s->id),
+            'ip'        => $s->ip_address ?? $s->ip ?? null,
+            'protocol'  => $type,       // "openvpn" or "wireguard"
+            'transport' => $transport,  // "udp" / "tcp" / null
+        ];
+    })->values();
+
+    return response()->json([
+        'id'       => (int) $user->id,
+        'username' => $user->username,
+        'expires'  => $user->expires_at,
+        'max_conn' => (int) $user->max_connections,
+        'servers'  => $servers,
+    ]);
+}
 
     /**
      * GET /api/profiles/{user}?server_id=112  (auth:sanctum)
