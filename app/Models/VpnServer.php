@@ -99,7 +99,12 @@ class VpnServer extends Model
 
     public function vpnUsers(): BelongsToMany
     {
-        return $this->belongsToMany(VpnUser::class, 'vpn_user_server', 'server_id', 'user_id');
+        return $this->belongsToMany(
+            VpnUser::class,
+            'vpn_server_user',      // pivot table
+            'vpn_server_id',        // this model's key on pivot
+            'vpn_user_id'           // related model's key on pivot
+        )->withTimestamps();
     }
 
     public function connections(): HasMany
