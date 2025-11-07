@@ -21,6 +21,9 @@ class VpnUserList extends Component
     use WithPagination;
 
     public string $search = '';
+    public ?int $configUserId = null;
+public int $configProgress = 0;
+public string $configMessage = '';
 
     #[On('refreshUsers')]
     public function refresh(): void
@@ -47,19 +50,44 @@ class VpnUserList extends Component
     }
 
     public function generateOvpn($id): void
-    {
-        $user = VpnUser::findOrFail($id);
+{
+    $user = VpnUser::with('vpnServers')->findOrFail($id);
 
-        // If GenerateOvpnFile is per-user:
-        GenerateOvpnFile::dispatch($user);
-
-        Log::info("🌀 Modern stealth OVPN generation queued for user {$user->username}");
-
-        session()->flash(
-            'message',
-            "Modern stealth OVPN configs for {$user->username} have been queued."
-        );
+    if ($user->vpnServers->isEmpty()) {
+        session()->flash('message', "User {$user->username} has no servers linked.");
+        return;
     }
+
+    $this->configUserId   = $user->id;
+    $this->configProgress = 1;
+    $this->configMessage  = "Starting config pack for {$user->username}";
+
+    \App\Jobs\GenerateOvpnFile::dispatch($user);
+
+    session()->flash(
+        'message',
+        "Config pack for {$user->username} queued: OpenVPN (unified/stealth/traditional) + WireGuard."
+    );
+}
+
+public function pollConfigProgress(): void
+{
+    if (! $this->configUserId) {
+        return;
+    }
+
+    $data = cache()->get("config_progress:{$this->configUserId}");
+
+    if (! $data) {
+        return;
+    }
+
+    $this->configProgress = (int) ($data['percent'] ?? 0);
+    $this->configMessage  = (string) ($data['message'] ?? '');
+
+    // optional: clear once 100%
+    // if ($this->configProgress >= 100) $this->configUserId = null;
+}
 
     /**
      * Generate WireGuard peers on all linked servers (Option A).
