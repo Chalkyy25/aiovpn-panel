@@ -96,36 +96,18 @@ class GenerateWireGuardPeers extends Command
             }
 
             if ($dryRun) {
-                $this->info("DRY RUN: {$totalJobs} job(s) would be enqueued.");
-                return self::SUCCESS;
-            }
+    $this->info("DRY RUN: {$totalJobs} job(s) would be enqueued.");
+    return self::SUCCESS;
+}
 
-            // Split into manageable batches to avoid gigantic single batches
-            $batchSize = 500; // tune as you like
-            $batches   = array_chunk($preparedJobs, $batchSize);
+$this->info("Dispatching {$totalJobs} job(s) individually on 'wg-peers' queue…");
 
-            $this->info("Dispatching {$totalJobs} job(s) in ".count($batches)." batch(es)…");
+foreach ($preparedJobs as $job) {
+    dispatch($job);
+}
 
-            foreach ($batches as $i => $jobs) {
-                /** @var Batch $batch */
-                $batch = Bus::batch($jobs)
-                    ->name('WG Generate Peers (chunk '.($i+1).'/'.count($batches).')')
-                    ->allowFailures()
-                    ->onQueue('wg-peers')
-                    ->then(function (Batch $batch) {
-                        Log::info("✅ Batch finished: {$batch->id} (total: {$batch->totalJobs}, failed: {$batch->failedJobs})");
-                    })
-                    ->catch(function (Batch $batch, Throwable $e) {
-                        Log::error("❌ Batch error: {$batch->id} - {$e->getMessage()}", ['trace' => $e->getTraceAsString()]);
-                    })
-                    ->dispatch();
-
-                $this->line("→ Batch ID: {$batch->id}");
-            }
-
-            $this->info('✅ Done. Monitor progress in Horizon or logs.');
-            return self::SUCCESS;
-
+$this->info('✅ Done. Jobs queued.');
+return self::SUCCESS;
         } catch (Throwable $e) {
             Log::error('wg:generate failed: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Command failed: '.$e->getMessage());
