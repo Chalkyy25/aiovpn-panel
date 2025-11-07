@@ -96,19 +96,22 @@ class DeployEventController extends Controller
                 : collect();
 
             // Map: WireGuard by wg_public_key (username field carries pubkey)
-            $wgKeys = array_column($wireguard, 'username');
-            $idByWgKey = (!empty($wgKeys) && Schema::hasColumn('vpn_users', 'wg_public_key'))
-                ? VpnUser::whereIn('wg_public_key', $wgKeys)->pluck('id', 'wg_public_key')
+            // Map: WireGuard by wireguard_public_key using explicit public_key from payload
+            $wgKeys = array_values(array_filter(array_column($wireguard, 'public_key')));
+            $idByWgKey = (!empty($wgKeys) && Schema::hasColumn('vpn_users', 'wireguard_public_key'))
+                ? VpnUser::whereIn('wireguard_public_key', $wgKeys)->pluck('id', 'wireguard_public_key')
                 : collect();
-
+            
             $stillConnectedUserIds = [];
 
             foreach ($incoming as $c) {
                 $username = trim((string) $c['username']);
                 $proto    = strtolower($c['proto'] ?? 'openvpn');
 
-                if ($proto === 'wireguard') {
-                    $uid = $idByWgKey[$username] ?? null;
+                $publicKey = $c['public_key'] ?? null;
+
+                if ($proto === 'wireguard' && $publicKey) {
+                    $uid = $idByWgKey[$publicKey] ?? null;
                 } else {
                     $uid = $idByName[$username] ?? null;
                 }
@@ -320,6 +323,7 @@ class DeployEventController extends Controller
 
         return [
             'username'     => (string) $username,
+            'public_key'   => $u['public_key'] ?? $u['pubkey'] ?? null,
             'client_ip'    => $clientIp ?: null,
             'virtual_ip'   => $virt ?: null,
             'connected_at' => $this->connectedAtToIso($connectedAt),
