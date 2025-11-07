@@ -454,14 +454,21 @@ if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
 fi
 
 ### ===== Unified WG + OpenVPN status push agent =====
-logchunk "Install unified VPN status push agent (WG + OVPN)"
-
 cat >/usr/local/bin/ovpn-mgmt-push.sh <<'AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Load panel/env values
 . /etc/default/ovpn-status-push 2>/dev/null || true
-: "${PANEL_URL:?}"; : "${PANEL_TOKEN:?}"; : "${SERVER_ID:?}"
+
+: "${PANEL_URL:?missing PANEL_URL}"
+: "${PANEL_TOKEN:?missing PANEL_TOKEN}"
+: "${SERVER_ID:?missing SERVER_ID}"
+
+# Export so Python can see them
+export PANEL_URL PANEL_TOKEN SERVER_ID
+[ -n "${MGMT_PORT:-}" ] && export MGMT_PORT || true
+[ -n "${MGMT_TCP_PORT:-}" ] && export MGMT_TCP_PORT || true
 
 post() {
   curl -fsS -X POST \
@@ -471,19 +478,18 @@ post() {
     "${PANEL_URL%/}/api/servers/${SERVER_ID}/events" >/dev/null || true
 }
 
-python3 - <<'PY'
-import os,sys,csv,json,datetime,subprocess
+python3 << 'PY'
+import os, sys, csv, json, datetime, subprocess
 
-PANEL_URL = os.environ["PANEL_URL"]
-PANEL_TOKEN = os.environ["PANEL_TOKEN"]
-SERVER_ID = os.environ["SERVER_ID"]
+PANEL_URL = os.environ.get("PANEL_URL","")
+PANEL_TOKEN = os.environ.get("PANEL_TOKEN","")
+SERVER_ID = os.environ.get("SERVER_ID","")
 MGMT_PORT = os.environ.get("MGMT_PORT","7505")
 MGMT_TCP_PORT = os.environ.get("MGMT_TCP_PORT","7506")
 
 def parse_ovpn_status(txt, proto_hint=None):
     clients, virt = {}, {}
-    hCL = {}
-    hRT = {}
+    hCL, hRT = {}, {}
     for row in csv.reader(txt.splitlines()):
         if not row:
             continue
@@ -513,7 +519,7 @@ def parse_ovpn_status(txt, proto_hint=None):
                 "bytes_received": toint(col('Bytes Received','0')),
                 "bytes_sent": toint(col('Bytes Sent','0')),
                 "connected_at": toint(col('Connected Since (time_t)','0')),
-                "proto": proto_hint or "openvpn"
+                "proto": proto_hint or "openvpn",
             }
         elif tag == "ROUTING_TABLE":
             def col(h, d=''):
@@ -529,7 +535,6 @@ def collect_ovpn():
     out = ""
     for p, hint in ((MGMT_PORT,"openvpn-udp"), (MGMT_TCP_PORT,"openvpn-tcp")):
         try:
-            # status 3 is multiline; if unsupported we just get banner, which parse_ovpn_status will ignore
             r = subprocess.check_output(
                 ["bash","-lc", f'printf "status 3\\nquit\\n" | nc -w 2 127.0.0.1 {p} || true'],
                 text=True
@@ -538,17 +543,18 @@ def collect_ovpn():
                 out += f"##PORT={p}##{r}\n===SPLIT===\n"
         except Exception:
             continue
+
     clients = []
     for chunk in out.split("\n===SPLIT===\n"):
-        if "CLIENT_LIST" in chunk:
-            # rough proto hint from marker
-            hint = "openvpn"
-            if "##PORT="+MGMT_TCP_PORT+"##" in chunk:
-                hint = "openvpn-tcp"
-            elif "##PORT="+MGMT_PORT+"##" in chunk:
-                hint = "openvpn-udp"
-            chunk = chunk.replace("##PORT="+MGMT_PORT+"##","").replace("##PORT="+MGMT_TCP_PORT+"##","")
-            clients.extend(parse_ovpn_status(chunk, proto_hint=hint))
+        if "CLIENT_LIST" not in chunk:
+            continue
+        hint = "openvpn"
+        if f"##PORT={MGMT_TCP_PORT}##" in chunk:
+            hint = "openvpn-tcp"
+        elif f"##PORT={MGMT_PORT}##" in chunk:
+            hint = "openvpn-udp"
+        chunk = chunk.replace(f"##PORT={MGMT_PORT}##","").replace(f"##PORT={MGMT_TCP_PORT}##","")
+        clients.extend(parse_ovpn_status(chunk, proto_hint=hint))
     return clients
 
 def collect_wg():
@@ -556,41 +562,51 @@ def collect_wg():
         dump = subprocess.check_output(["wg","show","wg0","dump"], text=True)
     except Exception:
         return []
+
     lines = [l.strip() for l in dump.splitlines() if l.strip()]
     if len(lines) <= 1:
         return []
+
     peers = []
-    # skip interface line
-    for line in lines[1:]:
+    for line in lines[1:]:  # skip interface line
         parts = line.split("\t")
         if len(parts) < 8:
             continue
-        pub, psk, endpoint, allowed, hs, rx, tx, keep = parts[:8]
+        pub, _psk, endpoint, allowed, hs, rx, tx, _keep = parts[:8]
+
         try:
             hs = int(hs)
         except:
             hs = 0
-        # treat hs==0 as offline
+
+        # treat hs == 0 as offline
         if hs <= 0:
             continue
+
         client_ip = None
-        if endpoint and endpoint != "(none)":
-            client_ip = endpoint.rsplit(":",1)[0]
+        if endpoint and endpoint != "(none)" and ":" in endpoint:
+            client_ip = endpoint.rsplit(":", 1)[0]
+
         virt_ip = None
         if allowed and allowed != "(none)":
-            first = allowed.split(",")[0]
-            virt_ip = first.split("/",1)[0]
+            first = allowed.split(",")[0].strip()
+            if first:
+                virt_ip = first.split("/", 1)[0]
+
         def toint(x):
             try: return int(x)
             except: return 0
+
         peers.append({
-            "username": pub,              # panel maps pubkey -> user
+            # username is WG pubkey; panel resolves to real user
+            "username": pub,
+            "public_key": pub,
             "client_ip": client_ip,
             "virtual_ip": virt_ip,
             "bytes_received": toint(rx),
             "bytes_sent": toint(tx),
             "connected_at": hs,
-            "proto": "wireguard"
+            "proto": "wireguard",
         })
     return peers
 
@@ -602,10 +618,11 @@ payload = {
     "status": "mgmt",
     "ts": datetime.datetime.utcnow().isoformat()+"Z",
     "clients": len(all_clients),
-    "users": all_clients
+    "users": all_clients,
 }
+
 print(json.dumps(payload, separators=(',',':')))
-PY
+PY | post
 AGENT
 
 chmod 0755 /usr/local/bin/ovpn-mgmt-push.sh
