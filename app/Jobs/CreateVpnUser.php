@@ -24,10 +24,10 @@ class CreateVpnUser implements ShouldQueue
 
     public function __construct(string $username, array $serverIds, ?int $clientId = null, ?string $password = null)
     {
-        $this->username = $username;
-        $this->serverIds = $serverIds;
-        $this->clientId = $clientId;
-        $this->password = $password ?? Str::random(10);
+        $this->username   = $username;
+        $this->serverIds  = $serverIds;
+        $this->clientId   = $clientId;
+        $this->password   = $password ?? Str::random(10);
     }
 
     public function handle(): void
@@ -39,36 +39,32 @@ class CreateVpnUser implements ShouldQueue
             throw new \Exception("Username '{$this->username}' already exists.");
         }
 
-        // ✅ Create user
+        // Create user (VpnUser mutators will hash plain_password)
+        /** @var VpnUser $vpnUser */
         $vpnUser = VpnUser::create([
-            'username' => $this->username,
+            'username'       => $this->username,
             'plain_password' => $this->password,
-            'password' => bcrypt($this->password),
-            'client_id' => $this->clientId,
+            'client_id'      => $this->clientId,
         ]);
 
-        // ✅ Attach to multiple servers
-        $vpnUser->vpnServers()->attach($this->serverIds);
+        // Attach to servers via new pivot
+        $vpnUser->vpnServers()->syncWithoutDetaching($this->serverIds);
         $vpnUser->load('vpnServers');
 
-        Log::info("✅ VPN user created with servers: " . implode(', ', $vpnUser->vpnServers->pluck('id')->toArray()));
+        Log::info("✅ VPN user created with servers: " . $vpnUser->vpnServers->pluck('id')->join(', '));
 
-        // 🔁 Loop servers and generate configs
         foreach ($vpnUser->vpnServers as $server) {
-            dispatch(new \App\Jobs\AddWireGuardPeer($vpnUser, $server));
-            dispatch(new \App\Jobs\SyncOpenVPNCredentials($server));
-            dispatch(new \App\Jobs\GenerateOvpnFile($vpnUser, $server));
+            // Per-(user, server) jobs: keep signatures consistent with wg:generate and others
+            AddWireGuardPeer::dispatch($vpnUser, $server)->onQueue('wg');
+            SyncOpenVPNCredentials::dispatch($server);
+            GenerateOvpnFile::dispatch($vpnUser, $server);
         }
 
-        // 🛠️ Generate modern stealth configs (prioritizes unified profiles)
-        $configList = VpnConfigBuilder::generate($vpnUser);
-        
-        Log::info("🎯 Generated config list for {$this->username}", [
-            'total_configs' => count($configList),
-            'variants' => array_unique(array_column($configList, 'variant')),
-            'servers' => array_unique(array_column($configList, 'server_name'))
-        ]);
+        // If VpnConfigBuilder has a global helper, keep it per-server instead:
+        // foreach ($vpnUser->vpnServers as $server) {
+        //     VpnConfigBuilder::generate($vpnUser, $server);
+        // }
 
-        Log::info("🎉 Finished creating VPN user {$this->username} with stealth config files.");
+        Log::info("🎉 Finished creating VPN user {$this->username} with server bindings.");
     }
 }
