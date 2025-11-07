@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\VpnUser;
 use App\Models\VpnServer;
 use App\Services\WireGuardConfigBuilder;
 use Illuminate\Http\JsonResponse;
