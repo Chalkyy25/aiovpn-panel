@@ -43,6 +43,38 @@ class WireGuardConfigController extends Controller
 
         return response()->json($servers);
     }
+    
+        public function download(Request $request, VpnUser $user, VpnServer $server): Response
+    {
+        // Optional: verify user is linked to this server
+        // if (method_exists($user, 'vpnServers')) {
+        //     abort_unless($user->vpnServers()->whereKey($server->id)->exists(), 403, 'User not linked to this server');
+        // }
+
+        abort_unless($server->wg_public_key && $server->wg_port, 400, 'Server is not WireGuard-enabled');
+
+        abort_unless(
+            $user->wireguard_private_key &&
+            $user->wireguard_public_key &&
+            $user->wireguard_address,
+            400,
+            'WireGuard keys/address missing for this user'
+        );
+
+        $conf = WireGuardConfigBuilder::build($user, $server);
+
+        $filename = sprintf(
+            'aiovpn-%s-%s.conf',
+            str($server->name)->slug(),
+            str($user->username)->slug()
+        );
+
+        return response($conf, 200, [
+            'Content-Type'        => 'text/plain; charset=utf-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Cache-Control'       => 'no-store, no-cache, must-revalidate',
+        ]);
+    }
 
     /**
      * GET /api/wg/config?server_id=##
