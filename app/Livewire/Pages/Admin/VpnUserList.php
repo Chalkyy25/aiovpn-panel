@@ -70,15 +70,21 @@ class VpnUserList extends Component
      * Generate WireGuard peer setup for this user.
      */
     public function generateWireGuard($id): void
-    {
-        $user = VpnUser::findOrFail($id);
+{
+    $user = VpnUser::with('vpnServers')->findOrFail($id);
 
-        AddWireGuardPeer::dispatch($user);
-
-        Log::info("🔧 WireGuard peer setup queued for user $user->username");
-
-        session()->flash('message', "WireGuard peer setup for $user->username has been queued.");
+    if ($user->vpnServers->isEmpty()) {
+        session()->flash('message', "User $user->username is not associated with any servers.");
+        return;
     }
+
+    foreach ($user->vpnServers as $server) {
+        AddWireGuardPeer::dispatch($user, $server)->onQueue('wg');
+        Log::info("🔧 WireGuard peer setup queued for {$user->username} on {$server->name}");
+    }
+
+    session()->flash('message', "WireGuard peer setup for $user->username has been queued on all linked servers.");
+}
 
     /**
      * Force remove WireGuard peer for this user.
