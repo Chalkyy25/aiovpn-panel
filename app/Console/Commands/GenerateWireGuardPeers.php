@@ -5,10 +5,8 @@ namespace App\Console\Commands;
 use App\Jobs\AddWireGuardPeer;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
-use Illuminate\Bus\Batch;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -24,7 +22,6 @@ class GenerateWireGuardPeers extends Command
 
     public function handle(): int
     {
-        // single-run guard (5-minute lock window)
         $lock = Cache::lock('cmd:wg:generate', 300);
 
         if (! $lock->get()) {
@@ -37,28 +34,23 @@ class GenerateWireGuardPeers extends Command
             $userId   = $this->option('user');
             $dryRun   = (bool) $this->option('dry');
 
-            // servers scope
+            // If --server is given, ensure it exists (mainly for messaging)
             $servers = $serverId
                 ? VpnServer::query()->whereKey($serverId)->get()
                 : VpnServer::all();
 
-            if ($servers->isEmpty()) {
-                $this->warn('No servers matched the selection.');
+            if ($serverId && $servers->isEmpty()) {
+                $this->warn("No server found with ID {$serverId}.");
                 return self::SUCCESS;
             }
 
-            // users scope (only those that have WG keys/addr)
+            // Users with valid WG material
             $usersQuery = VpnUser::query()
                 ->when($userId, fn ($q) => $q->whereKey($userId))
                 ->whereNotNull('wireguard_public_key')
                 ->where('wireguard_public_key', '!=', '')
                 ->whereNotNull('wireguard_address')
                 ->where('wireguard_address', '!=', '');
-
-            // Load user->vpnServers relation only when needed
-            // Here we’ll iterate by chunks for memory safety
-            $totalJobs = 0;
-            $preparedJobs = [];
 
             $this->info(sprintf(
                 'Preparing peers%s%s (dry=%s)…',
@@ -67,47 +59,50 @@ class GenerateWireGuardPeers extends Command
                 $dryRun ? 'yes' : 'no'
             ));
 
-            $usersQuery->chunkById(500, function (Collection $users) use ($servers, &$totalJobs, &$preparedJobs) {
-                foreach ($users as $user) {
-                    // If a user-to-server pivot drives assignment, prefer that.
-                    // Otherwise, default to all selected servers.
-                    $targetServers = $user->relationLoaded('vpnServers')
-                        ? $user->vpnServers
-                        : $servers;
+            $jobs = [];
+            $totalJobs = 0;
 
-                    foreach ($targetServers as $server) {
-                        // Skip if peer already exists for (user, server)
-                        if (method_exists($user, 'wgPeers') &&
-                            $user->wgPeers()->where('server_id', $server->id)->exists()) {
-                            $this->line("⏩ {$user->username} already has a peer on {$server->name}");
+            $usersQuery->chunkById(500, function (Collection $users) use ($serverId, $servers, &$jobs, &$totalJobs) {
+                foreach ($users as $user) {
+                    // If a specific server is targeted, queue one job: (user, that server)
+                    if ($serverId) {
+                        $server = $servers->first();
+                        if (! $server) {
                             continue;
                         }
 
                         $this->line("⚙️  Queue {$user->username} on {$server->name}");
-                        $preparedJobs[] = (new AddWireGuardPeer($user, $server))->onQueue('wg-peers');
+                        $jobs[] = (new AddWireGuardPeer($user, $server))->onQueue('wg-peers');
                         $totalJobs++;
+                        continue;
                     }
+
+                    // Default: one job per user to handle all linked servers (Option A)
+                    $this->line("⚙️  Queue {$user->username} on all linked servers");
+                    $jobs[] = (new AddWireGuardPeer($user))->onQueue('wg-peers');
+                    $totalJobs++;
                 }
             });
 
             if ($totalJobs === 0) {
-                $this->warn('Nothing to do (no missing peers for the selection).');
+                $this->warn('Nothing to do (no eligible users found for the selection).');
                 return self::SUCCESS;
             }
 
             if ($dryRun) {
-    $this->info("DRY RUN: {$totalJobs} job(s) would be enqueued.");
-    return self::SUCCESS;
-}
+                $this->info("DRY RUN: {$totalJobs} job(s) would be enqueued.");
+                return self::SUCCESS;
+            }
 
-$this->info("Dispatching {$totalJobs} job(s) individually on 'wg-peers' queue…");
+            $this->info("Dispatching {$totalJobs} job(s) on 'wg-peers' queue…");
 
-foreach ($preparedJobs as $job) {
-    dispatch($job);
-}
+            foreach ($jobs as $job) {
+                dispatch($job);
+            }
 
-$this->info('✅ Done. Jobs queued.');
-return self::SUCCESS;
+            $this->info('✅ Done. Jobs queued.');
+            return self::SUCCESS;
+
         } catch (Throwable $e) {
             Log::error('wg:generate failed: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
             $this->error('Command failed: '.$e->getMessage());
