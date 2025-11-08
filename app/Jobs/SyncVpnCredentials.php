@@ -35,13 +35,13 @@ class SyncVpnCredentials implements ShouldQueue
     $content = implode("\n", $lines);
 
     // Use the standard storage/app path
-    $localPath = storage_path('app/vpn/psw-file');
+    $localPath = storage_path('vpn/psw-file');
 
-    if (!is_dir(dirname($localPath))) {
-        mkdir(dirname($localPath), 0755, true);
-    }
+if (!is_dir(dirname($localPath))) {
+    mkdir(dirname($localPath), 0755, true);
+}
 
-    file_put_contents($localPath, $content);
+file_put_contents($localPath, $content);
 
     Log::info("✅ psw-file generated with " . count($lines) . " users.");
 
