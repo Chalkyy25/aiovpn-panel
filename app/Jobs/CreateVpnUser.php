@@ -101,40 +101,47 @@ class CreateVpnUser implements ShouldQueue
      * Option B: via libsodium if you prefer pure PHP.
      */
     private function generateWireGuardKeypair(): array
-    {
-        // Option A: shell out to `wg`
-        $priv = trim(shell_exec('wg genkey'));
-        if (!$priv) {
-            throw new \RuntimeException('Failed to generate WireGuard private key');
-        }
-        $pub = trim(shell_exec('echo '.escapeshellarg($priv).' | wg pubkey'));
-        if (!$pub) {
-            throw new \RuntimeException('Failed to derive WireGuard public key');
-        }
-        return [$priv, $pub];
+{
+    // Use full path and capture stderr for debugging
+    $cmdPriv = '/usr/bin/wg genkey 2>&1';
+    $privOut = shell_exec($cmdPriv);
 
-        /*
-        // Option B: libsodium (uncomment if installed and preferred)
-
-        if (!extension_loaded('sodium')) {
-            throw new \RuntimeException('libsodium not available for WireGuard key generation');
-        }
-
-        $sk = sodium_crypto_box_keypair();
-        $secret = sodium_crypto_box_secretkey($sk);
-        $public = sodium_crypto_box_publickey($sk);
-
-        return [
-            base64_encode($secret),
-            base64_encode($public),
-        ];
-        */
+    if ($privOut === null) {
+        // shell_exec disabled or fatal
+        throw new \RuntimeException('Failed to generate WireGuard private key: shell_exec returned null');
     }
 
-    /**
-     * Pick the next free /32 inside $this->wgSubnetCidr.
-     * Very simple allocator; replace with your own table/logic if needed.
-     */
+    $priv = trim($privOut);
+
+    // Basic sanity: wg keys are base64-ish, not error text
+    if ($priv === '' || stripos($priv, 'error') !== false || strlen($priv) < 40) {
+        \Log::error('wg genkey failed or suspicious output', [
+            'output' => $privOut,
+            'cmd'    => $cmdPriv,
+        ]);
+        throw new \RuntimeException('Failed to generate WireGuard private key');
+    }
+
+    $cmdPub = 'echo ' . escapeshellarg($priv) . ' | /usr/bin/wg pubkey 2>&1';
+    $pubOut = shell_exec($cmdPub);
+
+    if ($pubOut === null) {
+        throw new \RuntimeException('Failed to generate WireGuard public key: shell_exec returned null');
+    }
+
+    $pub = trim($pubOut);
+
+    if ($pub === '' || stripos($pub, 'error') !== false || strlen($pub) < 40) {
+        \Log::error('wg pubkey failed or suspicious output', [
+            'output' => $pubOut,
+            'cmd'    => $cmdPub,
+        ]);
+        throw new \RuntimeException('Failed to derive WireGuard public key');
+    }
+
+    return [$priv, $pub];
+}
+
     private function allocateWireGuardAddress(): string
     {
         [$net, $maskBits] = explode('/', $this->wgSubnetCidr);
