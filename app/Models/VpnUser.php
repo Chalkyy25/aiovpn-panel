@@ -60,15 +60,31 @@ class VpnUser extends Authenticatable
 
     /* ========= Auth ========= */
 
-    public function getAuthIdentifierName(): string { return 'username'; }
-    public function getAuthPassword(): string { return $this->password; }
+    public function getAuthIdentifierName(): string
+    {
+        return 'username';
+    }
+
+    public function getAuthPassword(): string
+    {
+        return $this->password;
+    }
 
     protected function password(): Attribute
     {
         return Attribute::set(function ($value) {
-            if (blank($value)) return $this->password;
+            if (blank($value)) {
+                return $this->password;
+            }
+
             $v = (string) $value;
-            return (strlen($v) === 60 && str_starts_with($v, '$2y$')) ? $v : Hash::make($v);
+
+            // keep if already a bcrypt hash
+            if (strlen($v) === 60 && str_starts_with($v, '$2y$')) {
+                return $v;
+            }
+
+            return Hash::make($v);
         });
     }
 
@@ -82,7 +98,7 @@ class VpnUser extends Authenticatable
         });
     }
 
-    // No remember token column
+    // disable remember token
     public function setRememberToken($value): void {}
     public function getRememberToken(): ?string { return null; }
     public function getRememberTokenName(): string { return 'remember_token'; }
@@ -93,9 +109,9 @@ class VpnUser extends Authenticatable
     {
         return $this->belongsToMany(
             VpnServer::class,
-            'vpn_server_user',      // pivot table
-            'vpn_user_id',          // this model's key on pivot
-            'vpn_server_id'         // related model's key on pivot
+            'vpn_server_user',    // pivot
+            'vpn_user_id',
+            'vpn_server_id'
         )->withTimestamps();
     }
 
@@ -111,10 +127,11 @@ class VpnUser extends Authenticatable
 
     public function activeConnections(): HasMany
     {
-        return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
+        return $this->hasMany(VpnUserConnection::class)
+            ->where('is_connected', true);
     }
 
-    /* ========= Scopes & computed ========= */
+    /* ========= Scopes / computed ========= */
 
     public function scopeTrials($q)       { return $q->where('is_trial', true); }
     public function scopeActiveTrials($q) { return $q->where('is_trial', true)->where('expires_at', '>', now()); }
@@ -129,7 +146,10 @@ class VpnUser extends Authenticatable
     public function onlineSince(): Attribute
     {
         return Attribute::get(function () {
-            $coll = $this->relationLoaded('activeConnections') ? $this->activeConnections : $this->activeConnections()->get();
+            $coll = $this->relationLoaded('activeConnections')
+                ? $this->activeConnections
+                : $this->activeConnections()->get();
+
             $ts = $coll->min('connected_at');
             return $ts ? Carbon::parse($ts) : null;
         });
@@ -138,7 +158,10 @@ class VpnUser extends Authenticatable
     public function lastDisconnectedAt(): Attribute
     {
         return Attribute::get(function () {
-            $coll = $this->relationLoaded('connections') ? $this->connections : $this->connections()->get();
+            $coll = $this->relationLoaded('connections')
+                ? $this->connections
+                : $this->connections()->get();
+
             $ts = $coll->where('is_connected', false)->max('disconnected_at');
             return $ts ? Carbon::parse($ts) : null;
         });
@@ -163,7 +186,9 @@ class VpnUser extends Authenticatable
 
     public function getConnectionLimitTextAttribute(): string
     {
-        return ((int) $this->max_connections === 0) ? 'Unlimited' : (string) (int) $this->max_connections;
+        return ((int) $this->max_connections === 0)
+            ? 'Unlimited'
+            : (string) (int) $this->max_connections;
     }
 
     public function getConnectionSummaryAttribute(): string
@@ -178,13 +203,13 @@ class VpnUser extends Authenticatable
     protected static function booted(): void
     {
         static::creating(function (self $u) {
-            // Username (avoid UNDEF / blanks)
+            // username
             $u->username = trim((string) ($u->username ?? ''));
             if ($u->username === '' || strtoupper($u->username) === 'UNDEF') {
                 $u->username = 'wg-' . Str::lower(Str::random(10));
             }
 
-            // Always ensure a password exists
+            // ensure password
             if (blank($u->plain_password) && blank($u->password)) {
                 $generated = Str::random(20);
                 $u->plain_password = $generated;
@@ -193,27 +218,31 @@ class VpnUser extends Authenticatable
                 $u->password = Hash::make($u->plain_password);
             }
 
-            // Defaults
+            // defaults
             $u->max_connections ??= 1;
             $u->is_active       ??= true;
 
-            // WireGuard autogen
+            // optional auto WG identity
             if (config('services.wireguard.autogen', false)) {
-                if (blank($u->wireguard_private_key)) {
+                // keys
+                if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
                     $keys = self::generateWireGuardKeys();
                     $u->wireguard_private_key = $keys['private'];
                     $u->wireguard_public_key  = $keys['public'];
-                } elseif (blank($u->wireguard_public_key)) {
-                    // derive public if only private provided
+                } elseif (blank($u->wireguard_public_key) && !blank($u->wireguard_private_key)) {
                     $pub = self::wgPublicFromPrivate($u->wireguard_private_key);
-                    if ($pub) $u->wireguard_public_key = $pub;
+                    if ($pub) {
+                        $u->wireguard_public_key = $pub;
+                    }
                 }
 
+                // address (always store /32)
                 if (blank($u->wireguard_address)) {
                     do {
                         $last = random_int(2, 254);
-                        $ip = "10.66.66.$last/32";
+                        $ip   = "10.66.66.$last/32";
                     } while (self::where('wireguard_address', $ip)->exists());
+
                     $u->wireguard_address = $ip;
                 }
             }
@@ -223,25 +252,25 @@ class VpnUser extends Authenticatable
             if ($u->vpnServers()->exists()) {
                 foreach ($u->vpnServers as $server) {
                     SyncOpenVPNCredentials::dispatch($server);
-                    Log::info("🚀 OpenVPN creds synced to {$server->name} ({$server->ip_address})");
+                    Log::info("OpenVPN creds synced to {$server->name} ({$server->ip_address})");
                 }
             }
         });
 
         static::deleting(function (self $u) {
-            Log::info("🗑️ Cleanup for VPN user: {$u->username}");
+            Log::info("Cleanup for VPN user: {$u->username}");
             $u->loadMissing('vpnServers');
 
             if (config('services.wireguard.autogen', false) && !blank($u->wireguard_public_key)) {
                 foreach ($u->vpnServers as $server) {
                     RemoveWireGuardPeer::dispatch(clone $u, $server);
                 }
-                Log::info("🔧 WG peer removal queued for {$u->username}");
+                Log::info("WG peer removal queued for {$u->username}");
             }
 
             if ($u->vpnServers()->exists()) {
                 RemoveOpenVPNUser::dispatch($u);
-                Log::info("🔧 OpenVPN cleanup queued for {$u->username}");
+                Log::info("OpenVPN cleanup queued for {$u->username}");
             }
         });
     }
@@ -250,64 +279,96 @@ class VpnUser extends Authenticatable
 
     /**
      * Generate a valid X25519 keypair for WireGuard.
-     * Prefers libsodium; falls back to `wg` tools if available.
+     * 1) libsodium (sodium_crypto_scalarmult_base)
+     * 2) `wg` tools if available
      */
     public static function generateWireGuardKeys(): array
     {
-        // Prefer libsodium (pure PHP, no shell)
-        if (function_exists('sodium_crypto_box_keypair')) {
+        // 1) libsodium preferred (no wg binary dependency)
+        if (function_exists('sodium_crypto_scalarmult_base')) {
             try {
-                $kp   = sodium_crypto_box_keypair();
-                $priv = sodium_crypto_box_secretkey($kp);           // 32 bytes
-                $pub  = sodium_crypto_scalarmult_base($priv);       // derive X25519 public key
+                $sk = random_bytes(32);
+
+                // X25519 clamp
+                $sk[0]  = chr(ord($sk[0]) & 248);
+                $sk[31] = chr((ord($sk[31]) & 127) | 64);
+
+                $pk = sodium_crypto_scalarmult_base($sk);
+
                 return [
-                    'private' => base64_encode($priv),
-                    'public'  => base64_encode($pub),
+                    'private' => base64_encode($sk),
+                    'public'  => base64_encode($pk),
                 ];
             } catch (\Throwable $e) {
-                Log::warning('WireGuard: sodium generation failed, falling back to wg tools: '.$e->getMessage());
+                Log::warning('WireGuard: sodium keygen failed, falling back to wg: '.$e->getMessage());
             }
         }
 
-        // Fallback to system wg binaries
-        $priv = trim((string) @shell_exec('wg genkey 2>/dev/null'));
+        // 2) system wg tools
+        $priv = trim((string) @shell_exec('/usr/bin/wg genkey 2>/dev/null'));
         if ($priv !== '') {
-            $pub = trim((string) @shell_exec('printf %s '.escapeshellarg($priv).' | wg pubkey 2>/dev/null'));
+            $pub = trim((string) self::pipeTo('/usr/bin/wg pubkey', $priv . "\n"));
             if ($pub !== '') {
-                // wg tools output base64 already
-                return ['private' => $priv, 'public' => $pub];
+                // wg already returns base64 keys
+                return [
+                    'private' => $priv,
+                    'public'  => $pub,
+                ];
             }
         }
 
-        // Last resort: random, but still derive proper public via sodium if present
-        Log::warning('WireGuard: no sodium/wg tools available; generating random private and attempting sodium derive.');
-        $rawPriv = random_bytes(32);
-        $public  = function_exists('sodium_crypto_scalarmult_base')
-            ? base64_encode(sodium_crypto_scalarmult_base($rawPriv))
-            : null;
-
-        return [
-            'private' => base64_encode($rawPriv),
-            'public'  => $public ?? base64_encode($rawPriv), // placeholder only if we truly cannot derive
-        ];
+        throw new \RuntimeException('No valid WireGuard keygen available (libsodium or wg)');
     }
 
     /**
-     * Derive a base64 public key from a base64 (or raw) private key.
+     * Derive base64 public key from base64 (or raw) private key.
      */
     public static function wgPublicFromPrivate(string $private): ?string
     {
         try {
             $raw = base64_decode($private, true);
             if ($raw === false) {
-                // might already be raw
                 $raw = $private;
             }
-            if (!is_string($raw) || strlen($raw) !== 32) return null;
-            if (!function_exists('sodium_crypto_scalarmult_base')) return null;
-            return base64_encode(sodium_crypto_scalarmult_base($raw));
+
+            if (!is_string($raw) || strlen($raw) !== 32) {
+                return null;
+            }
+            if (!function_exists('sodium_crypto_scalarmult_base')) {
+                return null;
+            }
+
+            $pk = sodium_crypto_scalarmult_base($raw);
+            return base64_encode($pk);
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private static function pipeTo(string $cmd, string $input): string
+    {
+        $desc = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $proc = @proc_open($cmd, $desc, $pipes);
+        if (!is_resource($proc)) {
+            return '';
+        }
+
+        fwrite($pipes[0], $input);
+        fclose($pipes[0]);
+
+        $out = stream_get_contents($pipes[1]) ?: '';
+        fclose($pipes[1]);
+
+        $err = stream_get_contents($pipes[2]) ?: '';
+        fclose($pipes[2]);
+
+        proc_close($proc);
+
+        return trim($out !== '' ? $out : $err);
     }
 }
