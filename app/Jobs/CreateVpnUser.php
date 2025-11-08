@@ -23,13 +23,20 @@ class CreateVpnUser implements ShouldQueue
     public array $serverIds;
     public ?int $clientId;
 
-    // WG pool used for wireguard_address
+    // WireGuard pool for wireguard_address
     private string $wgSubnetCidr = '10.66.66.0/24';
 
-    public function __construct(string $username, array $serverIds, ?int $clientId = null, ?string $password = null)
-    {
+    public int $tries   = 2;
+    public int $timeout = 120;
+
+    public function __construct(
+        string $username,
+        array $serverIds,
+        ?int $clientId = null,
+        ?string $password = null
+    ) {
         $this->onConnection('redis');
-        $this->onQueue('default'); // or your preferred queue
+        $this->onQueue('default');
 
         $this->username  = $username;
         $this->serverIds = $serverIds;
@@ -51,69 +58,65 @@ class CreateVpnUser implements ShouldQueue
             'username'       => $this->username,
             'plain_password' => $this->password,
             'client_id'      => $this->clientId,
-            // hashed password handled by model mutator if you have it
+            // password hashing handled by model mutator
         ]);
 
         // Attach servers
         $vpnUser->vpnServers()->sync($this->serverIds);
         $vpnUser->load('vpnServers');
 
-        Log::info("VPN user {$vpnUser->username} attached to servers: ".$vpnUser->vpnServers->pluck('id')->join(', '));
+        Log::info("VPN user {$vpnUser->username} attached to servers: " .
+            $vpnUser->vpnServers->pluck('id')->join(', '));
 
-        // Provision WG identity (keys + /32)
-        $this->provisionWireGuardIdentity($vpnUser);
+        // Ensure WG identity (keys + /32) exists
+        $this->ensureWireGuardIdentity($vpnUser);
 
-        // Generate OpenVPN configs + sync per server
+        // Per-server OpenVPN artifacts + sync
         foreach ($vpnUser->vpnServers as $server) {
             GenerateOvpnFile::dispatch($vpnUser, $server)->onQueue('ovpn');
             SyncOpenVPNCredentials::dispatch($server)->onQueue('ovpn');
         }
 
-        // Now that WG keys/address exist, push peers to all linked servers
+        // Push WG peers for all linked servers
         AddWireGuardPeer::dispatch($vpnUser)->onQueue('wg');
 
         Log::info("Finished creating VPN user {$this->username} with OpenVPN + WireGuard.");
     }
 
-    private function provisionWireGuardIdentity(VpnUser $user): void
+    /**
+     * Idempotent: only fills missing WG fields.
+     */
+    private function ensureWireGuardIdentity(VpnUser $user): void
     {
-        if ($user->wireguard_public_key && $user->wireguard_private_key && $user->wireguard_address) {
-            Log::info("WireGuard identity already exists for user {$user->id}, skipping.");
-            return;
+        $changed = false;
+
+        // Keys
+        if (blank($user->wireguard_private_key) || blank($user->wireguard_public_key)) {
+            $keys = VpnUser::generateWireGuardKeys();
+            $user->wireguard_private_key = $keys['private'];
+            $user->wireguard_public_key  = $keys['public'];
+            $changed = true;
+            Log::info("Generated WG keypair for user {$user->id}");
         }
 
-        [$private, $public] = $this->generateWireGuardKeypair();
-        $address = $this->allocateWireGuardAddress();
+        // Address (/32 inside pool)
+        if (blank($user->wireguard_address)) {
+            $addr = $this->allocateWireGuardAddress();
+            $user->wireguard_address = $addr;
+            $changed = true;
+            Log::info("Assigned WG address {$addr} to user {$user->id}");
+        }
 
-        $user->wireguard_private_key = $private;
-        $user->wireguard_public_key  = $public;
-        $user->wireguard_address     = $address;
-        $user->save();
-
-        Log::info("Assigned WG identity for user {$user->id}: {$address}");
+        if ($changed) {
+            $user->save();
+        } else {
+            Log::info("WireGuard identity already present for user {$user->id}, no changes.");
+        }
     }
 
-    private function generateWireGuardKeypair(): array
-    {
-        // Prefer libsodium. Install php-sodium if missing.
-        if (!extension_loaded('sodium')) {
-            throw new \RuntimeException('libsodium extension not available for WireGuard key generation');
-        }
-
-        // WireGuard keys are Curve25519 (X25519). This pattern matches typical WG-compatible generation.
-        $sk = random_bytes(SODIUM_CRYPTO_BOX_SECRETKEYBYTES);
-        $pk = sodium_crypto_scalarmult_base($sk);
-
-        $private = base64_encode($sk);
-        $public  = base64_encode($pk);
-
-        if (strlen($private) < 40 || strlen($public) < 40) {
-            throw new \RuntimeException('Generated WireGuard keys look invalid');
-        }
-
-        return [$private, $public];
-    }
-
+    /**
+     * Allocate next free /32 from $wgSubnetCidr based on vpn_users.wireguard_address.
+     */
     private function allocateWireGuardAddress(): string
     {
         [$net, $maskBits] = explode('/', $this->wgSubnetCidr);
@@ -124,12 +127,17 @@ class CreateVpnUser implements ShouldQueue
             throw new \RuntimeException("Invalid WG subnet: {$this->wgSubnetCidr}");
         }
 
+        // inclusive usable range; reserve .0, .1, .255
         $start = $netLong + 2;
         $end   = $netLong + (1 << (32 - $maskBits)) - 2;
 
         $used = VpnUser::whereNotNull('wireguard_address')
             ->pluck('wireguard_address')
-            ->map(fn ($cidr) => ip2long(strtok($cidr, '/')))
+            ->map(function ($cidr) {
+                $ip = trim((string) $cidr);
+                $ip = strtok($ip, '/');
+                return $ip ? ip2long($ip) : null;
+            })
             ->filter()
             ->all();
 
@@ -137,10 +145,10 @@ class CreateVpnUser implements ShouldQueue
 
         for ($ip = $start; $ip <= $end; $ip++) {
             if (!isset($usedSet[$ip])) {
-                return long2ip($ip).'/32';
+                return long2ip($ip) . '/32';
             }
         }
 
-        throw new \RuntimeException('No free WireGuard IPs available in pool '.$this->wgSubnetCidr);
+        throw new \RuntimeException('No free WireGuard IPs available in pool ' . $this->wgSubnetCidr);
     }
 }
