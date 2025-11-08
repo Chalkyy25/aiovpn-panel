@@ -18,7 +18,7 @@ class CreateVpnUser extends Component
     public ?string $username = null;
     /** @var array<int> */
     public array $selectedServers = [];
-    public string $expiry = '1m';           // 1m|3m|6m|12m
+    public string $expiry = '1m'; // 1m|3m|6m|12m
     public ?int $packageId = null;
 
     public int $priceCredits = 0;
@@ -31,10 +31,10 @@ class CreateVpnUser extends Component
 
     public function mount(): void
     {
-        $this->username = $this->username ?: 'user-' . Str::lower(Str::random(6));
+        $this->username ??= 'user-' . Str::lower(Str::random(6));
 
         $this->servers  = VpnServer::orderBy('name')->get(['id', 'name', 'ip_address']);
-        $this->packages = Package::orderBy('price_credits')->get(['id','name','price_credits','max_connections']);
+        $this->packages = Package::orderBy('price_credits')->get(['id', 'name', 'price_credits', 'max_connections']);
 
         $this->packageId ??= (int) optional($this->packages->first())->id;
         $this->recalcCredits();
@@ -50,15 +50,25 @@ class CreateVpnUser extends Component
         ]);
     }
 
-    public function updatedPackageId(): void { $this->recalcCredits(); }
-    public function updatedExpiry(): void    { $this->recalcCredits(); }
+    public function updatedPackageId(): void
+    {
+        $this->recalcCredits();
+    }
+
+    public function updatedExpiry(): void
+    {
+        $this->recalcCredits();
+    }
 
     private function recalcCredits(): void
     {
         $pkg = $this->packages->firstWhere('id', $this->packageId);
 
         $months = match ($this->expiry) {
-            '1m' => 1, '3m' => 3, '6m' => 6, '12m' => 12,
+            '1m' => 1,
+            '3m' => 3,
+            '6m' => 6,
+            '12m' => 12,
             default => 1,
         };
 
@@ -79,10 +89,10 @@ class CreateVpnUser extends Component
                 'max:50',
                 Rule::unique('vpn_users', 'username'),
             ],
-            'selectedServers'   => ['required','array','min:1'],
-            'selectedServers.*' => ['integer', Rule::exists('vpn_servers','id')],
-            'expiry'            => ['required', Rule::in(['1m','3m','6m','12m'])],
-            'packageId'         => ['required', Rule::exists('packages','id')],
+            'selectedServers'   => ['required', 'array', 'min:1'],
+            'selectedServers.*' => ['integer', Rule::exists('vpn_servers', 'id')],
+            'expiry'            => ['required', Rule::in(['1m', '3m', '6m', '12m'])],
+            'packageId'         => ['required', Rule::exists('packages', 'id')],
         ];
     }
 
@@ -92,6 +102,7 @@ class CreateVpnUser extends Component
 
         $admin = auth()->user();
         $pkg   = $this->packages->firstWhere('id', $this->packageId);
+
         if (! $pkg) {
             $this->addError('packageId', 'Invalid package selected.');
             return;
@@ -106,7 +117,7 @@ class CreateVpnUser extends Component
         $plain  = Str::random(10);
 
         try {
-            // 1) Credits in a transaction (if needed)
+            // 1) Handle credits only
             DB::transaction(function () use ($admin, $pkg, $months) {
                 if ($admin->role !== 'admin') {
                     $admin->deductCredits(
@@ -121,7 +132,7 @@ class CreateVpnUser extends Component
                 }
             });
 
-            // 2) Queue full provisioning (creates VpnUser, WG keys, OVPN, peers)
+            // 2) Queue full provisioning (user + OVPN + WG done in job)
             CreateVpnUserJob::dispatch(
                 $this->username,
                 $this->selectedServers,
@@ -129,11 +140,12 @@ class CreateVpnUser extends Component
                 $plain
             );
 
-            // 3) One-time credentials shown to admin
+            // 3) Show one-time credentials
             $msg = "VPN user {$this->username} queued for creation. Password: {$plain}";
             if ($admin->role === 'admin') {
                 $msg .= " (no credits deducted)";
             }
+
             session()->flash('success', $msg);
 
             return to_route('admin.vpn-users.index');
