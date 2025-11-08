@@ -18,46 +18,47 @@ class SyncVpnCredentials implements ShouldQueue
      * Execute the job.
      */
     public function handle(): void
-    {
-        Log::info("🔐 Starting VPN credentials sync job...");
+{
+    Log::info("🔐 Starting VPN credentials sync job...");
 
-        $users = DB::table('vpn_users')
-            ->where('is_active', true)
-            ->select('username', 'password')
-            ->get();
+    $users = DB::table('vpn_users')
+        ->where('is_active', true)
+        ->select('username', 'password')
+        ->get();
 
-        if ($users->isEmpty()) {
-            Log::warning("⚠️ No active users found. Skipping sync.");
-            return;
-        }
-
-        $lines = $users->map(fn ($u) => "$u->username $u->password")->toArray();
-        $content = implode("\n", $lines);
-
-        $localPath = storage_path('vpn/psw-file');
-
-        if (!is_dir(dirname($localPath))) {
-            mkdir(dirname($localPath), 0755, true);
-        }
-
-        file_put_contents($localPath, $content);
-
-        Log::info("✅ psw-file generated with " . count($lines) . " users.");
-
-        $remotePath = '/etc/openvpn/psw-file';
-        $serverIp = '94.237.52.172';
-        $sshUser = 'root';
-        $sshKey  = '/root/.ssh/github_deploy';
-
-        $command = "scp -i $sshKey -o StrictHostKeyChecking=no $localPath $sshUser@$serverIp:$remotePath";
-
-        exec($command, $output, $status);
-
-        if ($status === 0) {
-            Log::info("🚀 VPN credentials synced to $serverIp");
-        } else {
-            Log::error("❌ Failed to sync VPN credentials via SCP.");
-            throw new \Exception("Failed to sync VPN credentials via SCP. Exit code: $status");
-        }
+    if ($users->isEmpty()) {
+        Log::warning("⚠️ No active users found. Skipping sync.");
+        return;
     }
+
+    $lines   = $users->map(fn ($u) => "$u->username $u->password")->toArray();
+    $content = implode("\n", $lines);
+
+    // Use the standard storage/app path
+    $localPath = storage_path('app/vpn/psw-file');
+
+    if (!is_dir(dirname($localPath))) {
+        mkdir(dirname($localPath), 0755, true);
+    }
+
+    file_put_contents($localPath, $content);
+
+    Log::info("✅ psw-file generated with " . count($lines) . " users.");
+
+    $remotePath = '/etc/openvpn/psw-file';
+    $serverIp   = '94.237.52.172';
+    $sshUser    = 'root';
+    $sshKey     = '/root/.ssh/github_deploy';
+
+    $command = "scp -i $sshKey -o StrictHostKeyChecking=no $localPath $sshUser@$serverIp:$remotePath";
+
+    exec($command, $output, $status);
+
+    if ($status === 0) {
+        Log::info("🚀 VPN credentials synced to $serverIp");
+    } else {
+        Log::error("❌ Failed to sync VPN credentials via SCP.", compact('status', 'output'));
+        throw new \Exception("Failed to sync VPN credentials via SCP. Exit code: $status");
+    }
+}
 }
