@@ -275,49 +275,29 @@ class VpnUser extends Authenticatable
         });
     }
 
-    /* ========= WireGuard helpers ========= */
+        /* ========= WireGuard helpers ========= */
 
     /**
      * Generate a valid X25519 keypair for WireGuard.
-     * 1) libsodium (sodium_crypto_scalarmult_base)
-     * 2) `wg` tools if available
+     * Requires libsodium on the panel. No wg binary.
      */
     public static function generateWireGuardKeys(): array
     {
-        // 1) libsodium preferred (no wg binary dependency)
-        if (function_exists('sodium_crypto_scalarmult_base')) {
-            try {
-                $sk = random_bytes(32);
-
-                // X25519 clamp
-                $sk[0]  = chr(ord($sk[0]) & 248);
-                $sk[31] = chr((ord($sk[31]) & 127) | 64);
-
-                $pk = sodium_crypto_scalarmult_base($sk);
-
-                return [
-                    'private' => base64_encode($sk),
-                    'public'  => base64_encode($pk),
-                ];
-            } catch (\Throwable $e) {
-                Log::warning('WireGuard: sodium keygen failed, falling back to wg: '.$e->getMessage());
-            }
+        if (!function_exists('sodium_crypto_scalarmult_base')) {
+            throw new \RuntimeException('WireGuard keygen: libsodium extension missing');
         }
 
-        // 2) system wg tools
-        $priv = trim((string) @shell_exec('/usr/bin/wg genkey 2>/dev/null'));
-        if ($priv !== '') {
-            $pub = trim((string) self::pipeTo('/usr/bin/wg pubkey', $priv . "\n"));
-            if ($pub !== '') {
-                // wg already returns base64 keys
-                return [
-                    'private' => $priv,
-                    'public'  => $pub,
-                ];
-            }
-        }
+        // 32-byte private key, clamped for X25519
+        $sk = random_bytes(32);
+        $sk[0]  = $sk[0]  & "\xF8";
+        $sk[31] = ($sk[31] & "\x7F") | "\x40";
 
-        throw new \RuntimeException('No valid WireGuard keygen available (libsodium or wg)');
+        $pk = sodium_crypto_scalarmult_base($sk);
+
+        return [
+            'private' => base64_encode($sk),
+            'public'  => base64_encode($pk),
+        ];
     }
 
     /**
@@ -325,50 +305,24 @@ class VpnUser extends Authenticatable
      */
     public static function wgPublicFromPrivate(string $private): ?string
     {
-        try {
-            $raw = base64_decode($private, true);
-            if ($raw === false) {
-                $raw = $private;
-            }
-
-            if (!is_string($raw) || strlen($raw) !== 32) {
-                return null;
-            }
-            if (!function_exists('sodium_crypto_scalarmult_base')) {
-                return null;
-            }
-
-            $pk = sodium_crypto_scalarmult_base($raw);
-            return base64_encode($pk);
-        } catch (\Throwable) {
+        if (!function_exists('sodium_crypto_scalarmult_base')) {
             return null;
         }
-    }
 
-    private static function pipeTo(string $cmd, string $input): string
-    {
-        $desc = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
-
-        $proc = @proc_open($cmd, $desc, $pipes);
-        if (!is_resource($proc)) {
-            return '';
+        $raw = base64_decode($private, true);
+        if ($raw === false) {
+            $raw = $private;
         }
 
-        fwrite($pipes[0], $input);
-        fclose($pipes[0]);
+        if (!is_string($raw) || strlen($raw) !== 32) {
+            return null;
+        }
 
-        $out = stream_get_contents($pipes[1]) ?: '';
-        fclose($pipes[1]);
+        // clamp
+        $raw[0]  = $raw[0]  & "\xF8";
+        $raw[31] = ($raw[31] & "\x7F") | "\x40";
 
-        $err = stream_get_contents($pipes[2]) ?: '';
-        fclose($pipes[2]);
-
-        proc_close($proc);
-
-        return trim($out !== '' ? $out : $err);
+        return base64_encode(sodium_crypto_scalarmult_base($raw));
     }
+
 }
