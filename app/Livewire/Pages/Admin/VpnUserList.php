@@ -21,14 +21,15 @@ class VpnUserList extends Component
     use WithPagination;
 
     public string $search = '';
+
     public ?int $configUserId = null;
-public int $configProgress = 0;
-public string $configMessage = '';
+    public int $configProgress = 0;
+    public string $configMessage = '';
 
     #[On('refreshUsers')]
     public function refresh(): void
     {
-        // no-op; Livewire re-renders
+        // noop, wire:poll will re-render
     }
 
     public function updatingSearch(): void
@@ -36,63 +37,49 @@ public string $configMessage = '';
         $this->resetPage();
     }
 
-    public function deleteUser($id): void
+    public function deleteUser(int $id): void
     {
         $user = VpnUser::findOrFail($id);
         $username = $user->username;
 
-        $user->delete(); // model events handle cleanup
+        $user->delete();
 
         Log::info("🗑️ Deleted VPN user {$username} with auto-cleanup");
-        session()->flash('message', "User {$username} deleted successfully! Cleanup jobs have been queued.");
+        session()->flash('message', "User {$username} deleted successfully. Cleanup jobs have been queued.");
 
         $this->resetPage();
     }
 
-    public function generateOvpn($id): void
-{
-    $user = VpnUser::with('vpnServers')->findOrFail($id);
+    /**
+     * Queue full config pack generation (OpenVPN variants + WireGuard) for a user.
+     */
+    public function generateOvpn(int $id): void
+    {
+        $user = VpnUser::with('vpnServers')->findOrFail($id);
 
-    if ($user->vpnServers->isEmpty()) {
-        session()->flash('message', "User {$user->username} has no servers linked.");
-        return;
+        if ($user->vpnServers->isEmpty()) {
+            session()->flash('message', "User {$user->username} has no servers linked.");
+            return;
+        }
+
+        $this->configUserId   = $user->id;
+        $this->configProgress = 1;
+        $this->configMessage  = "Starting config pack for {$user->username}";
+
+        GenerateOvpnFile::dispatch($user);
+
+        Log::info("🌀 Config pack queued for user {$user->username}");
+
+        session()->flash(
+            'message',
+            "Config pack for {$user->username} queued: OpenVPN (unified, stealth, UDP) and WireGuard."
+        );
     }
-
-    $this->configUserId   = $user->id;
-    $this->configProgress = 1;
-    $this->configMessage  = "Starting config pack for {$user->username}";
-
-    \App\Jobs\GenerateOvpnFile::dispatch($user);
-
-    session()->flash(
-        'message',
-        "Config pack for {$user->username} queued: OpenVPN (unified/stealth/traditional) + WireGuard."
-    );
-}
-
-public function pollConfigProgress(): void
-{
-    if (! $this->configUserId) {
-        return;
-    }
-
-    $data = cache()->get("config_progress:{$this->configUserId}");
-
-    if (! $data) {
-        return;
-    }
-
-    $this->configProgress = (int) ($data['percent'] ?? 0);
-    $this->configMessage  = (string) ($data['message'] ?? '');
-
-    // optional: clear once 100%
-    // if ($this->configProgress >= 100) $this->configUserId = null;
-}
 
     /**
-     * Generate WireGuard peers on all linked servers (Option A).
+     * Generate WireGuard peers on all linked servers for a user.
      */
-    public function generateWireGuard($id): void
+    public function generateWireGuard(int $id): void
     {
         $user = VpnUser::with('vpnServers')->findOrFail($id);
 
@@ -101,17 +88,18 @@ public function pollConfigProgress(): void
             return;
         }
 
-        AddWireGuardPeer::dispatch($user);
+        foreach ($user->vpnServers as $server) {
+            AddWireGuardPeer::dispatch($user, $server)->onQueue('wg');
+            Log::info("🔧 WireGuard peer setup queued for {$user->username} on {$server->name}");
+        }
 
-        Log::info("🔧 WireGuard peer setup queued for {$user->username} on all linked servers");
-
-        session()->flash(
-            'message',
-            "WireGuard peer setup for {$user->username} has been queued on all linked servers."
-        );
+        session()->flash('message', "WireGuard peer setup for {$user->username} has been queued on all linked servers.");
     }
 
-    public function forceRemoveWireGuardPeer($id): void
+    /**
+     * Force remove WireGuard peers for this user from all linked servers.
+     */
+    public function forceRemoveWireGuardPeer(int $id): void
     {
         $user = VpnUser::with('vpnServers')->findOrFail($id);
 
@@ -130,13 +118,13 @@ public function pollConfigProgress(): void
             RemoveWireGuardPeer::dispatch(clone $user, $server);
         }
 
+        Log::info("🔧 WireGuard peer removal forced for {$user->username}");
         session()->flash('message', "WireGuard peer removal for {$user->username} has been queued.");
     }
 
-    public function toggleActive($id): void
+    public function toggleActive(int $id): void
     {
         $user = VpnUser::findOrFail($id);
-
         $user->is_active = ! $user->is_active;
         $user->save();
 
@@ -144,6 +132,30 @@ public function pollConfigProgress(): void
         session()->flash('message', "User {$user->username} is now ".($user->is_active ? 'active' : 'inactive'));
 
         $this->resetPage();
+    }
+
+    /**
+     * Polled by Livewire to update per-user config generation progress.
+     */
+    public function pollConfigProgress(): void
+    {
+        if (! $this->configUserId) {
+            return;
+        }
+
+        $data = cache()->get("config_progress:{$this->configUserId}");
+
+        if (! $data) {
+            return;
+        }
+
+        $this->configProgress = (int) ($data['percent'] ?? 0);
+        $this->configMessage  = (string) ($data['message'] ?? '');
+
+        // Optional auto-clear
+        // if ($this->configProgress >= 100) {
+        //     $this->configUserId = null;
+        // }
     }
 
     public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
