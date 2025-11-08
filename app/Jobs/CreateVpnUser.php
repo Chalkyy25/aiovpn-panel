@@ -102,27 +102,38 @@ class CreateVpnUser implements ShouldQueue
      */
     private function generateWireGuardKeypair(): array
 {
-    // Use full path and capture stderr for debugging
-    $cmdPriv = '/usr/bin/wg genkey 2>&1';
-    $privOut = shell_exec($cmdPriv);
+    // 1) Find wg binary in the actual runtime environment
+    $wgPath = trim((string) shell_exec('command -v wg 2>/dev/null'));
+
+    if ($wgPath === '') {
+        \Log::error('WireGuard: wg binary not found in PATH for worker user', [
+            'whoami' => trim((string) shell_exec('whoami')),
+            'path'   => getenv('PATH'),
+        ]);
+
+        throw new \RuntimeException('WireGuard binary not available on this system (PATH).');
+    }
+
+    // 2) Private key
+    $cmdPriv  = $wgPath . ' genkey 2>&1';
+    $privOut  = shell_exec($cmdPriv);
 
     if ($privOut === null) {
-        // shell_exec disabled or fatal
         throw new \RuntimeException('Failed to generate WireGuard private key: shell_exec returned null');
     }
 
     $priv = trim($privOut);
 
-    // Basic sanity: wg keys are base64-ish, not error text
     if ($priv === '' || stripos($priv, 'error') !== false || strlen($priv) < 40) {
-        \Log::error('wg genkey failed or suspicious output', [
+        \Log::error('WireGuard: wg genkey failed or suspicious output', [
             'output' => $privOut,
             'cmd'    => $cmdPriv,
         ]);
         throw new \RuntimeException('Failed to generate WireGuard private key');
     }
 
-    $cmdPub = 'echo ' . escapeshellarg($priv) . ' | /usr/bin/wg pubkey 2>&1';
+    // 3) Public key
+    $cmdPub = 'echo ' . escapeshellarg($priv) . ' | ' . $wgPath . ' pubkey 2>&1';
     $pubOut = shell_exec($cmdPub);
 
     if ($pubOut === null) {
@@ -132,7 +143,7 @@ class CreateVpnUser implements ShouldQueue
     $pub = trim($pubOut);
 
     if ($pub === '' || stripos($pub, 'error') !== false || strlen($pub) < 40) {
-        \Log::error('wg pubkey failed or suspicious output', [
+        \Log::error('WireGuard: wg pubkey failed or suspicious output', [
             'output' => $pubOut,
             'cmd'    => $cmdPub,
         ]);
