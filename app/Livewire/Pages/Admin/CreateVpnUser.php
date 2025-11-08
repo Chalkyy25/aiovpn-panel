@@ -114,7 +114,7 @@ class CreateVpnUser extends Component
         }
 
         $months = (int) rtrim($this->expiry, 'm');
-        $plain  = Str::random(10);
+        $plain  = Str::random(5);
 
         try {
             // 1) Handle credits only
