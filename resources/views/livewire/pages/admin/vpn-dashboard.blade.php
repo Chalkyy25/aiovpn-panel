@@ -195,9 +195,15 @@
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—' "></td>
               <td class="px-4 py-2">
                 <span
-                  class="aio-pill text-[10px]"
-                  :class="row.protocol === 'WIREGUARD' ? 'pill-pup' : 'pill-cya'"
-                  x-text="row.protocol || '—'">
+                  class="aio-pill flex items-center gap-1 text-[10px]"
+                  :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
+                  <template x-if="row.protocol?.toLowerCase() === 'wireguard'">
+                    <x-icon name="o-bolt" class="w-3.5 h-3.5 text-[var(--aio-pup)]" />
+                  </template>
+                  <template x-if="row.protocol?.toLowerCase() !== 'wireguard'">
+                    <x-icon name="o-lock-closed" class="w-3.5 h-3.5 text-[var(--aio-cya)]" />
+                  </template>
+                  <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
                 </span>
               </td>
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></td>
@@ -224,12 +230,18 @@
               </div>
               <div class="text-xs muted" x-text="row.server_name"></div>
               <div class="mt-1">
-                <span
-                  class="aio-pill text-[9px]"
-                  :class="row.protocol === 'WIREGUARD' ? 'pill-pup' : 'pill-cya'"
-                  x-text="row.protocol || '—'">
-                </span>
-              </div>
+              <span
+                class="aio-pill flex items-center gap-1 text-[9px]"
+                :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
+                <template x-if="row.protocol?.toLowerCase() === 'wireguard'">
+                  <x-icon name="o-bolt" class="w-3 h-3 text-[var(--aio-pup)]" />
+                </template>
+                <template x-if="row.protocol?.toLowerCase() !== 'wireguard'">
+                  <x-icon name="o-lock-closed" class="w-3 h-3 text-[var(--aio-cya)]" />
+                </template>
+                <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
+              </span>
+            </div>
             </div>
 
             <button class="aio-pill bg-red-500/15 text-red-300"
