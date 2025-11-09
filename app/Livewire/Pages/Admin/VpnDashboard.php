@@ -48,6 +48,8 @@ class VpnDashboard extends Component
         $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
 
         $select = [
+            $select = [
+            'id',
             'vpn_user_id',
             'vpn_server_id',
             'client_ip',
@@ -185,6 +187,8 @@ class VpnDashboard extends Component
         $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
 
         $select = [
+            $select = [
+            'id',
             'vpn_user_id',
             'vpn_server_id',
             'client_ip',
