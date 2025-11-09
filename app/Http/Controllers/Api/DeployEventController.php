@@ -19,10 +19,10 @@ class DeployEventController extends Controller
     public function store(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
-            'status'   => 'required|string',   // e.g. "mgmt"
+            'status'   => 'required|string',
             'message'  => 'nullable|string',
             'ts'       => 'nullable|string',
-            'users'    => 'nullable|array',    // array<string|object>
+            'users'    => 'nullable|array',
             'cn_list'  => 'nullable|string',
             'clients'  => 'nullable|integer',
         ]);
@@ -31,16 +31,13 @@ class DeployEventController extends Controller
         $ts     = $data['ts'] ?? now()->toIso8601String();
         $raw    = $data['message'] ?? $status;
 
-        // We only care about mgmt-style events with live sessions
         if ($status !== 'mgmt') {
             Log::channel('vpn')->debug("DeployEventController: non-mgmt status='{$status}' for server #{$server->id}");
             return response()->json(['ok' => true]);
         }
 
-        // Normalise → [{ username, client_ip?, virtual_ip?, bytes_in?, bytes_out?, connected_at?, proto? }]
         $incomingAll = $this->normaliseIncoming($data);
 
-        // Filter to valid usernames/keys
         $incoming = array_values(array_filter($incomingAll, function ($r) {
             $name  = trim((string)($r['username'] ?? ''));
             $proto = strtolower($r['proto'] ?? 'openvpn');
@@ -49,17 +46,14 @@ class DeployEventController extends Controller
                 return false;
             }
 
-            // OpenVPN: classic username policy
             if ($proto === 'openvpn') {
                 return (bool) preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name);
             }
 
-            // WireGuard: allow base64-ish public keys
             if ($proto === 'wireguard') {
                 return (bool) preg_match('#^[A-Za-z0-9+/=]{32,80}$#', $name);
             }
 
-            // Default fallback: be conservative
             return (bool) preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name);
         }));
 
@@ -75,128 +69,134 @@ class DeployEventController extends Controller
         ));
 
         DB::transaction(function () use ($server, $incoming, $now) {
+            $openvpn   = [];
+            $wireguard = [];
 
-            // Split incoming by protocol for proper matching
-$openvpn   = [];
-$wireguard = [];
+            foreach ($incoming as $c) {
+                $proto = strtolower($c['proto'] ?? 'openvpn');
+                if ($proto === 'wireguard') {
+                    $wireguard[] = $c;
+                } else {
+                    $openvpn[] = $c;
+                }
+            }
 
-foreach ($incoming as $c) {
-    $proto = strtolower($c['proto'] ?? 'openvpn');
-    if ($proto === 'wireguard') {
-        $wireguard[] = $c;
-    } else {
-        $openvpn[] = $c;
-    }
-}
+            // OpenVPN map by username
+            $ovpnNames = array_values(array_unique(array_column($openvpn, 'username')));
+            $idByName  = !empty($ovpnNames)
+                ? VpnUser::whereIn('username', $ovpnNames)->pluck('id', 'username')
+                : collect();
 
-// Map: OpenVPN by username
-$ovpnNames = array_values(array_unique(array_column($openvpn, 'username')));
-$idByName  = !empty($ovpnNames)
-    ? VpnUser::whereIn('username', $ovpnNames)->pluck('id', 'username')
-    : collect();
+            // WireGuard map by wireguard_public_key; accept either public_key or username as key
+            $wgKeyCandidates = [];
+            foreach ($wireguard as $c) {
+                if (!empty($c['public_key'])) {
+                    $wgKeyCandidates[] = $c['public_key'];
+                }
+                if (!empty($c['username'])) {
+                    $wgKeyCandidates[] = $c['username'];
+                }
+            }
 
-// Map: WireGuard by public key or username (both can carry the key)
-$wgKeyCandidates = [];
-foreach ($wireguard as $c) {
-    if (!empty($c['public_key'])) {
-        $wgKeyCandidates[] = $c['public_key'];
-    }
-    if (!empty($c['username'])) {
-        $wgKeyCandidates[] = $c['username'];
-    }
-}
-$wgKeys    = array_values(array_unique(array_filter($wgKeyCandidates)));
-$idByWgKey = (!empty($wgKeys) && Schema::hasColumn('vpn_users', 'wireguard_public_key'))
-    ? VpnUser::whereIn('wireguard_public_key', $wgKeys)->pluck('id', 'wireguard_public_key')
-    : collect();
+            $wgKeys    = array_values(array_unique(array_filter($wgKeyCandidates)));
+            $idByWgKey = (!empty($wgKeys) && Schema::hasColumn('vpn_users', 'wireguard_public_key'))
+                ? VpnUser::whereIn('wireguard_public_key', $wgKeys)->pluck('id', 'wireguard_public_key')
+                : collect();
 
-$stillConnectedUserIds = [];
+            $stillConnectedUserIds = [];
 
-foreach ($incoming as $c) {
-    $username  = trim((string) ($c['username'] ?? ''));
-    $proto     = strtolower($c['proto'] ?? 'openvpn');
-    $publicKey = $c['public_key'] ?? null;
+            foreach ($incoming as $c) {
+                $username  = trim((string) ($c['username'] ?? ''));
+                $proto     = strtolower($c['proto'] ?? 'openvpn');
+                $publicKey = $c['public_key'] ?? null;
 
-    // Resolve vpn_user_id
-    if ($proto === 'wireguard') {
-        $uid = null;
+                // Resolve vpn_user_id
+                if ($proto === 'wireguard') {
+                    $uid = null;
+                    $key = $publicKey ?: $username;
 
-        if ($publicKey && isset($idByWgKey[$publicKey])) {
-            $uid = $idByWgKey[$publicKey];
-        } elseif ($username && isset($idByWgKey[$username])) {
-            // username is actually the WG public key
-            $uid = $idByWgKey[$username];
-        }
-    } else {
-        $uid = $idByName[$username] ?? null;
-    }
+                    if ($key && isset($idByWgKey[$key])) {
+                        $uid = $idByWgKey[$key];
+                    }
+                } else {
+                    $uid = $idByName[$username] ?? null;
+                }
 
-    if (!$uid) {
-        Log::channel('vpn')->notice("MGMT: skipping unknown {$proto} user '{$username}' on server {$server->id}");
-        continue;
-    }
+                if (!$uid) {
+                    Log::channel('vpn')->notice("MGMT: skipping unknown {$proto} user '{$username}' on server {$server->id}");
+                    continue;
+                }
 
-    $stillConnectedUserIds[] = $uid;
+                $stillConnectedUserIds[] = $uid;
 
-    /** @var VpnUserConnection $row */
-    $row = VpnUserConnection::firstOrCreate([
-        'vpn_user_id'   => $uid,
-        'vpn_server_id' => $server->id,
-    ]);
+                // Parse connected_at once
+                $connectedAtParsed = null;
+                if (!empty($c['connected_at'])) {
+                    $connectedAtParsed = $this->parseConnectedAt($c['connected_at']);
+                }
 
-    if (!$row->is_connected) {
-        $row->connected_at    = $now;
-        $row->disconnected_at = null;
-    }
+                /** @var VpnUserConnection $row */
+                $row = VpnUserConnection::firstOrCreate([
+                    'vpn_user_id'   => $uid,
+                    'vpn_server_id' => $server->id,
+                ]);
 
-    $row->is_connected = true;
+                $wasConnected = (bool) $row->is_connected;
 
-    if (!empty($c['client_ip'])) {
-        $row->client_ip = $c['client_ip'];
-    }
+                // Only set connected_at when session starts or was empty.
+                if (!$wasConnected) {
+                    $row->connected_at    = $connectedAtParsed ?: $now;
+                    $row->disconnected_at = null;
+                } elseif (empty($row->connected_at) && $connectedAtParsed) {
+                    // Backfill if somehow missing.
+                    $row->connected_at = $connectedAtParsed;
+                }
 
-    if (!empty($c['virtual_ip'])) {
-        $row->virtual_ip = $c['virtual_ip'];
-    }
+                $row->is_connected = true;
 
-    if (array_key_exists('bytes_in', $c)) {
-        $row->bytes_received = (int) $c['bytes_in'];
-    }
+                if (!empty($c['client_ip'])) {
+                    $row->client_ip = $c['client_ip'];
+                }
 
-    if (array_key_exists('bytes_out', $c)) {
-        $row->bytes_sent = (int) $c['bytes_out'];
-    }
+                if (!empty($c['virtual_ip'])) {
+                    $row->virtual_ip = $c['virtual_ip'];
+                }
 
-    if (!empty($c['connected_at'])) {
-        if ($parsed = $this->parseConnectedAt($c['connected_at'])) {
-            $row->connected_at = $parsed;
-        }
-    }
+                if (array_key_exists('bytes_in', $c)) {
+                    $row->bytes_received = (int) $c['bytes_in'];
+                }
 
-    if (Schema::hasColumn('vpn_user_connections', 'protocol')) {
-        $row->protocol = $proto;
-    }
+                if (array_key_exists('bytes_out', $c)) {
+                    $row->bytes_sent = (int) $c['bytes_out'];
+                }
 
-    $row->save();
+                if (Schema::hasColumn('vpn_user_connections', 'protocol')) {
+                    $row->protocol = $proto;
+                }
 
-    // Update user summary
-    $userUpdate = [
-        'is_online' => true,
-        'last_ip'   => $row->client_ip,
-    ];
+                $row->save();
 
-    if (Schema::hasColumn('vpn_users', 'last_protocol')) {
-        $userUpdate['last_protocol'] = $proto;
-    }
+                // Update user summary
+                $userUpdate = [
+                    'is_online' => true,
+                    'last_ip'   => $row->client_ip,
+                ];
 
-    VpnUser::whereKey($uid)->update($userUpdate);
-}
+                if (Schema::hasColumn('vpn_users', 'last_protocol')) {
+                    $userUpdate['last_protocol'] = $proto;
+                }
 
-            // Disconnect vanished users for this server
+                VpnUser::whereKey($uid)->update($userUpdate);
+            }
+
+            // Mark vanished users on this server as disconnected
             $toDisconnect = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
-                ->when(!empty($stillConnectedUserIds), fn ($q) => $q->whereNotIn('vpn_user_id', $stillConnectedUserIds))
+                ->when(
+                    !empty($stillConnectedUserIds),
+                    fn ($q) => $q->whereNotIn('vpn_user_id', $stillConnectedUserIds)
+                )
                 ->get();
 
             foreach ($toDisconnect as $row) {
@@ -211,7 +211,7 @@ foreach ($incoming as $c) {
                 VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
             }
 
-            // Persist live known count
+            // Persist live count on server
             $liveKnown = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
@@ -229,7 +229,6 @@ foreach ($incoming as $c) {
             }
         });
 
-        // Enrich & broadcast for dashboard
         $enriched = $this->enrichFromDb($server);
 
         event(new ServerMgmtEvent(
@@ -243,14 +242,11 @@ foreach ($incoming as $c) {
         return response()->json([
             'ok'        => true,
             'server_id' => $server->id,
-            'clients'   => count($enriched), // known/panel users only
+            'clients'   => count($enriched),
             'users'     => $enriched,
         ]);
     }
 
-    // ───────────────────────────── helpers ─────────────────────────────
-
-    /** Accepts any incoming shape and returns canonical array of users incl. proto. */
     private function normaliseIncoming(array $data): array
     {
         $out = [];
@@ -271,7 +267,6 @@ foreach ($incoming as $c) {
             }
         }
 
-        // Unique by (username, proto)
         $seen = [];
         return array_values(array_filter($out, function ($r) use (&$seen) {
             $name  = $r['username'] ?? null;
@@ -284,7 +279,6 @@ foreach ($incoming as $c) {
         }));
     }
 
-    /** Normalise one user item from various shapes/keys into canonical keys. */
     private function normaliseUserItem($u): array
     {
         if (is_string($u)) {
@@ -293,16 +287,15 @@ foreach ($incoming as $c) {
 
         $u = (array) $u;
 
-        // Protocol hint (default openvpn)
         $proto = strtolower($u['proto'] ?? $u['protocol'] ?? 'openvpn');
 
-        // For WireGuard, allow public_key field to be treated as "username" identifier
         $username = $u['username']
             ?? $u['cn']
             ?? $u['CommonName']
-            ?? ($proto === 'wireguard' ? ($u['public_key'] ?? $u['pubkey'] ?? 'unknown') : 'unknown');
+            ?? ($proto === 'wireguard'
+                ? ($u['public_key'] ?? $u['pubkey'] ?? 'unknown')
+                : 'unknown');
 
-        // Real Address may be "IP:PORT"
         $clientIp = $u['client_ip']
             ?? $u['RealAddress']
             ?? $u['real_ip']
@@ -312,7 +305,6 @@ foreach ($incoming as $c) {
             $clientIp = explode(':', $clientIp, 2)[0];
         }
 
-        // Virtual address (strip /mask)
         $virt = $u['virtual_ip']
             ?? $u['VirtualAddress']
             ?? $u['virtual_address']
@@ -322,7 +314,6 @@ foreach ($incoming as $c) {
             $virt = explode('/', $virt, 2)[0];
         }
 
-        // connected_at candidates
         $connectedAt = $u['connected_at']
             ?? $u['ConnectedSince']
             ?? $u['connected_since']
@@ -330,7 +321,6 @@ foreach ($incoming as $c) {
             ?? $u['connected_seconds']
             ?? null;
 
-        // Bytes
         $bytesIn = (int) (
             $u['bytes_in']
             ?? $u['BytesReceived']
@@ -357,7 +347,6 @@ foreach ($incoming as $c) {
         ];
     }
 
-    /** Return ISO8601 string for assorted timestamp inputs. */
     private function connectedAtToIso($value): ?string
     {
         if ($value === null || $value === '') return null;
@@ -366,12 +355,10 @@ foreach ($incoming as $c) {
             if (is_numeric($value)) {
                 $n = (int) $value;
 
-                // ms since epoch
                 if ($n > 2_000_000_000_000) {
                     return Carbon::createFromTimestampMs($n)->toIso8601String();
                 }
 
-                // Small "seconds ago" style value
                 if ($n < 315_576_000 && $n < (time() - 946_684_800)) {
                     return now()->subSeconds($n)->toIso8601String();
                 }
@@ -385,7 +372,6 @@ foreach ($incoming as $c) {
         }
     }
 
-    /** Parse to Carbon (or null) for DB. */
     private function parseConnectedAt($value): ?Carbon
     {
         if ($value === null || $value === '') return null;
@@ -411,7 +397,6 @@ foreach ($incoming as $c) {
         }
     }
 
-    /** Build rich list from DB so the dashboard gets complete info instantly. */
     private function enrichFromDb(VpnServer $server): array
     {
         $rows = VpnUserConnection::query()
