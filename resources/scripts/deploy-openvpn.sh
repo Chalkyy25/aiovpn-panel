@@ -563,6 +563,8 @@ def collect_ovpn():
         clients.extend(parse_ovpn_status(txt, proto_hint=hint))
     return clients
 
+import time  # make sure this is at the top
+
 def collect_wg():
     try:
         dump = subprocess.check_output(["wg", "show", "wg0", "dump"], text=True)
@@ -575,11 +577,8 @@ def collect_wg():
 
     peers = []
     now = int(time.time())
-    GRACE = 90  # seconds a WG peer is considered online after last handshake
+    OFFLINE_IDLE = 300  # 5 minutes of no handshake = offline
 
-    # wg show wg0 dump:
-    # line 0: private_key  public_key  listen_port  fwmark
-    # others: public_key  preshared_key  endpoint  allowed_ips  latest_handshake  rx  tx  persistent_keepalive
     for line in lines[1:]:
         parts = line.split("\t")
         if len(parts) < 8:
@@ -592,8 +591,12 @@ def collect_wg():
         except Exception:
             hs = 0
 
-        # online only if handshake present and recent
-        if hs <= 0 or (now - hs) > GRACE:
+        # must have at least one handshake
+        if hs <= 0:
+            continue
+
+        # drop only if truly idle for a long time
+        if now - hs > OFFLINE_IDLE:
             continue
 
         client_ip = None
