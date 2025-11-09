@@ -35,6 +35,7 @@ class DeployEventController extends Controller
         $ts     = $data['ts'] ?? now()->toIso8601String();
         $raw    = $data['message'] ?? $status;
 
+        // Only process mgmt snapshots
         if ($status !== 'mgmt') {
             Log::channel('vpn')->debug("DeployEventController: non-mgmt status='{$status}' for server #{$server->id}");
             return response()->json(['ok' => true]);
@@ -57,7 +58,7 @@ class DeployEventController extends Controller
             }
 
             if ($proto === 'wireguard') {
-                // WG pubkey from agent
+                // WireGuard pubkey style (agent sends pubkey)
                 return (bool) preg_match('#^[A-Za-z0-9+/=]{32,80}$#', $name);
             }
 
@@ -80,8 +81,8 @@ class DeployEventController extends Controller
             $wireguard = [];
 
             foreach ($incoming as $c) {
-                $proto = strtolower($c['proto'] ?? 'openvpn');
-                if ($proto === 'wireguard') {
+                $proto = $this->normalizeProto($c['proto'] ?? null);
+                if ($proto === 'WIREGUARD') {
                     $wireguard[] = $c;
                 } else {
                     $openvpn[] = $c;
@@ -95,7 +96,7 @@ class DeployEventController extends Controller
                 : collect();
 
             // WireGuard map: wireguard_public_key -> id
-            // Accept either "public_key" or "username" as the key from the agent.
+            // Accept either "public_key" or "username" (agent sends pubkey as both)
             $wgKeyCandidates = [];
             foreach ($wireguard as $c) {
                 if (!empty($c['public_key'])) {
@@ -115,13 +116,13 @@ class DeployEventController extends Controller
 
             foreach ($incoming as $c) {
                 $username  = trim((string) ($c['username'] ?? ''));
-                $proto     = strtolower($c['proto'] ?? 'openvpn');
+                $proto     = $this->normalizeProto($c['proto'] ?? null);
                 $publicKey = $c['public_key'] ?? null;
 
                 // Resolve vpn_user_id
-                if ($proto === 'wireguard') {
+                if ($proto === 'WIREGUARD') {
                     $uid = null;
-                    $key = $publicKey ?: $username; // agent sends pubkey in both
+                    $key = $publicKey ?: $username; // agent: pubkey in both
                     if ($key && isset($idByWgKey[$key])) {
                         $uid = $idByWgKey[$key];
                     }
@@ -136,7 +137,7 @@ class DeployEventController extends Controller
 
                 $stillConnectedUserIds[] = $uid;
 
-                // Parse connected_at once (may be ISO or timestamp)
+                // Parse connected_at once (ISO or epoch or seconds-ago)
                 $connectedAtParsed = null;
                 if (!empty($c['connected_at'])) {
                     $connectedAtParsed = $this->parseConnectedAt($c['connected_at']);
@@ -150,13 +151,11 @@ class DeployEventController extends Controller
 
                 $wasConnected = (bool) $row->is_connected;
 
-                // Only set connected_at when we see the start of a session.
+                // Only set connected_at when session starts or missing.
                 if (!$wasConnected) {
-                    // Use provided timestamp if sane, else "now".
                     $row->connected_at    = $connectedAtParsed ?: $now;
                     $row->disconnected_at = null;
                 } elseif (empty($row->connected_at) && $connectedAtParsed) {
-                    // Backfill if missing.
                     $row->connected_at = $connectedAtParsed;
                 }
 
@@ -179,7 +178,7 @@ class DeployEventController extends Controller
                 }
 
                 if (Schema::hasColumn('vpn_user_connections', 'protocol')) {
-                    $row->protocol = $proto;
+                    $row->protocol = $proto; // "OPENVPN" / "WIREGUARD"
                 }
 
                 $row->save();
@@ -197,7 +196,7 @@ class DeployEventController extends Controller
                 VpnUser::whereKey($uid)->update($userUpdate);
             }
 
-            // Disconnect users missing for longer than OFFLINE_GRACE
+            // Disconnect users missing for longer than OFFLINE_GRACE (no flicker)
             $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
 
             $toDisconnect = VpnUserConnection::query()
@@ -210,7 +209,7 @@ class DeployEventController extends Controller
                 ->get();
 
             foreach ($toDisconnect as $row) {
-                // Skip if we have seen this connection recently (avoid flicker on missed snapshot)
+                // If row was updated recently by an agent push, keep it
                 if ($row->updated_at && $row->updated_at->gt($graceAgo)) {
                     continue;
                 }
@@ -226,7 +225,7 @@ class DeployEventController extends Controller
                 VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
             }
 
-            // Persist live count / last_mgmt on server
+            // Persist server aggregates
             $liveKnown = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
@@ -244,7 +243,7 @@ class DeployEventController extends Controller
             }
         });
 
-        // Always respond with enriched snapshot from DB
+        // Enriched snapshot for broadcast + response
         $enriched = $this->enrichFromDb($server);
 
         event(new ServerMgmtEvent(
@@ -264,6 +263,19 @@ class DeployEventController extends Controller
     }
 
     /* ───────────────── helpers ───────────────── */
+
+    private function normalizeProto(?string $v): string
+    {
+        $p = strtolower((string) $v);
+
+        return match (true) {
+            str_starts_with($p, 'wire')          => 'WIREGUARD',
+            str_starts_with($p, 'ovpn'),
+            str_starts_with($p, 'openvpn')       => 'OPENVPN',
+            $p === ''                            => 'OPENVPN',
+            default                              => strtoupper($p),
+        };
+    }
 
     private function normaliseIncoming(array $data): array
     {
@@ -289,7 +301,7 @@ class DeployEventController extends Controller
         $seen = [];
         return array_values(array_filter($out, function ($r) use (&$seen) {
             $name  = $r['username'] ?? null;
-            $proto = strtolower($r['proto'] ?? 'openvpn');
+            $proto = $this->normalizeProto($r['proto'] ?? 'openvpn');
             if (!$name) {
                 return false;
             }
@@ -310,12 +322,12 @@ class DeployEventController extends Controller
 
         $u = (array) $u;
 
-        $proto = strtolower($u['proto'] ?? $u['protocol'] ?? 'openvpn');
+        $proto = $this->normalizeProto($u['proto'] ?? $u['protocol'] ?? 'openvpn');
 
         $username = $u['username']
             ?? $u['cn']
             ?? $u['CommonName']
-            ?? ($proto === 'wireguard'
+            ?? ($proto === 'WIREGUARD'
                 ? ($u['public_key'] ?? $u['pubkey'] ?? 'unknown')
                 : 'unknown');
 
@@ -384,12 +396,12 @@ class DeployEventController extends Controller
                     return Carbon::createFromTimestampMs($n)->toIso8601String();
                 }
 
-                // if looks like epoch seconds
+                // epoch seconds
                 if ($n > 946_684_800) {
                     return Carbon::createFromTimestamp($n)->toIso8601String();
                 }
 
-                // else treat as "seconds ago"
+                // seconds ago
                 return now()->subSeconds($n)->toIso8601String();
             }
 
@@ -446,7 +458,9 @@ class DeployEventController extends Controller
                 'bytes_in'      => (int) $r->bytes_received,
                 'bytes_out'     => (int) $r->bytes_sent,
                 'server_name'   => $server->name,
-                'protocol'      => $hasProtocol ? $r->protocol : null,
+                'protocol'      => $hasProtocol && $r->protocol
+                    ? strtoupper($r->protocol)
+                    : null,
             ];
         })->values()->all();
     }
