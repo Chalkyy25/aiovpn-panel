@@ -7,39 +7,33 @@ use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View as ViewContract;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
 #[Layout('layouts.app')]
 class VpnDashboard extends Component
 {
-    /** UI state */
     public ?int $selectedServerId = null;
     public bool $showAllServers = true;
 
-    /** Optional UI knobs you already had */
     public int $hoursPerDay = 3;
     public array $liveLogs = [];
     public int $maxLogs = 100;
-
-    /* ----------------------------- Lifecycle ----------------------------- */
 
     public function mount(): void
     {
         $this->showAllServers = true;
     }
 
-    /* -------------------------- UI interactions -------------------------- */
-
     public function selectServer(?int $serverId = null): void
     {
         $this->selectedServerId = $serverId;
-        $this->showAllServers = $serverId === null;
+        $this->showAllServers = ($serverId === null);
     }
 
     /* --------------------------- Computed props -------------------------- */
 
-    /** Servers that finished deploying + their active connection count */
     public function getServersProperty()
     {
         return VpnServer::query()
@@ -49,24 +43,30 @@ class VpnDashboard extends Component
             ->get(['id', 'name']);
     }
 
-    /** Table rows for the “Active Connections” section */
     public function getActiveConnectionsProperty()
     {
+        $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
+
+        $select = [
+            'vpn_user_id',
+            'vpn_server_id',
+            'client_ip',
+            'virtual_ip',
+            'bytes_received',
+            'bytes_sent',
+            'connected_at',
+        ];
+        if ($hasProtocol) {
+            $select[] = 'protocol';
+        }
+
         $q = VpnUserConnection::query()
             ->where('is_connected', true)
             ->with([
                 'vpnUser:id,username',
                 'vpnServer:id,name',
             ])
-            ->select([
-                'vpn_user_id',
-                'vpn_server_id',
-                'client_ip',
-                'virtual_ip',
-                'bytes_received',
-                'bytes_sent',
-                'connected_at',
-            ]);
+            ->select($select);
 
         if (!$this->showAllServers && $this->selectedServerId) {
             $q->where('vpn_server_id', $this->selectedServerId);
@@ -109,12 +109,6 @@ class VpnDashboard extends Component
 
     /* -------------------------- Livewire endpoints ----------------------- */
 
-    /**
-     * Polled by Alpine every 5s.
-     * Returns the fleet snapshot your JS expects:
-     *  - usersByServer: { [serverId]: [{ username, client_ip, virtual_ip, connected_human, connected_fmt, down_mb, up_mb }] }
-     *  - totals: { online_users, active_connections, active_servers }
-     */
     public function getLiveStats(): array
     {
         [$serverMeta, $usersByServer] = $this->buildSnapshot();
@@ -125,57 +119,47 @@ class VpnDashboard extends Component
             'totals'        => $totals,
         ];
     }
-    
-    public function disconnectUser(int $serverId, string $username): void
-{
-    try {
-        $resp = \Http::withToken(csrf_token()) // not really needed if same app, but safe
-            ->post(route('admin.servers.disconnect', $serverId), [
-                'username' => $username,
-            ]);
 
-        if ($resp->successful()) {
+    public function disconnectUser(int $serverId, string $username): void
+    {
+        try {
+            $resp = \Http::withToken(csrf_token())
+                ->post(route('admin.servers.disconnect', $serverId), [
+                    'username' => $username,
+                ]);
+
             $this->dispatchBrowserEvent('notify', [
-                'type' => 'success',
-                'message' => "Disconnected {$username} from server #{$serverId}"
+                'type'    => $resp->successful() ? 'success' : 'error',
+                'message' => $resp->successful()
+                    ? "Disconnected {$username} from server #{$serverId}"
+                    : "Failed to disconnect {$username}",
             ]);
-        } else {
+        } catch (\Throwable $e) {
             $this->dispatchBrowserEvent('notify', [
-                'type' => 'error',
-                'message' => "Failed to disconnect {$username}"
+                'type'    => 'error',
+                'message' => "Error disconnecting {$username}: " . $e->getMessage(),
             ]);
         }
-    } catch (\Throwable $e) {
-        $this->dispatchBrowserEvent('notify', [
-            'type' => 'error',
-            'message' => "Error disconnecting {$username}: " . $e->getMessage()
-        ]);
-    }
 
-    // Refresh snapshot so table updates
-    $this->render();
-}
+        // Livewire will re-render after action
+    }
 
     /* ------------------------------- Render ------------------------------ */
 
     public function render(): ViewContract
     {
-        // Build initial snapshot so the page has data before Echo/polling kicks in
         [$serverMeta, $usersByServer] = $this->buildSnapshot();
         $seedTotals = $this->computeTotals($serverMeta, $usersByServer);
 
         return view('livewire.pages.admin.vpn-dashboard', [
-            // server list & cards
             'servers'                => $this->servers,
             'activeConnections'      => $this->activeConnections,
             'totalOnlineUsers'       => $this->totalOnlineUsers,
             'totalActiveConnections' => $this->totalActiveConnections,
             'recentlyDisconnected'   => $this->recentlyDisconnected,
-
-            // Alpine init() seeds (names match your JS)
-            'serverMeta'        => $serverMeta,        // { [id]: { name } }
-            'seedUsersByServer' => $usersByServer,     // { [id]: [ rows... ] }
-            'seedTotals'        => $seedTotals,        // { online_users, active_connections, active_servers }
+            'serverMeta'             => $serverMeta,
+            'seedUsersByServer'      => $usersByServer,
+            'seedTotals'             => $seedTotals,
         ]);
     }
 
@@ -184,11 +168,10 @@ class VpnDashboard extends Component
     /**
      * Returns:
      *  - serverMeta: id => ['name' => string]
-     *  - usersByServer: id => [ { username, client_ip, virtual_ip, connected_human, connected_fmt, down_mb, up_mb } ]
+     *  - usersByServer: id => [ { username, client_ip, virtual_ip, protocol, ... } ]
      */
     private function buildSnapshot(): array
     {
-        // Servers (only deployed ones)
         $servers = VpnServer::query()
             ->whereIn('deployment_status', ['succeeded', 'deployed'])
             ->orderBy('id')
@@ -199,21 +182,25 @@ class VpnDashboard extends Component
             $serverMeta[(string) $s->id] = ['name' => $s->name];
         }
 
-        // Current live connections (whole fleet)
+        $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
+
+        $select = [
+            'vpn_user_id',
+            'vpn_server_id',
+            'client_ip',
+            'virtual_ip',
+            'bytes_received',
+            'bytes_sent',
+            'connected_at',
+        ];
+        if ($hasProtocol) {
+            $select[] = 'protocol';
+        }
+
         $rows = VpnUserConnection::query()
             ->where('is_connected', true)
-            ->with([
-                'vpnUser:id,username',
-            ])
-            ->select([
-                'vpn_user_id',
-                'vpn_server_id',
-                'client_ip',
-                'virtual_ip',
-                'bytes_received',
-                'bytes_sent',
-                'connected_at',
-            ])
+            ->with('vpnUser:id,username')
+            ->select($select)
             ->get();
 
         $usersByServer = [];
@@ -229,18 +216,24 @@ class VpnDashboard extends Component
                 'username'        => $uname,
                 'client_ip'       => $r->client_ip,
                 'virtual_ip'      => $r->virtual_ip,
+                'protocol'        => $hasProtocol
+                    ? ($r->protocol ?: 'openvpn')
+                    : 'openvpn',
                 'connected_human' => $at?->diffForHumans(),
                 'connected_fmt'   => $at?->toIso8601String(),
-                'formatted_bytes' => null, // let the UI format aggregate if you want
-                'down_mb'         => $r->bytes_received ? round($r->bytes_received / 1048576, 2) : 0.0,
-                'up_mb'           => $r->bytes_sent     ? round($r->bytes_sent     / 1048576, 2) : 0.0,
+                'formatted_bytes' => null,
+                'down_mb'         => $r->bytes_received
+                    ? round($r->bytes_received / 1048576, 2)
+                    : 0.0,
+                'up_mb'           => $r->bytes_sent
+                    ? round($r->bytes_sent / 1048576, 2)
+                    : 0.0,
             ];
         }
 
         return [$serverMeta, $usersByServer];
     }
 
-    /** Compute KPIs for the dashboard header */
     private function computeTotals(array $serverMeta, array $usersByServer): array
     {
         $uniqueUsers = [];
@@ -260,7 +253,6 @@ class VpnDashboard extends Component
             $activeConnections += count($list);
         }
 
-        // If no servers currently have users, show total number of deployed servers as “active servers”
         if ($activeServers === 0) {
             $activeServers = count($serverMeta);
         }
