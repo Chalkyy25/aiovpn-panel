@@ -16,6 +16,10 @@ use Illuminate\Support\Facades\Schema;
 
 class DeployEventController extends Controller
 {
+    // How long a connection can be "missing" from snapshots before we mark it offline.
+    // Must be >= push interval and >= WG OFFLINE_IDLE in the agent.
+    private const OFFLINE_GRACE = 300; // 5 minutes
+
     public function store(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
@@ -31,17 +35,16 @@ class DeployEventController extends Controller
         $ts     = $data['ts'] ?? now()->toIso8601String();
         $raw    = $data['message'] ?? $status;
 
-        // Only handle management snapshots
         if ($status !== 'mgmt') {
             Log::channel('vpn')->debug("DeployEventController: non-mgmt status='{$status}' for server #{$server->id}");
             return response()->json(['ok' => true]);
         }
 
-        // Normalise to canonical records
+        // Normalised list: [{ username, public_key?, client_ip?, virtual_ip?, bytes_*, connected_at?, proto }]
         $incomingAll = $this->normaliseIncoming($data);
 
-        // Filter to valid identifiers
-        $incoming = array_values(array_filter($incomingAll, function (array $r) {
+        // Filter to sane identifiers
+        $incoming = array_values(array_filter($incomingAll, function ($r) {
             $name  = trim((string)($r['username'] ?? ''));
             $proto = strtolower($r['proto'] ?? 'openvpn');
 
@@ -54,7 +57,7 @@ class DeployEventController extends Controller
             }
 
             if ($proto === 'wireguard') {
-                // wireguard public key in base64-ish form
+                // WG pubkey from agent
                 return (bool) preg_match('#^[A-Za-z0-9+/=]{32,80}$#', $name);
             }
 
@@ -85,17 +88,14 @@ class DeployEventController extends Controller
                 }
             }
 
-            /*
-             * Build lookup maps
-             */
-
-            // OpenVPN: username -> id
+            // OpenVPN map: username -> id
             $ovpnNames = array_values(array_unique(array_column($openvpn, 'username')));
             $idByName  = !empty($ovpnNames)
                 ? VpnUser::whereIn('username', $ovpnNames)->pluck('id', 'username')
                 : collect();
 
-            // WireGuard: wireguard_public_key -> id
+            // WireGuard map: wireguard_public_key -> id
+            // Accept either "public_key" or "username" as the key from the agent.
             $wgKeyCandidates = [];
             foreach ($wireguard as $c) {
                 if (!empty($c['public_key'])) {
@@ -113,10 +113,6 @@ class DeployEventController extends Controller
 
             $stillConnectedUserIds = [];
 
-            /*
-             * Upsert all connections present in snapshot
-             */
-
             foreach ($incoming as $c) {
                 $username  = trim((string) ($c['username'] ?? ''));
                 $proto     = strtolower($c['proto'] ?? 'openvpn');
@@ -125,8 +121,7 @@ class DeployEventController extends Controller
                 // Resolve vpn_user_id
                 if ($proto === 'wireguard') {
                     $uid = null;
-                    $key = $publicKey ?: $username; // username may be the pubkey
-
+                    $key = $publicKey ?: $username; // agent sends pubkey in both
                     if ($key && isset($idByWgKey[$key])) {
                         $uid = $idByWgKey[$key];
                     }
@@ -141,10 +136,11 @@ class DeployEventController extends Controller
 
                 $stillConnectedUserIds[] = $uid;
 
-                // Parse connected_at once from payload, if present
-                $connectedAtParsed = !empty($c['connected_at'])
-                    ? $this->parseConnectedAt($c['connected_at'])
-                    : null;
+                // Parse connected_at once (may be ISO or timestamp)
+                $connectedAtParsed = null;
+                if (!empty($c['connected_at'])) {
+                    $connectedAtParsed = $this->parseConnectedAt($c['connected_at']);
+                }
 
                 /** @var VpnUserConnection $row */
                 $row = VpnUserConnection::firstOrCreate([
@@ -154,11 +150,13 @@ class DeployEventController extends Controller
 
                 $wasConnected = (bool) $row->is_connected;
 
-                // Only set connected_at when session starts or when previously missing.
+                // Only set connected_at when we see the start of a session.
                 if (!$wasConnected) {
+                    // Use provided timestamp if sane, else "now".
                     $row->connected_at    = $connectedAtParsed ?: $now;
                     $row->disconnected_at = null;
                 } elseif (empty($row->connected_at) && $connectedAtParsed) {
+                    // Backfill if missing.
                     $row->connected_at = $connectedAtParsed;
                 }
 
@@ -186,7 +184,7 @@ class DeployEventController extends Controller
 
                 $row->save();
 
-                // Update summary row on vpn_users
+                // Update vpn_users summary
                 $userUpdate = [
                     'is_online' => true,
                     'last_ip'   => $row->client_ip,
@@ -199,41 +197,24 @@ class DeployEventController extends Controller
                 VpnUser::whereKey($uid)->update($userUpdate);
             }
 
-            /*
-             * Disconnect vanished users, with safety-guard against wiping on bad snapshots
-             */
+            // Disconnect users missing for longer than OFFLINE_GRACE
+            $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
 
-            $existingConnectedIds = VpnUserConnection::query()
+            $toDisconnect = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
-                ->pluck('vpn_user_id')
-                ->all();
-
-            if (empty($incoming)) {
-                // Snapshot explicitly reports "no one online"
-                $toDisconnect = VpnUserConnection::query()
-                    ->where('vpn_server_id', $server->id)
-                    ->where('is_connected', true)
-                    ->get();
-            } elseif (empty($stillConnectedUserIds) && !empty($existingConnectedIds)) {
-                // Suspicious: snapshot only had unknown users. Do not wipe.
-                Log::channel('vpn')->warning(
-                    "MGMT: snapshot for server {$server->id} had no mappable users; preserving existing connections"
-                );
-                $toDisconnect = collect();
-            } else {
-                // Normal case: drop any connection not present in snapshot
-                $toDisconnect = VpnUserConnection::query()
-                    ->where('vpn_server_id', $server->id)
-                    ->where('is_connected', true)
-                    ->when(
-                        !empty($stillConnectedUserIds),
-                        fn ($q) => $q->whereNotIn('vpn_user_id', $stillConnectedUserIds)
-                    )
-                    ->get();
-            }
+                ->when(
+                    !empty($stillConnectedUserIds),
+                    fn ($q) => $q->whereNotIn('vpn_user_id', $stillConnectedUserIds)
+                )
+                ->get();
 
             foreach ($toDisconnect as $row) {
+                // Skip if we have seen this connection recently (avoid flicker on missed snapshot)
+                if ($row->updated_at && $row->updated_at->gt($graceAgo)) {
+                    continue;
+                }
+
                 $row->update([
                     'is_connected'     => false,
                     'disconnected_at'  => $now,
@@ -245,10 +226,7 @@ class DeployEventController extends Controller
                 VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
             }
 
-            /*
-             * Update server summary counts
-             */
-
+            // Persist live count / last_mgmt on server
             $liveKnown = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
@@ -261,16 +239,12 @@ class DeployEventController extends Controller
             if (Schema::hasColumn('vpn_servers', 'last_mgmt_at')) {
                 $update['last_mgmt_at'] = $now;
             }
-
             if (!empty($update)) {
                 $server->forceFill($update)->saveQuietly();
             }
         });
 
-        /*
-         * Build enriched list from DB for dashboard broadcast/response
-         */
-
+        // Always respond with enriched snapshot from DB
         $enriched = $this->enrichFromDb($server);
 
         event(new ServerMgmtEvent(
@@ -289,7 +263,7 @@ class DeployEventController extends Controller
         ]);
     }
 
-    /* ───────────────────── helpers ───────────────────── */
+    /* ───────────────── helpers ───────────────── */
 
     private function normaliseIncoming(array $data): array
     {
@@ -311,7 +285,7 @@ class DeployEventController extends Controller
             }
         }
 
-        // De-dup by (proto, username)
+        // De-duplicate by (proto, username)
         $seen = [];
         return array_values(array_filter($out, function ($r) use (&$seen) {
             $name  = $r['username'] ?? null;
@@ -406,17 +380,17 @@ class DeployEventController extends Controller
             if (is_numeric($value)) {
                 $n = (int) $value;
 
-                // ms since epoch
                 if ($n > 2_000_000_000_000) {
                     return Carbon::createFromTimestampMs($n)->toIso8601String();
                 }
 
-                // "seconds ago" style small values
-                if ($n < 315_576_000 && $n < (time() - 946_684_800)) {
-                    return now()->subSeconds($n)->toIso8601String();
+                // if looks like epoch seconds
+                if ($n > 946_684_800) {
+                    return Carbon::createFromTimestamp($n)->toIso8601String();
                 }
 
-                return Carbon::createFromTimestamp($n)->toIso8601String();
+                // else treat as "seconds ago"
+                return now()->subSeconds($n)->toIso8601String();
             }
 
             return Carbon::parse((string) $value)->toIso8601String();
@@ -439,11 +413,11 @@ class DeployEventController extends Controller
                     return Carbon::createFromTimestampMs($n);
                 }
 
-                if ($n < 315_576_000 && $n < (time() - 946_684_800)) {
-                    return now()->subSeconds($n);
+                if ($n > 946_684_800) {
+                    return Carbon::createFromTimestamp($n);
                 }
 
-                return Carbon::createFromTimestamp($n);
+                return now()->subSeconds($n);
             }
 
             return Carbon::parse((string) $value);
