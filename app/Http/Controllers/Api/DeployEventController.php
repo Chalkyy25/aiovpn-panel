@@ -77,96 +77,120 @@ class DeployEventController extends Controller
         DB::transaction(function () use ($server, $incoming, $now) {
 
             // Split incoming by protocol for proper matching
-            $openvpn = [];
-            $wireguard = [];
+$openvpn   = [];
+$wireguard = [];
 
-            foreach ($incoming as $c) {
-                $proto = strtolower($c['proto'] ?? 'openvpn');
-                if ($proto === 'wireguard') {
-                    $wireguard[] = $c;
-                } else {
-                    $openvpn[] = $c;
-                }
-            }
+foreach ($incoming as $c) {
+    $proto = strtolower($c['proto'] ?? 'openvpn');
+    if ($proto === 'wireguard') {
+        $wireguard[] = $c;
+    } else {
+        $openvpn[] = $c;
+    }
+}
 
-            // Map: OpenVPN by username
-            $ovpnNames = array_column($openvpn, 'username');
-            $idByName = !empty($ovpnNames)
-                ? VpnUser::whereIn('username', $ovpnNames)->pluck('id', 'username')
-                : collect();
+// Map: OpenVPN by username
+$ovpnNames = array_values(array_unique(array_column($openvpn, 'username')));
+$idByName  = !empty($ovpnNames)
+    ? VpnUser::whereIn('username', $ovpnNames)->pluck('id', 'username')
+    : collect();
 
-            // Map: WireGuard by wg_public_key (username field carries pubkey)
-            // Map: WireGuard by wireguard_public_key using explicit public_key from payload
-            $wgKeys = array_values(array_filter(array_column($wireguard, 'public_key')));
-            $idByWgKey = (!empty($wgKeys) && Schema::hasColumn('vpn_users', 'wireguard_public_key'))
-                ? VpnUser::whereIn('wireguard_public_key', $wgKeys)->pluck('id', 'wireguard_public_key')
-                : collect();
-            
-            $stillConnectedUserIds = [];
+// Map: WireGuard by public key or username (both can carry the key)
+$wgKeyCandidates = [];
+foreach ($wireguard as $c) {
+    if (!empty($c['public_key'])) {
+        $wgKeyCandidates[] = $c['public_key'];
+    }
+    if (!empty($c['username'])) {
+        $wgKeyCandidates[] = $c['username'];
+    }
+}
+$wgKeys    = array_values(array_unique(array_filter($wgKeyCandidates)));
+$idByWgKey = (!empty($wgKeys) && Schema::hasColumn('vpn_users', 'wireguard_public_key'))
+    ? VpnUser::whereIn('wireguard_public_key', $wgKeys)->pluck('id', 'wireguard_public_key')
+    : collect();
 
-            foreach ($incoming as $c) {
-                $username = trim((string) $c['username']);
-                $proto    = strtolower($c['proto'] ?? 'openvpn');
+$stillConnectedUserIds = [];
 
-                $publicKey = $c['public_key'] ?? null;
+foreach ($incoming as $c) {
+    $username  = trim((string) ($c['username'] ?? ''));
+    $proto     = strtolower($c['proto'] ?? 'openvpn');
+    $publicKey = $c['public_key'] ?? null;
 
-                if ($proto === 'wireguard' && $publicKey) {
-                    $uid = $idByWgKey[$publicKey] ?? null;
-                } else {
-                    $uid = $idByName[$username] ?? null;
-                }
+    // Resolve vpn_user_id
+    if ($proto === 'wireguard') {
+        $uid = null;
 
-                // Skip unknown users (we only track panel-created users)
-                if (!$uid) {
-                    Log::channel('vpn')->notice("MGMT: skipping unknown {$proto} user '{$username}' on server {$server->id}");
-                    continue;
-                }
+        if ($publicKey && isset($idByWgKey[$publicKey])) {
+            $uid = $idByWgKey[$publicKey];
+        } elseif ($username && isset($idByWgKey[$username])) {
+            // username is actually the WG public key
+            $uid = $idByWgKey[$username];
+        }
+    } else {
+        $uid = $idByName[$username] ?? null;
+    }
 
-                $stillConnectedUserIds[] = $uid;
+    if (!$uid) {
+        Log::channel('vpn')->notice("MGMT: skipping unknown {$proto} user '{$username}' on server {$server->id}");
+        continue;
+    }
 
-                /** @var VpnUserConnection $row */
-                $row = VpnUserConnection::firstOrCreate([
-                    'vpn_user_id'   => $uid,
-                    'vpn_server_id' => $server->id,
-                ]);
+    $stillConnectedUserIds[] = $uid;
 
-                // If previously disconnected, mark fresh session
-                if (!$row->is_connected) {
-                    $row->connected_at    = $now;
-                    $row->disconnected_at = null;
-                }
+    /** @var VpnUserConnection $row */
+    $row = VpnUserConnection::firstOrCreate([
+        'vpn_user_id'   => $uid,
+        'vpn_server_id' => $server->id,
+    ]);
 
-                $row->is_connected = true;
+    if (!$row->is_connected) {
+        $row->connected_at    = $now;
+        $row->disconnected_at = null;
+    }
 
-                if (!empty($c['client_ip']))  $row->client_ip  = $c['client_ip'];
-                if (!empty($c['virtual_ip'])) $row->virtual_ip = $c['virtual_ip'];
+    $row->is_connected = true;
 
-                if (array_key_exists('bytes_in', $c))  $row->bytes_received = (int) $c['bytes_in'];
-                if (array_key_exists('bytes_out', $c)) $row->bytes_sent     = (int) $c['bytes_out'];
+    if (!empty($c['client_ip'])) {
+        $row->client_ip = $c['client_ip'];
+    }
 
-                if (!empty($c['connected_at'])) {
-                    if ($parsed = $this->parseConnectedAt($c['connected_at'])) {
-                        $row->connected_at = $parsed;
-                    }
-                }
+    if (!empty($c['virtual_ip'])) {
+        $row->virtual_ip = $c['virtual_ip'];
+    }
 
-                if (Schema::hasColumn('vpn_user_connections', 'protocol')) {
-                    $row->protocol = $proto;
-                }
+    if (array_key_exists('bytes_in', $c)) {
+        $row->bytes_received = (int) $c['bytes_in'];
+    }
 
-                $row->save();
+    if (array_key_exists('bytes_out', $c)) {
+        $row->bytes_sent = (int) $c['bytes_out'];
+    }
 
-                // Update user summary
-                $userUpdate = [
-                    'is_online' => true,
-                    'last_ip'   => $row->client_ip,
-                ];
-                if (Schema::hasColumn('vpn_users', 'last_protocol')) {
-                    $userUpdate['last_protocol'] = $proto;
-                }
+    if (!empty($c['connected_at'])) {
+        if ($parsed = $this->parseConnectedAt($c['connected_at'])) {
+            $row->connected_at = $parsed;
+        }
+    }
 
-                VpnUser::whereKey($uid)->update($userUpdate);
-            }
+    if (Schema::hasColumn('vpn_user_connections', 'protocol')) {
+        $row->protocol = $proto;
+    }
+
+    $row->save();
+
+    // Update user summary
+    $userUpdate = [
+        'is_online' => true,
+        'last_ip'   => $row->client_ip,
+    ];
+
+    if (Schema::hasColumn('vpn_users', 'last_protocol')) {
+        $userUpdate['last_protocol'] = $proto;
+    }
+
+    VpnUser::whereKey($uid)->update($userUpdate);
+}
 
             // Disconnect vanished users for this server
             $toDisconnect = VpnUserConnection::query()
