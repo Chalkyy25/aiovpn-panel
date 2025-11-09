@@ -458,17 +458,16 @@ cat >/usr/local/bin/ovpn-mgmt-push.sh <<'AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load panel/env values
-. /etc/default/ovpn-status-push 2>/dev/null || true
+# Load and export config for Python
+if [ -f /etc/default/ovpn-status-push ]; then
+  set -a
+  . /etc/default/ovpn-status-push
+  set +a
+fi
 
-: "${PANEL_URL:?missing PANEL_URL}"
-: "${PANEL_TOKEN:?missing PANEL_TOKEN}"
-: "${SERVER_ID:?missing SERVER_ID}"
-
-# Export so Python can see them
-export PANEL_URL PANEL_TOKEN SERVER_ID
-[ -n "${MGMT_PORT:-}" ] && export MGMT_PORT || true
-[ -n "${MGMT_TCP_PORT:-}" ] && export MGMT_TCP_PORT || true
+: "${PANEL_URL:?PANEL_URL missing}"
+: "${PANEL_TOKEN:?PANEL_TOKEN missing}"
+: "${SERVER_ID:?SERVER_ID missing}"
 
 post() {
   curl -fsS -X POST \
@@ -478,88 +477,95 @@ post() {
     "${PANEL_URL%/}/api/servers/${SERVER_ID}/events" >/dev/null || true
 }
 
-python3 << 'PY'
-import os, sys, csv, json, datetime, subprocess
+json="$(
+python3 <<'PY'
+import os, sys, csv, json, datetime, subprocess, time
 
-PANEL_URL = os.environ.get("PANEL_URL","")
-PANEL_TOKEN = os.environ.get("PANEL_TOKEN","")
-SERVER_ID = os.environ.get("SERVER_ID","")
-MGMT_PORT = os.environ.get("MGMT_PORT","7505")
-MGMT_TCP_PORT = os.environ.get("MGMT_TCP_PORT","7506")
+PANEL_URL    = os.environ["PANEL_URL"]
+PANEL_TOKEN  = os.environ["PANEL_TOKEN"]
+SERVER_ID    = os.environ["SERVER_ID"]
+MGMT_PORT    = os.environ.get("MGMT_PORT", "7505")
+MGMT_TCP_PORT= os.environ.get("MGMT_TCP_PORT", "7506")
 
 def parse_ovpn_status(txt, proto_hint=None):
     clients, virt = {}, {}
     hCL, hRT = {}, {}
+
     for row in csv.reader(txt.splitlines()):
         if not row:
             continue
         tag = row[0]
+
         if tag == "HEADER" and len(row) > 2:
             if row[1] == "CLIENT_LIST":
-                hCL = {n:i for i,n in enumerate(row)}
+                hCL = {n: i for i, n in enumerate(row)}
             elif row[1] == "ROUTING_TABLE":
-                hRT = {n:i for i,n in enumerate(row)}
+                hRT = {n: i for i, n in enumerate(row)}
             continue
+
         if tag == "CLIENT_LIST":
-            def col(h, d=''):
+            def col(h, d=""):
                 i = hCL.get(h)
                 return row[i] if i is not None and i < len(row) else d
-            cn = col('Common Name') or col('Username')
+
+            cn = col("Common Name") or col("Username")
             if not cn:
                 continue
-            real = col('Real Address') or ''
-            real_ip = real.split(':')[0] if real else None
+
+            real = col("Real Address") or ""
+            real_ip = real.split(":")[0] if real else None
+
             def toint(x):
-                try: return int(x)
-                except: return 0
+                try:
+                    return int(x)
+                except Exception:
+                    return 0
+
             clients[cn] = {
                 "username": cn,
                 "client_ip": real_ip,
                 "virtual_ip": None,
-                "bytes_received": toint(col('Bytes Received','0')),
-                "bytes_sent": toint(col('Bytes Sent','0')),
-                "connected_at": toint(col('Connected Since (time_t)','0')),
+                "bytes_received": toint(col("Bytes Received", "0")),
+                "bytes_sent": toint(col("Bytes Sent", "0")),
+                "connected_at": toint(col("Connected Since (time_t)", "0")),
                 "proto": proto_hint or "openvpn",
             }
+
         elif tag == "ROUTING_TABLE":
-            def col(h, d=''):
+            def col(h, d=""):
                 i = hRT.get(h)
                 return row[i] if i is not None and i < len(row) else d
-            virt[col('Common Name','')] = col('Virtual Address') or None
+            virt[col("Common Name", "")] = col("Virtual Address") or None
+
     for cn, ip in virt.items():
         if cn in clients and ip:
-            clients[cn]["virtual_ip"] = ip
+            # strip mask if present
+            clients[cn]["virtual_ip"] = ip.split("/", 1)[0]
+
     return list(clients.values())
 
 def collect_ovpn():
-    out = ""
-    for p, hint in ((MGMT_PORT,"openvpn-udp"), (MGMT_TCP_PORT,"openvpn-tcp")):
+    chunks = []
+    for port, hint in ((MGMT_PORT, "openvpn-udp"), (MGMT_TCP_PORT, "openvpn-tcp")):
         try:
-            r = subprocess.check_output(
-                ["bash","-lc", f'printf "status 3\\nquit\\n" | nc -w 2 127.0.0.1 {p} || true'],
-                text=True
+            out = subprocess.check_output(
+                ["bash", "-lc", f'printf "status 3\\nquit\\n" | nc -w 2 127.0.0.1 {port} || true'],
+                text=True,
             )
-            if r.strip():
-                out += f"##PORT={p}##{r}\n===SPLIT===\n"
         except Exception:
             continue
 
+        if "CLIENT_LIST" in out:
+            chunks.append((out, hint))
+
     clients = []
-    for chunk in out.split("\n===SPLIT===\n"):
-        if "CLIENT_LIST" not in chunk:
-            continue
-        hint = "openvpn"
-        if f"##PORT={MGMT_TCP_PORT}##" in chunk:
-            hint = "openvpn-tcp"
-        elif f"##PORT={MGMT_PORT}##" in chunk:
-            hint = "openvpn-udp"
-        chunk = chunk.replace(f"##PORT={MGMT_PORT}##","").replace(f"##PORT={MGMT_TCP_PORT}##","")
-        clients.extend(parse_ovpn_status(chunk, proto_hint=hint))
+    for txt, hint in chunks:
+        clients.extend(parse_ovpn_status(txt, proto_hint=hint))
     return clients
 
 def collect_wg():
     try:
-        dump = subprocess.check_output(["wg","show","wg0","dump"], text=True)
+        dump = subprocess.check_output(["wg", "show", "wg0", "dump"], text=True)
     except Exception:
         return []
 
@@ -568,19 +574,26 @@ def collect_wg():
         return []
 
     peers = []
-    for line in lines[1:]:  # skip interface line
+    now = int(time.time())
+    GRACE = 90  # seconds a WG peer is considered online after last handshake
+
+    # wg show wg0 dump:
+    # line 0: private_key  public_key  listen_port  fwmark
+    # others: public_key  preshared_key  endpoint  allowed_ips  latest_handshake  rx  tx  persistent_keepalive
+    for line in lines[1:]:
         parts = line.split("\t")
         if len(parts) < 8:
             continue
-        pub, _psk, endpoint, allowed, hs, rx, tx, _keep = parts[:8]
+
+        pub, _psk, endpoint, allowed, hs_raw, rx_raw, tx_raw, _keep = parts[:8]
 
         try:
-            hs = int(hs)
-        except:
+            hs = int(hs_raw)
+        except Exception:
             hs = 0
 
-        # treat hs == 0 as offline
-        if hs <= 0:
+        # online only if handshake present and recent
+        if hs <= 0 or (now - hs) > GRACE:
             continue
 
         client_ip = None
@@ -588,41 +601,55 @@ def collect_wg():
             client_ip = endpoint.rsplit(":", 1)[0]
 
         virt_ip = None
-        if allowed and allowed != "(none)":
+        if allowed and allowed not in ("", "(none)"):
             first = allowed.split(",")[0].strip()
             if first:
                 virt_ip = first.split("/", 1)[0]
 
         def toint(x):
-            try: return int(x)
-            except: return 0
+            try:
+                return int(x)
+            except Exception:
+                return 0
 
         peers.append({
-            # username is WG pubkey; panel resolves to real user
             "username": pub,
             "public_key": pub,
             "client_ip": client_ip,
             "virtual_ip": virt_ip,
-            "bytes_received": toint(rx),
-            "bytes_sent": toint(tx),
+            "bytes_received": toint(rx_raw),
+            "bytes_sent": toint(tx_raw),
             "connected_at": hs,
             "proto": "wireguard",
         })
+
     return peers
 
 ovpn_clients = collect_ovpn()
-wg_clients = collect_wg()
-all_clients = ovpn_clients + wg_clients
+wg_clients   = collect_wg()
+all_clients  = ovpn_clients + wg_clients
 
 payload = {
     "status": "mgmt",
-    "ts": datetime.datetime.utcnow().isoformat()+"Z",
+    "ts": datetime.datetime.utcnow().isoformat() + "Z",
     "clients": len(all_clients),
     "users": all_clients,
 }
 
-print(json.dumps(payload, separators=(',',':')))
-PY | post
+print(json.dumps(payload, separators=(",", ":")))
+PY
+)"
+
+# if python failed or empty, bail quietly
+if [ -z "${json:-}" ]; then
+  exit 0
+fi
+
+# echo for manual debugging if run by hand
+printf '%s\n' "$json"
+
+# send to panel
+printf '%s\n' "$json" | post
 AGENT
 
 chmod 0755 /usr/local/bin/ovpn-mgmt-push.sh
