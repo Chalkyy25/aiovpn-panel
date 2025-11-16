@@ -799,22 +799,36 @@ ${CA_CONTENT}
 OVPN
 
 ### ===== Final facts =====
+
+# Decide what DNS to advertise to panel (private WG DNS if enabled)
+DNS_FACT="$WG_DNS_IP"
+if [[ "$ENABLE_PRIVATE_DNS" != "1" ]]; then
+  DNS_FACT="$DNS1"
+fi
+
 panel POST "/api/servers/$SERVER_ID/deploy/facts" --json \
 "{ $(json_kv iface "$DEF_IFACE"),
+   \"vpn_port\": $OVPN_PORT,
    $(json_kv proto "wireguard+openvpn-stealth"),
+   \"ip_forward\": 1,
+
+   # Public endpoint + WG facts used by WireGuardConfigController
+   $(json_kv public_ip "$WG_ENDPOINT_HOST"),
+   $(json_kv wg_public_key "$WG_PUB"),
+   \"wg_port\": $WG_PORT,
+   $(json_kv wg_subnet "$WG_SUBNET"),
+   $(json_kv dns "$DNS_FACT"),
+
+   # Optional extra metadata (controller will ignore unknown keys)
    \"mgmt_port\": $MGMT_PORT,
    \"mgmt_tcp_port\": $MGMT_TCP_PORT,
-   \"wg_port\": $WG_PORT,
-   $(json_kv wg_public_key "$WG_PUB"),
-   $(json_kv wg_endpoint_host "$WG_ENDPOINT_HOST"),
    $(json_kv ovpn_endpoint_host "$OVPN_ENDPOINT_HOST"),
-   \"ovpn_udp_port\": $OVPN_PORT,
    \"tcp_stealth_enabled\": $([ "$ENABLE_TCP_STEALTH" = "1" ] && echo "true" || echo "false"),
    \"tcp_port\": $TCP_PORT,
    $(json_kv tcp_subnet "$TCP_SUBNET"),
    $(json_kv status_udp "$STATUS_UDP_PATH"),
-   $(json_kv status_tcp "$STATUS_TCP_PATH"),
-   \"ip_forward\": 1 }" >/dev/null || true
+   $(json_kv status_tcp "$STATUS_TCP_PATH")
+ }" >/dev/null || true
 
 announce succeeded "WG-first + Stealth deployment complete (unified WG+OVPN monitoring)"
 echo "✅ Done $(date -Is)"
