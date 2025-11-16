@@ -9,74 +9,65 @@ use Illuminate\Support\Facades\Log;
 class GeoIpService
 {
     /**
-     * Look up IP -> country_code + city via external API.
-     */
-    public function lookup(string $ip): ?array
-    {
-        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
-            return null;
-        }
-
-        try {
-            // Example provider: ipapi.co
-            $response = Http::timeout(5)->get("https://ipapi.co/{$ip}/json/");
-
-            if (!$response->ok()) {
-                return null;
-            }
-
-            $data = $response->json();
-
-            if (!$data || (empty($data['country']) && empty($data['city']))) {
-                return null;
-            }
-
-            return [
-                'country_code' => !empty($data['country'])
-                    ? strtoupper($data['country'])  // e.g. "DE"
-                    : null,
-                'city' => $data['city'] ?? null,   // e.g. "Frankfurt"
-            ];
-        } catch (\Throwable $e) {
-            Log::warning('GeoIp lookup failed', [
-                'ip'      => $ip,
-                'message' => $e->getMessage(),
-            ]);
-            return null;
-        }
-    }
-
-    /**
-     * Update a VpnServer’s country_code + city from its ip_address.
-     * Returns true if anything changed.
+     * Lookup and store GeoIP for a server.
+     *
+     * Returns true if we actually changed something,
+     * false if nothing was updated (already set or lookup failed).
      */
     public function updateServer(VpnServer $server): bool
     {
         if (!$server->ip_address) {
+            Log::warning("GeoIP: server #{$server->id} has no ip_address");
             return false;
         }
 
-        $geo = $this->lookup($server->ip_address);
-        if (!$geo) {
+        // If both are already set, don't hammer the API
+        if (!empty($server->country_code) && !empty($server->city)) {
+            Log::info("GeoIP: already set for #{$server->id} ({$server->city}, {$server->country_code})");
             return false;
         }
 
-        $changed = false;
+        try {
+            $url = sprintf(
+                'http://ip-api.com/json/%s?fields=status,country,countryCode,city,regionName,message',
+                $server->ip_address
+            );
 
-        if (!empty($geo['country_code']) && $server->country_code !== $geo['country_code']) {
-            $server->country_code = $geo['country_code'];
-            $changed = true;
+            $res = Http::timeout(5)->get($url);
+
+            if (!$res->ok()) {
+                Log::warning("GeoIP: HTTP error for {$server->ip_address} (status {$res->status()})");
+                return false;
+            }
+
+            $json   = $res->json();
+            $status = $json['status'] ?? null;
+
+            if ($status !== 'success') {
+                Log::warning("GeoIP: API failure for {$server->ip_address} (" . ($json['message'] ?? 'no message') . ")");
+                return false;
+            }
+
+            $countryCode = $json['countryCode'] ?? null;
+            $city        = $json['city'] ?: ($json['regionName'] ?? null);
+
+            if (!$countryCode && !$city) {
+                Log::warning("GeoIP: empty data for {$server->ip_address}");
+                return false;
+            }
+
+            $server->country_code = $countryCode ?: $server->country_code;
+            $server->city         = $city ?: $server->city;
+            $server->saveQuietly();
+
+            Log::info("🌍 GeoIP updated #{$server->id} to {$server->city}, {$server->country_code}");
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning(
+                "GeoIP: exception for #{$server->id} ({$server->ip_address}): " . $e->getMessage()
+            );
+            return false;
         }
-
-        if (!empty($geo['city']) && $server->city !== $geo['city']) {
-            $server->city = $geo['city'];
-            $changed = true;
-        }
-
-        if ($changed) {
-            $server->save();
-        }
-
-        return $changed;
     }
 }
