@@ -34,17 +34,18 @@ class MobileProfileController extends Controller
             'id'           => (int) $s->id,
             'name'         => $s->name ?? ('Server ' . $s->id),
             'ip'           => $s->ip_address ?? $s->ip ?? null,
-            'protocol'     => $type,        // "openvpn" or "wireguard"
-            'transport'    => $transport,   // "udp" / "tcp" / null
-
-            // new geo fields for the app
-            'country_code' => $countryCode, // "GB", "DE", "NL", ...
-            'city'         => $city,        // "London", "Frankfurt am Main", ...
-
-            // optional friendly country name – keep it simple for now
+            'protocol'     => $type,
+            'transport'    => $transport,
+        
+            // geo
+            'country_code' => $countryCode,                     // "GB"
             'country_name' => $countryCode
+                ? $this->mapCountryName($countryCode)          // "United Kingdom"
+                : null,
+            'country'      => $countryCode                     // <- simple alias for now
                 ? $this->mapCountryName($countryCode)
                 : null,
+            'city'         => $city,
         ];
     })->values();
 
