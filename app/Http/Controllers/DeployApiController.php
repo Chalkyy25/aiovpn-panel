@@ -3,112 +3,95 @@
 namespace App\Http\Controllers;
 
 use App\Models\VpnServer;
-use App\Events\ServerMgmtEvent;
+use App\Events\ServerMgmtUpdated;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
-use Illuminate\Support\Carbon;
-use App\Events\ServerMgmtUpdated;
 
 class DeployApiController extends Controller
 {
+    /**
+     * POST /api/servers/{server}/deploy/facts
+     * Called by deploy script to push facts (WG + OpenVPN) into the DB.
+     */
     public function facts(Request $req, VpnServer $server)
-{
-    $data = $req->validate([
-        // existing fields
-        'iface'      => 'nullable|string',
-        'mgmt_port'  => 'nullable|integer',
-        'vpn_port'   => 'nullable|integer',
-        'proto'      => 'nullable|string|in:udp,tcp,openvpn,wireguard',
-        'ip_forward' => 'nullable|boolean',
+    {
+        $data = $req->validate([
+            // basic facts from script
+            'iface'              => 'nullable|string',
+            'mgmt_port'          => 'nullable|integer',
+            'mgmt_tcp_port'      => 'nullable|integer',
+            'vpn_port'           => 'nullable|integer',
+            // script sends "wireguard+openvpn-stealth" etc
+            'proto'              => 'nullable|string',
 
-        // NEW: WireGuard + endpoint/DNS facts
-        'public_ip'     => 'nullable|ip',
-        'wg_public_key' => 'nullable|string',
-        'wg_port'       => 'nullable|integer',
-        'wg_subnet'     => 'nullable|string',
-        'dns'           => 'nullable|string',
-    ]);
+            // WireGuard
+            'wg_public_key'      => 'nullable|string',
+            'wg_port'            => 'nullable|integer',
+            'wg_subnet'          => 'nullable|string',
+            'wg_endpoint_host'   => 'nullable|string',
 
-    $dirty = false;
+            // OpenVPN / misc
+            'ovpn_endpoint_host' => 'nullable|string',
+            'ovpn_udp_port'      => 'nullable|integer',
+            'tcp_stealth_enabled'=> 'nullable',
+            'tcp_port'           => 'nullable|integer',
+            'tcp_subnet'         => 'nullable|string',
+            'status_udp'         => 'nullable|string',
+            'status_tcp'         => 'nullable|string',
 
-    // ---- existing bits ----
-    if (array_key_exists('iface', $data) && $data['iface'] !== null && $data['iface'] !== $server->iface) {
-        $server->iface = $data['iface'];
-        $dirty = true;
-    }
+            // generic extras
+            'ip_forward'         => 'nullable',
+            'dns'                => 'nullable|string',
+        ]);
 
-    if (array_key_exists('mgmt_port', $data) && $data['mgmt_port'] !== null && (int) $data['mgmt_port'] !== (int) $server->mgmt_port) {
-        $server->mgmt_port = (int) $data['mgmt_port'];
-        $dirty = true;
-    }
+        // Only touch known DB columns; keep existing values if a key is missing
+        $server->fill([
+            'iface'            => $data['iface']            ?? $server->iface,
+            'mgmt_port'        => $data['mgmt_port']        ?? $server->mgmt_port,
+            'tcp_mgmt_port'    => $data['mgmt_tcp_port']    ?? $server->tcp_mgmt_port,
+            'port'             => $data['vpn_port']         ?? $server->port,
+            'protocol'         => $data['proto']            ?? $server->protocol,
 
-    if (array_key_exists('vpn_port', $data) && $data['vpn_port'] !== null && (int) $data['vpn_port'] !== (int) $server->port) {
-        $server->port = (int) $data['vpn_port'];
-        $dirty = true;
-    }
+            // WireGuard
+            'wg_public_key'    => $data['wg_public_key']    ?? $server->wg_public_key,
+            'wg_port'          => $data['wg_port']          ?? $server->wg_port,
+            'wg_subnet'        => $data['wg_subnet']        ?? $server->wg_subnet,
+            'wg_endpoint_host' => $data['wg_endpoint_host'] ?? $server->wg_endpoint_host,
 
-    if (!empty($data['proto']) && $data['proto'] !== $server->protocol) {
-        $server->protocol = $data['proto'];
-        $dirty = true;
-    }
+            // Store the UDP status log path; useful for dashboards
+            'status_log_path'  => $data['status_udp']       ?? $server->status_log_path,
+        ]);
 
-    // optional: if you have an ip_forward column
-    if (array_key_exists('ip_forward', $data) && $data['ip_forward'] !== null && $data['ip_forward'] != $server->ip_forward) {
-        $server->ip_forward = (bool) $data['ip_forward'];
-        $dirty = true;
-    }
+        // Prefer internal resolver if script/provisioning didn’t set dns
+        if (!empty($data['dns'])) {
+            $server->dns = $data['dns'];
+        } elseif (empty($server->dns)) {
+            $server->dns = '10.66.66.1';
+        }
 
-    // ---- NEW: WireGuard + endpoint/DNS facts ----
-
-    // public IP / endpoint host
-    if (!empty($data['public_ip']) && $data['public_ip'] !== $server->wg_endpoint_host) {
-        $server->wg_endpoint_host = $data['public_ip'];
-        $dirty = true;
-    }
-
-    // wg public key
-    if (!empty($data['wg_public_key']) && $data['wg_public_key'] !== $server->wg_public_key) {
-        $server->wg_public_key = $data['wg_public_key'];
-        $dirty = true;
-    }
-
-    // wg port
-    if (array_key_exists('wg_port', $data) && $data['wg_port'] !== null && (int) $data['wg_port'] !== (int) $server->wg_port) {
-        $server->wg_port = (int) $data['wg_port'];
-        $dirty = true;
-    }
-
-    // wg subnet (10.66.66.0/24 etc.)
-    if (!empty($data['wg_subnet']) && $data['wg_subnet'] !== $server->wg_subnet) {
-        $server->wg_subnet = $data['wg_subnet'];
-        $dirty = true;
-    }
-
-    // DNS for WG/OpenVPN (your internal resolver IP)
-    if (!empty($data['dns']) && $data['dns'] !== $server->dns) {
-        $server->dns = $data['dns'];
-        $dirty = true;
-    }
-
-    if ($dirty) {
         $server->saveQuietly();
+
+        Log::channel('vpn')->info("📡 DeployFacts #{$server->id}", array_merge(
+            $data,
+            [
+                'wg_endpoint_host'  => $server->wg_endpoint_host,
+                'wg_public_key_set' => (bool) $server->wg_public_key,
+                'wg_port_final'     => $server->wg_port,
+            ]
+        ));
+
+        return response()->json(['ok' => true]);
     }
 
-    Log::channel('vpn')->info("📡 DeployFacts #{$server->id}", array_merge(
-        $data,
-        [
-            'wg_endpoint_host' => $server->wg_endpoint_host,
-            'wg_public_key_set' => $server->wg_public_key ? true : false,
-            'wg_port_final'     => $server->wg_port,
-        ]
-    ));
-
-    return response()->json(['ok' => true]);
-}
-
+    /**
+     * POST /api/servers/{server}/deploy/events
+     * Simple string-based events from the deploy script.
+     * Special case: status="mgmt" is forwarded to the JSON DeployEventController.
+     */
     public function event(Request $request, $server)
     {
         $data = $request->validate([
@@ -116,69 +99,77 @@ class DeployApiController extends Controller
             'message' => 'required|string',
         ]);
 
-        /** @var \App\Models\VpnServer $vpn */
-        $vpn = \App\Models\VpnServer::findOrFail($server);
+        /** @var VpnServer $vpn */
+        $vpn = VpnServer::findOrFail($server);
 
+        // Special mgmt line: forward into the richer JSON handler
         if ($data['status'] === 'mgmt') {
-    $raw = $data['message'];
-    $ts  = now()->toIso8601String();
+            $raw = $data['message'];
+            $ts  = now()->toIso8601String();
 
-    // Try to parse "clients=2 [alice,bob]" or "[mgmt] 2 online: [alice,bob]"
-    $clients = 0; $cnList = '';
-    if (preg_match('/clients=(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
-        $clients = (int) $m[1];
-        $cnList  = trim($m[2] ?? '');
-    } elseif (preg_match('/\[mgmt\]\s*(\d+)\s*online:\s*\[([^\]]*)\]/i', $raw, $m)) {
-        $clients = (int) $m[1];
-        $cnList  = trim($m[2] ?? '');
-    }
+            // Try to parse "clients=2 [alice,bob]" or "[mgmt] 2 online: [alice,bob]"
+            $clients = 0;
+            $cnList  = '';
 
-    $cnList = preg_replace('/\s+/', '', $cnList ?? '');
-    if ($cnList === '[]') $cnList = '';
+            if (preg_match('/clients=(\d+)\s*\[([^\]]*)\]/i', $raw, $m)) {
+                $clients = (int) $m[1];
+                $cnList  = trim($m[2] ?? '');
+            } elseif (preg_match('/\[mgmt\]\s*(\d+)\s*online:\s*\[([^\]]*)\]/i', $raw, $m)) {
+                $clients = (int) $m[1];
+                $cnList  = trim($m[2] ?? '');
+            }
 
-    // (optional) keep these for quick counters/logs
-    cache()->put("servers:{$vpn->id}:clients",        $clients, 300);
-    cache()->put("servers:{$vpn->id}:cn_list",        $cnList, 300);
-    cache()->put("servers:{$vpn->id}:mgmt_last_seen", $ts, 300);
+            $cnList = preg_replace('/\s+/', '', $cnList ?? '');
+            if ($cnList === '[]') {
+                $cnList = '';
+            }
 
-    $lastKey   = "servers:{$vpn->id}:mgmt_last_log";
-    $lastState = cache()->get("servers:{$vpn->id}:mgmt_state");
-    $state     = "{$clients}|{$cnList}";
-    $shouldLog = $state !== $lastState || !cache()->has($lastKey);
-    if ($shouldLog) {
-        \Log::channel('vpn')->debug("[mgmt] {$clients} online: [{$cnList}]");
-        cache()->put($lastKey, 1, 60);
-        cache()->put("servers:{$vpn->id}:mgmt_state", $state, 300);
-    }
+            // quick cache counters
+            cache()->put("servers:{$vpn->id}:clients",        $clients, 300);
+            cache()->put("servers:{$vpn->id}:cn_list",        $cnList, 300);
+            cache()->put("servers:{$vpn->id}:mgmt_last_seen", $ts, 300);
 
-    // Build a minimal users[] array for the JSON controller
-    $users = [];
-    if ($cnList !== '') {
-        foreach (array_filter(explode(',', trim($cnList, '[]'))) as $name) {
-            $name = trim($name);
-            if ($name !== '') $users[] = ['username' => $name];
+            $lastKey   = "servers:{$vpn->id}:mgmt_last_log";
+            $lastState = cache()->get("servers:{$vpn->id}:mgmt_state");
+            $state     = "{$clients}|{$cnList}";
+
+            $shouldLog = $state !== $lastState || !cache()->has($lastKey);
+            if ($shouldLog) {
+                Log::channel('vpn')->debug("[mgmt] {$clients} online: [{$cnList}]");
+                cache()->put($lastKey, 1, 60);
+                cache()->put("servers:{$vpn->id}:mgmt_state", $state, 300);
+            }
+
+            // Build minimal users[] for the JSON controller
+            $users = [];
+            if ($cnList !== '') {
+                foreach (array_filter(explode(',', trim($cnList, '[]'))) as $name) {
+                    $name = trim($name);
+                    if ($name !== '') {
+                        $users[] = ['username' => $name];
+                    }
+                }
+            }
+
+            // Forward into Api\DeployEventController@store
+            $forward = Request::create('', 'POST', [
+                'status'  => 'mgmt',
+                'message' => $raw,
+                'ts'      => $ts,
+                'users'   => $users,
+            ]);
+
+            return app(\App\Http\Controllers\Api\DeployEventController::class)
+                ->store($forward, $vpn);
         }
-    }
 
-    // Forward to the new JSON handler (this will sync DB and broadcast rich payload)
-    $forward = \Illuminate\Http\Request::create('', 'POST', [
-        'status'  => 'mgmt',
-        'message' => $raw,
-        'ts'      => $ts,
-        'users'   => $users,
-        // 'clients' => $clients, // optional; store() derives count from users
-    ]);
-
-    return app(\App\Http\Controllers\Api\DeployEventController::class)
-        ->store($forward, $vpn);
-}
-
-        // non-mgmt events
+        // Non-mgmt events
         $vpn->deployment_status = $data['status'] === 'info'
             ? $vpn->deployment_status
             : $data['status'];
 
-        $vpn->appendLog(sprintf('[%s] %s: %s',
+        $vpn->appendLog(sprintf(
+            '[%s] %s: %s',
             now()->toDateTimeString(),
             strtoupper($data['status']),
             $data['message']
@@ -190,6 +181,10 @@ class DeployApiController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * POST /api/servers/{server}/deploy/logs
+     * One-line log streaming from the deploy script.
+     */
     public function log(Request $request, VpnServer $server)
     {
         $data = $request->validate([
@@ -197,6 +192,7 @@ class DeployApiController extends Controller
         ]);
 
         $line = rtrim($data['line'], "\r\n");
+
         if ($line !== '') {
             $server->appendLog($line);
         }
@@ -206,13 +202,19 @@ class DeployApiController extends Controller
                 'server_id' => $server->id,
                 'line'      => $line,
             ]);
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+            // ignore broadcast errors
+        }
 
         Log::channel('vpn')->debug("[deploy.log] #{$server->id} {$line}");
 
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * POST /api/servers/{server}/mgmt/snapshot
+     * Simple “count + usernames” snapshot for dashboards.
+     */
     public function pushMgmtSnapshot(Request $req, VpnServer $server)
     {
         $data = $req->validate([
@@ -223,9 +225,11 @@ class DeployApiController extends Controller
         ]);
 
         $server->online_count = (int) $data['online_count'];
+
         if (isset($data['online_users'])) {
             $server->online_users = array_values(array_filter($data['online_users'], 'strlen'));
         }
+
         $server->last_mgmt_at = Carbon::parse($data['ts'] ?? now());
         $server->save();
 
@@ -236,25 +240,29 @@ class DeployApiController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * POST /api/servers/{server}/mgmt
+     * Rich JSON mgmt payload (uptime, cpu, mem, per-client stats, etc).
+     */
     public function pushMgmt(Request $request, VpnServer $server)
     {
         $payload = $request->validate([
-            'uptime'  => 'nullable|string',
-            'cpu'     => 'nullable|string',
-            'mem'     => 'nullable|array',
-            'mem.total' => 'nullable|string',
-            'mem.used'  => 'nullable|string',
-            'mem.free'  => 'nullable|string',
-            'iface'   => 'nullable|string',
-            'rate'    => 'nullable|array',
-            'rate.up_mbps'   => 'nullable|numeric',
-            'rate.down_mbps' => 'nullable|numeric',
-            'clients' => 'nullable|array',
-            'clients.*.username'        => 'nullable|string',
-            'clients.*.real_ip'         => 'nullable|string',
-            'clients.*.virtual_ip'      => 'nullable|string',
-            'clients.*.bytes_rx'        => 'nullable|integer',
-            'clients.*.bytes_tx'        => 'nullable|integer',
+            'uptime'                 => 'nullable|string',
+            'cpu'                    => 'nullable|string',
+            'mem'                    => 'nullable|array',
+            'mem.total'              => 'nullable|string',
+            'mem.used'               => 'nullable|string',
+            'mem.free'               => 'nullable|string',
+            'iface'                  => 'nullable|string',
+            'rate'                   => 'nullable|array',
+            'rate.up_mbps'           => 'nullable|numeric',
+            'rate.down_mbps'         => 'nullable|numeric',
+            'clients'                => 'nullable|array',
+            'clients.*.username'     => 'nullable|string',
+            'clients.*.real_ip'      => 'nullable|string',
+            'clients.*.virtual_ip'   => 'nullable|string',
+            'clients.*.bytes_rx'     => 'nullable|integer',
+            'clients.*.bytes_tx'     => 'nullable|integer',
             'clients.*.connected_since' => 'nullable|integer',
         ]);
 
@@ -265,13 +273,19 @@ class DeployApiController extends Controller
                 'server_id' => $server->id,
                 'payload'   => $payload,
             ]);
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+            // ignore broadcast errors
+        }
 
         Log::channel('vpn')->debug("[pushMgmt] #{$server->id}", $payload);
 
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * GET /api/servers/{server}/authfile
+     * Mirror of the OpenVPN psw-file stored on panel side.
+     */
     public function authFile(VpnServer $server)
     {
         $path = $this->authPath($server->id);
@@ -287,6 +301,10 @@ class DeployApiController extends Controller
         );
     }
 
+    /**
+     * POST /api/servers/{server}/authfile
+     * Upload a fresh copy of OpenVPN psw-file from the panel to local storage.
+     */
     public function uploadAuthFile(Request $request, VpnServer $server)
     {
         $request->validate([
@@ -304,7 +322,9 @@ class DeployApiController extends Controller
                 'server_id'  => $server->id,
                 'updated_at' => now()->toIso8601String(),
             ]);
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+            // ignore broadcast errors
+        }
 
         Log::channel('vpn')->debug("[authFile] Updated #{$server->id}");
 
