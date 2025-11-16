@@ -15,25 +15,99 @@ use App\Events\ServerMgmtUpdated;
 class DeployApiController extends Controller
 {
     public function facts(Request $req, VpnServer $server)
-    {
-        $data = $req->validate([
-            'iface'      => 'nullable|string',
-            'mgmt_port'  => 'nullable|integer',
-            'vpn_port'   => 'nullable|integer',
-            'proto'      => 'nullable|string|in:udp,tcp,openvpn,wireguard',
-            'ip_forward' => 'nullable|boolean',
-        ]);
+{
+    $data = $req->validate([
+        // existing fields
+        'iface'      => 'nullable|string',
+        'mgmt_port'  => 'nullable|integer',
+        'vpn_port'   => 'nullable|integer',
+        'proto'      => 'nullable|string|in:udp,tcp,openvpn,wireguard',
+        'ip_forward' => 'nullable|boolean',
 
-        $server->fill([
-            'iface'    => $data['iface'] ?? $server->iface,
-            'port'     => $data['vpn_port'] ?? $server->port,
-            'protocol' => $data['proto'] ?? $server->protocol,
-        ])->save();
+        // NEW: WireGuard + endpoint/DNS facts
+        'public_ip'     => 'nullable|ip',
+        'wg_public_key' => 'nullable|string',
+        'wg_port'       => 'nullable|integer',
+        'wg_subnet'     => 'nullable|string',
+        'dns'           => 'nullable|string',
+    ]);
 
-        Log::channel('vpn')->info("📡 DeployFacts #{$server->id}", $data);
+    $dirty = false;
 
-        return response()->json(['ok' => true]);
+    // ---- existing bits ----
+    if (array_key_exists('iface', $data) && $data['iface'] !== null && $data['iface'] !== $server->iface) {
+        $server->iface = $data['iface'];
+        $dirty = true;
     }
+
+    if (array_key_exists('mgmt_port', $data) && $data['mgmt_port'] !== null && (int) $data['mgmt_port'] !== (int) $server->mgmt_port) {
+        $server->mgmt_port = (int) $data['mgmt_port'];
+        $dirty = true;
+    }
+
+    if (array_key_exists('vpn_port', $data) && $data['vpn_port'] !== null && (int) $data['vpn_port'] !== (int) $server->port) {
+        $server->port = (int) $data['vpn_port'];
+        $dirty = true;
+    }
+
+    if (!empty($data['proto']) && $data['proto'] !== $server->protocol) {
+        $server->protocol = $data['proto'];
+        $dirty = true;
+    }
+
+    // optional: if you have an ip_forward column
+    if (array_key_exists('ip_forward', $data) && $data['ip_forward'] !== null && $data['ip_forward'] != $server->ip_forward) {
+        $server->ip_forward = (bool) $data['ip_forward'];
+        $dirty = true;
+    }
+
+    // ---- NEW: WireGuard + endpoint/DNS facts ----
+
+    // public IP / endpoint host
+    if (!empty($data['public_ip']) && $data['public_ip'] !== $server->wg_endpoint_host) {
+        $server->wg_endpoint_host = $data['public_ip'];
+        $dirty = true;
+    }
+
+    // wg public key
+    if (!empty($data['wg_public_key']) && $data['wg_public_key'] !== $server->wg_public_key) {
+        $server->wg_public_key = $data['wg_public_key'];
+        $dirty = true;
+    }
+
+    // wg port
+    if (array_key_exists('wg_port', $data) && $data['wg_port'] !== null && (int) $data['wg_port'] !== (int) $server->wg_port) {
+        $server->wg_port = (int) $data['wg_port'];
+        $dirty = true;
+    }
+
+    // wg subnet (10.66.66.0/24 etc.)
+    if (!empty($data['wg_subnet']) && $data['wg_subnet'] !== $server->wg_subnet) {
+        $server->wg_subnet = $data['wg_subnet'];
+        $dirty = true;
+    }
+
+    // DNS for WG/OpenVPN (your internal resolver IP)
+    if (!empty($data['dns']) && $data['dns'] !== $server->dns) {
+        $server->dns = $data['dns'];
+        $dirty = true;
+    }
+
+    if ($dirty) {
+        $server->saveQuietly();
+    }
+
+    Log::channel('vpn')->info("📡 DeployFacts #{$server->id}", array_merge(
+        $data,
+        [
+            'wg_endpoint_host' => $server->wg_endpoint_host,
+            'wg_public_key_set' => $server->wg_public_key ? true : false,
+            'wg_port_final'     => $server->wg_port,
+        ]
+    ));
+
+    return response()->json(['ok' => true]);
+}
 
     public function event(Request $request, $server)
     {
