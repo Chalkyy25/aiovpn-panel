@@ -23,15 +23,28 @@ class MobileProfileController extends Controller
         $raw = strtolower((string) $s->protocol); // e.g. "udp", "tcp", "wireguard"
 
         // Normalise the protocol type for Android app
-        $type = in_array($raw, ['udp', 'tcp']) ? 'openvpn' : ($raw ?: 'openvpn');
+        $type      = in_array($raw, ['udp', 'tcp']) ? 'openvpn' : ($raw ?: 'openvpn');
         $transport = in_array($raw, ['udp', 'tcp']) ? $raw : null;
 
+        // Geo fields from vpn_servers
+        $countryCode = $s->country_code ?: null;
+        $city        = $s->city ?: null;
+
         return [
-            'id'        => (int) $s->id,
-            'name'      => $s->name ?? ('Server ' . $s->id),
-            'ip'        => $s->ip_address ?? $s->ip ?? null,
-            'protocol'  => $type,       // "openvpn" or "wireguard"
-            'transport' => $transport,  // "udp" / "tcp" / null
+            'id'           => (int) $s->id,
+            'name'         => $s->name ?? ('Server ' . $s->id),
+            'ip'           => $s->ip_address ?? $s->ip ?? null,
+            'protocol'     => $type,        // "openvpn" or "wireguard"
+            'transport'    => $transport,   // "udp" / "tcp" / null
+
+            // new geo fields for the app
+            'country_code' => $countryCode, // "GB", "DE", "NL", ...
+            'city'         => $city,        // "London", "Frankfurt am Main", ...
+
+            // optional friendly country name – keep it simple for now
+            'country_name' => $countryCode
+                ? $this->mapCountryName($countryCode)
+                : null,
         ];
     })->values();
 
@@ -143,4 +156,25 @@ class MobileProfileController extends Controller
             'Expires'       => '0',
         ]);
     }
+    
+    private function mapCountryName(?string $code): ?string
+{
+    if (!$code) {
+        return null;
+    }
+
+    $map = [
+        'GB' => 'United Kingdom',
+        'UK' => 'United Kingdom',
+        'DE' => 'Germany',
+        'ES' => 'Spain',
+        'NL' => 'Netherlands',
+        'US' => 'United States',
+        'FR' => 'France',
+        // extend as needed
+    ];
+
+    $code = strtoupper($code);
+    return $map[$code] ?? $code;
+}
 }
