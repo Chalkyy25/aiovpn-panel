@@ -14,6 +14,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use App\Jobs\SyncOpenVPNCredentials;
 use App\Jobs\AddWireGuardPeer;
+use App\Services\GeoIpService; // 👈 NEW
 
 class DeployVpnServer implements ShouldQueue
 {
@@ -32,7 +33,8 @@ class DeployVpnServer implements ShouldQueue
         $this->vpnServer = $vpnServer;
     }
 
-    public function handle(): void
+    // 👇 CHANGED: inject GeoIpService so we can update country/city automatically
+    public function handle(GeoIpService $geo): void
     {
         Log::info("🚀 DeployVpnServer: starting for #{$this->vpnServer->id}");
 
@@ -269,6 +271,24 @@ BASH;
             if ($exitCode === 0) {
                 $finalLog .= "\n✅ Deployment succeeded";
 
+                // 🔎 NEW: GeoIP update after successful deploy
+                try {
+                    $freshServer = $this->vpnServer->fresh();
+                    $geoUpdated  = $geo->updateServer($freshServer);
+
+                    if ($geoUpdated) {
+                        $finalLog .= "\n🗺 GeoIP: location updated to "
+                            . ($freshServer->country_code ?? '??')
+                            . ' / '
+                            . ($freshServer->city ?? 'Unknown');
+                    } else {
+                        $finalLog .= "\n🗺 GeoIP: no changes (already set or lookup failed)";
+                    }
+                } catch (\Throwable $geoE) {
+                    Log::warning('⚠️ GeoIP update failed for server #'.$this->vpnServer->id.': '.$geoE->getMessage());
+                    $finalLog .= "\n⚠️ GeoIP update error: " . $geoE->getMessage();
+                }
+
                 $existingUsers = VpnUser::where('is_active', true)->get();
                 if ($existingUsers->isNotEmpty()) {
                     $this->vpnServer->vpnUsers()->syncWithoutDetaching($existingUsers->pluck('id')->all());
@@ -487,7 +507,7 @@ BASH;
 
         $out = '';
         $err = '';
-               $start = time();
+        $start = time();
         $maxDuration = max(60, ($this->timeout ?? 900) - 10);
 
         while (true) {
