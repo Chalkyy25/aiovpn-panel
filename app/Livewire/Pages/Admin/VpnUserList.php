@@ -2,10 +2,10 @@
 
 namespace App\Livewire\Pages\Admin;
 
-use App\Jobs\AddWireGuardPeer;
 use App\Jobs\GenerateOvpnFile;
-use App\Jobs\RemoveWireGuardPeer;
 use App\Models\VpnUser;
+use App\Models\WireguardPeer;
+use App\Services\WireGuardService;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Application;
@@ -45,7 +45,7 @@ class VpnUserList extends Component
         $user->delete();
 
         Log::info("🗑️ Deleted VPN user {$username} with auto-cleanup");
-        session()->flash('message', "User {$username} deleted successfully. Cleanup jobs have been queued.");
+        session()->flash('message', "User {$username} deleted successfully.");
 
         $this->resetPage();
     }
@@ -66,18 +66,20 @@ class VpnUserList extends Component
         $this->configProgress = 1;
         $this->configMessage  = "Starting config pack for {$user->username}";
 
+        // Assuming your job can accept just the user and fan-out internally
         GenerateOvpnFile::dispatch($user);
 
         Log::info("🌀 Config pack queued for user {$user->username}");
 
         session()->flash(
             'message',
-            "Config pack for {$user->username} queued: OpenVPN (unified, stealth, UDP) and WireGuard."
+            "Config pack for {$user->username} queued: OpenVPN and WireGuard."
         );
     }
 
     /**
-     * Generate WireGuard peers on all linked servers for a user.
+     * Ensure WireGuard peers exist on all linked servers for a user.
+     * This uses WireGuardService instead of the old AddWireGuardPeer job.
      */
     public function generateWireGuard(int $id): void
     {
@@ -88,38 +90,60 @@ class VpnUserList extends Component
             return;
         }
 
-        foreach ($user->vpnServers as $server) {
-            AddWireGuardPeer::dispatch($user, $server)->onQueue('wg');
-            Log::info("🔧 WireGuard peer setup queued for {$user->username} on {$server->name}");
+        if (blank($user->wireguard_public_key) || blank($user->wireguard_address)) {
+            session()->flash('message', "User {$user->username} has no WireGuard identity yet.");
+            return;
         }
 
-        session()->flash('message', "WireGuard peer setup for {$user->username} has been queued on all linked servers.");
+        /** @var WireGuardService $wg */
+        $wg = app(WireGuardService::class);
+
+        foreach ($user->vpnServers as $server) {
+            if (! $server->supportsWireGuard()) {
+                continue;
+            }
+
+            try {
+                $wg->ensurePeerForUser($server, $user);
+                Log::info("🔧 WireGuard peer ensured for {$user->username} on {$server->name}");
+            } catch (\Throwable $e) {
+                Log::error("WireGuard peer creation failed for {$user->username} on {$server->name}: ".$e->getMessage());
+            }
+        }
+
+        session()->flash(
+            'message',
+            "WireGuard peers ensured for {$user->username} on all linked servers."
+        );
     }
 
     /**
-     * Force remove WireGuard peers for this user from all linked servers.
+     * Soft-remove WireGuard peers for this user:
+     * - mark DB peers as revoked
+     * - you can later add a scheduled job to prune from wg0 if you want.
      */
     public function forceRemoveWireGuardPeer(int $id): void
     {
         $user = VpnUser::with('vpnServers')->findOrFail($id);
 
-        if (empty($user->wireguard_public_key)) {
+        if (blank($user->wireguard_public_key)) {
             session()->flash('message', "User {$user->username} has no WireGuard public key.");
             return;
         }
 
-        if ($user->vpnServers->isEmpty()) {
-            session()->flash('message', "User {$user->username} is not associated with any servers.");
-            return;
-        }
+        $count = WireguardPeer::where('vpn_user_id', $user->id)->update([
+            'revoked' => true,
+        ]);
 
-        foreach ($user->vpnServers as $server) {
-            Log::info("🔧 Force removing WireGuard peer for {$user->username} on {$server->name}");
-            RemoveWireGuardPeer::dispatch(clone $user, $server);
-        }
+        Log::info("🔧 WireGuard peers marked revoked for {$user->username}", [
+            'user_id' => $user->id,
+            'count'   => $count,
+        ]);
 
-        Log::info("🔧 WireGuard peer removal forced for {$user->username}");
-        session()->flash('message', "WireGuard peer removal for {$user->username} has been queued.");
+        session()->flash(
+            'message',
+            "WireGuard peers for {$user->username} have been marked revoked ({$count} records)."
+        );
     }
 
     public function toggleActive(int $id): void
@@ -151,11 +175,6 @@ class VpnUserList extends Component
 
         $this->configProgress = (int) ($data['percent'] ?? 0);
         $this->configMessage  = (string) ($data['message'] ?? '');
-
-        // Optional auto-clear
-        // if ($this->configProgress >= 100) {
-        //     $this->configUserId = null;
-        // }
     }
 
     public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
