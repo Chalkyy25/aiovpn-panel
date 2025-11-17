@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\User;
-use App\Models\VpnServer;
+use App\Models\VpnUser;
 use App\Models\WireguardPeer;
+use App\Models\VpnServer;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
