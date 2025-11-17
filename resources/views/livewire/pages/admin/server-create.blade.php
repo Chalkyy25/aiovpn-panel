@@ -65,6 +65,67 @@
         @endif
       </div>
     </section>
+    
+        {{-- LOCATION / GEO --}}
+    <section class="aio-section">
+      <h3 class="aio-section-title">
+        <span class="w-1.5 h-6 rounded accent-lim"></span>
+        Location
+      </h3>
+      <p class="aio-section-sub">Country & city used by the app for server lists.</p>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <select wire:model.live="country_code" class="form-select">
+            <option value="">Select country</option>
+            <option value="DE">Germany</option>
+            <option value="ES">Spain</option>
+            <option value="GB">United Kingdom</option>
+            <option value="FR">France</option>
+            <option value="NL">Netherlands</option>
+            <option value="US">United States</option>
+            <!-- add whatever else you actually deploy -->
+          </select>
+          @error('country_code') <p class="form-help text-red-400">{{ $message }}</p> @enderror
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">City</label>
+          <input type="text"
+                 wire:model.live="city"
+                 class="form-input"
+                 placeholder="Frankfurt">
+          @error('city') <p class="form-help text-red-400">{{ $message }}</p> @enderror
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Region (optional)</label>
+          <input type="text"
+                 wire:model.live="region"
+                 class="form-input"
+                 placeholder="Europe / US-East">
+          @error('region') <p class="form-help text-red-400">{{ $message }}</p> @enderror
+        </div>
+
+        <div class="form-group md:col-span-2">
+          <label class="form-label">Tags (optional)</label>
+          <input type="text"
+                 wire:model.live="tags"
+                 class="form-input"
+                 placeholder="streaming, p2p, edge">
+          <p class="form-help">
+            Comma or space separated. Example:
+            <code>streaming p2p</code> or <code>streaming, p2p</code>
+          </p>
+        </div>
+
+        <label class="form-check">
+          <input type="checkbox" wire:model.live="enabled">
+          <span>Server Enabled</span>
+        </label>
+      </div>
+    </section>
 
     {{-- ADVANCED SETTINGS --}}
     <section class="aio-section">
