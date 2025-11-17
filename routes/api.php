@@ -6,9 +6,13 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
 use App\Http\Controllers\Api\DeployEventController;
+use App\Http\Controllers\Api\LocationController;
+
+
 
 use App\Http\Controllers\MobileAuthController;
 use App\Http\Controllers\MobileProfileController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -63,6 +67,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Profile summary + assigned servers
     Route::get('/profiles', [MobileProfileController::class, 'index']);
+    
+    Route::get('/locations', [LocationController::class, 'index']);
 
     // Return a ready-to-import .ovpn for the given (or first) server
     Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
