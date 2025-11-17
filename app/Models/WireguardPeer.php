@@ -13,8 +13,8 @@ class WireguardPeer extends Model
         'vpn_server_id',
         'vpn_user_id',
         'public_key',
-        'preshared_key',
-        'private_key_encrypted',
+        'preshared_key',          // we won't use it now, but keep column
+        'private_key_encrypted',  // optional, for per-peer key if you ever want that
         'ip_address',
         'allowed_ips',
         'dns',
@@ -41,7 +41,7 @@ class WireguardPeer extends Model
         return $this->belongsTo(VpnUser::class, 'vpn_user_id');
     }
 
-    // Convenience accessor for decrypted private key
+    // Optional: if you ever want per-peer private key usage (not currently used)
     public function getPrivateKeyAttribute(): ?string
     {
         $enc = $this->private_key_encrypted ?? null;
