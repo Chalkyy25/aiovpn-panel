@@ -14,47 +14,41 @@ class WireGuardService
      * Ensure a WireGuard peer exists for this user+server.
      * If already exists and not revoked, return it, otherwise create + push to server.
      */
-    public function ensurePeerForUser(VpnServer $server, User $user): WireguardPeer
-    {
-        if (!$server->hasWireGuard()) {
-            throw new InvalidArgumentException("Server {$server->id} has no WireGuard configuration.");
-        }
+    public function ensurePeerForUser(VpnServer $server, VpnUser $vpnUser): WireguardPeer
+{
+    if (!$server->hasWireGuard()) {
+        throw new InvalidArgumentException("Server {$server->id} has no WireGuard configuration.");
+    }
 
-        $peer = WireguardPeer::where('vpn_server_id', $server->id)
-            ->where('user_id', $user->id)
-            ->where('revoked', false)
-            ->first();
+    $peer = WireguardPeer::where('vpn_server_id', $server->id)
+        ->where('vpn_user_id', $vpnUser->id)
+        ->where('revoked', false)
+        ->first();
 
-        if ($peer) {
-            return $peer;
-        }
-
-        // 1) Generate keys (locally)
-        [$privKey, $pubKey, $psk] = $this->generateKeys();
-
-        // 2) Allocate IP
-        $ip = $this->allocateIp($server);
-
-        // 3) Create peer row locally
-        $peer = new WireguardPeer([
-            'vpn_server_id'       => $server->id,
-            'user_id'             => $user->id,
-            'public_key'          => $pubKey,
-            'preshared_key'       => $psk,
-            'ip_address'          => $ip,
-            'allowed_ips'         => '0.0.0.0/0, ::/0',
-            'dns'                 => $server->dns ?: null,
-            'revoked'             => false,
-        ]);
-        $peer->private_key = $privKey;
-        $peer->save();
-
-        // 4) Push to server via SSH: wg set + save
-        $this->addPeerOnServer($server, $peer);
-
+    if ($peer) {
         return $peer;
     }
 
+    [$privKey, $pubKey, $psk] = $this->generateKeys();
+    $ip = $this->allocateIp($server);
+
+    $peer = new WireguardPeer([
+        'vpn_server_id'       => $server->id,
+        'vpn_user_id'         => $vpnUser->id,
+        'public_key'          => $pubKey,
+        'preshared_key'       => $psk,
+        'ip_address'          => $ip,
+        'allowed_ips'         => '0.0.0.0/0, ::/0',
+        'dns'                 => $server->dns ?: null,
+        'revoked'             => false,
+    ]);
+    $peer->private_key = $privKey;
+    $peer->save();
+
+    $this->addPeerOnServer($server, $peer);
+
+    return $peer;
+}
     /**
      * Generate WireGuard private/public/preshared keys.
      * Here done locally; you could also do this on the node via SSH.
