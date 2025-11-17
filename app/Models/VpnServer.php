@@ -20,7 +20,7 @@ class VpnServer extends Model
     use HasFactory, ExecutesRemoteCommands;
 
     /** Virtuals appended when casting to array/json */
-    protected $appends = ['is_online'];
+    protected $appends = ['is_online', 'display_location', 'country_name'];
 
     /** Mass-assignable fields */
     protected $fillable = [
@@ -46,6 +46,13 @@ class VpnServer extends Model
         'status',
         'status_log_path',
         'deploy_key_id',
+
+        // Location & metadata
+        'location',
+        'region',
+        'country_code',
+        'city',
+        'tags',
 
         // WireGuard facts
         'wg_endpoint_host',
@@ -81,6 +88,7 @@ class VpnServer extends Model
         'mgmt_port'      => 'integer',
         'protocol'       => 'string',
         'transport'      => 'string',
+        'tags'           => 'array',
     ];
 
     /* ========= Route binding ========= */
@@ -161,6 +169,60 @@ class VpnServer extends Model
             return (int) ($this->port ?: 443);
         }
         return (int) ($this->port ?: 1194);
+    }
+    
+        public function getCountryNameAttribute(): ?string
+    {
+        $code = strtoupper((string) $this->country_code);
+        if ($code === '') {
+            return null;
+        }
+
+        // Minimal ISO2 → country mapping.
+        // Add only what you actually use; we don't need a full world DB.
+        $map = [
+            'DE' => 'Germany',
+            'ES' => 'Spain',
+            'GB' => 'United Kingdom',
+            'UK' => 'United Kingdom',
+            'FR' => 'France',
+            'NL' => 'Netherlands',
+            'US' => 'United States',
+            'CA' => 'Canada',
+        ];
+
+        return $map[$code] ?? null;
+    }
+
+    public function getDisplayLocationAttribute(): string
+    {
+        $countryName = $this->country_name; // uses accessor above
+        $city        = $this->city;
+        $region      = $this->region;
+        $location    = $this->location;
+
+        // Best: City, Country
+        if ($city && $countryName) {
+            return "{$city}, {$countryName}";
+        }
+
+        // Fallback: City, CC
+        if ($city && $this->country_code) {
+            return "{$city}, " . strtoupper($this->country_code);
+        }
+
+        // Fallback: region + country
+        if ($region && $countryName) {
+            return "{$region}, {$countryName}";
+        }
+
+        // Legacy: plain location string
+        if ($location) {
+            return $location;
+        }
+
+        // Worst case: server name
+        return (string) $this->name;
     }
 
     /* ========= WireGuard ========= */
