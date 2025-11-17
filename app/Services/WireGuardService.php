@@ -7,6 +7,7 @@ use App\Models\WireguardPeer;
 use App\Models\VpnServer;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Illuminate\Support\Facades\Log;
 
 class WireGuardService
 {
@@ -102,31 +103,50 @@ class WireGuardService
      * Add peer on the actual WireGuard server via wg set.
      */
     protected function addPeerOnServer(VpnServer $server, WireguardPeer $peer): void
-    {
-        $interface = 'wg0'; // adjust if you use wg1 etc.
-        $endpoint  = $server->wgEndpoint(); // host:port
+{
+    $interface  = 'wg0'; // adjust if you actually use a different interface
+    $allowedIps = $peer->allowed_ips ?: "{$peer->ip_address}/32";
 
-        $allowedIps = $peer->allowed_ips ?: "{$peer->ip_address}/32";
+    // Simple version: no preshared-key, just pubkey + allowed-ips.
+    // We can add PSK later with a safer temp-file approach.
+    $cmd = sprintf(
+        'sudo wg set %s peer %s allowed-ips %s && sudo wg-quick save %s',
+        escapeshellarg($interface),
+        escapeshellarg($peer->public_key),
+        escapeshellarg($allowedIps),
+        escapeshellarg($interface)
+    );
 
-        // Commands:
-        // wg set wg0 peer <pubkey> preshared-key <psk> allowed-ips <ip>/32
-        // wg-quick save wg0
-        $cmd = sprintf(
-            "sudo wg set %s peer %s preshared-key <(echo '%s') allowed-ips %s && sudo wg-quick save %s",
-            escapeshellarg($interface),
-            escapeshellarg($peer->public_key),
-            $peer->preshared_key,
-            escapeshellarg($allowedIps),
-            escapeshellarg($interface)
-        );
+    // Run via your existing SSH helper
+    $result = $server->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
 
-        // Use your existing SSH execution
-        $result = $server->executeRemoteCommand($server, "bash -lc " . escapeshellarg($cmd));
+    $status = $result['status'] ?? 1;
+    $out    = $result['output'] ?? [];
+    $err    = $result['error'] ?? null;
 
-        if (($result['status'] ?? 1) !== 0) {
-            throw new \RuntimeException("Failed to add WireGuard peer on server {$server->id}");
-        }
+    if ($status !== 0) {
+        Log::error('❌ Failed to add WireGuard peer on server', [
+            'server_id'   => $server->id,
+            'server_name' => $server->name,
+            'ip'          => $server->ip_address,
+            'cmd'         => $cmd,
+            'status'      => $status,
+            'output'      => $out,
+            'error'       => $err,
+        ]);
+
+        // DO NOT throw here; we still return config so you can debug node-side.
+        return;
     }
+
+    Log::info('✅ WireGuard peer added on server', [
+        'server_id'   => $server->id,
+        'server_name' => $server->name,
+        'ip'          => $server->ip_address,
+        'peer_ip'     => $peer->ip_address,
+        'peer_id'     => $peer->id,
+    ]);
+}
 
     /**
      * Build WireGuard client config text for this peer.
