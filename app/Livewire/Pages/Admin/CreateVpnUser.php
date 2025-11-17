@@ -26,6 +26,7 @@ class CreateVpnUser extends Component
 
     /** @var \Illuminate\Support\Collection<int,VpnServer> */
     public $servers;
+    public bool $selectAllServers = false;
     /** @var \Illuminate\Support\Collection<int,Package> */
     public $packages;
 
@@ -97,65 +98,73 @@ class CreateVpnUser extends Component
     }
 
     public function save()
-    {
-        $this->validate();
+{
+    $this->validate();
 
-        $admin = auth()->user();
-        $pkg   = $this->packages->firstWhere('id', $this->packageId);
+    $admin = auth()->user();
+    $pkg   = $this->packages->firstWhere('id', $this->packageId);
 
-        if (! $pkg) {
-            $this->addError('packageId', 'Invalid package selected.');
-            return;
-        }
-
-        if ($admin->role !== 'admin' && $admin->credits < $this->priceCredits) {
-            $this->addError('packageId', 'Not enough credits for this package.');
-            return;
-        }
-
-        $months = (int) rtrim($this->expiry, 'm');
-        $plain  = Str::random(5);
-
-        try {
-            // 1) Handle credits only
-            DB::transaction(function () use ($admin, $pkg, $months) {
-                if ($admin->role !== 'admin') {
-                    $admin->deductCredits(
-                        $this->priceCredits,
-                        'Create VPN user',
-                        [
-                            'username'   => $this->username,
-                            'package_id' => $pkg->id,
-                            'months'     => $months,
-                        ]
-                    );
-                }
-            });
-
-            // 2) Queue full provisioning (user + OVPN + WG done in job)
-            CreateVpnUserJob::dispatch(
-                $this->username,
-                $this->selectedServers,
-                $admin->id,
-                $plain
-            );
-
-            // 3) Show one-time credentials
-            $msg = "VPN user {$this->username} queued for creation. Password: {$plain}";
-            if ($admin->role === 'admin') {
-                $msg .= " (no credits deducted)";
-            }
-
-            session()->flash('success', $msg);
-
-            return to_route('admin.vpn-users.index');
-
-        } catch (\Throwable $e) {
-            Log::error('CreateVpnUser Livewire failed: '.$e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
-            $this->addError('username', 'Creation failed. Please try again.');
-            return;
-        }
+    if (! $pkg) {
+        $this->addError('packageId', 'Invalid package selected.');
+        return;
     }
+
+    if ($admin->role !== 'admin' && $admin->credits < $this->priceCredits) {
+        $this->addError('packageId', 'Not enough credits for this package.');
+        return;
+    }
+
+    // If user selected "ALL SERVERS"
+    if ($this->selectAllServers) {
+        $this->selectedServers = VpnServer::where('enabled', 1)->pluck('id')->all();
+    }
+
+    $this->validate([
+        'selectedServers'   => ['required', 'array', 'min:1'],
+        'selectedServers.*' => ['integer', Rule::exists('vpn_servers', 'id')],
+    ]);
+
+    $months = (int) rtrim($this->expiry, 'm');
+    $plain  = Str::random(5);
+
+    try {
+        DB::transaction(function () use ($admin, $pkg, $months) {
+            if ($admin->role !== 'admin') {
+                $admin->deductCredits(
+                    $this->priceCredits,
+                    'Create VPN user',
+                    [
+                        'username'   => $this->username,
+                        'package_id' => $pkg->id,
+                        'months'     => $months,
+                    ]
+                );
+            }
+        });
+
+        // Queue user creation
+        $job = CreateVpnUserJob::dispatch(
+            $this->username,
+            $this->selectedServers,
+            $admin->id,
+            $plain
+        );
+
+        session()->flash(
+            'success',
+            "VPN user {$this->username} queued for creation. Password: {$plain}"
+            . ($admin->role === 'admin' ? " (no credits deducted)" : "")
+        );
+
+        return to_route('admin.vpn-users.index');
+
+    } catch (\Throwable $e) {
+        Log::error('CreateVpnUser failed: '.$e->getMessage(), [
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        $this->addError('username', 'Creation failed. Please try again.');
+        return;
+    }
+}
 }
