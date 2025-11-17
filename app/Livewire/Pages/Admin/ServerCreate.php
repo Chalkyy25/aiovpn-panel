@@ -13,7 +13,7 @@ use Livewire\Component;
 #[Layout('layouts.app')]
 class ServerCreate extends Component
 {
-    // ===== Required / core fields (exist in your current schema) =====
+    // ===== Required / core fields =====
     #[Rule('required|string|max:100')]
     public $name;
 
@@ -49,126 +49,154 @@ class ServerCreate extends Component
     public $header1       = false;
     public $header2       = false;
 
-    // ===== Optional “future” fields — only saved if columns exist =====
-    // (Add migration later; safe to keep here meanwhile)
-    public $provider            = 'AIO VPN';
-    public $region              = 'N/A';
-    public $country_code        = 'N/A';
-    public $city                = 'N/A';
-    public $tags                = null;  // comma separated in UI -> saved as JSON array when column exists
-    public $enabled             = true;
-    public $ipv6_enabled        = null;  // alias of enable_ipv6 if you later rename
-    public $mtu                 = null;
-    public $api_endpoint        = 'N/A';
-    public $api_token           = 'N/A';
-    public $monitoring_enabled  = true;
-    public $health_check_cmd    = 'systemctl is-active openvpn-server@server';
-    public $install_branch      = 'stable';
-    public $statusOverride      = null;  // if you want to seed a status immediately
-    public $max_clients         = null;
-    public $rate_limit_mbps     = null;
-    public $allow_split_tunnel  = false;
-    public $ovpn_cipher         = 'AES-256-GCM';
-    public $ovpn_compression    = 'lz4-v2 / none';
-    public $wg_public_key       = 'N/A';
-    public $wg_private_key      = 'N/A';
-    public $notes               = null;
+    // ===== Location & metadata =====
+    #[Rule('nullable|string|max:255')]
+    public $provider = 'AIO VPN';
+
+    #[Rule('nullable|string|max:255')]
+    public $region = null; // e.g. "Europe", "US-East"
+
+    #[Rule('nullable|string|size:2')]
+    public $country_code = null; // ISO2: "DE", "ES", "GB", ...
+
+    #[Rule('nullable|string|max:80')]
+    public $city = null; // e.g. "Frankfurt"
+
+    public $tags = null;  // comma/space separated string in UI
+
+    public $enabled            = true;
+    public $ipv6_enabled       = null; // optional alias for future schema
+    public $mtu                = null;
+    public $api_endpoint       = null;
+    public $api_token          = null;
+    public $monitoring_enabled = true;
+    public $health_check_cmd   = 'systemctl is-active openvpn-server@server';
+    public $install_branch     = 'stable';
+    public $statusOverride     = null;
+    public $max_clients        = null;
+    public $rate_limit_mbps    = null;
+    public $allow_split_tunnel = false;
+    public $ovpn_cipher        = 'AES-256-GCM';
+    public $ovpn_compression   = 'lz4-v2 / none';
+
+    // WireGuard fields (server-level, not per-client)
+    public $wg_public_key  = null;
+    public $wg_private_key = null;
+    public $notes          = null;
 
     public function create()
-{
-    // 1) Validate everything declared with #[Rule]
-    //    (Livewire v3 attribute rules run only when you call $this->validate())
-    $this->validate();
+    {
+        // 1) Validate attributes with #[Rule]
+        $this->validate();
 
-    // 1b) Extra rule when using password auth
-    if ($this->sshType === 'password') {
-        $this->validate(['sshPassword' => 'required|string']);
-    }
-
-    // 1c) Belt-and-suspenders: trim + guard name
-    $this->name = trim((string) $this->name);
-    if ($this->name === '') {
-        // You can also return with an error instead, but this prevents null inserts.
-        $this->addError('name', 'The Server Name is required.');
-        return;
-    }
-
-    // 2) Build base data (current schema)
-    $data = [
-        'name'               => $this->name,
-        'ip_address'         => $this->ip,
-        'protocol'           => strtolower($this->protocol),
-        'ssh_port'           => (int) $this->sshPort,
-        'ssh_user'           => $this->sshUsername,
-        'ssh_type'           => $this->sshType,
-        'ssh_password'       => $this->sshType === 'password' ? $this->sshPassword : null,
-        'ssh_key'            => $this->sshType === 'key' ? storage_path('app/ssh_keys/id_rsa') : null,
-        'port'               => $this->port ?: null,
-        'transport'          => $this->transport ?: null,
-        'dns'                => $this->dns ?: null,
-        'enable_ipv6'        => (bool) $this->enableIPv6,
-        'enable_logging'     => (bool) $this->enableLogging,
-        'enable_proxy'       => (bool) $this->enableProxy,
-        'header1'            => (bool) $this->header1,
-        'header2'            => (bool) $this->header2,
-        'deployment_status'  => 'queued',
-        'deployment_log'     => '',
-        'status'             => 'pending',
-    ];
-
-    // 3) Add optional/future columns only if they exist
-    $maybe = [
-        'provider'           => $this->provider,
-        'region'             => $this->region,
-        'country_code'       => $this->country_code,
-        'city'               => $this->city,
-        'enabled'            => (bool) $this->enabled,
-        'ipv6_enabled'       => $this->ipv6_enabled,
-        'mtu'                => $this->mtu ? (int) $this->mtu : null,
-        'api_endpoint'       => $this->api_endpoint,
-        'api_token'          => $this->api_token,
-        'monitoring_enabled' => (bool) $this->monitoring_enabled,
-        'health_check_cmd'   => $this->health_check_cmd,
-        'install_branch'     => $this->install_branch,
-        'max_clients'        => $this->max_clients ? (int) $this->max_clients : null,
-        'rate_limit_mbps'    => $this->rate_limit_mbps ? (int) $this->rate_limit_mbps : null,
-        'allow_split_tunnel' => (bool) $this->allow_split_tunnel,
-        'ovpn_cipher'        => $this->ovpn_cipher,
-        'ovpn_compression'   => $this->ovpn_compression,
-        'wg_public_key'      => $this->wg_public_key,
-        'wg_private_key'     => $this->wg_private_key,
-        'notes'              => $this->notes,
-        'is_deploying'       => false,
-    ];
-
-    if (\Illuminate\Support\Facades\Schema::hasColumn('vpn_servers', 'tags')) {
-        $maybe['tags'] = $this->normalizeTags($this->tags);
-    }
-    if (!empty($this->statusOverride) && \Illuminate\Support\Facades\Schema::hasColumn('vpn_servers', 'status')) {
-        $maybe['status'] = $this->statusOverride;
-    }
-    foreach ($maybe as $column => $value) {
-        if (\Illuminate\Support\Facades\Schema::hasColumn('vpn_servers', $column)) {
-            $data[$column] = $value;
+        // Extra rule when using password auth
+        if ($this->sshType === 'password') {
+            $this->validate(['sshPassword' => 'required|string']);
         }
+
+        // Trim & guard server name
+        $this->name = trim((string) $this->name);
+        if ($this->name === '') {
+            $this->addError('name', 'The Server Name is required.');
+            return;
+        }
+
+        // Normalise protocol / transport before saving
+        $protocol  = strtolower($this->protocol);
+        $transport = $this->transport ? strtolower($this->transport) : null;
+
+        if ($protocol === 'wireguard') {
+            // No udp/tcp concept for WireGuard
+            $transport = null;
+        }
+
+        // 2) Build base data (columns that definitely exist)
+        $data = [
+            'name'              => $this->name,
+            'ip_address'        => $this->ip,
+            'protocol'          => $protocol,
+            'ssh_port'          => (int) $this->sshPort,
+            'ssh_user'          => $this->sshUsername,
+            'ssh_type'          => $this->sshType,
+            'ssh_password'      => $this->sshType === 'password' ? $this->sshPassword : null,
+            'ssh_key'           => $this->sshType === 'key' ? 'id_rsa' : null, // model resolves full path
+            'port'              => $this->port ?: null,
+            'transport'         => $transport,
+            'dns'               => $this->dns ?: null,
+            'enable_ipv6'       => (bool) $this->enableIPv6,
+            'enable_logging'    => (bool) $this->enableLogging,
+            'enable_proxy'      => (bool) $this->enableProxy,
+            'header1'           => (bool) $this->header1,
+            'header2'           => (bool) $this->header2,
+            'deployment_status' => 'queued',
+            'deployment_log'    => '',
+            'status'            => 'pending',
+        ];
+
+        // 3) Optional columns – only set if the DB actually has them
+        $maybe = [
+            'provider'           => $this->nullIfEmpty($this->provider),
+            'region'             => $this->nullIfEmpty($this->region),
+            'country_code'       => $this->country_code ? strtoupper($this->country_code) : null,
+            'city'               => $this->nullIfEmpty($this->city),
+            'enabled'            => (bool) $this->enabled,
+            'ipv6_enabled'       => is_null($this->ipv6_enabled) ? null : (bool) $this->ipv6_enabled,
+            'mtu'                => $this->mtu ? (int) $this->mtu : null,
+            'api_endpoint'       => $this->nullIfEmpty($this->api_endpoint),
+            'api_token'          => $this->nullIfEmpty($this->api_token),
+            'monitoring_enabled' => (bool) $this->monitoring_enabled,
+            'health_check_cmd'   => $this->nullIfEmpty($this->health_check_cmd),
+            'install_branch'     => $this->install_branch ?: 'stable',
+            'max_clients'        => $this->max_clients ? (int) $this->max_clients : null,
+            'rate_limit_mbps'    => $this->rate_limit_mbps ? (int) $this->rate_limit_mbps : null,
+            'allow_split_tunnel' => (bool) $this->allow_split_tunnel,
+            'ovpn_cipher'        => $this->nullIfEmpty($this->ovpn_cipher),
+            'ovpn_compression'   => $this->nullIfEmpty($this->ovpn_compression),
+            'wg_public_key'      => $this->nullIfEmpty($this->wg_public_key),
+            'wg_private_key'     => $this->nullIfEmpty($this->wg_private_key),
+            'notes'              => $this->nullIfEmpty($this->notes),
+            'is_deploying'       => false,
+        ];
+
+        if (Schema::hasColumn('vpn_servers', 'tags')) {
+            $maybe['tags'] = $this->normalizeTags($this->tags);
+        }
+
+        if (!empty($this->statusOverride) && Schema::hasColumn('vpn_servers', 'status')) {
+            $maybe['status'] = $this->statusOverride;
+        }
+
+        foreach ($maybe as $column => $value) {
+            if (Schema::hasColumn('vpn_servers', $column)) {
+                $data[$column] = $value;
+            }
+        }
+
+        // 4) Warn if SSH key path (legacy) is missing
+        $legacyKeyPath = storage_path('app/ssh_keys/id_rsa');
+        if ($this->sshType === 'key' && !file_exists($legacyKeyPath)) {
+            Log::warning("⚠️ SSH key path missing: {$legacyKeyPath}");
+            session()->flash(
+                'error',
+                'SSH key file not found (storage/app/ssh_keys/id_rsa). You can still save, but deployment may fail.'
+            );
+        }
+
+        Log::info('Creating VpnServer with payload', [
+            'name'       => $data['name'],
+            'ip_address' => $data['ip_address'],
+            'protocol'   => $data['protocol'],
+            'country'    => $data['country_code'] ?? null,
+            'city'       => $data['city'] ?? null,
+        ]);
+
+        $server = VpnServer::create($data);
+
+        Log::info("🚀 Dispatching DeployVpnServer job for server #{$server->id}");
+        dispatch(new DeployVpnServer($server));
+
+        return redirect()->route('admin.servers.install-status', $server);
     }
-
-    // 4) Warn if SSH key missing (non‑blocking)
-    if ($data['ssh_key'] && !file_exists($data['ssh_key'])) {
-        Log::warning("⚠️ SSH key path missing: {$data['ssh_key']}");
-        session()->flash('error', 'SSH key file not found (storage/app/ssh_keys/id_rsa). You can still save, but deployment may fail.');
-    }
-
-    // (Optional) One-time debug to verify 'name' is set
-    Log::info('Creating VpnServer with payload', ['name' => $data['name'], 'ip_address' => $data['ip_address']]);
-
-    $server = VpnServer::create($data);
-
-    Log::info("🚀 Dispatching DeployVpnServer job for server #{$server->id}");
-    dispatch(new DeployVpnServer($server));
-
-    return redirect()->route('admin.servers.install-status', $server);
-}
 
     public function render()
     {
@@ -180,9 +208,11 @@ class ServerCreate extends Component
      */
     private function normalizeTags($raw)
     {
-        if (!$raw) return null;
+        if (!$raw) {
+            return null;
+        }
 
-        // Accept "uk, london  , edge  " or "uk london edge"
+        // Accept "uk, london  , edge" or "uk london edge"
         $clean = collect(preg_split('/[,\s]+/', trim($raw)))
             ->filter()
             ->unique()
@@ -190,5 +220,11 @@ class ServerCreate extends Component
             ->all();
 
         return $clean ?: null;
+    }
+
+    private function nullIfEmpty($value)
+    {
+        $value = is_string($value) ? trim($value) : $value;
+        return $value === '' ? null : $value;
     }
 }
