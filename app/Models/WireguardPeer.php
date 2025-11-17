@@ -11,7 +11,7 @@ class WireguardPeer extends Model
 
     protected $fillable = [
         'vpn_server_id',
-        'user_id',
+        'vpn_user_id',
         'public_key',
         'preshared_key',
         'private_key_encrypted',
@@ -36,16 +36,15 @@ class WireguardPeer extends Model
         return $this->belongsTo(VpnServer::class, 'vpn_server_id');
     }
 
-    public function user(): BelongsTo
+    public function vpnUser(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(VpnUser::class, 'vpn_user_id');
     }
 
-    // Convenience: access private key via accessors
-
+    // Convenience accessor for decrypted private key
     public function getPrivateKeyAttribute(): ?string
     {
-        $enc = $this->private_key_encrypted;
+        $enc = $this->private_key_encrypted ?? null;
         return $enc ? decrypt($enc) : null;
     }
 
