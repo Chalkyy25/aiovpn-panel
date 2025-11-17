@@ -152,30 +152,31 @@ class WireGuardService
      * Build WireGuard client config text for this peer.
      */
     public function buildClientConfig(VpnServer $server, WireguardPeer $peer): string
-    {
-        $endpoint   = $server->wgEndpoint();       // host:port
-        $dns        = $peer->dns ?: ($server->dns ?: '1.1.1.1');
-        $allowedIps = $peer->allowed_ips ?: '0.0.0.0/0, ::/0';
+{
+    $endpoint   = $server->wgEndpoint();       // host:port
+    $dns        = $peer->dns ?: ($server->dns ?: '1.1.1.1');
+    $allowedIps = $peer->allowed_ips ?: '0.0.0.0/0, ::/0';
 
-        $clientIpWithMask = $peer->ip_address . '/32';
+    $clientIpWithMask = $peer->ip_address . '/32';
 
-        $lines = [
-            '[Interface]',
-            'PrivateKey = ' . $peer->private_key,
-            'Address = ' . $clientIpWithMask,
-            'DNS = ' . $dns,
-            '',
-            '[Peer]',
-            'PublicKey = ' . $server->wg_public_key,
-            $peer->preshared_key ? 'PresharedKey = ' . $peer->preshared_key : null,
-            'AllowedIPs = ' . $allowedIps,
-            'Endpoint = ' . $endpoint,
-            'PersistentKeepalive = 25',
-        ];
+    $lines = [
+        '[Interface]',
+        'PrivateKey = ' . $peer->private_key,
+        'Address = ' . $clientIpWithMask,
+        'DNS = ' . $dns,
+        '',
+        '[Peer]',
+        'PublicKey = ' . $server->wg_public_key,
+        // 🔻 IMPORTANT: drop PSK for now; server doesn’t have it
+        // $peer->preshared_key ? 'PresharedKey = ' . $peer->preshared_key : null,
+        'AllowedIPs = ' . $allowedIps,
+        'Endpoint = ' . $endpoint,
+        'PersistentKeepalive = 25',
+    ];
 
-        // remove nulls
-        $lines = array_values(array_filter($lines, fn($line) => !is_null($line)));
+    // remove nulls
+    $lines = array_values(array_filter($lines, fn($line) => !is_null($line)));
 
-        return implode("\n", $lines) . "\n";
-    }
+    return implode("\n", $lines) . "\n";
+}
 }
