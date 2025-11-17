@@ -96,6 +96,17 @@ class CreateVpnUser extends Component
             'packageId'         => ['required', Rule::exists('packages', 'id')],
         ];
     }
+    
+    public function toggleAllServers(): void
+{
+    if (count($this->selectedServers) === $this->servers->count()) {
+        // Uncheck all
+        $this->selectedServers = [];
+    } else {
+        // Select all server IDs
+        $this->selectedServers = $this->servers->pluck('id')->map(fn($id) => (string)$id)->toArray();
+    }
+}
 
     public function save()
 {
