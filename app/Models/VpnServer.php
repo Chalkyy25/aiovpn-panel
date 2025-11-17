@@ -114,6 +114,11 @@ class VpnServer extends Model
             'vpn_user_id'           // related model's key on pivot
         )->withTimestamps();
     }
+    
+    public function wireguardPeers()
+{
+    return $this->hasMany(\App\Models\WireguardPeer::class, 'vpn_server_id');
+}
 
     public function connections(): HasMany
     {
