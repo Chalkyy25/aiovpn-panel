@@ -2,116 +2,72 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\VpnUser;
 use App\Models\VpnServer;
-use App\Services\WireGuardConfigBuilder;
-use Illuminate\Http\JsonResponse;
+use App\Services\WireGuardService;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Log;
 
 class WireGuardConfigController extends Controller
 {
+    public function __construct(
+        protected WireGuardService $wg
+    ) {}
+
     /**
-     * GET /api/wg/servers
-     * Return WG-capable servers assigned to the authenticated user.
+     * List WireGuard-capable servers (for app server picker).
      */
-    public function servers(Request $request): JsonResponse
+    public function servers(Request $request)
     {
-        $user = $request->user();
+        $servers = VpnServer::query()
+            ->where('enabled', true)
+            ->whereNotNull('wg_public_key')
+            ->whereNotNull('wg_endpoint_host')
+            ->orderBy('country_code')
+            ->orderBy('city')
+            ->get()
+            ->map(fn (VpnServer $s) => [
+                'id'          => (int) $s->id,
+                'name'        => $s->name,
+                'ip'          => $s->ip_address,
+                'country'     => $s->country_code,
+                'city'        => $s->city,
+                'label'       => $s->display_location,
+                'endpoint'    => $s->wgEndpoint(),
+                'port'        => $s->wg_port ?: 51820,
+                'subnet'      => $s->wg_subnet,
+                'tags'        => $s->tags,
+            ]);
 
-        $servers = $user->vpnServers()
-            ->whereNotNull('vpn_servers.wg_public_key')
-            ->whereNotNull('vpn_servers.wg_port')
-            ->get([
-                'vpn_servers.id',
-                'vpn_servers.name',
-                'vpn_servers.ip_address',
-                'vpn_servers.wg_endpoint_host',
-                'vpn_servers.wg_port',
-                'vpn_servers.dns',
-            ])
-            ->map(function (VpnServer $s) {
-                return [
-                    'id'       => $s->id,
-                    'name'     => $s->name,
-                    'endpoint' => ($s->wg_endpoint_host ?: $s->ip_address).':'.$s->wg_port,
-                    'dns'      => $s->dns ?: '10.66.66.1',
-                ];
-            })
-            ->values();
-
-        return response()->json($servers);
-    }
-    
-        public function download(Request $request, VpnUser $user, VpnServer $server): Response
-    {
-        // Optional: verify user is linked to this server
-        // if (method_exists($user, 'vpnServers')) {
-        //     abort_unless($user->vpnServers()->whereKey($server->id)->exists(), 403, 'User not linked to this server');
-        // }
-
-        abort_unless($server->wg_public_key && $server->wg_port, 400, 'Server is not WireGuard-enabled');
-
-        abort_unless(
-            $user->wireguard_private_key &&
-            $user->wireguard_public_key &&
-            $user->wireguard_address,
-            400,
-            'WireGuard keys/address missing for this user'
-        );
-
-        $conf = WireGuardConfigBuilder::build($user, $server);
-
-        $filename = sprintf(
-            'aiovpn-%s-%s.conf',
-            str($server->name)->slug(),
-            str($user->username)->slug()
-        );
-
-        return response($conf, 200, [
-            'Content-Type'        => 'text/plain; charset=utf-8',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
-            'Cache-Control'       => 'no-store, no-cache, must-revalidate',
-        ]);
+        return response()->json(['data' => $servers]);
     }
 
     /**
-     * GET /api/wg/config?server_id=##
-     * Return a WireGuard .conf for the authenticated user on the given server.
+     * Return a ready-to-import WireGuard config for the authenticated user.
+     *
+     * GET /api/wg/config?server_id=123
      */
-    public function config(Request $request): Response
+    public function config(Request $request)
     {
-        $data = $request->validate([
-            'server_id' => 'required|integer',
-        ]);
-
         $user = $request->user();
+        $serverId = (int) $request->query('server_id');
 
-        /** @var VpnServer $server */
-        $server = $user->vpnServers()
-            ->where('vpn_servers.id', $data['server_id'])
-            ->firstOrFail(); // 404 if not linked
+        if (!$serverId) {
+            return response()->json(['error' => 'server_id is required'], 422);
+        }
 
-        // Basic sanity checks
-        abort_unless($server->wg_public_key && $server->wg_port, 400, 'Server not WireGuard-enabled');
-        abort_unless(
-            $user->wireguard_private_key && $user->wireguard_public_key && $user->wireguard_address,
-            400,
-            'User WireGuard keys/address missing'
-        );
+        $server = VpnServer::findOrFail($serverId);
 
-        // Build config text (uses your existing builder)
-        $conf = WireGuardConfigBuilder::build($user, $server);
+        if (!$server->hasWireGuard()) {
+            return response()->json(['error' => 'Server has no WireGuard enabled'], 422);
+        }
 
-        Log::info('📄 WG config served', ['user' => $user->id, 'server' => $server->id]);
+        // Ensure peer exists (or create + push it)
+        $peer = $this->wg->ensurePeerForUser($server, $user);
 
-        $filename = 'aiovpn-'.$server->name.'.conf';
+        $config = $this->wg->buildClientConfig($server, $peer);
 
-        return response($conf, 200, [
-            'Content-Type'        => 'text/plain; charset=utf-8',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
-            'Cache-Control'       => 'no-store, no-cache, must-revalidate',
+        return response($config, 200, [
+            'Content-Type'        => 'text/plain',
+            'Content-Disposition' => 'attachment; filename="aiovpn-wg-' . $server->id . '.conf"',
         ]);
     }
 }
