@@ -120,6 +120,12 @@ class VpnServer extends Model
     return $this->hasMany(\App\Models\WireguardPeer::class, 'vpn_server_id');
 }
 
+public function supportsWireGuard(): bool
+{
+    // "Has WG facts" = server can be used for WG
+    return !empty($this->wg_public_key) && !empty($this->wg_port);
+}
+
     public function connections(): HasMany
     {
         return $this->hasMany(VpnUserConnection::class, 'vpn_server_id');
