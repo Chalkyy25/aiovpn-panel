@@ -2,42 +2,74 @@
 <form wire:submit.prevent="save" class="space-y-6 mt-6">
 
   <x-section-card title="Identity & Metadata" subtitle="Who / where is this node?">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div>
+      <label class="block text-xs text-[var(--aio-sub)] mb-1">Provider</label>
+      <input type="text"
+             wire:model.defer="provider"
+             class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+      @error('provider') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+    </div>
+
+    <div>
+      <label class="block text-xs text-[var(--aio-sub)] mb-1">Region</label>
+      <input type="text"
+             wire:model.defer="region"
+             class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2"
+             placeholder="e.g. EU-West, UK-LON">
+      @error('region') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+    </div>
+
+    <div class="grid grid-cols-2 gap-3">
       <div>
-        <label class="block text-xs text-[var(--aio-sub)] mb-1">Provider</label>
-        <input type="text" wire:model.defer="provider" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-        @error('provider') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-      </div>
-      <div>
-        <label class="block text-xs text-[var(--aio-sub)] mb-1">Region</label>
-        <input type="text" wire:model.defer="region" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="e.g. EU-West, UK-LON">
-        @error('region') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-xs text-[var(--aio-sub)] mb-1">Country</label>
-          <input type="text" wire:model.defer="country_code" maxlength="2" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 uppercase" placeholder="GB">
-          @error('country_code') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
-        <div>
-          <label class="block text-xs text-[var(--aio-sub)] mb-1">City</label>
-          <input type="text" wire:model.defer="city" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-          @error('city') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-        </div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">Country</label>
+        <select wire:model.defer="country_code"
+                class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 uppercase">
+          <option value="">Select</option>
+          <option value="DE">Germany</option>
+          <option value="ES">Spain</option>
+          <option value="GB">United Kingdom</option>
+          <option value="FR">France</option>
+          <option value="NL">Netherlands</option>
+          <option value="US">United States</option>
+          <option value="CA">Canada</option>
+          {{-- add only what you actually deploy --}}
+        </select>
+        @error('country_code') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
       </div>
 
-      <div class="md:col-span-2">
-        <label class="block text-xs text-[var(--aio-sub)] mb-1">Tags (CSV)</label>
-        <input type="text" wire:model.defer="tags" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="premium, netflix, gaming">
-        @error('tags') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
-      </div>
-
-      <div class="flex items-center gap-2">
-        <input type="checkbox" id="enabled" wire:model.defer="enabled" class="h-4 w-4 rounded border-white/20 bg-white/5">
-        <label for="enabled" class="text-sm">Enabled</label>
+      <div>
+        <label class="block text-xs text-[var(--aio-sub)] mb-1">City</label>
+        <input type="text"
+               wire:model.defer="city"
+               class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2"
+               placeholder="Frankfurt">
+        @error('city') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
       </div>
     </div>
-  </x-section-card>
+
+    <div class="md:col-span-2">
+      <label class="block text-xs text-[var(--aio-sub)] mb-1">Tags (CSV)</label>
+      <input type="text"
+             wire:model.defer="tags"
+             class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2"
+             placeholder="premium, netflix, gaming">
+      <p class="text-xs text-[var(--aio-sub)] mt-1">
+        Comma or space separated. Example:
+        <code>premium, netflix</code> or <code>premium netflix</code>
+      </p>
+      @error('tags') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
+    </div>
+
+    <div class="flex items-center gap-2">
+      <input type="checkbox"
+             id="enabled"
+             wire:model.defer="enabled"
+             class="h-4 w-4 rounded border-white/20 bg-white/5">
+      <label for="enabled" class="text-sm">Enabled</label>
+    </div>
+  </div>
+</x-section-card>
 
   <x-section-card title="Network & SSH" subtitle="Connectivity and network behaviour.">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
