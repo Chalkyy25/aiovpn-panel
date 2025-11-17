@@ -2,10 +2,11 @@
 
 namespace App\Jobs;
 
-use App\Jobs\AddWireGuardPeer;
 use App\Jobs\GenerateOvpnFile;
 use App\Jobs\SyncOpenVPNCredentials;
 use App\Models\VpnUser;
+use App\Models\VpnServer;
+use App\Services\WireGuardService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -23,7 +24,6 @@ class CreateVpnUser implements ShouldQueue
     public array $serverIds;
     public ?int $clientId;
 
-    // WireGuard pool for wireguard_address
     private string $wgSubnetCidr = '10.66.66.0/24';
 
     public int $tries   = 2;
@@ -48,8 +48,8 @@ class CreateVpnUser implements ShouldQueue
     {
         Log::info("Creating VPN user: {$this->username}");
 
+        // Prevent duplicates
         if (VpnUser::where('username', $this->username)->exists()) {
-            Log::error("Username '{$this->username}' already exists.");
             throw new \RuntimeException("Username '{$this->username}' already exists.");
         }
 
@@ -58,7 +58,6 @@ class CreateVpnUser implements ShouldQueue
             'username'       => $this->username,
             'plain_password' => $this->password,
             'client_id'      => $this->clientId,
-            // password hashing handled by model mutator
         ]);
 
         // Attach servers
@@ -68,54 +67,56 @@ class CreateVpnUser implements ShouldQueue
         Log::info("VPN user {$vpnUser->username} attached to servers: " .
             $vpnUser->vpnServers->pluck('id')->join(', '));
 
-        // Ensure WG identity (keys + /32) exists
+        // Create WG user identity (keys + /32)
         $this->ensureWireGuardIdentity($vpnUser);
 
-        // Per-server OpenVPN artifacts + sync
+        // Generate OpenVPN artifacts + sync per server
         foreach ($vpnUser->vpnServers as $server) {
             GenerateOvpnFile::dispatch($vpnUser, $server)->onQueue('ovpn');
             SyncOpenVPNCredentials::dispatch($server)->onQueue('ovpn');
         }
 
-        // Push WG peers for all linked servers
-        AddWireGuardPeer::dispatch($vpnUser)->onQueue('wg');
+        // Add WG peer PER SERVER (no global queue)
+        foreach ($vpnUser->vpnServers as $server) {
+            if ($server->supportsWireGuard()) {
+                try {
+                    WireGuardService::ensurePeerForUser($server, $vpnUser);
+                    Log::info("WG peer added for user {$vpnUser->id} on server {$server->id}");
+                } catch (\Throwable $e) {
+                    Log::error("WG peer creation failed on server {$server->id}: ".$e->getMessage());
+                }
+            }
+        }
 
         Log::info("Finished creating VPN user {$this->username} with OpenVPN + WireGuard.");
     }
 
     /**
-     * Idempotent: only fills missing WG fields.
+     * WG keys + /32 (idempotent)
      */
     private function ensureWireGuardIdentity(VpnUser $user): void
     {
         $changed = false;
 
-        // Keys
         if (blank($user->wireguard_private_key) || blank($user->wireguard_public_key)) {
             $keys = VpnUser::generateWireGuardKeys();
             $user->wireguard_private_key = $keys['private'];
             $user->wireguard_public_key  = $keys['public'];
             $changed = true;
-            Log::info("Generated WG keypair for user {$user->id}");
         }
 
-        // Address (/32 inside pool)
         if (blank($user->wireguard_address)) {
-            $addr = $this->allocateWireGuardAddress();
-            $user->wireguard_address = $addr;
+            $user->wireguard_address = $this->allocateWireGuardAddress();
             $changed = true;
-            Log::info("Assigned WG address {$addr} to user {$user->id}");
         }
 
         if ($changed) {
             $user->save();
-        } else {
-            Log::info("WireGuard identity already present for user {$user->id}, no changes.");
         }
     }
 
     /**
-     * Allocate next free /32 from $wgSubnetCidr based on vpn_users.wireguard_address.
+     * Allocates next free /32 from WG pool
      */
     private function allocateWireGuardAddress(): string
     {
@@ -127,17 +128,12 @@ class CreateVpnUser implements ShouldQueue
             throw new \RuntimeException("Invalid WG subnet: {$this->wgSubnetCidr}");
         }
 
-        // inclusive usable range; reserve .0, .1, .255
         $start = $netLong + 2;
         $end   = $netLong + (1 << (32 - $maskBits)) - 2;
 
         $used = VpnUser::whereNotNull('wireguard_address')
             ->pluck('wireguard_address')
-            ->map(function ($cidr) {
-                $ip = trim((string) $cidr);
-                $ip = strtok($ip, '/');
-                return $ip ? ip2long($ip) : null;
-            })
+            ->map(fn ($cidr) => ip2long(strtok($cidr, '/')))
             ->filter()
             ->all();
 
@@ -149,6 +145,6 @@ class CreateVpnUser implements ShouldQueue
             }
         }
 
-        throw new \RuntimeException('No free WireGuard IPs available in pool ' . $this->wgSubnetCidr);
+        throw new \RuntimeException("No free WireGuard IPs in {$this->wgSubnetCidr}");
     }
 }
