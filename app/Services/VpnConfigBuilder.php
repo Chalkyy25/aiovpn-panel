@@ -7,6 +7,7 @@ use App\Models\VpnServer;
 use App\Traits\ExecutesRemoteCommands;
 use Exception;
 use Illuminate\Support\Facades\Log;
+use App\Services\WireGuardService;
 
 class VpnConfigBuilder
 {
@@ -376,38 +377,33 @@ OVPN;
      */
     public static function generateWireGuardConfigString(VpnUser $vpnUser, VpnServer $server): string
     {
-        if (!$server->wg_public_key) {
+        if (! $server->wg_public_key) {
             throw new Exception("Server {$server->name} does not support WireGuard");
         }
 
-        $endpoint = $server->wg_endpoint_host ?: $server->hostname ?: $server->ip_address;
-        $wgPort = $server->wg_port ?: self::WG_PORT;
+        /** @var WireGuardService $wg */
+        $wg = app(WireGuardService::class);
 
-        // Generate client keys (this should ideally be stored per user)
-        $privateKey = sodium_bin2base64(random_bytes(32), SODIUM_BASE64_VARIANT_ORIGINAL);
-        $publicKey = sodium_bin2base64(random_bytes(32), SODIUM_BASE64_VARIANT_ORIGINAL);
+        // This will:
+        // - validate that the user has wireguard_private_key / wireguard_public_key / wireguard_address
+        // - create/find a WireguardPeer row for (server,user)
+        // - push the peer to wg0 on the server via SSH
+        $peer = $wg->ensurePeerForUser($server, $vpnUser);
 
-        $cfg = <<<WG
-[Interface]
-PrivateKey = {$privateKey}
-Address = 10.66.66.100/32
-DNS = 10.66.66.1
+        // Build the client config using user keys + user /32 address
+        $config = $wg->buildClientConfig($server, $peer);
 
-[Peer]
-PublicKey = {$server->wg_public_key}
-Endpoint = {$endpoint}:{$wgPort}
-AllowedIPs = 0.0.0.0/0
-PersistentKeepalive = 25
-WG;
-
-        Log::info('✅ Built WireGuard config', [
-            'user' => $vpnUser->username,
+        Log::info('✅ Built WireGuard config via WireGuardService', [
+            'user'   => $vpnUser->username,
+            'user_id'=> $vpnUser->id,
             'server' => $server->name,
-            'endpoint' => "{$endpoint}:{$wgPort}",
+            'server_id' => $server->id,
+            'peer_id'=> $peer->id,
         ]);
 
-        return $cfg;
+        return $config;
     }
+    
 
     /**
      * Fetch CA and TA from remote server via SSH.
