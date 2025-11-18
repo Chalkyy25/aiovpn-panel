@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\WireguardPeer;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -20,8 +21,11 @@ class WireGuardService
             throw new InvalidArgumentException("Server {$server->id} has no WireGuard configuration.");
         }
 
-        // Must have a WG identity at user level
-        if (blank($vpnUser->wireguard_private_key) || blank($vpnUser->wireguard_public_key) || blank($vpnUser->wireguard_address)) {
+        // Must have a WG identity at user level (for now). In future you can
+        // generate this here and also store it to vpn_users.
+        if (blank($vpnUser->wireguard_private_key) ||
+            blank($vpnUser->wireguard_public_key) ||
+            blank($vpnUser->wireguard_address)) {
             throw new InvalidArgumentException("VpnUser {$vpnUser->id} has no WireGuard identity (keys/address).");
         }
 
@@ -41,14 +45,28 @@ class WireGuardService
             throw new InvalidArgumentException("Invalid wireguard_address on user {$vpnUser->id}");
         }
 
+        // Encrypt private key for storage on peer (future-proof)
+        try {
+            $encryptedPrivate = Crypt::encryptString($vpnUser->wireguard_private_key);
+        } catch (\Throwable $e) {
+            Log::error('❌ WG: Failed to encrypt private key for peer', [
+                'vpn_user_id' => $vpnUser->id,
+                'server_id'   => $server->id,
+                'error'       => $e->getMessage(),
+            ]);
+            throw new InvalidArgumentException("Could not encrypt WireGuard private key.");
+        }
+
         $peer = new WireguardPeer([
-            'vpn_server_id' => $server->id,
-            'vpn_user_id'   => $vpnUser->id,
-            'public_key'    => $vpnUser->wireguard_public_key,
-            'ip_address'    => $clientIp,
-            'allowed_ips'   => $clientIp . '/32',           // server side: what IPs this peer can send
-            'dns'           => $server->dns ?: null,        // optional
-            'revoked'       => false,
+            'vpn_server_id'         => $server->id,
+            'vpn_user_id'           => $vpnUser->id,
+            'public_key'            => $vpnUser->wireguard_public_key,
+            'preshared_key'         => null, // you can wire this up later if you decide to use PSKs
+            'private_key_encrypted' => $encryptedPrivate,
+            'ip_address'            => $clientIp,
+            'allowed_ips'           => $clientIp . '/32',   // server side: what IPs this peer can send
+            'dns'                   => $server->dns ?: null,
+            'revoked'               => false,
         ]);
 
         $peer->save();
@@ -80,10 +98,10 @@ class WireGuardService
             $result = $server->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
         } catch (\Throwable $e) {
             Log::error('❌ WG: SSH error adding peer', [
-                'server_id'   => $server->id,
-                'server_ip'   => $server->ip_address,
-                'peer_id'     => $peer->id,
-                'exception'   => $e->getMessage(),
+                'server_id' => $server->id,
+                'server_ip' => $server->ip_address,
+                'peer_id'   => $peer->id,
+                'exception' => $e->getMessage(),
             ]);
             return;
         }
@@ -94,28 +112,29 @@ class WireGuardService
 
         if ($status !== 0) {
             Log::error('❌ WG: Failed to add peer on server', [
-                'server_id'   => $server->id,
-                'server_ip'   => $server->ip_address,
-                'peer_id'     => $peer->id,
-                'cmd'         => $cmd,
-                'status'      => $status,
-                'output'      => $out,
-                'error'       => $err,
+                'server_id' => $server->id,
+                'server_ip' => $server->ip_address,
+                'peer_id'   => $peer->id,
+                'cmd'       => $cmd,
+                'status'    => $status,
+                'output'    => $out,
+                'error'     => $err,
             ]);
             return;
         }
 
         Log::info('✅ WG: Peer added', [
-            'server_id'   => $server->id,
-            'server_ip'   => $server->ip_address,
-            'peer_id'     => $peer->id,
-            'peer_ip'     => $peer->ip_address,
+            'server_id' => $server->id,
+            'server_ip' => $server->ip_address,
+            'peer_id'   => $peer->id,
+            'peer_ip'   => $peer->ip_address,
         ]);
     }
 
     /**
      * Build client config (.conf) for mobile app.
-     * Uses user-level keys + user-level /32, server-level public key + endpoint.
+     * Uses user-level keys if present, otherwise falls back to decrypted
+     * peer private key so you can drop raw keys from vpn_users later.
      */
     public function buildClientConfig(VpnServer $server, WireguardPeer $peer): string
     {
@@ -125,25 +144,41 @@ class WireGuardService
             throw new InvalidArgumentException("WireguardPeer {$peer->id} has no vpnUser relation.");
         }
 
-        if (blank($vpnUser->wireguard_private_key) || blank($vpnUser->wireguard_address)) {
+        // Prefer user-level key for now…
+        $privateKey = $vpnUser->wireguard_private_key;
+
+        // …but fall back to encrypted peer copy if user-level fields are ever removed.
+        if (blank($privateKey) && ! blank($peer->private_key_encrypted)) {
+            try {
+                $privateKey = Crypt::decryptString($peer->private_key_encrypted);
+            } catch (\Throwable $e) {
+                Log::error('❌ WG: Failed to decrypt peer private key', [
+                    'peer_id'    => $peer->id,
+                    'server_id'  => $server->id,
+                    'vpn_user_id'=> $vpnUser->id,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (blank($privateKey) || blank($vpnUser->wireguard_address)) {
             throw new InvalidArgumentException("VpnUser {$vpnUser->id} missing WG identity.");
         }
 
         $endpoint   = $server->wgEndpoint(); // host:port
         $dns        = $peer->dns ?: ($server->dns ?: '1.1.1.1');
         $allowedIps = '0.0.0.0/0, ::/0';     // client: full tunnel
-
         $clientIpWithMask = $vpnUser->wireguard_address;
 
         $lines = [
             '[Interface]',
-            'PrivateKey = ' . $vpnUser->wireguard_private_key,
+            'PrivateKey = ' . $privateKey,
             'Address = ' . $clientIpWithMask,
             'DNS = ' . $dns,
             '',
             '[Peer]',
             'PublicKey = ' . $server->wg_public_key,
-            // no PSK
+            // no PSK yet
             'AllowedIPs = ' . $allowedIps,
             'Endpoint = ' . $endpoint,
             'PersistentKeepalive = 25',
@@ -154,7 +189,6 @@ class WireGuardService
 
     /**
      * Optional: sync stats from `wg show wg0 dump` into wireguard_peers.
-     * Call this from a scheduled job if/when you care about live stats.
      */
     public function syncServerPeerStats(VpnServer $server): void
     {
