@@ -387,6 +387,13 @@ iptables -t nat -A POSTROUTING -s "${OVPN_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQ
 iptables -C INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT 2>/dev/null || \
 iptables -A INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT
 
+# Allow tun0 → WAN and return traffic (for hardened FORWARD policy)
+iptables -C FORWARD -i tun0 -o "$DEF_IFACE" -j ACCEPT 2>/dev/null || \
+iptables -A FORWARD -i tun0 -o "$DEF_IFACE" -j ACCEPT
+
+iptables -C FORWARD -i "$DEF_IFACE" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
+iptables -A FORWARD -i "$DEF_IFACE" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
 iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || \
 iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
