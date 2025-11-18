@@ -380,10 +380,16 @@ if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
   echo "push \"dhcp-option DOMAIN-ROUTE .\""    >> /etc/openvpn/server/server.conf
 fi
 
-# Firewall for OpenVPN
-iptables -t nat -C POSTROUTING -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o "$DEF_IFACE" -j MASQUERADE
-iptables -C INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT 2>/dev/null || iptables -A INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT
-iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+# Firewall for OpenVPN (UDP subnet only)
+iptables -t nat -C POSTROUTING -s "${OVPN_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || \
+iptables -t nat -A POSTROUTING -s "${OVPN_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE
+
+iptables -C INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT 2>/dev/null || \
+iptables -A INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT
+
+iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || \
+iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+
 iptables-save >/etc/iptables/rules.v4 || true
 
 # Ensure status files exist
