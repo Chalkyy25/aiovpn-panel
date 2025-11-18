@@ -155,8 +155,19 @@ PrivateKey = $WG_PRIV
 Address = $WG_SRV_IP
 ListenPort = $WG_PORT
 SaveConfig = true
-PostUp   = iptables -t nat -C POSTROUTING -o ${DEF_IFACE} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o ${DEF_IFACE} -j MASQUERADE
-PostDown = iptables -t nat -D POSTROUTING -o ${DEF_IFACE} -j MASQUERADE 2>/dev/null || true
+
+# NAT *only* WG subnet out via the main interface
+PostUp   = iptables -t nat -C POSTROUTING -s ${WG_SUBNET} -o ${DEF_IFACE} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s ${WG_SUBNET} -o ${DEF_IFACE} -j MASQUERADE
+PostDown = iptables -t nat -D POSTROUTING -s ${WG_SUBNET} -o ${DEF_IFACE} -j MASQUERADE 2>/dev/null || true
+
+# Allow WG → WAN and return traffic explicitly
+PostUp   = iptables -C FORWARD -i wg0 -o ${DEF_IFACE} -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -o ${DEF_IFACE} -j ACCEPT
+PostUp   = iptables -C FORWARD -i ${DEF_IFACE} -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -A FORWARD -i ${DEF_IFACE} -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+PostDown = iptables -D FORWARD -i wg0 -o ${DEF_IFACE} -j ACCEPT 2>/dev/null || true
+PostDown = iptables -D FORWARD -i ${DEF_IFACE} -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+
+# Enable IPv4 forwarding
 PostUp   = sysctl -w net.ipv4.ip_forward=1
 WG
 chmod 600 /etc/wireguard/wg0.conf
