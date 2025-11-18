@@ -472,6 +472,17 @@ CONF
   systemctl is-active --quiet openvpn-server@server-tcp || logchunk "WARNING: TCP stealth service failed to start"
 fi
 
+
+# ===== Global FORWARD hardening =====
+# Allow established/related traffic:
+iptables -C FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
+iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# Default drop for everything else
+iptables -P FORWARD DROP
+
+iptables-save >/etc/iptables/rules.v4 || true
+
 ### ===== Quick DNS sanity =====
 if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
   dig @"$WG_DNS_IP" example.com +short || echo "[DNS] dig check failed (verify wg0 up and client reachability)"
