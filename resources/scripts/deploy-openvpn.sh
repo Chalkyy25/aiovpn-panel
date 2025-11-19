@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ╭──────────────────────────────────────────────────────────────────────────╮
-# │  A I O V P N — WG-first Deploy (WireGuard + OpenVPN+Stealth + DNS)       │
-# │  Idempotent • Hardened • Ubuntu 22.04/24.04                              │
-# │  CHANGE: Unified WG + OpenVPN status push via mgmt & wg dump            │
+# │  A I O V P N — WG-first Deploy (WireGuard + OpenVPN+Stealth + DNS)      │
+# │  Idempotent • Hardened • Ubuntu 22.04/24.04                             │
+# │  CHANGE: Unified WG + OpenVPN status push via mgmt & wg dump           │
 # ╰──────────────────────────────────────────────────────────────────────────╯
 set -euo pipefail
 
@@ -155,20 +155,6 @@ PrivateKey = $WG_PRIV
 Address = $WG_SRV_IP
 ListenPort = $WG_PORT
 SaveConfig = true
-
-# NAT *only* WG subnet out via the main interface
-PostUp   = iptables -t nat -C POSTROUTING -s ${WG_SUBNET} -o ${DEF_IFACE} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s ${WG_SUBNET} -o ${DEF_IFACE} -j MASQUERADE
-PostDown = iptables -t nat -D POSTROUTING -s ${WG_SUBNET} -o ${DEF_IFACE} -j MASQUERADE 2>/dev/null || true
-
-# Allow WG → WAN and return traffic explicitly
-PostUp   = iptables -C FORWARD -i wg0 -o ${DEF_IFACE} -j ACCEPT 2>/dev/null || iptables -A FORWARD -i wg0 -o ${DEF_IFACE} -j ACCEPT
-PostUp   = iptables -C FORWARD -i ${DEF_IFACE} -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -A FORWARD -i ${DEF_IFACE} -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-
-PostDown = iptables -D FORWARD -i wg0 -o ${DEF_IFACE} -j ACCEPT 2>/dev/null || true
-PostDown = iptables -D FORWARD -i ${DEF_IFACE} -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
-
-# Enable IPv4 forwarding
-PostUp   = sysctl -w net.ipv4.ip_forward=1
 WG
 chmod 600 /etc/wireguard/wg0.conf
 systemctl daemon-reload
@@ -380,24 +366,9 @@ if [[ "$ENABLE_PRIVATE_DNS" = "1" ]]; then
   echo "push \"dhcp-option DOMAIN-ROUTE .\""    >> /etc/openvpn/server/server.conf
 fi
 
-# Firewall for OpenVPN (UDP subnet only)
-iptables -t nat -C POSTROUTING -s "${OVPN_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || \
-iptables -t nat -A POSTROUTING -s "${OVPN_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE
-
+# OpenVPN UDP port (INPUT)
 iptables -C INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT 2>/dev/null || \
 iptables -A INPUT -p "$OVPN_PROTO" --dport "$OVPN_PORT" -j ACCEPT
-
-# Allow tun0 → WAN and return traffic (for hardened FORWARD policy)
-iptables -C FORWARD -i tun0 -o "$DEF_IFACE" -j ACCEPT 2>/dev/null || \
-iptables -A FORWARD -i tun0 -o "$DEF_IFACE" -j ACCEPT
-
-iptables -C FORWARD -i "$DEF_IFACE" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
-iptables -A FORWARD -i "$DEF_IFACE" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-
-iptables -t mangle -C FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || \
-iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-
-iptables-save >/etc/iptables/rules.v4 || true
 
 # Ensure status files exist
 install -o root -g root -m 644 /dev/null "${STATUS_UDP_PATH}"
@@ -463,24 +434,51 @@ CONF
     echo "push \"dhcp-option DOMAIN-ROUTE .\""   >> "$TCP_CONF"
   fi
 
-  iptables -C INPUT -p tcp --dport "${TCP_PORT}" -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport "${TCP_PORT}" -j ACCEPT
-  iptables -t nat -C POSTROUTING -s "${TCP_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -s "${TCP_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE
-  iptables-save >/etc/iptables/rules.v4 || true
+  # OpenVPN TCP stealth port (INPUT)
+  iptables -C INPUT -p tcp --dport "${TCP_PORT}" -j ACCEPT 2>/dev/null || \
+  iptables -A INPUT -p tcp --dport "${TCP_PORT}" -j ACCEPT
 
   systemctl enable openvpn-server@server-tcp
   systemctl restart openvpn-server@server-tcp
   systemctl is-active --quiet openvpn-server@server-tcp || logchunk "WARNING: TCP stealth service failed to start"
 fi
 
+### ===== Firewall: reset + strict VPN rules =====
+logchunk "Resetting iptables FORWARD/NAT for VPN"
 
-# ===== Global FORWARD hardening =====
-# Allow established/related traffic:
-iptables -C FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
-iptables -A FORWARD -m state --state RELATED,ESTABLISHED -j ACCEPT
-
-# Default drop for everything else
+# 1) Flush FORWARD and set default DROP
+iptables -F FORWARD
 iptables -P FORWARD DROP
 
+# 2) Flush NAT POSTROUTING and rebuild VPN-only MASQUERADE
+iptables -t nat -F POSTROUTING
+
+# NAT for WireGuard subnet
+iptables -t nat -A POSTROUTING -s "$WG_SUBNET" -o "$DEF_IFACE" -j MASQUERADE
+
+# NAT for OpenVPN UDP subnet
+iptables -t nat -A POSTROUTING -s "${OVPN_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE
+
+# NAT for OpenVPN TCP stealth subnet (if enabled)
+if [[ "$ENABLE_TCP_STEALTH" = "1" ]]; then
+  iptables -t nat -A POSTROUTING -s "${TCP_SUBNET%/*}/24" -o "$DEF_IFACE" -j MASQUERADE
+fi
+
+# 3) Strict FORWARD rules: only VPN <-> WAN
+
+# WireGuard: wg0 -> WAN and return
+iptables -A FORWARD -i wg0 -o "$DEF_IFACE" -j ACCEPT
+iptables -A FORWARD -i "$DEF_IFACE" -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# OpenVPN: tun0 -> WAN and return
+iptables -A FORWARD -i tun0 -o "$DEF_IFACE" -j ACCEPT
+iptables -A FORWARD -i "$DEF_IFACE" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# 4) Clamp MSS for all forwarded TCP to avoid MTU issues
+iptables -t mangle -F FORWARD
+iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+
+# 5) Persist
 iptables-save >/etc/iptables/rules.v4 || true
 
 ### ===== Quick DNS sanity =====
@@ -597,8 +595,6 @@ def collect_ovpn():
     for txt, hint in chunks:
         clients.extend(parse_ovpn_status(txt, proto_hint=hint))
     return clients
-
-import time  # make sure this is at the top
 
 def collect_wg():
     try:
