@@ -11,6 +11,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Carbon\Carbon;
 
 #[Layout('layouts.app')]
 class CreateVpnUser extends Component
@@ -127,9 +128,12 @@ class CreateVpnUser extends Component
 
     // If user selected "ALL SERVERS"
     if ($this->selectAllServers) {
-        $this->selectedServers = VpnServer::where('enabled', 1)->pluck('id')->all();
+        $this->selectedServers = VpnServer::where('enabled', 1)
+            ->pluck('id')
+            ->all();
     }
 
+    // Revalidate servers after possible override
     $this->validate([
         'selectedServers'   => ['required', 'array', 'min:1'],
         'selectedServers.*' => ['integer', Rule::exists('vpn_servers', 'id')],
@@ -137,6 +141,9 @@ class CreateVpnUser extends Component
 
     $months = (int) rtrim($this->expiry, 'm');
     $plain  = Str::random(5);
+
+    // Compute actual expiry date (e.g. now + N months)
+    $expiresAt = Carbon::now()->addMonths($months);
 
     try {
         DB::transaction(function () use ($admin, $pkg, $months) {
@@ -153,12 +160,13 @@ class CreateVpnUser extends Component
             }
         });
 
-        // Queue user creation
-        $job = CreateVpnUserJob::dispatch(
+        // Queue user creation WITH expiry info
+        CreateVpnUserJob::dispatch(
             $this->username,
             $this->selectedServers,
             $admin->id,
-            $plain
+            $plain,
+            $expiresAt // <--- NEW
         );
 
         session()->flash(
