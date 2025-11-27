@@ -2,11 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Jobs\GenerateOvpnFile;
-use App\Jobs\SyncOpenVPNCredentials;
 use App\Models\VpnUser;
-use App\Models\VpnServer;
 use App\Services\WireGuardService;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -21,8 +19,10 @@ class CreateVpnUser implements ShouldQueue
 
     public string $username;
     public ?string $password;
+    /** @var array<int> */
     public array $serverIds;
     public ?int $clientId;
+    public ?Carbon $expiresAt;
 
     private string $wgSubnetCidr = '10.66.66.0/24';
 
@@ -33,7 +33,8 @@ class CreateVpnUser implements ShouldQueue
         string $username,
         array $serverIds,
         ?int $clientId = null,
-        ?string $password = null
+        ?string $password = null,
+        ?Carbon $expiresAt = null
     ) {
         $this->onConnection('redis');
         $this->onQueue('default');
@@ -42,13 +43,18 @@ class CreateVpnUser implements ShouldQueue
         $this->serverIds = $serverIds;
         $this->clientId  = $clientId;
         $this->password  = $password ?? Str::random(10);
+        $this->expiresAt = $expiresAt;
     }
 
     public function handle(): void
     {
         Log::info("Creating VPN user: {$this->username}");
 
-        // Prevent duplicates
+        if (empty($this->serverIds)) {
+            Log::warning("CreateVpnUser: no servers provided for {$this->username}, aborting.");
+            return;
+        }
+
         if (VpnUser::where('username', $this->username)->exists()) {
             throw new \RuntimeException("Username '{$this->username}' already exists.");
         }
@@ -58,33 +64,39 @@ class CreateVpnUser implements ShouldQueue
             'username'       => $this->username,
             'plain_password' => $this->password,
             'client_id'      => $this->clientId,
+            'expires_at'     => $this->expiresAt, // <--- expiry saved here
         ]);
 
         // Attach servers
         $vpnUser->vpnServers()->sync($this->serverIds);
         $vpnUser->load('vpnServers');
 
-        Log::info("VPN user {$vpnUser->username} attached to servers: " .
-            $vpnUser->vpnServers->pluck('id')->join(', '));
+        Log::info(sprintf(
+            'VPN user %s attached to servers: %s',
+            $vpnUser->username,
+            $vpnUser->vpnServers->pluck('id')->implode(', ')
+        ));
 
-        // Create WG user identity (keys + /32)
+        // WG identity (keys + /32)
         $this->ensureWireGuardIdentity($vpnUser);
 
-        // Generate OpenVPN artifacts + sync per server
+        // OpenVPN: generate .ovpn + sync creds per server
         foreach ($vpnUser->vpnServers as $server) {
             GenerateOvpnFile::dispatch($vpnUser, $server)->onQueue('ovpn');
             SyncOpenVPNCredentials::dispatch($server)->onQueue('ovpn');
         }
 
-        // Add WG peer PER SERVER (no global queue)
+        // WireGuard: add peer per server (if supported)
         foreach ($vpnUser->vpnServers as $server) {
-            if ($server->supportsWireGuard()) {
-                try {
-                    WireGuardService::ensurePeerForUser($server, $vpnUser);
-                    Log::info("WG peer added for user {$vpnUser->id} on server {$server->id}");
-                } catch (\Throwable $e) {
-                    Log::error("WG peer creation failed on server {$server->id}: ".$e->getMessage());
-                }
+            if (! $server->supportsWireGuard()) {
+                continue;
+            }
+
+            try {
+                WireGuardService::ensurePeerForUser($server, $vpnUser);
+                Log::info("WG peer added for user {$vpnUser->id} on server {$server->id}");
+            } catch (\Throwable $e) {
+                Log::error("WG peer creation failed on server {$server->id}: {$e->getMessage()}");
             }
         }
 
@@ -92,7 +104,7 @@ class CreateVpnUser implements ShouldQueue
     }
 
     /**
-     * WG keys + /32 (idempotent)
+     * Ensure WG keys + /32 are set (idempotent).
      */
     private function ensureWireGuardIdentity(VpnUser $user): void
     {
@@ -116,7 +128,7 @@ class CreateVpnUser implements ShouldQueue
     }
 
     /**
-     * Allocates next free /32 from WG pool
+     * Allocate next free /32 from WG pool.
      */
     private function allocateWireGuardAddress(): string
     {
@@ -140,7 +152,7 @@ class CreateVpnUser implements ShouldQueue
         $usedSet = array_flip($used);
 
         for ($ip = $start; $ip <= $end; $ip++) {
-            if (!isset($usedSet[$ip])) {
+            if (! isset($usedSet[$ip])) {
                 return long2ip($ip) . '/32';
             }
         }
