@@ -32,6 +32,12 @@ class AppBuilds extends Component
             'apk'           => 'required|file|mimetypes:application/vnd.android.package-archive,application/octet-stream|max:200000',
         ];
     }
+    
+    public function ping(): void
+{
+    logger()->info('APP BUILDS PING HIT');
+    session()->flash('success', 'Ping OK (Livewire is working).');
+}
 
     public function mount(): void
     {
