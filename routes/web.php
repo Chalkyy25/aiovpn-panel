@@ -22,6 +22,7 @@ use App\Http\Controllers\Admin\AppBuildController;
 
 // ✅ Livewire Pages
 use App\Livewire\Pages\Admin\{CreateUser,
+    AppBuilds,
     CreateVpnUser,
     CreateTrialLine,
     EditVpnUser,
