@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Api\GenericStealthConfigController;
+use App\Http\Controllers\WireGuardConfigController;
+use App\Models\VpnUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -7,6 +10,9 @@ use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
 use App\Http\Controllers\Api\DeployEventController;
 use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\DeviceController;
+use App\Http\Controllers\Api\AppUpdateController;
+
 
 
 
@@ -57,9 +63,9 @@ Route::post('/auth/login', [MobileAuthController::class, 'login']);
 
 // Public generic stealth configs (for AIO Smarters app)
 Route::prefix('stealth')->group(function () {
-    Route::get('/servers', [\App\Http\Controllers\Api\GenericStealthConfigController::class, 'servers']);
-    Route::get('/config/{serverId}', [\App\Http\Controllers\Api\GenericStealthConfigController::class, 'config']);
-    Route::get('/info/{serverId}', [\App\Http\Controllers\Api\GenericStealthConfigController::class, 'configInfo']);
+    Route::get('/servers', [GenericStealthConfigController::class, 'servers']);
+    Route::get('/config/{serverId}', [GenericStealthConfigController::class, 'config']);
+    Route::get('/info/{serverId}', [GenericStealthConfigController::class, 'configInfo']);
 });
 
 // Authenticated mobile routes
@@ -67,16 +73,16 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Profile summary + assigned servers
     Route::get('/profiles', [MobileProfileController::class, 'index']);
-    
+
     Route::get('/locations', [LocationController::class, 'index']);
 
     // Return a ready-to-import .ovpn for the given (or first) server
     Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
-    
+
      // WireGuard for mobile
-    Route::get('/wg/servers', [\App\Http\Controllers\WireGuardConfigController::class, 'servers']);
-    Route::get('/wg/config',  [\App\Http\Controllers\WireGuardConfigController::class, 'config']);
-    
+    Route::get('/wg/servers', [WireGuardConfigController::class, 'servers']);
+    Route::get('/wg/config',  [WireGuardConfigController::class, 'config']);
+
     // *** Android app expects THIS endpoint: raw .ovpn text ***
     // Example: /api/ovpn?user_id=7&server_id=99
     Route::get('/ovpn', [MobileProfileController::class, 'ovpn']);
@@ -99,12 +105,24 @@ Route::post('/device/register', function (Request $request) {
         'device_name' => 'required|string',
     ]);
 
-    $vpnUser = \App\Models\VpnUser::where('username', $request->username)->firstOrFail();
+    $vpnUser = VpnUser::where('username', $request->username)->firstOrFail();
     $vpnUser->device_name = $request->device_name;
     $vpnUser->save();
 
     return response()->json(['status' => 'success']);
 });
+
+/* ======================= APP UPDATER (DEVICE TOKEN) ======================= */
+
+// New device-token registration for update system (do NOT replace /device/register)
+Route::post('/devices/register-token', [DeviceController::class, 'register']);
+
+// Protected updater endpoints
+Route::middleware('device.token')->group(function () {
+    Route::get('/app/latest', [AppUpdateController::class, 'latest']);
+    Route::get('/app/download/{id}', [AppUpdateController::class, 'download']);
+});
+
 
 /* -------------------------------------------------------------------
 | If you also want a Sanctum-only alias for events (testing from panel),
