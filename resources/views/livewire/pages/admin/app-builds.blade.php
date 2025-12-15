@@ -1,43 +1,50 @@
 {{-- resources/views/livewire/pages/admin/app-builds.blade.php --}}
 
-<style>
-  :root{
-    --aio-neon:#3dff7f;--aio-cya:#39d9ff;--aio-pup:#9a79ff;--aio-mag:#ff4fd8;
-    --aio-ink:#e6e8ef;--aio-sub:#9aa3b2;
-  }
-  .muted{color:var(--aio-sub)}
-  .aio-divider{border-color:rgba(255,255,255,.08)}
-  .aio-pill{display:inline-flex;align-items:center;gap:.35rem;border-radius:9999px;padding:.25rem .6rem;font-weight:600;font-size:.75rem;line-height:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
-  .pill-neon{background:rgba(61,255,127,.12);border-color:rgba(61,255,127,.35);color:var(--aio-ink)}
-  .pill-cya{background:rgba(57,217,255,.12);border-color:rgba(57,217,255,.35);color:var(--aio-ink)}
-  .pill-pup{background:rgba(154,121,255,.12);border-color:rgba(154,121,255,.35);color:var(--aio-ink)}
-  .pill-mag{background:rgba(255,79,216,.12);border-color:rgba(255,79,216,.35);color:var(--aio-ink)}
-  .pill-card{border-radius:.75rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
-  .outline-neon{box-shadow:inset 0 0 0 1px rgba(61,255,127,.25)}
-  .outline-cya{box-shadow:inset 0 0 0 1px rgba(57,217,255,.25)}
-  .outline-pup{box-shadow:inset 0 0 0 1px rgba(154,121,255,.25)}
-  .outline-mag{box-shadow:inset 0 0 0 1px rgba(255,79,216,.25)}
-  .shadow-glow{box-shadow:0 0 0 3px rgba(61,255,127,.15),0 6px 18px rgba(0,0,0,.35)}
-  .aio-input{
-    width:100%;
-    border-radius:.75rem;
-    background:rgba(255,255,255,.04);
-    border:1px solid rgba(255,255,255,.10);
-    padding:.6rem .75rem;
-    color:var(--aio-ink);
-    outline:none;
-  }
-  .aio-input:focus{box-shadow:0 0 0 3px rgba(57,217,255,.18);border-color:rgba(57,217,255,.35)}
-  .aio-textarea{min-height:110px}
-  .aio-help{font-size:.75rem;color:var(--aio-sub)}
-</style>
+@once
+  @push('styles')
+    <style>
+      :root{
+        --aio-neon:#3dff7f;--aio-cya:#39d9ff;--aio-pup:#9a79ff;--aio-mag:#ff4fd8;
+        --aio-ink:#e6e8ef;--aio-sub:#9aa3b2;
+      }
+      .muted{color:var(--aio-sub)}
+      .aio-divider{border-color:rgba(255,255,255,.08)}
+      .aio-pill{display:inline-flex;align-items:center;gap:.35rem;border-radius:9999px;padding:.25rem .6rem;font-weight:600;font-size:.75rem;line-height:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
+      .pill-neon{background:rgba(61,255,127,.12);border-color:rgba(61,255,127,.35);color:var(--aio-ink)}
+      .pill-cya{background:rgba(57,217,255,.12);border-color:rgba(57,217,255,.35);color:var(--aio-ink)}
+      .pill-pup{background:rgba(154,121,255,.12);border-color:rgba(154,121,255,.35);color:var(--aio-ink)}
+      .pill-mag{background:rgba(255,79,216,.12);border-color:rgba(255,79,216,.35);color:var(--aio-ink)}
+      .pill-card{border-radius:.75rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
+      .outline-neon{box-shadow:inset 0 0 0 1px rgba(61,255,127,.25)}
+      .outline-cya{box-shadow:inset 0 0 0 1px rgba(57,217,255,.25)}
+      .outline-pup{box-shadow:inset 0 0 0 1px rgba(154,121,255,.25)}
+      .outline-mag{box-shadow:inset 0 0 0 1px rgba(255,79,216,.25)}
+      .shadow-glow{box-shadow:0 0 0 3px rgba(61,255,127,.15),0 6px 18px rgba(0,0,0,.35)}
+      .aio-input{
+        width:100%;
+        border-radius:.75rem;
+        background:rgba(255,255,255,.04);
+        border:1px solid rgba(255,255,255,.10);
+        padding:.6rem .75rem;
+        color:var(--aio-ink);
+        outline:none;
+      }
+      .aio-input:focus{box-shadow:0 0 0 3px rgba(57,217,255,.18);border-color:rgba(57,217,255,.35)}
+      .aio-textarea{min-height:110px}
+      .aio-help{font-size:.75rem;color:var(--aio-sub)}
+    </style>
+  @endpush
+@endonce
 
 <div class="space-y-6">
   {{-- HEADER --}}
   <div class="flex items-end justify-between">
     <div>
       <h1 class="text-2xl font-bold text-[var(--aio-ink)]">Upgrade App</h1>
-      <p class="text-sm text-[var(--aio-sub)]">Upload a new APK. Devices will detect it via <span class="font-medium text-[var(--aio-ink)]">/api/app/latest</span>.</p>
+      <p class="text-sm text-[var(--aio-sub)]">
+        Upload a new APK. Devices will detect it via
+        <span class="font-medium text-[var(--aio-ink)]">/api/app/latest</span>.
+      </p>
     </div>
 
     <div class="flex items-center gap-2">
@@ -69,10 +76,11 @@
       </ul>
     </div>
   @endif
-  
+
+  {{-- PING TEST --}}
   <button type="button" class="aio-pill pill-cya" wire:click="ping">
-  Test Livewire Ping
-</button>
+    Test Livewire Ping
+  </button>
 
   {{-- UPLOAD CARD --}}
   <div class="pill-card outline-cya p-5 space-y-4">
@@ -120,7 +128,7 @@
       <div class="space-y-2">
         <label class="block text-xs uppercase tracking-wide muted">APK File</label>
         <div class="flex flex-col md:flex-row md:items-center gap-3">
-          <input type="file" wire:model="apk" class="aio-input" style="padding:.45rem .6rem">
+          <input type="file" wire:model="apk" class="aio-input" style="padding:.45rem .6rem" accept=".apk">
           <button type="submit" class="aio-pill pill-neon shadow-glow">
             Upload Build
           </button>
