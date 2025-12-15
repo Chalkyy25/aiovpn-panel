@@ -1,0 +1,23 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Device extends Model
+{
+    protected $fillable = [
+        'device_uuid',
+        'token_hash',
+        'model',
+        'os_version',
+        'app_version_code',
+        'last_seen_at',
+        'revoked_at',
+    ];
+
+    protected $casts = [
+        'last_seen_at' => 'datetime',
+        'revoked_at' => 'datetime',
+    ];
+}
