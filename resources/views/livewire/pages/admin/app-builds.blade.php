@@ -69,6 +69,10 @@
       </ul>
     </div>
   @endif
+  
+  <button type="button" class="aio-pill pill-cya" wire:click="ping">
+  Test Livewire Ping
+</button>
 
   {{-- UPLOAD CARD --}}
   <div class="pill-card outline-cya p-5 space-y-4">
