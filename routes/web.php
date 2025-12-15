@@ -116,9 +116,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
         Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
-	Route::post('/app-builds', [AppBuildController::class, 'store'])->name('app-builds.store');
-	Route::get('/app-builds', fn () => view('admin.app-builds'))->name('app-builds.index');
-
+	Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
 });
 
 // ============================
