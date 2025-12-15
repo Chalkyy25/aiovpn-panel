@@ -17,6 +17,8 @@ use App\Http\Controllers\ClientAuthController;
 use App\Http\Controllers\AdminImpersonationController;
 use App\Http\Controllers\Client\AuthController;
 use App\Http\Controllers\Admin\Auth\LoginController as AdminLogin;
+use App\Http\Controllers\Admin\AppBuildController;
+
 
 // ✅ Livewire Pages
 use App\Livewire\Pages\Admin\{CreateUser,
@@ -52,7 +54,7 @@ Route::get('/', fn () => view('welcome'));
 Route::get('/dashboard', fn () => view('dashboard'))
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
-    
+
 Route::get('/debug/reverb', function () {
     return response()->json([
         'apps'    => config('reverb.apps'),
@@ -80,25 +82,24 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // VPN Dashboard
         Route::get('/vpn-dashboard', VpnDashboard::class)->name('vpn-dashboard');
         Route::post('/servers/{server}/disconnect', [\App\Http\Controllers\VpnDisconnectController::class, 'disconnect'])->name('servers.disconnect');
-    
+
         // Users
         Route::get('/users', UserList::class)->name('users.index');
         Route::get('/users/create', CreateUser::class)->name('users.create');
-        
+
         // WireGuard: per-user, per-server config download (admin)
         Route::get('/vpn-users/{user}/wg/{server}/download', [WireGuardConfigController::class, 'download'])
             ->name('vpn-users.wg.download');
-        
+
         // Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
-        
         Route::resource('packages', PackageController::class);
 
         // VPN Users (global list)
         Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
         Route::get('/vpn-users/create', CreateVpnUser::class)->name('vpn-users.create');
         Route::get('/vpn-users/{vpnUser}/edit', EditVpnUser::class)->name('vpn-users.edit');
-        
+
         //Trial Line Create
         Route::get('/vpn-users/trial', CreateTrialLine::class)->name('vpn-users.trial');
 
@@ -107,14 +108,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         //Reseller List
         Route::get('/resellers', ResellerList::class)->name('resellers.index');
-        
+
         //Manage Credits
          Route::get('/credits', ManageCredits::class)->name('credits');
 
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
         Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
-        
+	Route::post('/app-builds', [AppBuildController::class, 'store'])->name('app-builds.store');
+	Route::get('/app-builds', fn () => view('admin.app-builds'))->name('app-builds.index');
+
 });
 
 // ============================
