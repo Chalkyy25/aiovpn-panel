@@ -142,15 +142,14 @@
 
           {{-- submit + fallback click --}}
           <button
-            type="submit"
-            class="aio-pill pill-neon shadow-glow"
-            wire:click.prevent="upload"
-            wire:loading.attr="disabled"
-            wire:target="apk,upload"
-          >
-            <span wire:loading.remove wire:target="apk,upload">Upload Build</span>
-            <span wire:loading wire:target="apk,upload">Uploading…</span>
-          </button>
+  type="submit"
+  class="aio-pill pill-neon shadow-glow"
+  wire:loading.attr="disabled"
+  wire:target="apk,upload"
+>
+  <span wire:loading.remove wire:target="apk,upload">Upload Build</span>
+  <span wire:loading wire:target="apk,upload">Uploading…</span>
+</button>
         </div>
 
         <div class="aio-help" wire:loading wire:target="apk">
