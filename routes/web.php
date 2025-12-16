@@ -17,7 +17,7 @@ use App\Http\Controllers\ClientAuthController;
 use App\Http\Controllers\AdminImpersonationController;
 use App\Http\Controllers\Client\AuthController;
 use App\Http\Controllers\Admin\Auth\LoginController as AdminLogin;
-use App\Http\Controllers\Admin\AppBuildController;
+use App\Http\Controllers\Admin\AppBuildDownloadController;
 
 
 // ✅ Livewire Pages
@@ -116,7 +116,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
         Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
-	Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
+	
+    
+    Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
+    Route::get('admin/app-builds/{build}/download', AppBuildDownloadController::class)->name('admin.app-builds.download');
 });
 
 // ============================
