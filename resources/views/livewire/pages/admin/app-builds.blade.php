@@ -129,17 +129,24 @@
         <label class="block text-xs uppercase tracking-wide muted">APK File</label>
         <div class="flex flex-col md:flex-row md:items-center gap-3">
           <input type="file" wire:model="apk" class="aio-input" style="padding:.45rem .6rem" accept=".apk">
-          <button type="submit" class="aio-pill pill-neon shadow-glow">
-            Upload Build
-          </button>
+         <button
+  type="submit"
+  class="aio-pill pill-neon shadow-glow"
+  wire:loading.attr="disabled"
+  wire:target="upload,apk"
+>
+  <span wire:loading.remove wire:target="upload,apk">Upload Build</span>
+  <span wire:loading wire:target="upload,apk">Uploading…</span>
+</button>
+
+<div wire:loading wire:target="upload,apk" class="aio-help">
+  Upload in progress… don’t refresh.
+</div>
         </div>
 
         <div wire:loading wire:target="apk" class="aio-help">Uploading APK…</div>
         @error('apk') <div class="text-sm text-red-300">{{ $message }}</div> @enderror
 
-        <div class="aio-help">
-          Max 200MB. If you hit <span class="text-[var(--aio-ink)] font-medium">413</span>, increase NGINX <code>client_max_body_size</code>.
-        </div>
       </div>
     </form>
   </div>
