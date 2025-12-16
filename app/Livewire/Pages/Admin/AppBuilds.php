@@ -108,6 +108,30 @@ class AppBuilds extends Component
     {
         return AppBuild::orderByDesc('created_at')->limit(10)->get();
     }
+    
+    public function deactivateBuild(int $buildId): void
+{
+    $build = AppBuild::findOrFail($buildId);
+
+    // just flip active off
+    $build->update(['is_active' => false]);
+
+    session()->flash('success', "Build {$build->version_name} ({$build->version_code}) deactivated ✅");
+}
+
+public function deleteBuild(int $buildId): void
+{
+    $build = AppBuild::findOrFail($buildId);
+
+    // delete the file first (safe even if missing)
+    if ($build->apk_path) {
+        Storage::disk('local')->delete($build->apk_path);
+    }
+
+    $build->delete();
+
+    session()->flash('success', "Build deleted ✅");
+}
 
     public function render(): ViewContract
     {
