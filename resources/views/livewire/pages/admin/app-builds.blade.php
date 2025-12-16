@@ -168,28 +168,66 @@
             <th class="px-4 py-2 text-left">Active</th>
             <th class="px-4 py-2 text-left">Mandatory</th>
             <th class="px-4 py-2 text-left">SHA256</th>
+            <th class="px-4 py-2 text-left">Actions</th>     
           </tr>
         </thead>
         <tbody class="divide-y divide-white/10">
           @forelse($buildHistory as $b)
             <tr class="hover:bg-white/5">
-              <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $b->created_at?->diffForHumans() }}</td>
-              <td class="px-4 py-2 text-[var(--aio-ink)] font-medium">{{ $b->version_name }}</td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $b->version_code }}</td>
-              <td class="px-4 py-2">
-                <span class="aio-pill {{ $b->is_active ? 'pill-neon' : 'bg-white/5 text-[var(--aio-sub)]' }}">
-                  {{ $b->is_active ? 'Yes' : 'No' }}
-                </span>
-              </td>
-              <td class="px-4 py-2">
-                <span class="aio-pill {{ $b->mandatory ? 'pill-mag' : 'bg-white/5 text-[var(--aio-sub)]' }}">
-                  {{ $b->mandatory ? 'Yes' : 'No' }}
-                </span>
-              </td>
-              <td class="px-4 py-2">
-                <code class="text-xs break-all text-[var(--aio-ink)]">{{ $b->sha256 }}</code>
-              </td>
-            </tr>
+  <td class="px-4 py-2 text-[var(--aio-ink)]">
+    {{ $b->created_at?->diffForHumans() }}
+  </td>
+
+  <td class="px-4 py-2 text-[var(--aio-ink)] font-medium">
+    {{ $b->version_name }}
+  </td>
+
+  <td class="px-4 py-2 text-[var(--aio-ink)]">
+    {{ $b->version_code }}
+  </td>
+
+  <td class="px-4 py-2">
+    <span class="aio-pill {{ $b->is_active ? 'pill-neon' : 'bg-white/5 text-[var(--aio-sub)]' }}">
+      {{ $b->is_active ? 'Yes' : 'No' }}
+    </span>
+  </td>
+
+  <td class="px-4 py-2">
+    <span class="aio-pill {{ $b->mandatory ? 'pill-mag' : 'bg-white/5 text-[var(--aio-sub)]' }}">
+      {{ $b->mandatory ? 'Yes' : 'No' }}
+    </span>
+  </td>
+
+  <td class="px-4 py-2">
+    <code class="text-xs break-all text-[var(--aio-ink)]">
+      {{ $b->sha256 }}
+    </code>
+  </td>
+
+  {{-- ACTIONS --}}
+  <td class="px-4 py-2">
+    <div class="flex gap-2">
+      @if($b->is_active)
+        <button
+          type="button"
+          class="aio-pill bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25"
+          wire:click="deactivateBuild({{ $b->id }})"
+        >
+          Deactivate
+        </button>
+      @endif
+
+      <button
+        type="button"
+        class="aio-pill bg-red-500/15 text-red-300 hover:bg-red-500/25"
+        onclick="return confirm('Delete this build permanently?')"
+        wire:click="deleteBuild({{ $b->id }})"
+      >
+        Delete
+      </button>
+    </div>
+  </td>
+</tr>
           @empty
             <tr>
               <td colspan="6" class="px-4 py-6 text-center muted">No builds uploaded yet.</td>
