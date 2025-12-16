@@ -67,6 +67,7 @@
     </div>
   @endif
 
+  {{-- ERRORS --}}
   @if ($errors->any())
     <div class="pill-card outline-mag p-4 text-[var(--aio-ink)]">
       <span class="aio-pill pill-mag">Fix these</span>
@@ -78,7 +79,7 @@
     </div>
   @endif
 
-  {{-- PING TEST --}}
+  {{-- PING --}}
   <button type="button" class="aio-pill pill-cya" wire:click="ping">
     Test Livewire Ping
   </button>
@@ -96,8 +97,7 @@
       </div>
     </div>
 
-    {{-- IMPORTANT: stop prevents Alpine/global listeners hijacking the submit --}}
-    <form wire:submit.prevent.stop="upload" class="space-y-4">
+    <form wire:submit.prevent="upload" class="space-y-4">
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -140,16 +140,15 @@
             accept=".apk"
           >
 
-          {{-- submit + fallback click --}}
           <button
-  type="submit"
-  class="aio-pill pill-neon shadow-glow"
-  wire:loading.attr="disabled"
-  wire:target="apk,upload"
->
-  <span wire:loading.remove wire:target="apk,upload">Upload Build</span>
-  <span wire:loading wire:target="apk,upload">Uploading…</span>
-</button>
+            type="submit"
+            class="aio-pill pill-neon shadow-glow"
+            wire:loading.attr="disabled"
+            wire:target="apk,upload"
+          >
+            <span wire:loading.remove wire:target="apk,upload">Upload Build</span>
+            <span wire:loading wire:target="apk,upload">Uploading…</span>
+          </button>
         </div>
 
         <div class="aio-help" wire:loading wire:target="apk">
@@ -161,12 +160,8 @@
         </div>
 
         @error('apk') <div class="text-sm text-red-300">{{ $message }}</div> @enderror
-
-        <div class="aio-help">
-          Max 200MB. If you hit <span class="text-[var(--aio-ink)] font-medium">413</span>,
-          increase NGINX <code>client_max_body_size</code> and PHP <code>post_max_size/upload_max_filesize</code>.
-        </div>
       </div>
+
     </form>
   </div>
 
