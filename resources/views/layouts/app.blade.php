@@ -127,7 +127,6 @@
 
   @vite(['resources/js/app.js'])
   @stack('scripts')
-  @livewireStyles
   @livewireScripts
   @livewireScriptConfig
 
