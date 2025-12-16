@@ -83,73 +83,88 @@
   </button>
 
   {{-- UPLOAD CARD --}}
-  <div class="pill-card outline-cya p-5 space-y-4">
-    <div class="flex items-center justify-between">
-      <div class="text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <span class="aio-pill pill-cya">Upload</span>
-        <span>New Build</span>
-      </div>
-
-      <div class="text-xs muted">
-        Tip: customers must be on <span class="text-[var(--aio-ink)] font-medium">release-signed</span> builds for updates.
-      </div>
+<div class="pill-card outline-cya p-5 space-y-4">
+  <div class="flex items-center justify-between">
+    <div class="text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
+      <span class="aio-pill pill-cya">Upload</span>
+      <span>New Build</span>
     </div>
 
-    <form wire:submit.prevent="upload" class="space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs uppercase tracking-wide muted mb-1">Version Code</label>
-          <input type="number" wire:model.defer="version_code" class="aio-input" placeholder="e.g. 217">
-          @error('version_code') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
-        </div>
+    <div class="text-xs muted">
+      Tip: customers must be on <span class="text-[var(--aio-ink)] font-medium">release-signed</span> builds for updates.
+    </div>
+  </div>
 
-        <div>
-          <label class="block text-xs uppercase tracking-wide muted mb-1">Version Name</label>
-          <input type="text" wire:model.defer="version_name" class="aio-input" placeholder="e.g. 0.7.62">
-          @error('version_name') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
-        </div>
+  <form wire:submit.prevent="upload" class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs uppercase tracking-wide muted mb-1">Version Code</label>
+        <input type="number" wire:model.defer="version_code" class="aio-input" placeholder="e.g. 217">
+        @error('version_code') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
       </div>
 
       <div>
-        <label class="block text-xs uppercase tracking-wide muted mb-1">Release Notes</label>
-        <textarea wire:model.defer="release_notes" class="aio-input aio-textarea" placeholder="What changed?"></textarea>
-        @error('release_notes') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
-        <div class="aio-help mt-1">Shown to the app. Keep it short and useful.</div>
+        <label class="block text-xs uppercase tracking-wide muted mb-1">Version Name</label>
+        <input type="text" wire:model.defer="version_name" class="aio-input" placeholder="e.g. 0.7.62">
+        @error('version_name') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-xs uppercase tracking-wide muted mb-1">Release Notes</label>
+      <textarea wire:model.defer="release_notes" class="aio-input aio-textarea" placeholder="What changed?"></textarea>
+      @error('release_notes') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
+      <div class="aio-help mt-1">Shown to the app. Keep it short and useful.</div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <label class="aio-pill bg-white/5 hover:bg-white/10 cursor-pointer">
+        <input type="checkbox" wire:model="mandatory" class="mr-2">
+        Mandatory update
+      </label>
+      <span class="aio-help">If enabled, app should block use until updated.</span>
+    </div>
+
+    <div class="space-y-2">
+      <label class="block text-xs uppercase tracking-wide muted">APK File</label>
+
+      <div class="flex flex-col md:flex-row md:items-center gap-3">
+        <input
+          type="file"
+          wire:model.live="apk"
+          class="aio-input"
+          style="padding:.45rem .6rem"
+          accept=".apk"
+        >
+
+        <button
+          type="submit"
+          class="aio-pill pill-neon shadow-glow"
+          wire:loading.attr="disabled"
+          wire:target="apk,upload"
+        >
+          <span wire:loading.remove wire:target="apk,upload">Upload Build</span>
+          <span wire:loading wire:target="apk,upload">Uploading…</span>
+        </button>
       </div>
 
-      <div class="flex items-center gap-3">
-        <label class="aio-pill bg-white/5 hover:bg-white/10 cursor-pointer">
-          <input type="checkbox" wire:model="mandatory" class="mr-2">
-          Mandatory update
-        </label>
-        <span class="aio-help">If enabled, app should block use until updated.</span>
+      {{-- Single status line (no duplicates) --}}
+      <div class="aio-help" wire:loading wire:target="apk">
+        Uploading APK to server… don’t refresh.
       </div>
 
-      <div class="space-y-2">
-        <label class="block text-xs uppercase tracking-wide muted">APK File</label>
-        <div class="flex flex-col md:flex-row md:items-center gap-3">
-          <input type="file" wire:model="apk" class="aio-input" style="padding:.45rem .6rem" accept=".apk">
-         <button
-  type="submit"
-  class="aio-pill pill-neon shadow-glow"
-  wire:loading.attr="disabled"
-  wire:target="upload,apk"
->
-  <span wire:loading.remove wire:target="upload,apk">Upload Build</span>
-  <span wire:loading wire:target="upload,apk">Uploading…</span>
-</button>
+      <div class="aio-help" wire:loading wire:target="upload">
+        Finalizing build & saving to database…
+      </div>
 
-<div wire:loading wire:target="upload,apk" class="aio-help">
-  Upload in progress… don’t refresh.
+      @error('apk') <div class="text-sm text-red-300">{{ $message }}</div> @enderror
+
+      <div class="aio-help">
+        Max 200MB. If you hit <span class="text-[var(--aio-ink)] font-medium">413</span>, increase NGINX <code>client_max_body_size</code>.
+      </div>
+    </div>
+  </form>
 </div>
-        </div>
-
-        <div wire:loading wire:target="apk" class="aio-help">Uploading APK…</div>
-        @error('apk') <div class="text-sm text-red-300">{{ $message }}</div> @enderror
-
-      </div>
-    </form>
-  </div>
 
   {{-- HISTORY --}}
   <div class="pill-card outline-pup overflow-hidden">
