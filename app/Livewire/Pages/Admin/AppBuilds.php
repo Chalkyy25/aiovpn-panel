@@ -23,14 +23,15 @@ class AppBuilds extends Component
     public $apk = null;
 
     public function rules(): array
-    {
-        return [
-            'version_code'  => 'required|integer|min:1',
-            'version_name'  => 'required|string|max:50',
-            'mandatory'     => 'boolean',
-            'release_notes' => 'nullable|string|max:2000',
-            'apk' => 'required|file|mimetypes:application/vnd.android.package-archive,application/octet-stream,application/zip|max:200000',    }
-
+{
+    return [
+        'version_code'  => 'required|integer|min:1',
+        'version_name'  => 'required|string|max:50',
+        'mandatory'     => 'boolean',
+        'release_notes' => 'nullable|string|max:2000',
+        'apk' => 'required|file|mimetypes:application/vnd.android.package-archive,application/octet-stream,application/zip|max:200000',
+    ];
+}
     public function ping(): void
     {
         logger()->info('APP BUILDS PING HIT');
