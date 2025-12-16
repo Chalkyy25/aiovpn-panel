@@ -49,32 +49,60 @@ class AppBuilds extends Component
     }
 
     public function upload(): void
-    {
-        $this->validate();
+{
+    logger()->info('APP BUILD UPLOAD START', [
+        'version_code' => $this->version_code,
+        'version_name' => $this->version_name,
+        'mandatory'    => $this->mandatory,
+        'has_file'     => (bool) $this->apk,
+    ]);
 
-        $path = $this->apk->store('app-updates');
+    $this->validate();
 
-        $fullPath = Storage::disk('local')->path($path);
-        $sha256 = hash_file('sha256', $fullPath);
-
-        // Deactivate old builds (keep history)
-        AppBuild::where('is_active', true)->update(['is_active' => false]);
-
-        AppBuild::create([
-            'version_code'  => $this->version_code,
-            'version_name'  => $this->version_name,
-            'apk_path'      => $path,
-            'sha256'        => $sha256,
-            'mandatory'     => $this->mandatory,
-            'release_notes' => $this->release_notes,
-            'is_active'     => true,
-        ]);
-
-        // reset form (keep next version_code suggestion)
-        $this->reset(['version_name', 'mandatory', 'release_notes', 'apk']);
-
-        session()->flash('success', 'Build uploaded. Devices will see it on next update check.');
+    if (!$this->apk) {
+        session()->flash('success', 'No file selected (apk missing).');
+        return;
     }
+
+    // Store under storage/app/app-updates
+    $path = $this->apk->store('app-updates', 'local');
+    $fullPath = Storage::disk('local')->path($path);
+
+    if (!is_file($fullPath)) {
+        logger()->error('APP BUILD UPLOAD FAILED: file missing after store()', ['path' => $path, 'full' => $fullPath]);
+        session()->flash('success', 'Upload failed: file not found after saving.');
+        return;
+    }
+
+    $sha256 = hash_file('sha256', $fullPath);
+
+    AppBuild::query()->where('is_active', true)->update(['is_active' => false]);
+
+    $build = AppBuild::create([
+        'version_code'  => $this->version_code,
+        'version_name'  => $this->version_name,
+        'apk_path'      => $path,
+        'sha256'        => $sha256,
+        'mandatory'     => $this->mandatory,
+        'release_notes' => $this->release_notes,
+        'is_active'     => true,
+    ]);
+
+    logger()->info('APP BUILD UPLOAD DONE', [
+        'id'   => $build->id,
+        'path' => $path,
+        'sha'  => $sha256,
+    ]);
+
+    // clear file + fields
+    $this->reset(['version_name', 'mandatory', 'release_notes', 'apk']);
+
+    // FORCE a visual change even if iPhone Safari is weird
+    session()->flash('success', "Build uploaded ✅ (ID: {$build->id})");
+
+    // Optional: hard refresh the page so the history updates 100%
+    // return redirect()->route('admin.app-builds.index');
+}
 
     public function getLatestBuildProperty(): ?AppBuild
     {
