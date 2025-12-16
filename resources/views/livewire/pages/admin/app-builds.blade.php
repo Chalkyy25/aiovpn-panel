@@ -216,6 +216,13 @@
           Deactivate
         </button>
       @endif
+      
+      <a
+  href="{{ route('admin.app-builds.download', $b) }}"
+  class="aio-pill bg-white/5 hover:bg-white/10 text-[var(--aio-ink)]"
+>
+  Download
+</a>
 
       <button
         type="button"
