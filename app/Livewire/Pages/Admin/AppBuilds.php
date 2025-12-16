@@ -29,8 +29,7 @@ class AppBuilds extends Component
             'version_name'  => 'required|string|max:50',
             'mandatory'     => 'boolean',
             'release_notes' => 'nullable|string|max:2000',
-            'apk' => 'required|file|mimes:apk|max:200000',        ];
-    }
+            'apk' => 'required|file|mimetypes:application/vnd.android.package-archive,application/octet-stream,application/zip|max:200000',    }
 
     public function ping(): void
     {
