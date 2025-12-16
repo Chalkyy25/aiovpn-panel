@@ -94,13 +94,14 @@
       App
     </div>
 
-    <x-nav-link href="{{ route('admin.app-builds') }}"
-                :active="request()->routeIs('admin.app-builds*')"
-                icon="o-arrow-up-tray"
-                variant="neon">
-      App Builds
-    </x-nav-link>
-  </div>
+    <x-nav-link
+    href="{{ route('admin.app-builds.index') }}"
+    :active="request()->routeIs('admin.app-builds.*')"
+    icon="o-arrow-up-tray"
+    variant="neon"
+>
+    App Builds
+</x-nav-link>
 
   <hr class="border-white/10 mx-2">
 
