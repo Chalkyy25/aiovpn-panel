@@ -1,196 +1,110 @@
 {{-- resources/views/livewire/pages/admin/app-builds.blade.php --}}
 
-@once
-  @push('styles')
-    <style>
-      :root{
-        --aio-neon:#3dff7f;--aio-cya:#39d9ff;--aio-pup:#9a79ff;--aio-mag:#ff4fd8;
-        --aio-ink:#e6e8ef;--aio-sub:#9aa3b2;
-      }
-      .muted{color:var(--aio-sub)}
-      .aio-divider{border-color:rgba(255,255,255,.08)}
-      .aio-pill{display:inline-flex;align-items:center;gap:.35rem;border-radius:9999px;padding:.25rem .6rem;font-weight:600;font-size:.75rem;line-height:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
-      .pill-neon{background:rgba(61,255,127,.12);border-color:rgba(61,255,127,.35);color:var(--aio-ink)}
-      .pill-cya{background:rgba(57,217,255,.12);border-color:rgba(57,217,255,.35);color:var(--aio-ink)}
-      .pill-pup{background:rgba(154,121,255,.12);border-color:rgba(154,121,255,.35);color:var(--aio-ink)}
-      .pill-mag{background:rgba(255,79,216,.12);border-color:rgba(255,79,216,.35);color:var(--aio-ink)}
-      .pill-card{border-radius:.75rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
-      .outline-neon{box-shadow:inset 0 0 0 1px rgba(61,255,127,.25)}
-      .outline-cya{box-shadow:inset 0 0 0 1px rgba(57,217,255,.25)}
-      .outline-pup{box-shadow:inset 0 0 0 1px rgba(154,121,255,.25)}
-      .outline-mag{box-shadow:inset 0 0 0 1px rgba(255,79,216,.25)}
-      .shadow-glow{box-shadow:0 0 0 3px rgba(61,255,127,.15),0 6px 18px rgba(0,0,0,.35)}
-      .aio-input{
-        width:100%;
-        border-radius:.75rem;
-        background:rgba(255,255,255,.04);
-        border:1px solid rgba(255,255,255,.10);
-        padding:.6rem .75rem;
-        color:var(--aio-ink);
-        outline:none;
-      }
-      .aio-input:focus{box-shadow:0 0 0 3px rgba(57,217,255,.18);border-color:rgba(57,217,255,.35)}
-      .aio-textarea{min-height:110px}
-      .aio-help{font-size:.75rem;color:var(--aio-sub)}
-    </style>
-  @endpush
-@endonce
+<div>
 
-<div class="space-y-6">
+    <h1>App Builds</h1>
 
-  {{-- HEADER --}}
-  <div class="flex items-end justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-[var(--aio-ink)]">Upgrade App</h1>
-      <p class="text-sm text-[var(--aio-sub)]">
-        Upload a new APK. Devices will detect it via
-        <span class="font-medium text-[var(--aio-ink)]">/api/app/latest</span>.
-      </p>
-    </div>
+    {{-- Success --}}
+    @if (session()->has('success'))
+        <div style="color: green; margin-bottom: 10px;">
+            {{ session('success') }}
+        </div>
+    @endif
 
-    <div class="flex items-center gap-2">
-      @if($latestBuild)
-        <span class="aio-pill pill-pup">
-          Current: {{ $latestBuild->version_name }} ({{ $latestBuild->version_code }})
-        </span>
-      @else
-        <span class="aio-pill bg-white/5 text-[var(--aio-sub)]">No active build</span>
-      @endif
-    </div>
-  </div>
+    {{-- Errors --}}
+    @if ($errors->any())
+        <div style="color: red; margin-bottom: 10px;">
+            <ul>
+                @foreach ($errors->all() as $e)
+                    <li>{{ $e }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
 
-  {{-- FLASH --}}
-  @if (session('success'))
-    <div class="pill-card outline-neon p-4 text-[var(--aio-ink)]">
-      <span class="aio-pill pill-neon">Success</span>
-      <span class="ml-2">{{ session('success') }}</span>
-    </div>
-  @endif
-
-  {{-- ERRORS --}}
-  @if ($errors->any())
-    <div class="pill-card outline-mag p-4 text-[var(--aio-ink)]">
-      <span class="aio-pill pill-mag">Fix these</span>
-      <ul class="list-disc pl-5 mt-2 space-y-1 text-sm">
-        @foreach ($errors->all() as $e)
-          <li>{{ $e }}</li>
-        @endforeach
-      </ul>
-    </div>
-  @endif
-
-  {{-- PING --}}
-  <button type="button" class="aio-pill pill-cya" wire:click="ping">
-    Test Livewire Ping
-  </button>
-
-  {{-- UPLOAD CARD --}}
-  <div class="pill-card outline-cya p-5 space-y-4">
-    <div class="flex items-center justify-between">
-      <div class="text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <span class="aio-pill pill-cya">Upload</span>
-        <span>New Build</span>
-      </div>
-
-      <div class="text-xs muted">
-        Tip: customers must be on <span class="text-[var(--aio-ink)] font-medium">release-signed</span> builds for updates.
-      </div>
-    </div>
-
-    <form wire:submit.prevent="upload" class="space-y-4">
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <label class="block text-xs uppercase tracking-wide muted mb-1">Version Code</label>
-      <input type="number" wire:model.defer="version_code" class="aio-input">
-      @error('version_code') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
-    </div>
-
-    <div>
-      <label class="block text-xs uppercase tracking-wide muted mb-1">Version Name</label>
-      <input type="text" wire:model.defer="version_name" class="aio-input">
-      @error('version_name') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
-    </div>
-  </div>
-
-  <div>
-    <label class="block text-xs uppercase tracking-wide muted mb-1">Release Notes</label>
-    <textarea wire:model.defer="release_notes" class="aio-input aio-textarea"></textarea>
-    @error('release_notes') <div class="text-sm text-red-300 mt-1">{{ $message }}</div> @enderror
-  </div>
-
-  <label class="aio-pill bg-white/5 hover:bg-white/10 cursor-pointer inline-flex items-center">
-    <input type="checkbox" wire:model.defer="mandatory" class="mr-2">
-    Mandatory update
-  </label>
-
-  <div class="space-y-2">
-    <label class="block text-xs uppercase tracking-wide muted">APK File</label>
-
-    <input type="file" wire:model="apk" class="aio-input" accept=".apk">
-
-    <button type="submit" class="aio-pill pill-neon shadow-glow" wire:loading.attr="disabled">
-      Upload Build
+    {{-- Ping --}}
+    <button wire:click="ping" type="button">
+        Test Livewire Ping
     </button>
 
-    <div class="aio-help" wire:loading>
-      Working… don’t refresh.
-    </div>
+    <hr style="margin: 20px 0;">
 
-    @error('apk') <div class="text-sm text-red-300">{{ $message }}</div> @enderror
-  </div>
-</form>
-  </div>
+    {{-- Upload form --}}
+    <form wire:submit.prevent="upload">
 
-  {{-- HISTORY --}}
-  <div class="pill-card outline-pup overflow-hidden">
-    <div class="px-4 py-3 border-b aio-divider flex items-center justify-between">
-      <div class="text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <span class="aio-pill pill-pup">History</span>
-        <span>Recent Builds</span>
-      </div>
-      <div class="text-xs muted">{{ $buildHistory->count() }} rows</div>
-    </div>
+        <div>
+            <label>Version Code</label><br>
+            <input type="number" wire:model.defer="version_code">
+        </div>
 
-    <div class="overflow-auto">
-      <table class="min-w-full text-sm">
-        <thead class="bg-white/5 sticky top-0 z-10">
-          <tr class="text-[var(--aio-sub)] uppercase text-xs">
-            <th class="px-4 py-2 text-left">Created</th>
-            <th class="px-4 py-2 text-left">Version</th>
-            <th class="px-4 py-2 text-left">Code</th>
-            <th class="px-4 py-2 text-left">Active</th>
-            <th class="px-4 py-2 text-left">Mandatory</th>
-            <th class="px-4 py-2 text-left">SHA256</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/10">
-          @forelse($buildHistory as $b)
-            <tr class="hover:bg-white/5">
-              <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $b->created_at?->diffForHumans() }}</td>
-              <td class="px-4 py-2 text-[var(--aio-ink)] font-medium">{{ $b->version_name }}</td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $b->version_code }}</td>
-              <td class="px-4 py-2">
-                <span class="aio-pill {{ $b->is_active ? 'pill-neon' : 'bg-white/5 text-[var(--aio-sub)]' }}">
-                  {{ $b->is_active ? 'Yes' : 'No' }}
-                </span>
-              </td>
-              <td class="px-4 py-2">
-                <span class="aio-pill {{ $b->mandatory ? 'pill-mag' : 'bg-white/5 text-[var(--aio-sub)]' }}">
-                  {{ $b->mandatory ? 'Yes' : 'No' }}
-                </span>
-              </td>
-              <td class="px-4 py-2">
-                <code class="text-xs break-all text-[var(--aio-ink)]">{{ $b->sha256 }}</code>
-              </td>
-            </tr>
-          @empty
+        <div>
+            <label>Version Name</label><br>
+            <input type="text" wire:model.defer="version_name">
+        </div>
+
+        <div>
+            <label>Release Notes</label><br>
+            <textarea wire:model.defer="release_notes"></textarea>
+        </div>
+
+        <div>
+            <label>
+                <input type="checkbox" wire:model.defer="mandatory">
+                Mandatory Update
+            </label>
+        </div>
+
+        <div>
+            <label>APK File</label><br>
+            <input type="file" wire:model="apk" accept=".apk">
+        </div>
+
+        <div style="margin-top: 10px;">
+            <button type="submit" wire:loading.attr="disabled">
+                Upload Build
+            </button>
+        </div>
+
+        <div wire:loading>
+            Uploading…
+        </div>
+
+    </form>
+
+    <hr style="margin: 20px 0;">
+
+    {{-- History --}}
+    <h2>Build History</h2>
+
+    <table border="1" cellpadding="6" cellspacing="0">
+        <thead>
             <tr>
-              <td colspan="6" class="px-4 py-6 text-center muted">No builds uploaded yet.</td>
+                <th>Created</th>
+                <th>Version</th>
+                <th>Code</th>
+                <th>Active</th>
+                <th>Mandatory</th>
+                <th>SHA256</th>
             </tr>
-          @endforelse
+        </thead>
+        <tbody>
+            @forelse ($buildHistory as $b)
+                <tr>
+                    <td>{{ $b->created_at?->diffForHumans() }}</td>
+                    <td>{{ $b->version_name }}</td>
+                    <td>{{ $b->version_code }}</td>
+                    <td>{{ $b->is_active ? 'Yes' : 'No' }}</td>
+                    <td>{{ $b->mandatory ? 'Yes' : 'No' }}</td>
+                    <td style="max-width: 300px; word-break: break-all;">
+                        {{ $b->sha256 }}
+                    </td>
+                </tr>
+            @empty
+                <tr>
+                    <td colspan="6">No builds yet</td>
+                </tr>
+            @endforelse
         </tbody>
-      </table>
-    </div>
-  </div>
+    </table>
 
 </div>
