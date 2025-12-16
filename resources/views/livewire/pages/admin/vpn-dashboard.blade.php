@@ -22,7 +22,7 @@
 </style>
 
 <div
-  x-data="vpnDashboard()"
+  x-data="vpnDashboard(@this)"
   x-init="
     init(
       @js($servers->mapWithKeys(fn($s)=>[$s->id=>['id'=>$s->id,'name'=>$s->name]])),
@@ -51,26 +51,18 @@
       <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
       <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
     </div>
+
     <div class="flex items-center gap-2">
       <button
+        type="button"
         class="aio-pill pill-cya text-xs"
-        @click.prevent="
-          if(window.$wire?.getLiveStats){
-            $el.disabled=true;
-            window.$wire.getLiveStats()
-              .then(res => {
-                if(res?.usersByServer){
-                  for (const sid in res.usersByServer) {
-                    _setExactList(Number(sid), res.usersByServer[sid] || []);
-                  }
-                  totals = computeTotals();
-                }
-                lastUpdated=new Date().toLocaleTimeString();
-              })
-              .finally(()=>{ $el.disabled=false });
-          }">
-        Refresh
+        :disabled="refreshing"
+        @click.prevent="refreshNow()"
+      >
+        <span x-show="!refreshing">Refresh</span>
+        <span x-show="refreshing">Refreshing…</span>
       </button>
+
       <div class="text-xs text-[var(--aio-sub)]">
         <span class="hidden sm:inline">Updated</span>
         <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
@@ -87,6 +79,7 @@
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
       </div>
     </div>
+
     <div class="pill-card outline-cya p-4 flex items-center gap-3">
       <x-icon name="o-chart-bar" class="w-6 h-6 text-[var(--aio-cya)]"/>
       <div>
@@ -94,6 +87,7 @@
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
       </div>
     </div>
+
     <div class="pill-card outline-pup p-4 flex items-center gap-3">
       <x-icon name="o-server" class="w-6 h-6 text-[var(--aio-pup)]"/>
       <div>
@@ -101,6 +95,7 @@
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
       </div>
     </div>
+
     <div class="hidden lg:flex pill-card outline-mag p-4 items-center gap-3">
       <x-icon name="o-clock" class="w-6 h-6 text-[var(--aio-mag)]"/>
       <div>
@@ -116,9 +111,11 @@
 
   {{-- FILTER TOGGLE --}}
   <button
+    type="button"
     class="aio-pill bg-white/5 border border-white/10 text-xs inline-flex items-center gap-1"
-    @click="showFilters = !showFilters; try{localStorage.setItem('vpn.showFilters', showFilters ? '1':'0')}catch{}"
-    :aria-expanded="showFilters">
+    @click="toggleFilters()"
+    :aria-expanded="showFilters"
+  >
     <x-icon name="o-filter" class="w-4 h-4" /> Filter
   </button>
 
@@ -128,25 +125,31 @@
       <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
         <x-icon name="o-filter" class="h-4 w-4 text-[var(--aio-cya)]" /> Filter by server
       </h3>
-      <button class="text-xs aio-pill bg-white/5 hover:bg-white/10" @click="showFilters=false">Close</button>
+      <button type="button" class="text-xs aio-pill bg-white/5 hover:bg-white/10" @click="showFilters=false">Close</button>
     </div>
+
     <div class="flex flex-wrap items-center gap-2">
       <button
+        type="button"
         @click="selectServer(null)"
         class="aio-pill flex items-center gap-1"
-        :class="selectedServerId===null ? 'pill-cya shadow-glow' : 'bg-white/5'">
+        :class="selectedServerId===null ? 'pill-cya shadow-glow' : 'bg-white/5'"
+      >
         <x-icon name="o-list-bullet" class="h-3.5 w-3.5" /> All
         <span class="aio-pill ml-1"
               :class="totals.active_connections>0 ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
               x-text="totals.active_connections"></span>
       </button>
     </div>
+
     <div class="flex flex-wrap gap-3">
       <template x-for="(meta, sid) in serverMeta" :key="sid">
         <button
+          type="button"
           @click="selectServer(Number(sid))"
           class="aio-pill flex items-center gap-1 whitespace-nowrap"
-          :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : 'bg-white/5'">
+          :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : 'bg-white/5'"
+        >
           <x-icon name="o-server" class="h-3.5 w-3.5 text-[var(--aio-sub)]" />
           <span x-text="meta.name"></span>
           <span class="aio-pill ml-1"
@@ -184,6 +187,7 @@
             <th class="px-4 py-2 text-left">Actions</th>
           </tr>
         </thead>
+
         <tbody class="divide-y divide-white/10">
           <template x-for="row in activeRows()" :key="row.__key">
             <tr class="hover:bg-white/5">
@@ -192,11 +196,10 @@
               </td>
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—' "></td>
+              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></td>
               <td class="px-4 py-2">
-                <span
-                  class="aio-pill flex items-center gap-1 text-[10px]"
-                  :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
+                <span class="aio-pill flex items-center gap-1 text-[10px]"
+                      :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
                   <template x-if="row.protocol?.toLowerCase() === 'wireguard'">
                     <x-icon name="o-bolt" class="w-3.5 h-3.5 text-[var(--aio-pup)]" />
                   </template>
@@ -209,8 +212,11 @@
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></td>
               <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.formatted_bytes ?? '—'"></td>
               <td class="px-4 py-2">
-                <button class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
-                        @click.prevent="disconnect(row)">Disconnect</button>
+                <button type="button"
+                        class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
+                        @click.prevent="disconnect(row)">
+                  Disconnect
+                </button>
               </td>
             </tr>
           </template>
@@ -230,21 +236,21 @@
               </div>
               <div class="text-xs muted" x-text="row.server_name"></div>
               <div class="mt-1">
-              <span
-                class="aio-pill flex items-center gap-1 text-[9px]"
-                :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
-                <template x-if="row.protocol?.toLowerCase() === 'wireguard'">
-                  <x-icon name="o-bolt" class="w-3 h-3 text-[var(--aio-pup)]" />
-                </template>
-                <template x-if="row.protocol?.toLowerCase() !== 'wireguard'">
-                  <x-icon name="o-lock-closed" class="w-3 h-3 text-[var(--aio-cya)]" />
-                </template>
-                <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
-              </span>
-            </div>
+                <span class="aio-pill flex items-center gap-1 text-[9px]"
+                      :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
+                  <template x-if="row.protocol?.toLowerCase() === 'wireguard'">
+                    <x-icon name="o-bolt" class="w-3 h-3 text-[var(--aio-pup)]" />
+                  </template>
+                  <template x-if="row.protocol?.toLowerCase() !== 'wireguard'">
+                    <x-icon name="o-lock-closed" class="w-3 h-3 text-[var(--aio-cya)]" />
+                  </template>
+                  <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
+                </span>
+              </div>
             </div>
 
-            <button class="aio-pill bg-red-500/15 text-red-300"
+            <button type="button"
+                    class="aio-pill bg-red-500/15 text-red-300"
                     @click.prevent="disconnect(row)">
               Disconnect
             </button>
@@ -255,16 +261,19 @@
               <div class="text-[10px] muted">Client IP</div>
               <div class="text-sm text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></div>
             </div>
+
             <div>
               <div class="text-[10px] muted">Virtual IP</div>
               <div class="text-sm text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></div>
             </div>
+
             <div>
               <div class="text-[10px] muted">Connected</div>
               <div class="text-sm text-[var(--aio-ink)]">
                 <span x-text="row.connected_human || '—'"></span>
               </div>
             </div>
+
             <div>
               <div class="text-[10px] muted">Transfer</div>
               <div class="text-sm text-[var(--aio-ink)]" x-text="row.formatted_bytes || '—'"></div>
@@ -287,8 +296,9 @@
     @json(route('admin.servers.disconnect', ['server' => '__SID__']));
   const fallbackUrl = (sid) => vpnDisconnectFallbackPattern.replace('__SID__', String(sid));
 
-  window.vpnDashboard = function () {
+  window.vpnDashboard = function (lw) {
     const toMB = n => (n ? (n / (1024 * 1024)).toFixed(2) : '0.00');
+
     const humanBytes = (inb, outb) => {
       const total = (inb || 0) + (outb || 0);
       if (total >= 1024 * 1024 * 1024) return (total / (1024*1024*1024)).toFixed(2) + ' GB';
@@ -296,12 +306,13 @@
       if (total >= 1024)               return (total / 1024).toFixed(2) + ' KB';
       return (total || 0) + ' B';
     };
+
     const toDate = (v) => {
       if (!v) return null;
       if (typeof v === 'number') return new Date(v * 1000);
       return new Date(v);
     };
-    const fmtDate = v => { try { const d = toDate(v); return d ? d.toISOString() : null; } catch { return null; } };
+
     const ago = v => {
       try {
         const d = toDate(v); if (!d) return '—';
@@ -315,6 +326,9 @@
     };
 
     return {
+      lw, // livewire component proxy
+      refreshing: false,
+
       serverMeta: {},
       usersByServer: {},
       totals: { online_users: 0, active_connections: 0, active_servers: 0 },
@@ -345,20 +359,50 @@
         });
 
         this._startPolling(15000);
+
+        // restore UI prefs
+        try {
+          const savedSid = localStorage.getItem('vpn.selectedServerId');
+          if (savedSid !== null && savedSid !== '') this.selectedServerId = Number(savedSid);
+          const sf = localStorage.getItem('vpn.showFilters');
+          if (sf !== null) this.showFilters = sf === '1';
+        } catch {}
+      },
+
+      toggleFilters() {
+        this.showFilters = !this.showFilters;
+        try { localStorage.setItem('vpn.showFilters', this.showFilters ? '1' : '0'); } catch {}
+      },
+
+      async refreshNow() {
+        if (this.refreshing) return;
+        this.refreshing = true;
+
+        try {
+          // ✅ REAL Livewire call (no window.$wire)
+          const res = await this.lw.call('getLiveStats');
+
+          if (res?.usersByServer) {
+            for (const sid in this.serverMeta) {
+              this._setExactList(Number(sid), res.usersByServer[sid] || []);
+            }
+            this.totals = this.computeTotals();
+          }
+
+          this.lastUpdated = new Date().toLocaleTimeString();
+        } catch (e) {
+          console.error(e);
+        } finally {
+          this.refreshing = false;
+        }
       },
 
       _waitForEcho() {
         return new Promise(resolve => {
           const t = setInterval(() => {
-            if (window.Echo) {
-              clearInterval(t);
-              resolve();
-            }
+            if (window.Echo) { clearInterval(t); resolve(); }
           }, 150);
-          setTimeout(() => {
-            clearInterval(t);
-            resolve();
-          }, 3000);
+          setTimeout(() => { clearInterval(t); resolve(); }, 3000);
         });
       },
 
@@ -385,18 +429,7 @@
 
       _startPolling(ms) {
         if (this._pollTimer) clearInterval(this._pollTimer);
-        this._pollTimer = setInterval(async () => {
-          if (!window.$wire?.getLiveStats) return;
-          try {
-            const res = await window.$wire.getLiveStats();
-            const incoming = res?.usersByServer || {};
-            for (const sid in this.serverMeta) {
-              this._setExactList(Number(sid), incoming[sid] || []);
-            }
-            this.totals = this.computeTotals();
-            this.lastUpdated = new Date().toLocaleTimeString();
-          } catch (_) {}
-        }, ms);
+        this._pollTimer = setInterval(() => this.refreshNow(), ms);
       },
 
       _shapeProtocol(raw) {
@@ -404,7 +437,6 @@
         if (protoRaw.startsWith('wire')) return 'WIREGUARD';
         if (protoRaw === 'ovpn' || protoRaw.startsWith('openvpn')) return 'OPENVPN';
         if (protoRaw) return protoRaw.toUpperCase();
-        // Heuristic fallback: WG keys are long base64
         const u = (raw?.username || '').toString();
         if (/^[A-Za-z0-9+/=]{40,}$/.test(u)) return 'WIREGUARD';
         return 'OPENVPN';
@@ -424,7 +456,6 @@
 
         return {
           __key: idKey,
-          key: idKey,
           connection_id: raw?.connection_id ?? raw?.id ?? null,
 
           server_id: Number(serverId),
@@ -436,7 +467,6 @@
           protocol,
 
           connected_at,
-          connected_fmt: fmtDate(connected_at),
           connected_human: ago(connected_at),
 
           bytes_in,
@@ -481,13 +511,16 @@
       computeTotals() {
         const unique = new Set();
         let conns = 0, activeServers = 0;
+
         Object.keys(this.serverMeta).forEach(sid => {
           const arr = Object.values(this.usersByServer[sid] || {});
           if (arr.length) activeServers++;
           conns += arr.length;
           arr.forEach(u => unique.add(u.username));
         });
+
         if (activeServers === 0) activeServers = Object.keys(this.serverMeta).length;
+
         return {
           online_users: unique.size,
           active_connections: conns,
@@ -503,20 +536,21 @@
         const ids = this.selectedServerId == null
           ? Object.keys(this.serverMeta)
           : [String(this.selectedServerId)];
+
         const rows = [];
         ids.forEach(sid => rows.push(...Object.values(this.usersByServer[sid] || {})));
+
         rows.sort((a,b) =>
-          (a.server_name||'').localeCompare(b.server_name||'')
-          || (a.username||'').localeCompare(b.username||'')
+          (a.server_name||'').localeCompare(b.server_name||'') ||
+          (a.username||'').localeCompare(b.username||'')
         );
+
         return rows;
       },
 
       selectServer(id) {
         this.selectedServerId = (id === null || id === '') ? null : Number(id);
-        try {
-          localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? '');
-        } catch {}
+        try { localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? ''); } catch {}
       },
 
       async disconnect(row) {
@@ -540,14 +574,11 @@
               headers: baseHeaders,
               body: JSON.stringify({ username: row.username, server_id: row.server_id }),
             });
+
             if (!res2.ok) {
               let data2;
               try { data2 = await res2.json(); } catch { data2 = { message: await res2.text() }; }
-              throw new Error(
-                Array.isArray(data2?.output)
-                  ? data2.output.join('\n')
-                  : (data2?.message || 'Unknown error')
-              );
+              throw new Error(Array.isArray(data2?.output) ? data2.output.join('\n') : (data2?.message || 'Unknown error'));
             }
           }
 
