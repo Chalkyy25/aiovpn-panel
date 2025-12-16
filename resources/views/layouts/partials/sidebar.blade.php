@@ -84,6 +84,23 @@
       Manage Lines
     </x-nav-link>
   </div>
+  
+  {{-- APP --}}
+<div class="mt-3">
+  <div class="px-3 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
+       x-show="!$root.sidebarCollapsed">
+    App
+  </div>
+
+  <x-nav-link
+    href="{{ route('admin.app-builds') }}"
+    :active="request()->routeIs('admin.app-builds*')"
+    icon="o-arrow-up-tray"
+    variant="neon"
+  >
+    App Builds
+  </x-nav-link>
+</div>
 
   <hr class="border-white/10 mx-2">
 
