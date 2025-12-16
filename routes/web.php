@@ -119,7 +119,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 	
     
     Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
-    Route::get('admin/app-builds/{build}/download', AppBuildDownloadController::class)->name('admin.app-builds.download');
+    Route::get('/app-builds/{build}/download', AppBuildDownloadController::class)->name('admin.app-builds.download');
 });
 
 // ============================
