@@ -84,27 +84,27 @@
       Manage Lines
     </x-nav-link>
   </div>
-  
-  {{-- APP --}}
-<div class="mt-3">
-  <div class="px-3 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
-       x-show="!$root.sidebarCollapsed">
-    App
-  </div>
-
-  <x-nav-link
-    href="{{ route('admin.app-builds') }}"
-    :active="request()->routeIs('admin.app-builds*')"
-    icon="o-arrow-up-tray"
-    variant="neon"
-  >
-    App Builds
-  </x-nav-link>
-</div>
 
   <hr class="border-white/10 mx-2">
 
-  {{-- ========= SETTINGS ========= --}}
+  {{-- ========= APP ========= --}}
+  <div class="space-y-1">
+    <div class="px-3 pt-2 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
+         x-show="!$root.sidebarCollapsed">
+      App
+    </div>
+
+    <x-nav-link href="{{ route('admin.app-builds') }}"
+                :active="request()->routeIs('admin.app-builds*')"
+                icon="o-arrow-up-tray"
+                variant="neon">
+      App Builds
+    </x-nav-link>
+  </div>
+
+  <hr class="border-white/10 mx-2">
+
+  {{-- ========= SYSTEM ========= --}}
   <div class="space-y-1">
     <div class="px-3 pt-2 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
          x-show="!$root.sidebarCollapsed">
@@ -118,32 +118,32 @@
       Settings
     </x-nav-link>
   </div>
-  
-    {{-- ========= PACKAGES ========= --}}
-<div class="space-y-1">
-  <div class="px-3 pt-2 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
-       x-show="!$root.sidebarCollapsed">
-    Packages
+
+  <hr class="border-white/10 mx-2">
+
+  {{-- ========= PACKAGES ========= --}}
+  <div class="space-y-1">
+    <div class="px-3 pt-2 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
+         x-show="!$root.sidebarCollapsed">
+      Packages
+    </div>
+
+    <x-nav-link href="{{ route('admin.packages.index') }}"
+                :active="request()->routeIs('admin.packages.index') || request()->routeIs('admin.packages.edit')"
+                icon="o-archive-box"
+                variant="pup">
+      Manage Packages
+    </x-nav-link>
+
+    <x-nav-link href="{{ route('admin.packages.create') }}"
+                :active="request()->routeIs('admin.packages.create')"
+                icon="o-plus-circle"
+                variant="neon">
+      New Package
+    </x-nav-link>
   </div>
 
-  {{-- Manage Packages = all package routes EXCEPT create --}}
-  <x-nav-link href="{{ route('admin.packages.index') }}"
-              :active="request()->routeIs('admin.packages.index') || request()->routeIs('admin.packages.edit')"
-              icon="o-archive-box"
-              variant="pup">
-    Manage Packages
-  </x-nav-link>
-
-  {{-- New Package = only the create route --}}
-  <x-nav-link href="{{ route('admin.packages.create') }}"
-              :active="request()->routeIs('admin.packages.create')"
-              icon="o-plus-circle"
-              variant="neon">
-    New Package
-  </x-nav-link>
-</div>
-
-  {{-- ========= CREDITS ========= --}}
+  {{-- ========= BILLING ========= --}}
   @auth
     @php
       $u = auth()->user();
@@ -151,8 +151,10 @@
       $isReseller = method_exists($u,'isReseller') ? $u->isReseller() : ($u->role === 'reseller');
       $creditsUrl = $isAdmin ? route('admin.credits') : ($isReseller ? route('reseller.credits') : '#');
     @endphp
+
     @if ($isAdmin || $isReseller)
       <hr class="border-white/10 mx-2">
+
       <div class="space-y-1">
         <div class="px-3 pt-2 text-[11px] uppercase tracking-wide text-[var(--aio-sub)]"
              x-show="!$root.sidebarCollapsed">
