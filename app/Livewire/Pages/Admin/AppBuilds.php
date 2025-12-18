@@ -19,37 +19,35 @@ class AppBuilds extends Component
     public bool $mandatory = false;
     public ?string $release_notes = null;
 
-    /** @var mixed */
+    /** @var \Livewire\Features\SupportFileUploads\TemporaryUploadedFile|null */
     public $apk = null;
 
     public function rules(): array
-{
-    return [
-        'version_code'  => 'required|integer|min:1',
-        'version_name'  => 'required|string|max:50',
-        'mandatory'     => 'boolean',
-        'release_notes' => 'nullable|string|max:2000',
-        'apk' => 'required|file|mimetypes:application/vnd.android.package-archive,application/octet-stream,application/zip|max:200000',
-    ];
-}
+    {
+        return [
+            'version_code'  => 'required|integer|min:1',
+            'version_name'  => 'required|string|max:50',
+            'mandatory'     => 'boolean',
+            'release_notes' => 'nullable|string|max:2000',
+
+            // MIME detection for APK is unreliable. Validate size here; enforce .apk manually.
+            'apk' => 'required|file|max:200000', // ~200MB
+        ];
+    }
+
+    public function mount(): void
+    {
+        if ($latest = $this->latestBuild) {
+            $this->version_code = (int) $latest->version_code + 1;
+        }
+    }
+
     public function ping(): void
     {
         logger()->info('APP BUILDS PING HIT');
         session()->flash('success', 'Ping OK (Livewire is working).');
     }
 
-    public function mount(): void
-    {
-        $latest = AppBuild::where('is_active', true)->orderByDesc('version_code')->first();
-        if ($latest) {
-            $this->version_code = (int) $latest->version_code + 1;
-        }
-    }
-
-    /**
-     * IMPORTANT:
-     * DO NOT name this method "upload" — it conflicts with Livewire's JS $wire.upload helper.
-     */
     public function saveBuild(): void
     {
         logger()->info('APP BUILD SAVE START', [
@@ -61,19 +59,32 @@ class AppBuilds extends Component
 
         $this->validate();
 
-        // Store under storage/app/app-updates
-        $path = $this->apk->store('app-updates', 'local');
+        // Hard enforce .apk by filename (most reliable across devices/browsers)
+        $original = strtolower((string) ($this->apk?->getClientOriginalName() ?? ''));
+        if (!str_ends_with($original, '.apk')) {
+            $this->addError('apk', 'File must be an .apk');
+            return;
+        }
+
+        // Always store as .apk (prevents random .zip filenames)
+        $safeVersion = preg_replace('/[^0-9A-Za-z._-]/', '-', $this->version_name) ?: 'build';
+        $filename = "aiovpn-{$this->version_code}-{$safeVersion}-" . now()->format('YmdHis') . ".apk";
+
+        $path = $this->apk->storeAs('app-updates', $filename, 'local');
         $fullPath = Storage::disk('local')->path($path);
 
         if (!is_file($fullPath)) {
-            logger()->error('APP BUILD SAVE FAILED: file missing after store()', ['path' => $path, 'full' => $fullPath]);
+            logger()->error('APP BUILD SAVE FAILED: file missing after storeAs()', [
+                'path' => $path,
+                'full' => $fullPath,
+            ]);
             $this->addError('apk', 'Upload failed: file not found after saving.');
             return;
         }
 
         $sha256 = hash_file('sha256', $fullPath);
 
-        // deactivate previous active build
+        // Deactivate previous active build
         AppBuild::query()->where('is_active', true)->update(['is_active' => false]);
 
         $build = AppBuild::create([
@@ -92,38 +103,32 @@ class AppBuilds extends Component
             'sha'  => $sha256,
         ]);
 
-        // reset form but keep version_code (we’ll bump it)
+        // Reset form but bump version_code for next upload
         $this->reset(['version_name', 'mandatory', 'release_notes', 'apk']);
         $this->version_code = (int) $build->version_code + 1;
 
         session()->flash('success', "Build uploaded ✅ (ID: {$build->id})");
     }
 
-    public function getLatestBuildProperty(): ?AppBuild
-    {
-        return AppBuild::where('is_active', true)->orderByDesc('version_code')->first();
-    }
-
-    public function getBuildHistoryProperty()
-    {
-        return AppBuild::orderByDesc('created_at')->limit(10)->get();
-    }
-    
     public function deactivateBuild(int $buildId): void
-{
-    $build = AppBuild::findOrFail($buildId);
+    {
+        $build = AppBuild::findOrFail($buildId);
 
-    // just flip active off
-    $build->update(['is_active' => false]);
+        // If it’s active, just flip it off.
+        $build->update(['is_active' => false]);
 
-    session()->flash('success', "Build {$build->version_name} ({$build->version_code}) deactivated ✅");
-}
+        session()->flash('success', "Build {$build->version_name} ({$build->version_code}) deactivated ✅");
+    }
 
 public function deleteBuild(int $buildId): void
 {
     $build = AppBuild::findOrFail($buildId);
 
-    // delete the file first (safe even if missing)
+    if ($build->is_active) {
+        $this->addError('build', 'You can’t delete the active build. Deactivate it first.');
+        return;
+    }
+
     if ($build->apk_path) {
         Storage::disk('local')->delete($build->apk_path);
     }
@@ -133,11 +138,22 @@ public function deleteBuild(int $buildId): void
     session()->flash('success', "Build deleted ✅");
 }
 
+
+    public function getLatestBuildProperty(): ?AppBuild
+    {
+        return AppBuild::where('is_active', true)->orderByDesc('version_code')->first();
+    }
+
+    public function getBuildHistoryProperty()
+    {
+        return AppBuild::orderByDesc('created_at')->limit(20)->get();
+    }
+
     public function render(): ViewContract
     {
         return view('livewire.pages.admin.app-builds', [
-            'latestBuild'   => $this->latestBuild,
-            'buildHistory'  => $this->buildHistory,
+            'latestBuild'  => $this->latestBuild,
+            'buildHistory' => $this->buildHistory,
         ]);
     }
 }
