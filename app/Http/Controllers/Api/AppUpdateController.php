@@ -30,15 +30,19 @@ class AppUpdateController extends Controller
     }
 
     public function download(Request $request, int $id)
-    {
-        $build = AppBuild::findOrFail($id);
+{
+    $build = AppBuild::findOrFail($id);
 
-        return Storage::disk('local')
-            ->download($build->apk_path, "aiovpn-{$build->version_name}.apk")
-            ->setHeaders([
-                'Content-Type'  => 'application/vnd.android.package-archive',
-                'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
-                'Pragma'        => 'no-cache',
-            ]);
-    }
+    $filename = "aiovpn-{$build->version_name}.apk";
+
+    return Storage::disk('local')->download(
+        $build->apk_path,
+        $filename,
+        [
+            'Content-Type'  => 'application/vnd.android.package-archive',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma'        => 'no-cache',
+        ]
+    );
+}
 }
