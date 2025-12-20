@@ -6,6 +6,7 @@ use App\Models\VpnUser;
 
 // ✅ Controllers
 use App\Http\Controllers\WireGuardConfigController;
+use App\Http\Controllers\AppBuildDownloadController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\DashboardController;
@@ -67,7 +68,9 @@ Route::get('/debug-db', function () {
     return config('database.connections.mysql');
 });
 
-
+Route::get('/downloads/app.apk', [AppBuildDownloadController::class, 'latest'])
+    ->name('downloads.app.latest');
+    
 // ======================
 // ✅ Admin Routes
 // ======================
