@@ -6,7 +6,6 @@ use App\Models\VpnUser;
 
 // ✅ Controllers
 use App\Http\Controllers\WireGuardConfigController;
-use App\Http\Controllers\AppBuildDownloadController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\PackageController;
 use App\Http\Controllers\DashboardController;
