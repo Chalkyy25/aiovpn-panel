@@ -122,8 +122,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 	
     
     Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
-    Route::get('/app-builds/{build}/download', AppBuildDownloadController::class)->name('app-builds.download');
-});
+    Route::get('/app-builds/{build}/download', AdminAppBuildDownloadController::class)
+    ->name('app-builds.download');
 
 // ============================
 // ✅ VPN Server Management
