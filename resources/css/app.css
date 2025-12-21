@@ -7,7 +7,7 @@
 [x-cloak] { display: none !important; }
 
 /* =========================
-   Theme tokens (neutral)
+   Theme tokens
    Light default, .dark overrides
    ========================= */
 :root {
@@ -15,13 +15,6 @@
   --aio-card:    #ffffff;
   --aio-ink:     #111827;
   --aio-sub:     #6b7280;
-    --aio-bg-1: #123456;   /* stronger top */
-  --aio-bg-2: #e6eef9;   /* deeper bottom */
-  --aio-glow: radial-gradient(
-    800px 420px at 20% -10%,
-    rgba(37,99,235,0.18),
-    transparent 60%
-  );
 
   --aio-border:  rgba(17,24,39,.12);
   --aio-soft:    rgba(17,24,39,.06);
@@ -33,6 +26,10 @@
   --aio-success: #16a34a;
   --aio-warning: #d97706;
   --aio-danger:  #dc2626;
+
+  /* Background gradient stops */
+  --aio-bg-1: #f7faff;   /* top */
+  --aio-bg-2: #e6eef9;   /* bottom */
 }
 
 .dark {
@@ -40,10 +37,6 @@
   --aio-card:    #111827;
   --aio-ink:     #e5e7eb;
   --aio-sub:     #9ca3af;
-  --aio-bg-1: #0b1220;   /* top */
-  --aio-bg-2: #0f1a33;
-    --aio-glow: color-mix(in srgb, var(--aio-accent) 18%, transparent);
-
 
   --aio-border:  rgba(255,255,255,.12);
   --aio-soft:    rgba(255,255,255,.06);
@@ -55,36 +48,48 @@
   --aio-success: #22c55e;
   --aio-warning: #f59e0b;
   --aio-danger:  #ef4444;
+
+  /* Background gradient stops */
+  --aio-bg-1: #0b1220;   /* top */
+  --aio-bg-2: #0f1a33;   /* bottom */
 }
 
 /* =========================
    Base
    ========================= */
 @layer base {
+  html, body { min-height: 100%; }
+
   body {
     color: var(--aio-ink);
-    background:
-      var(--aio-glow),
-      radial-gradient(
-        900px 500px at 110% 10%,
-        rgba(37,99,235,0.12),
-        transparent 55%
-      ),
-      linear-gradient(
-        180deg,
-        var(--aio-bg-1),
-        var(--aio-bg-2)
-      );
-    background-attachment: fixed;
+    background-color: var(--aio-bg);
   }
 }
 
 /* =========================
-   Components
+   Background (single source of truth)
+   Apply .aio-bg to <body>
    ========================= */
 @layer components {
+  .aio-bg {
+    background:
+      radial-gradient(800px 420px at 20% -10%, rgba(37,99,235,.18), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(37,99,235,.12), transparent 55%),
+      linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
+    background-color: var(--aio-bg);
+  }
 
-  /* Cards / header surfaces (legacy classes still supported) */
+  .dark .aio-bg {
+    background:
+      radial-gradient(800px 420px at 20% -10%, rgba(96,165,250,.16), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(96,165,250,.10), transparent 55%),
+      linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
+    background-color: var(--aio-bg);
+  }
+
+  /* =========================
+     Cards / header surfaces
+     ========================= */
   .aio-card,
   .aio-header {
     @apply rounded-xl border;
@@ -94,7 +99,6 @@
 
   .aio-divider { border-color: var(--aio-border); }
 
-  /* Sections (if still used) */
   .aio-section {
     @apply rounded-2xl border p-5 md:p-6;
     background: var(--aio-card);
@@ -141,14 +145,13 @@
     box-shadow: 0 0 0 3px var(--aio-accent-weak);
   }
 
-  /* Select arrow (consistent across browsers) */
   .form-select {
     appearance: none;
     background-image:
       linear-gradient(45deg, transparent 50%, currentColor 50%),
       linear-gradient(135deg, currentColor 50%, transparent 50%);
-    background-position: calc(100% - 22px) calc(1.05em),
-                         calc(100% - 16px) calc(1.05em);
+    background-position: calc(100% - 22px) 1.05em,
+                         calc(100% - 16px) 1.05em;
     background-size: 6px 6px, 6px 6px;
     background-repeat: no-repeat;
     padding-right: 2.5rem;
@@ -163,7 +166,7 @@
   }
 
   /* =========================
-     Pills / status
+     Pills
      ========================= */
   .aio-pill {
     display:inline-flex; align-items:center; gap:.375rem;
@@ -192,7 +195,7 @@
   }
 
   /* =========================
-     Dashboard cards
+     Dashboard tiles
      ========================= */
   .pill-card {
     @apply rounded-xl border;
@@ -207,14 +210,7 @@
   }
 
   /* =========================
-     Sidebar (neutral)
-     ========================= */
-  .nav-pill { background: transparent; border: 1px solid transparent; }
-
-  /* (Optional) old classes still won't break, but nav-link now controls active styles */
-
-  /* =========================
-     Tables (single source of truth)
+     Tables
      ========================= */
   .aio-table {
     width: 100%;
@@ -246,12 +242,6 @@
   .aio-table .cell-muted  { color: var(--aio-sub); }
   .aio-table .cell-right  { text-align: right; }
   .aio-table .cell-nowrap { white-space: nowrap; }
-
-  /* Compatibility: if any old pages still use table-dark */
-  .table-dark { @apply min-w-full text-sm text-left; }
-  .table-dark thead tr,
-  .table-dark tbody tr { border-bottom: 1px solid var(--aio-border); }
-  .table-dark th, .table-dark td { @apply px-4 py-2; }
 
   .muted { color: var(--aio-sub); }
 }
