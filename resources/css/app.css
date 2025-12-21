@@ -12,7 +12,7 @@
    ========================= */
 :root {
   --aio-bg:      #334155;
-  --aio-card:    #ffffff;
+  --aio-card:    #f8fafc;
   --aio-ink:     #1f2937;
   --aio-sub:     #64748b;
 
@@ -97,18 +97,18 @@
     @apply rounded-xl border;
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 
-                0 8px 10px -6px rgba(0, 0, 0, 0.12),
-                0 20px 40px -10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 
+                0 8px 10px -6px rgba(0, 0, 0, 0.2),
+                0 20px 40px -10px rgba(0, 0, 0, 0.18);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   
   .aio-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.2), 
-                0 12px 20px -8px rgba(0, 0, 0, 0.15),
-                0 30px 60px -12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.3), 
+                0 12px 20px -8px rgba(0, 0, 0, 0.25),
+                0 30px 60px -12px rgba(0, 0, 0, 0.22);
   }
 
   .aio-divider { border-color: var(--aio-border); }
@@ -117,18 +117,18 @@
     @apply rounded-2xl border;
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 
-                0 8px 10px -6px rgba(0, 0, 0, 0.12),
-                0 20px 40px -10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 
+                0 8px 10px -6px rgba(0, 0, 0, 0.2),
+                0 20px 40px -10px rgba(0, 0, 0, 0.18);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   
   .aio-section:hover {
     transform: translateY(-4px);
-    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.2), 
-                0 12px 20px -8px rgba(0, 0, 0, 0.15),
-                0 30px 60px -12px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.3), 
+                0 12px 20px -8px rgba(0, 0, 0, 0.25),
+                0 30px 60px -12px rgba(0, 0, 0, 0.22);
   }
   .aio-section + .aio-section { @apply mt-6; }
 
@@ -229,17 +229,17 @@
     @apply rounded-xl border;
     background: var(--aio-card);
     border-color: var(--aio-border);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 
-                0 8px 10px -6px rgba(0, 0, 0, 0.12),
-                0 20px 40px -10px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 
+                0 8px 10px -6px rgba(0, 0, 0, 0.2),
+                0 20px 40px -10px rgba(0, 0, 0, 0.18);
     transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
   .pill-card:hover {
     transform: translateY(-6px);
     background: var(--aio-card);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 
-                0 15px 25px -10px rgba(0, 0, 0, 0.2),
-                0 40px 70px -15px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35), 
+                0 15px 25px -10px rgba(0, 0, 0, 0.28),
+                0 40px 70px -15px rgba(0, 0, 0, 0.25);
   }
 
   /* =========================
