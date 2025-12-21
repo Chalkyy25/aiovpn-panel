@@ -10,17 +10,27 @@
    AIO brand (logo colors)
    ========================= */
 :root {
-  /* base surfaces */
-  --aio-bg:   #0b0f1a;  /* page background (near-black blue) */
-  --aio-card: #111827;  /* card surface (dark slate) */
-  --aio-ink:  #e5e7eb;  /* primary text */
-  --aio-sub:  #9ca3af;  /* secondary text */
+  /* LIGHT MODE (default) */
+  --aio-bg:   #f3f4f6;   /* page background */
+  --aio-card: #ffffff;   /* card surface */
+  --aio-ink:  #111827;   /* primary text */
+  --aio-sub:  #6b7280;   /* secondary text */
+  --aio-border: rgba(17,24,39,.12);
 
-  /* brand accents from the logo */
-  --aio-neon: #3DFF7F;  /* neon green */
-  --aio-mag:  #FF2FB9;  /* magenta */
-  --aio-pup:  #7C4DFF;  /* electric purple */
-  --aio-cya:  #3BA7F0;  /* cyan/blue */
+  /* brand accents stay same */
+  --aio-neon: #3DFF7F;
+  --aio-mag:  #FF2FB9;
+  --aio-pup:  #7C4DFF;
+  --aio-cya:  #3BA7F0;
+}
+
+.dark {
+  /* DARK MODE */
+  --aio-bg:   #0b0f1a;
+  --aio-card: #111827;
+  --aio-ink:  #e5e7eb;
+  --aio-sub:  #9ca3af;
+  --aio-border: rgba(255,255,255,.12);
 }
 
 /* Global dark base */
