@@ -1,26 +1,5 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
 
-<style>
-  :root{
-    --aio-neon:#3dff7f;--aio-cya:#39d9ff;--aio-pup:#9a79ff;--aio-mag:#ff4fd8;
-    --aio-ink:#e6e8ef;--aio-sub:#9aa3b2;
-  }
-  .muted{color:var(--aio-sub)}
-  .aio-divider{border-color:rgba(255,255,255,.08)}
-  .aio-pill{display:inline-flex;align-items:center;gap:.35rem;border-radius:9999px;padding:.25rem .6rem;font-weight:600;font-size:.75rem;line-height:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
-  .pill-neon{background:rgba(61,255,127,.12);border-color:rgba(61,255,127,.35);color:var(--aio-ink)}
-  .pill-cya{background:rgba(57,217,255,.12);border-color:rgba(57,217,255,.35);color:var(--aio-ink)}
-  .pill-pup{background:rgba(154,121,255,.12);border-color:rgba(154,121,255,.35);color:var(--aio-ink)}
-  .pill-mag{background:rgba(255,79,216,.12);border-color:rgba(255,79,216,.35);color:var(--aio-ink)}
-  .pill-card{border-radius:.75rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}
-  .outline-neon{box-shadow:inset 0 0 0 1px rgba(61,255,127,.25)}
-  .outline-cya{box-shadow:inset 0 0 0 1px rgba(57,217,255,.25)}
-  .outline-pup{box-shadow:inset 0 0 0 1px rgba(154,121,255,.25)}
-  .outline-mag{box-shadow:inset 0 0 0 1px rgba(255,79,216,.25)}
-  .shadow-glow{box-shadow:0 0 0 3px rgba(61,255,127,.15),0 6px 18px rgba(0,0,0,.35)}
-  .no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
-</style>
-
 <div
   x-data="vpnDashboard(@this)"
   x-init="
@@ -46,41 +25,23 @@
   class="space-y-6"
 >
 
-<button data-modal-target="flowbiteTest" data-modal-toggle="flowbiteTest"
-  class="px-4 py-2 text-white bg-blue-600 rounded-lg">
-  Test Flowbite Modal
-</button>
-
-<div id="flowbiteTest" tabindex="-1"
-  class="hidden fixed inset-0 z-50 items-center justify-center p-4 overflow-x-hidden overflow-y-auto">
-  <div class="relative w-full max-w-md">
-    <div class="relative bg-white rounded-lg shadow">
-      <div class="p-4 text-black">
-        Flowbite is working.
-      </div>
-    </div>
-  </div>
-</div>
-
   {{-- HEADER --}}
-  <div class="flex items-end justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-[var(--aio-ink)]">VPN Dashboard</h1>
+  <div class="flex items-end justify-between gap-3">
+    <div class="min-w-0">
+      <h1 class="text-2xl font-bold text-[var(--aio-ink)] truncate">VPN Dashboard</h1>
       <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
     </div>
 
-    <div class="flex items-center gap-2">
-      <button
-        type="button"
-        class="aio-pill pill-cya text-xs"
+    <div class="flex items-center gap-3 shrink-0">
+      <x-button type="button" variant="secondary" size="sm"
         :disabled="refreshing"
         @click.prevent="refreshNow()"
       >
         <span x-show="!refreshing">Refresh</span>
         <span x-show="refreshing">Refreshing…</span>
-      </button>
+      </x-button>
 
-      <div class="text-xs text-[var(--aio-sub)]">
+      <div class="text-xs text-[var(--aio-sub)] text-right">
         <span class="hidden sm:inline">Updated</span>
         <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
       </div>
@@ -89,212 +50,207 @@
 
   {{-- STAT TILES --}}
   <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-    <div class="pill-card outline-neon p-4 flex items-center gap-3">
-      <x-icon name="o-user-group" class="w-6 h-6 text-[var(--aio-neon)]"/>
+    <div class="pill-card p-4 flex items-center gap-3">
+      <x-icon name="o-user-group" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
-        <div class="text-xs muted">Online</div>
+        <div class="text-xs text-[var(--aio-sub)]">Online</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
       </div>
     </div>
 
-    <div class="pill-card outline-cya p-4 flex items-center gap-3">
-      <x-icon name="o-chart-bar" class="w-6 h-6 text-[var(--aio-cya)]"/>
+    <div class="pill-card p-4 flex items-center gap-3">
+      <x-icon name="o-chart-bar" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
-        <div class="text-xs muted">Connections</div>
+        <div class="text-xs text-[var(--aio-sub)]">Connections</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
       </div>
     </div>
 
-    <div class="pill-card outline-pup p-4 flex items-center gap-3">
-      <x-icon name="o-server" class="w-6 h-6 text-[var(--aio-pup)]"/>
+    <div class="pill-card p-4 flex items-center gap-3">
+      <x-icon name="o-server" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
-        <div class="text-xs muted">Servers</div>
+        <div class="text-xs text-[var(--aio-sub)]">Servers</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
       </div>
     </div>
 
-    <div class="hidden lg:flex pill-card outline-mag p-4 items-center gap-3">
-      <x-icon name="o-clock" class="w-6 h-6 text-[var(--aio-mag)]"/>
+    <div class="hidden lg:flex pill-card p-4 items-center gap-3">
+      <x-icon name="o-clock" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
-        <div class="text-xs muted">Avg. Session</div>
+        <div class="text-xs text-[var(--aio-sub)]">Avg. Session</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]">
           @if($activeConnections->count() > 0)
             {{ number_format($activeConnections->avg(fn($c)=> $c->connection_duration ?? 0)/60,1) }}m
-          @else 0m @endif
+          @else
+            0m
+          @endif
         </div>
       </div>
     </div>
   </div>
 
-  {{-- FILTER TOGGLE --}}
-  <button
-    type="button"
-    class="aio-pill bg-white/5 border border-white/10 text-xs inline-flex items-center gap-1"
-    @click="toggleFilters()"
-    :aria-expanded="showFilters"
-  >
-    <x-icon name="o-filter" class="w-4 h-4" /> Filter
-  </button>
+  {{-- FILTER --}}
+  <div class="flex items-center justify-between gap-3">
+    <x-button type="button" variant="secondary" size="sm"
+      @click="toggleFilters()"
+      :aria-expanded="showFilters"
+      class="gap-2"
+    >
+      <x-icon name="o-filter" class="w-4 h-4" />
+      Filter
+    </x-button>
 
-  {{-- SERVER FILTER --}}
+    <div class="text-xs text-[var(--aio-sub)]" x-show="selectedServerId !== null" x-cloak>
+      Showing server:
+      <span class="font-medium text-[var(--aio-ink)]" x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span>
+    </div>
+  </div>
+
+  {{-- SERVER FILTER PANEL --}}
   <div x-show="showFilters" x-transition x-cloak class="aio-card p-4 space-y-4">
-    <div class="flex items-center justify-between">
-      <h3 class="text-base sm:text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <x-icon name="o-filter" class="h-4 w-4 text-[var(--aio-cya)]" /> Filter by server
+    <div class="flex items-center justify-between gap-3">
+      <h3 class="text-base font-semibold text-[var(--aio-ink)] flex items-center gap-2">
+        <x-icon name="o-filter" class="h-4 w-4 text-[var(--aio-accent)]" />
+        Filter by server
       </h3>
-      <button type="button" class="text-xs aio-pill bg-white/5 hover:bg-white/10" @click="showFilters=false">Close</button>
+
+      <x-button type="button" variant="ghost" size="sm" @click="showFilters=false">
+        Close
+      </x-button>
     </div>
 
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex flex-wrap gap-2">
       <button
         type="button"
         @click="selectServer(null)"
-        class="aio-pill flex items-center gap-1"
-        :class="selectedServerId===null ? 'pill-cya shadow-glow' : 'bg-white/5'"
+        class="aio-pill"
+        :class="selectedServerId===null ? 'ring-2 ring-[var(--aio-accent)]' : ''"
       >
-        <x-icon name="o-list-bullet" class="h-3.5 w-3.5" /> All
-        <span class="aio-pill ml-1"
-              :class="totals.active_connections>0 ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
-              x-text="totals.active_connections"></span>
+        All
+        <span class="aio-pill" x-text="totals.active_connections"></span>
       </button>
-    </div>
 
-    <div class="flex flex-wrap gap-3">
       <template x-for="(meta, sid) in serverMeta" :key="sid">
         <button
           type="button"
           @click="selectServer(Number(sid))"
-          class="aio-pill flex items-center gap-1 whitespace-nowrap"
-          :class="selectedServerId===Number(sid) ? 'pill-pup shadow-glow' : 'bg-white/5'"
+          class="aio-pill"
+          :class="selectedServerId===Number(sid) ? 'ring-2 ring-[var(--aio-accent)]' : ''"
         >
-          <x-icon name="o-server" class="h-3.5 w-3.5 text-[var(--aio-sub)]" />
           <span x-text="meta.name"></span>
-          <span class="aio-pill ml-1"
-                :class="serverUsersCount(Number(sid))>0 ? 'pill-neon' : 'bg-white/10 text-[var(--aio-sub)]'"
-                x-text="serverUsersCount(Number(sid))"></span>
+          <span class="aio-pill" x-text="serverUsersCount(Number(sid))"></span>
         </button>
       </template>
     </div>
   </div>
 
   {{-- ACTIVE CONNECTIONS --}}
-  <div class="aio-card overflow-hidden mt-6">
-    <div class="px-4 py-3 border-b aio-divider flex items-center justify-between">
-      <div class="text-lg font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <x-icon name="o-list-bullet" class="w-5 h-5 text-[var(--aio-cya)]"/> Active Connections
-        <template x-if="selectedServerId">
-          <span> — <span x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span></span>
-        </template>
-      </div>
-      <div class="text-xs muted"><span x-text="activeRows().length"></span> rows</div>
-    </div>
-
+  <x-table
+    title="Active Connections"
+    :subtitle="''"
+    class="mt-2"
+  >
     {{-- Desktop table --}}
-    <div class="hidden md:block overflow-auto">
-      <table class="min-w-full text-sm">
-        <thead class="bg-white/5 sticky top-0 z-10">
-          <tr class="text-[var(--aio-sub)] uppercase text-xs">
-            <th class="px-4 py-2 text-left">User</th>
-            <th class="px-4 py-2 text-left">Server</th>
-            <th class="px-4 py-2 text-left">Client IP</th>
-            <th class="px-4 py-2 text-left">Virtual IP</th>
-            <th class="px-4 py-2 text-left">Protocol</th>
-            <th class="px-4 py-2 text-left">Connected</th>
-            <th class="px-4 py-2 text-left">Transfer</th>
-            <th class="px-4 py-2 text-left">Actions</th>
-          </tr>
-        </thead>
+    <thead class="hidden md:table-header-group">
+      <tr>
+        <th>User</th>
+        <th>Server</th>
+        <th>Client IP</th>
+        <th>Virtual IP</th>
+        <th>Protocol</th>
+        <th>Connected</th>
+        <th>Transfer</th>
+        <th class="cell-right">Actions</th>
+      </tr>
+    </thead>
 
-        <tbody class="divide-y divide-white/10">
-          <template x-for="row in activeRows()" :key="row.__key">
-            <tr class="hover:bg-white/5">
-              <td class="px-4 py-2">
-                <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
-              </td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.server_name"></td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></td>
-              <td class="px-4 py-2">
-                <span class="aio-pill flex items-center gap-1 text-[10px]"
-                      :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
-                  <template x-if="row.protocol?.toLowerCase() === 'wireguard'">
-                    <x-icon name="o-bolt" class="w-3.5 h-3.5 text-[var(--aio-pup)]" />
-                  </template>
-                  <template x-if="row.protocol?.toLowerCase() !== 'wireguard'">
-                    <x-icon name="o-lock-closed" class="w-3.5 h-3.5 text-[var(--aio-cya)]" />
-                  </template>
-                  <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
-                </span>
-              </td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.connected_human ?? '—'"></td>
-              <td class="px-4 py-2 text-[var(--aio-ink)]" x-text="row.formatted_bytes ?? '—'"></td>
-              <td class="px-4 py-2">
-                <button type="button"
-                        class="aio-pill bg-red-500/15 text-red-300 hover:shadow-glow"
-                        @click.prevent="disconnect(row)">
-                  Disconnect
-                </button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
+    <tbody class="hidden md:table-row-group">
+      <template x-for="row in activeRows()" :key="row.__key">
+        <tr>
+          <td>
+            <span class="font-medium" x-text="row.username"></span>
+          </td>
+          <td class="cell-muted" x-text="row.server_name"></td>
+          <td x-text="row.client_ip || '—'"></td>
+          <td x-text="row.virtual_ip || '—'"></td>
+
+          <td>
+            <span class="aio-pill">
+              <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
+            </span>
+          </td>
+
+          <td x-text="row.connected_human ?? '—'"></td>
+          <td x-text="row.formatted_bytes ?? '—'"></td>
+
+          <td class="cell-right">
+            <x-button type="button" variant="danger" size="sm"
+              @click.prevent="disconnect(row)"
+            >
+              Disconnect
+            </x-button>
+          </td>
+        </tr>
+      </template>
+
+      <tr x-show="activeRows().length===0" x-cloak>
+        <td colspan="8" class="text-center text-[var(--aio-sub)] py-6">
+          No active connections
+        </td>
+      </tr>
+    </tbody>
+  </x-table>
+
+  {{-- Mobile cards --}}
+  <div class="md:hidden aio-card overflow-hidden">
+    <div class="px-4 py-3 border-b border-[var(--aio-border)] flex items-center justify-between">
+      <div class="text-sm font-semibold text-[var(--aio-ink)]">Active Connections</div>
+      <div class="text-xs text-[var(--aio-sub)]">
+        <span x-text="activeRows().length"></span> rows
+      </div>
     </div>
 
-    {{-- Mobile cards --}}
-    <div class="md:hidden divide-y divide-white/10">
+    <div class="divide-y" style="border-color: var(--aio-border)">
       <template x-for="row in activeRows()" :key="row.__key">
         <div class="p-4 space-y-3">
           <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="h-2.5 w-2.5 rounded-full bg-[var(--aio-neon)]"></span>
-                <span class="font-medium text-[var(--aio-ink)]" x-text="row.username"></span>
-              </div>
-              <div class="text-xs muted" x-text="row.server_name"></div>
-              <div class="mt-1">
-                <span class="aio-pill flex items-center gap-1 text-[9px]"
-                      :class="row.protocol?.toLowerCase() === 'wireguard' ? 'pill-pup' : 'pill-cya'">
-                  <template x-if="row.protocol?.toLowerCase() === 'wireguard'">
-                    <x-icon name="o-bolt" class="w-3 h-3 text-[var(--aio-pup)]" />
-                  </template>
-                  <template x-if="row.protocol?.toLowerCase() !== 'wireguard'">
-                    <x-icon name="o-lock-closed" class="w-3 h-3 text-[var(--aio-cya)]" />
-                  </template>
+            <div class="min-w-0">
+              <div class="font-medium text-[var(--aio-ink)] truncate" x-text="row.username"></div>
+              <div class="text-xs text-[var(--aio-sub)] truncate" x-text="row.server_name"></div>
+              <div class="mt-2">
+                <span class="aio-pill">
                   <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
                 </span>
               </div>
             </div>
 
-            <button type="button"
-                    class="aio-pill bg-red-500/15 text-red-300"
-                    @click.prevent="disconnect(row)">
+            <x-button type="button" variant="danger" size="sm"
+              @click.prevent="disconnect(row)"
+            >
               Disconnect
-            </button>
+            </x-button>
           </div>
 
-          <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+          <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
             <div>
-              <div class="text-[10px] muted">Client IP</div>
-              <div class="text-sm text-[var(--aio-ink)]" x-text="row.client_ip || '—'"></div>
+              <div class="text-[10px] text-[var(--aio-sub)]">Client IP</div>
+              <div x-text="row.client_ip || '—'"></div>
             </div>
 
             <div>
-              <div class="text-[10px] muted">Virtual IP</div>
-              <div class="text-sm text-[var(--aio-ink)]" x-text="row.virtual_ip || '—'"></div>
+              <div class="text-[10px] text-[var(--aio-sub)]">Virtual IP</div>
+              <div x-text="row.virtual_ip || '—'"></div>
             </div>
 
             <div>
-              <div class="text-[10px] muted">Connected</div>
-              <div class="text-sm text-[var(--aio-ink)]">
-                <span x-text="row.connected_human || '—'"></span>
-              </div>
+              <div class="text-[10px] text-[var(--aio-sub)]">Connected</div>
+              <div x-text="row.connected_human || '—'"></div>
             </div>
 
             <div>
-              <div class="text-[10px] muted">Transfer</div>
-              <div class="text-sm text-[var(--aio-ink)]" x-text="row.formatted_bytes || '—'"></div>
-              <div class="text-[10px] muted">
+              <div class="text-[10px] text-[var(--aio-sub)]">Transfer</div>
+              <div x-text="row.formatted_bytes || '—'"></div>
+              <div class="text-[10px] text-[var(--aio-sub)]">
                 ↓<span x-text="row.down_mb || '0.00'"></span>MB
                 ↑<span x-text="row.up_mb || '0.00'"></span>MB
               </div>
@@ -303,11 +259,15 @@
         </div>
       </template>
 
-      <div x-show="activeRows().length===0" class="p-6 text-center muted">No active connections</div>
+      <div x-show="activeRows().length===0" x-cloak class="p-6 text-center text-[var(--aio-sub)]">
+        No active connections
+      </div>
     </div>
   </div>
+
 </div>
 
+{{-- KEEP YOUR EXISTING SCRIPT EXACTLY AS-IS --}}
 <script>
   const vpnDisconnectFallbackPattern =
     @json(route('admin.servers.disconnect', ['server' => '__SID__']));
@@ -343,7 +303,7 @@
     };
 
     return {
-      lw, // livewire component proxy
+      lw,
       refreshing: false,
 
       serverMeta: {},
@@ -377,7 +337,6 @@
 
         this._startPolling(15000);
 
-        // restore UI prefs
         try {
           const savedSid = localStorage.getItem('vpn.selectedServerId');
           if (savedSid !== null && savedSid !== '') this.selectedServerId = Number(savedSid);
@@ -396,7 +355,6 @@
         this.refreshing = true;
 
         try {
-          // ✅ REAL Livewire call (no window.$wire)
           const res = await this.lw.call('getLiveStats');
 
           if (res?.usersByServer) {
@@ -468,7 +426,6 @@
         const bytes_out = Number(raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent     ?? 0);
 
         const protocol = this._shapeProtocol(raw);
-
         const idKey = `${serverId}:${username}:${protocol}`;
 
         return {
