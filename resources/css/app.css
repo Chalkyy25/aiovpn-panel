@@ -28,8 +28,8 @@
   --aio-danger:  #ef4444;
 
   /* Background gradient stops - dark slate to lighter grey */
-  --aio-bg-1: #1e293b;   /* top - slate-800 */
-  --aio-bg-2: #475569;   /* bottom - slate-600 */
+  --aio-bg-1: #334155;   /* top - slate-700 (lighter) */
+  --aio-bg-2: #64748b;   /* bottom - slate-500 (lighter) */
 }
 
 .dark {
@@ -97,18 +97,19 @@
     @apply rounded-xl border;
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 
-                0 8px 10px -6px rgba(0, 0, 0, 0.2),
-                0 20px 40px -10px rgba(0, 0, 0, 0.18);
+    border-top: 2px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35), 
+                0 10px 15px -8px rgba(0, 0, 0, 0.28),
+                0 25px 50px -12px rgba(0, 0, 0, 0.25);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   
   .aio-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.3), 
-                0 12px 20px -8px rgba(0, 0, 0, 0.25),
-                0 30px 60px -12px rgba(0, 0, 0, 0.22);
+    transform: translateY(-5px);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 
+                0 18px 30px -12px rgba(0, 0, 0, 0.32),
+                0 40px 80px -16px rgba(0, 0, 0, 0.3);
   }
 
   .aio-divider { border-color: var(--aio-border); }
@@ -117,18 +118,19 @@
     @apply rounded-2xl border;
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 
-                0 8px 10px -6px rgba(0, 0, 0, 0.2),
-                0 20px 40px -10px rgba(0, 0, 0, 0.18);
+    border-top: 2px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35), 
+                0 10px 15px -8px rgba(0, 0, 0, 0.28),
+                0 25px 50px -12px rgba(0, 0, 0, 0.25);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   
   .aio-section:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.3), 
-                0 12px 20px -8px rgba(0, 0, 0, 0.25),
-                0 30px 60px -12px rgba(0, 0, 0, 0.22);
+    transform: translateY(-5px);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 
+                0 18px 30px -12px rgba(0, 0, 0, 0.32),
+                0 40px 80px -16px rgba(0, 0, 0, 0.3);
   }
   .aio-section + .aio-section { @apply mt-6; }
 
@@ -229,17 +231,18 @@
     @apply rounded-xl border;
     background: var(--aio-card);
     border-color: var(--aio-border);
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 
-                0 8px 10px -6px rgba(0, 0, 0, 0.2),
-                0 20px 40px -10px rgba(0, 0, 0, 0.18);
+    border-top: 2px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35), 
+                0 10px 15px -8px rgba(0, 0, 0, 0.28),
+                0 25px 50px -12px rgba(0, 0, 0, 0.25);
     transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
   .pill-card:hover {
-    transform: translateY(-6px);
+    transform: translateY(-8px);
     background: var(--aio-card);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35), 
-                0 15px 25px -10px rgba(0, 0, 0, 0.28),
-                0 40px 70px -15px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.45), 
+                0 20px 35px -12px rgba(0, 0, 0, 0.35),
+                0 50px 90px -20px rgba(0, 0, 0, 0.32);
   }
 
   /* =========================
