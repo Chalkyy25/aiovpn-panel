@@ -30,19 +30,19 @@
 <div {{ $attributes->merge(['class' => 'relative']) }} x-data="{ open: false }">
     {{-- Avatar button --}}
     <button @click="open = !open"
-            class="flex items-center gap-2 p-1 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            class="flex items-center gap-2 p-1 rounded-full hover:bg-[var(--aio-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--aio-accent)]">
         <img src="https://ui-avatars.com/api/?name={{ urlencode($u->name ?? 'Guest') }}&size=64&background=0D8ABC&color=fff"
              class="w-8 h-8 rounded-full" alt="User Avatar">
     </button>
 
     {{-- Dropdown --}}
     <div x-show="open" @click.outside="open = false" x-cloak
-         class="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+         class="absolute right-0 mt-2 w-56 bg-[var(--aio-card)] border border-[var(--aio-border)] rounded-md shadow-lg z-50">
 
         {{-- Header --}}
-        <div class="px-4 py-3 border-b border-gray-100">
-            <div class="font-semibold text-gray-900">{{ $u->name ?? 'Guest' }}</div>
-            <div class="text-sm text-gray-500 capitalize">{{ $u->role ?? '' }}</div>
+        <div class="px-4 py-3 border-b border-[var(--aio-border)]">
+            <div class="font-semibold text-[var(--aio-ink)]">{{ $u->name ?? 'Guest' }}</div>
+            <div class="text-sm text-[var(--aio-sub)] capitalize">{{ $u->role ?? '' }}</div>
 
             @if($isAdmin || $isReseller)
                 <a href="{{ $creditsUrl }}"
@@ -56,24 +56,24 @@
         <div class="py-1">
             @if($isLoggedIn)
                 @if($profileUrl)
-                    <a href="{{ $profileUrl }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <a href="{{ $profileUrl }}" class="block px-4 py-2 text-sm text-[var(--aio-ink)] hover:bg-[var(--aio-hover)]">
                         Profile
                     </a>
                 @endif
 
                 @if($settingsUrl)
-                    <a href="{{ $settingsUrl }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <a href="{{ $settingsUrl }}" class="block px-4 py-2 text-sm text-[var(--aio-ink)] hover:bg-[var(--aio-hover)]">
                         Settings
                     </a>
                 @endif
             @else
                 @if(Route::has('login'))
-                    <a href="{{ route('login') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <a href="{{ route('login') }}" class="block px-4 py-2 text-sm text-[var(--aio-ink)] hover:bg-[var(--aio-hover)]">
                         Log in
                     </a>
                 @endif
                 @if(Route::has('register'))
-                    <a href="{{ route('register') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                    <a href="{{ route('register') }}" class="block px-4 py-2 text-sm text-[var(--aio-ink)] hover:bg-[var(--aio-hover)]">
                         Register
                     </a>
                 @endif
@@ -82,11 +82,11 @@
 
         {{-- Logout / only when logged in --}}
         @if($isLoggedIn)
-            <div class="border-t border-gray-100">
+            <div class="border-t border-[var(--aio-border)]">
                 <form method="POST" action="{{ $logoutUrl }}">
                     @csrf
                     <button type="submit"
-                            class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50">
+                            class="block w-full text-left px-4 py-2 text-sm text-[var(--aio-danger)] hover:bg-[var(--aio-hover)]">
                         Log Out
                     </button>
                 </form>

@@ -11,47 +11,47 @@
    Light default, .dark overrides
    ========================= */
 :root {
-  --aio-bg:      #f3f4f6;
-  --aio-card:    #ffffff;
+  --aio-bg:      #1e3a8a;
+  --aio-card:    rgba(255, 255, 255, 0.85);
   --aio-ink:     #111827;
-  --aio-sub:     #6b7280;
+  --aio-sub:     #64748b;
 
-  --aio-border:  rgba(17,24,39,.12);
-  --aio-soft:    rgba(17,24,39,.06);
-  --aio-hover:   rgba(17,24,39,.03);
+  --aio-border:  rgba(255,255,255,.2);
+  --aio-soft:    rgba(255,255,255,.1);
+  --aio-hover:   rgba(255,255,255,.08);
 
-  --aio-accent:       #2563eb;     /* blue-600 */
-  --aio-accent-weak:  rgba(37,99,235,.18);
+  --aio-accent:       #3b82f6;     /* blue-500 */
+  --aio-accent-weak:  rgba(59,130,246,.25);
 
-  --aio-success: #16a34a;
-  --aio-warning: #d97706;
-  --aio-danger:  #dc2626;
-
-  /* Background gradient stops */
-  --aio-bg-1: #f7faff;   /* top */
-  --aio-bg-2: #e6eef9;   /* bottom */
-}
-
-.dark {
-  --aio-bg:      #0b1220;
-  --aio-card:    #111827;
-  --aio-ink:     #e5e7eb;
-  --aio-sub:     #9ca3af;
-
-  --aio-border:  rgba(255,255,255,.12);
-  --aio-soft:    rgba(255,255,255,.06);
-  --aio-hover:   rgba(255,255,255,.04);
-
-  --aio-accent:      #60a5fa;      /* blue-400 */
-  --aio-accent-weak: rgba(96,165,250,.22);
-
-  --aio-success: #22c55e;
+  --aio-success: #10b981;
   --aio-warning: #f59e0b;
   --aio-danger:  #ef4444;
 
-  /* Background gradient stops */
-  --aio-bg-1: #0b1220;   /* top */
-  --aio-bg-2: #0f1a33;   /* bottom */
+  /* Background gradient stops - darkish blue to lighter blue */
+  --aio-bg-1: #1e3a8a;   /* top - dark blue */
+  --aio-bg-2: #3b82f6;   /* bottom - lighter blue */
+}
+
+.dark {
+  --aio-bg:      #0f172a;
+  --aio-card:    rgba(15, 23, 42, 0.85);
+  --aio-ink:     #f1f5f9;
+  --aio-sub:     #94a3b8;
+
+  --aio-border:  rgba(148,163,184,.2);
+  --aio-soft:    rgba(148,163,184,.1);
+  --aio-hover:   rgba(148,163,184,.08);
+
+  --aio-accent:      #60a5fa;      /* blue-400 */
+  --aio-accent-weak: rgba(96,165,250,.25);
+
+  --aio-success: #34d399;
+  --aio-warning: #fbbf24;
+  --aio-danger:  #f87171;
+
+  /* Background gradient stops - dark blue gradient */
+  --aio-bg-1: #0f172a;   /* top - slate-900 */
+  --aio-bg-2: #1e3a8a;   /* bottom - blue-900 */
 }
 
 /* =========================
@@ -73,18 +73,20 @@
 @layer components {
   .aio-bg {
     background:
-      radial-gradient(800px 420px at 20% -10%, rgba(37,99,235,.18), transparent 60%),
-      radial-gradient(900px 500px at 110% 10%, rgba(37,99,235,.12), transparent 55%),
+      radial-gradient(1000px 600px at 15% -10%, rgba(147,197,253,.4), transparent 65%),
+      radial-gradient(1200px 700px at 90% 15%, rgba(96,165,250,.3), transparent 60%),
       linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
     background-color: var(--aio-bg);
+    background-attachment: fixed;
   }
 
   .dark .aio-bg {
     background:
-      radial-gradient(800px 420px at 20% -10%, rgba(96,165,250,.16), transparent 60%),
-      radial-gradient(900px 500px at 110% 10%, rgba(96,165,250,.10), transparent 55%),
+      radial-gradient(1000px 600px at 15% -10%, rgba(59,130,246,.25), transparent 65%),
+      radial-gradient(1200px 700px at 90% 15%, rgba(37,99,235,.2), transparent 60%),
       linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
     background-color: var(--aio-bg);
+    background-attachment: fixed;
   }
 
   /* =========================
@@ -93,14 +95,18 @@
   .aio-card,
   .aio-header {
     @apply rounded-xl border;
-    background: var(--aio-card);
-    border-color: var(--aio-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   .aio-divider { border-color: var(--aio-border); }
 
   .aio-section {
     @apply rounded-2xl border p-5 md:p-6;
+    background: var(--aio-card);
+    border-color: var(--aio-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12pxmd:p-6;
     background: var(--aio-card);
     border-color: var(--aio-border);
   }
@@ -125,6 +131,8 @@
   .form-input,
   .form-select,
   .form-textarea {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     @apply w-full rounded-lg border px-3 py-2.5 outline-none transition;
     background: var(--aio-card);
     border-color: var(--aio-border);
@@ -197,12 +205,14 @@
   /* =========================
      Dashboard tiles
      ========================= */
-  .pill-card {
-    @apply rounded-xl border;
-    background: var(--aio-card);
-    border-color: var(--aio-border);
+  .pbackdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
+  .pill-card:hover {
+    transform: translateY(-2px);
+    background: color-mix(in srgb, var(--aio-card) 92%, white);
+    box-shadow: 0 15px 40px rgba(0,0,0,.15
   .pill-card:hover {
     transform: translateY(-2px);
     background: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover));

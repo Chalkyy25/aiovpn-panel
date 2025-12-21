@@ -21,9 +21,10 @@
   <style>[x-cloak]{display:none!important}</style>
 </head>
 
-<body class="min-h-full font-sans antialiased" x-data="panelLayout()" x-init="init()">
+<body class="aio-bg min-h-full font-sans antialiased" x-data="panelLayout()" x-init="init()">
 
 <div class="min-h-screen flex text-[var(--aio-ink)]">
+
 
     {{-- DESKTOP SIDEBAR --}}
     <aside class="sidebar hidden md:flex md:flex-col border-r border-[var(--aio-border)] bg-[color-mix(in_srgb,var(--aio-card)_92%,transparent)] backdrop-blur-md
@@ -99,7 +100,7 @@
     <div class="flex-1 flex flex-col min-w-0">
 
       <header class="h-16 flex items-center justify-between px-3 md:px-4 sticky top-0 z-50
-                     border-b border-[var(--aio-border)] bg-[var(--aio-card)]">
+                     border-b border-[var(--aio-border)] bg-[color-mix(in_srgb,var(--aio-card)_92%,transparent)] backdrop-blur-md">
         <div class="flex items-center gap-2">
           <button class="md:hidden p-2 rounded-md border border-transparent hover:border-[var(--aio-border)]
                          hover:bg-[var(--aio-hover)]"
