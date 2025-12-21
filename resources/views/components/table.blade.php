@@ -1,11 +1,10 @@
 @props([
   'title' => null,
   'subtitle' => null,
-  'actions' => null, // slot name
 ])
 
 <div {{ $attributes->merge(['class' => 'aio-card overflow-hidden']) }}>
-  @if($title || $subtitle || $actions)
+  @if($title || $subtitle || isset($actions))
     <div class="px-4 py-3 border-b border-[var(--aio-border)] flex items-center justify-between gap-3">
       <div class="min-w-0">
         @if($title)
@@ -16,11 +15,11 @@
         @endif
       </div>
 
-      @if($actions)
-        <div class="shrink-0">
+      @isset($actions)
+        <div class="shrink-0 flex items-center gap-2">
           {{ $actions }}
         </div>
-      @endif
+      @endisset
     </div>
   @endif
 
