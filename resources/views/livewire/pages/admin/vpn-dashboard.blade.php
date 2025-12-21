@@ -26,7 +26,7 @@
 >
 
   {{-- HEADER --}}
-  <div class="flex items-end justify-between gap-3">
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
     <div class="min-w-0">
       <h1 class="text-2xl font-bold text-[var(--aio-ink)] truncate">VPN Dashboard</h1>
       <p class="text-sm text-[var(--aio-sub)]">Live overview of users, servers & connections</p>
@@ -41,7 +41,7 @@
         @click.prevent="refreshNow()"
       >
         <span x-show="!refreshing">Refresh</span>
-        <span x-show="refreshing">Refreshing…</span>
+        <span x-show="refreshing" x-cloak>Refreshing…</span>
       </x-button>
 
       <div class="text-xs text-[var(--aio-sub)] text-right">
@@ -53,7 +53,7 @@
 
   {{-- STAT TILES --}}
   <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-    <div class="pill-card p-4 flex items-center gap-3">
+    <div class="aio-card p-4 flex items-center gap-3">
       <x-icon name="o-user-group" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Online</div>
@@ -61,7 +61,7 @@
       </div>
     </div>
 
-    <div class="pill-card p-4 flex items-center gap-3">
+    <div class="aio-card p-4 flex items-center gap-3">
       <x-icon name="o-chart-bar" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Connections</div>
@@ -69,7 +69,7 @@
       </div>
     </div>
 
-    <div class="pill-card p-4 flex items-center gap-3">
+    <div class="aio-card p-4 flex items-center gap-3">
       <x-icon name="o-server" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Servers</div>
@@ -77,7 +77,7 @@
       </div>
     </div>
 
-    <div class="hidden lg:flex pill-card p-4 items-center gap-3">
+    <div class="hidden lg:flex aio-card p-4 items-center gap-3">
       <x-icon name="o-clock" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Avg. Session</div>
@@ -107,51 +107,57 @@
     </x-button>
 
     <div class="text-xs text-[var(--aio-sub)]" x-show="selectedServerId !== null" x-cloak>
-      Showing server:
+      Showing:
       <span class="font-medium text-[var(--aio-ink)]" x-text="serverMeta[selectedServerId]?.name ?? 'Unknown'"></span>
     </div>
   </div>
 
   {{-- SERVER FILTER PANEL --}}
-  <div x-show="showFilters" x-transition x-cloak class="aio-card p-4 space-y-4">
-    <div class="flex items-center justify-between gap-3">
-      <h3 class="text-base font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <x-icon name="o-filter" class="h-4 w-4 text-[var(--aio-accent)]" />
-        Filter by server
-      </h3>
+<div x-show="showFilters" x-transition x-cloak class="aio-card p-4 space-y-4">
+  <div class="flex items-center justify-between gap-3">
+    <h3 class="text-base font-semibold text-[var(--aio-ink)] flex items-center gap-2">
+      <x-icon name="o-filter" class="h-4 w-4 text-[var(--aio-accent)]" />
+      Filter by server
+    </h3>
 
-      <x-button type="button" variant="ghost" size="sm" @click="showFilters=false">
-        Close
-      </x-button>
-    </div>
-
-    <div class="flex flex-wrap gap-2">
-      <button
-        type="button"
-        @click="selectServer(null)"
-        class="aio-pill"
-        :class="selectedServerId===null ? 'ring-2 ring-[var(--aio-accent)]' : ''"
-      >
-        All
-        <span class="aio-pill" x-text="totals.active_connections"></span>
-      </button>
-
-      <template x-for="(meta, sid) in serverMeta" :key="sid">
-        <button
-          type="button"
-          @click="selectServer(Number(sid))"
-          class="aio-pill"
-          :class="selectedServerId===Number(sid) ? 'ring-2 ring-[var(--aio-accent)]' : ''"
-        >
-          <span x-text="meta.name"></span>
-          <span class="aio-pill" x-text="serverUsersCount(Number(sid))"></span>
-        </button>
-      </template>
-    </div>
+    <x-button type="button" variant="ghost" size="sm" @click="showFilters=false">
+      Close
+    </x-button>
   </div>
 
-  {{-- ACTIVE CONNECTIONS --}}
-  <x-table title="Active Connections" class="mt-2">
+  <div class="flex flex-wrap gap-2">
+    {{-- All --}}
+    <button
+      type="button"
+      @click="selectServer(null)"
+      class="aio-pill"
+      :class="selectedServerId===null ? 'ring-2 ring-[var(--aio-accent)]' : ''"
+    >
+      All
+      <x-badge tone="blue" size="sm">
+        <span x-text="totals.active_connections"></span>
+      </x-badge>
+    </button>
+
+    {{-- Per server --}}
+    <template x-for="(meta, sid) in serverMeta" :key="sid">
+      <button
+        type="button"
+        @click="selectServer(Number(sid))"
+        class="aio-pill"
+        :class="selectedServerId===Number(sid) ? 'ring-2 ring-[var(--aio-accent)]' : ''"
+      >
+        <span x-text="meta.name"></span>
+        <x-badge tone="slate" size="sm">
+          <span x-text="serverUsersCount(Number(sid))"></span>
+        </x-badge>
+      </button>
+    </template>
+  </div>
+</div>
+
+  {{-- ACTIVE CONNECTIONS (Desktop table) --}}
+  <x-table title="Active Connections" subtitle="Live connections across all servers">
     <thead class="hidden md:table-header-group">
       <tr>
         <th>User</th>
@@ -174,10 +180,10 @@
           <td x-text="row.virtual_ip || '—'"></td>
 
           <td>
-            <span class="aio-pill">
-              <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
-            </span>
-          </td>
+  <x-badge tone="slate" size="sm">
+    <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
+  </x-badge>
+</td>
 
           <td x-text="row.connected_human ?? '—'"></td>
           <td x-text="row.formatted_bytes ?? '—'"></td>
@@ -214,11 +220,12 @@
             <div class="min-w-0">
               <div class="font-medium text-[var(--aio-ink)] truncate" x-text="row.username"></div>
               <div class="text-xs text-[var(--aio-sub)] truncate" x-text="row.server_name"></div>
+
               <div class="mt-2">
-                <span class="aio-pill">
-                  <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
-                </span>
-              </div>
+  <x-badge tone="slate" size="sm">
+    <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
+  </x-badge>
+</div>
             </div>
 
             <x-button type="button" variant="danger" size="sm" @click.prevent="disconnect(row)">
