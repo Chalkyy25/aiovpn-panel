@@ -11,7 +11,7 @@
    Light default, .dark overrides
    ========================= */
 :root {
-  --aio-bg:      #1e3a8a;
+  --aio-bg:      #334155;
   --aio-card:    #ffffff;
   --aio-ink:     #1f2937;
   --aio-sub:     #64748b;
@@ -27,9 +27,9 @@
   --aio-warning: #f59e0b;
   --aio-danger:  #ef4444;
 
-  /* Background gradient stops - darkish blue to lighter blue */
-  --aio-bg-1: #1e3a8a;   /* top - dark blue */
-  --aio-bg-2: #3b82f6;   /* bottom - lighter blue */
+  /* Background gradient stops - dark slate to lighter grey */
+  --aio-bg-1: #1e293b;   /* top - slate-800 */
+  --aio-bg-2: #475569;   /* bottom - slate-600 */
 }
 
 .dark {
@@ -49,9 +49,9 @@
   --aio-warning: #fbbf24;
   --aio-danger:  #f87171;
 
-  /* Background gradient stops - dark blue gradient */
+  /* Background gradient stops - very dark slate */
   --aio-bg-1: #0f172a;   /* top - slate-900 */
-  --aio-bg-2: #1e3a8a;   /* bottom - blue-900 */
+  --aio-bg-2: #1e293b;   /* bottom - slate-800 */
 }
 
 /* =========================
@@ -73,8 +73,8 @@
 @layer components {
   .aio-bg {
     background:
-      radial-gradient(1000px 600px at 15% -10%, rgba(147,197,253,.4), transparent 65%),
-      radial-gradient(1200px 700px at 90% 15%, rgba(96,165,250,.3), transparent 60%),
+      radial-gradient(1000px 600px at 15% -10%, rgba(148,163,184,.15), transparent 65%),
+      radial-gradient(1200px 700px at 90% 15%, rgba(100,116,139,.12), transparent 60%),
       linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
     background-color: var(--aio-bg);
     background-attachment: fixed;
@@ -82,8 +82,8 @@
 
   .dark .aio-bg {
     background:
-      radial-gradient(1000px 600px at 15% -10%, rgba(59,130,246,.25), transparent 65%),
-      radial-gradient(1200px 700px at 90% 15%, rgba(37,99,235,.2), transparent 60%),
+      radial-gradient(1000px 600px at 15% -10%, rgba(71,85,105,.15), transparent 65%),
+      radial-gradient(1200px 700px at 90% 15%, rgba(51,65,85,.12), transparent 60%),
       linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
     background-color: var(--aio-bg);
     background-attachment: fixed;
