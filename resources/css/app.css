@@ -203,18 +203,18 @@
   /* =========================
      Dashboard tiles
      ========================= */
-  .pbackdrop-filter: blur(12px);
+  .pill-card {
+    @apply rounded-xl border;
+    background: var(--aio-card);
+    border-color: var(--aio-border);
+    backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
   .pill-card:hover {
     transform: translateY(-2px);
     background: color-mix(in srgb, var(--aio-card) 92%, white);
-    box-shadow: 0 15px 40px rgba(0,0,0,.15
-  .pill-card:hover {
-    transform: translateY(-2px);
-    background: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover));
-    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    box-shadow: 0 15px 40px rgba(0,0,0,.15);
   }
 
   /* =========================
