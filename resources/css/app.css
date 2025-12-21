@@ -106,9 +106,7 @@
     background: var(--aio-card);
     border-color: var(--aio-border);
     backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12pxmd:p-6;
-    background: var(--aio-card);
-    border-color: var(--aio-border);
+    -webkit-backdrop-filter: blur(12px);
   }
   .aio-section + .aio-section { @apply mt-6; }
 
