@@ -17,10 +17,11 @@
                hover:border-[var(--aio-border)]
                hover:text-[var(--aio-ink)]";
 
-  // Active: subtle, not a big blue slab.
-  $activeCls = "bg-[var(--aio-accent-weak)]
-                border-[color-mix(in_srgb,var(--aio-accent)_35%,transparent)]
-                text-[var(--aio-ink)] font-semibold";
+  // Active: blue background with white text for better contrast
+  $activeCls = "bg-[var(--aio-accent)]
+                border-[var(--aio-accent)]
+                text-white font-semibold
+                shadow-lg shadow-[var(--aio-accent)]/25";
 
   $classes = $active ? "{$base} {$activeCls}" : "{$base} {$inactive}";
 

@@ -7,7 +7,7 @@
 ])
 
 @php
-  $wrapper = trim("rounded-2xl border bg-[var(--aio-card)] border-[var(--aio-border)] {$cardClass}");
+  $wrapper = trim("aio-section {$cardClass}");
   $head    = "px-4 py-3 border-b border-[var(--aio-border)] flex items-center justify-between";
 @endphp
 
@@ -31,7 +31,7 @@
     </div>
   @endif
 
-  <div class="{{ $flush ? '' : 'p-4' }}">
+  <div class="{{ $flush ? '' : 'p-5 md:p-6' }}">
     {{ $slot }}
   </div>
 </div>
