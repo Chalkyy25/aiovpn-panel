@@ -15,6 +15,8 @@
   --aio-card:    #ffffff;
   --aio-ink:     #111827;
   --aio-sub:     #6b7280;
+  --aio-bg-1: #f7faff;   /* top */
+  --aio-bg-2: #edf2f8;
 
   --aio-border:  rgba(17,24,39,.12);
   --aio-soft:    rgba(17,24,39,.06);
@@ -33,6 +35,8 @@
   --aio-card:    #111827;
   --aio-ink:     #e5e7eb;
   --aio-sub:     #9ca3af;
+  --aio-bg-1: #0b1220;   /* top */
+  --aio-bg-2: #0f1a33;
 
   --aio-border:  rgba(255,255,255,.12);
   --aio-soft:    rgba(255,255,255,.06);
