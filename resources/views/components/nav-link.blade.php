@@ -1,29 +1,40 @@
 @props([
-    'href'          => '#',
-    'active'        => false,
-    'icon'          => null,
-    'collapseAware' => true,
+  'href'          => '#',
+  'active'        => false,
+  'icon'          => null,
+  'collapseAware' => true,
+  'title'         => null,   // optional tooltip text when collapsed
 ])
 
 @php
-  // Plain, neutral defaults that work in light + dark via your CSS vars
-  $base = "flex items-center gap-2 w-full px-3 py-2 rounded-md border border-transparent
-           transition-colors duration-150";
+  $base = "group flex items-center gap-2 w-full px-3 py-2 rounded-md border
+           transition-colors duration-150 focus:outline-none focus:ring-2
+           focus:ring-[var(--aio-accent-weak)]";
 
-  $inactive = "text-[color-mix(in_srgb,var(--aio-ink)_70%,transparent)]
+  $inactive = "border-transparent
+               text-[color-mix(in_srgb,var(--aio-ink)_72%,transparent)]
                hover:bg-[var(--aio-hover)]
                hover:border-[var(--aio-border)]
                hover:text-[var(--aio-ink)]";
 
-  $activeCls = "bg-[var(--aio-accent)] text-white border-transparent";
+  // Active: subtle, not a big blue slab.
+  $activeCls = "bg-[var(--aio-accent-weak)]
+                border-[color-mix(in_srgb,var(--aio-accent)_35%,transparent)]
+                text-[var(--aio-ink)] font-semibold";
 
-  $classes = $active ? "{$base} {$activeCls} font-semibold" : "{$base} {$inactive}";
+  $classes = $active ? "{$base} {$activeCls}" : "{$base} {$inactive}";
+
+  // Tooltip when collapsed (desktop sidebar)
+  $tooltip = $title ?? trim((string) $slot);
 @endphp
 
-<a href="{{ $href }}" {{ $attributes->merge(['class' => $classes]) }}>
+<a href="{{ $href }}"
+   title="{{ $collapseAware ? $tooltip : '' }}"
+   @if($active) aria-current="page" @endif
+   {{ $attributes->merge(['class' => $classes]) }}>
+
   @if ($icon)
-    <x-icon :name="$icon"
-            class="w-5 h-5 shrink-0 {{ $active ? 'text-white' : 'text-[var(--aio-sub)]' }}" />
+    <x-icon :name="$icon" class="w-5 h-5 shrink-0 text-current opacity-80 group-hover:opacity-100" />
   @endif
 
   @if ($collapseAware)
