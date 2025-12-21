@@ -20,8 +20,9 @@
         </div>
     @endif
 
-    <form wire:submit.prevent="save" class="space-y-6">
+    @php $isAdmin = auth()->user()?->role === 'admin'; @endphp
 
+    <form wire:submit.prevent="save" class="space-y-6">
         {{-- User Details --}}
         <section class="aio-section">
             <h3 class="aio-section-title">
@@ -30,7 +31,6 @@
             <p class="aio-section-sub">Choose username, duration, package & servers.</p>
 
             <div class="form-grid">
-
                 {{-- Username --}}
                 <div class="form-group md:col-span-2">
                     <label class="form-label">Username</label>
@@ -40,19 +40,18 @@
                            autocomplete="off"
                            autocorrect="off"
                            autocapitalize="off"
-                           spellcheck="false"
-                    />
+                           spellcheck="false" />
                     @error('username') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
                 </div>
 
                 {{-- Duration --}}
                 <div class="form-group">
                     <label class="form-label">Duration</label>
-                    <select class="form-select" wire:model.debounce.200ms="expiry">
+                    <select class="form-select" wire:model.live="expiry">
                         <option value="1m">1 Month</option>
                         <option value="3m">3 Months</option>
                         <option value="6m">6 Months</option>
-                        <option value="12m">12 Months</option>
+                        <option value="12m">12 Months (Yearly)</option>
                     </select>
                     @error('expiry') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
                 </div>
@@ -60,27 +59,50 @@
                 {{-- Package --}}
                 <div class="form-group">
                     <label class="form-label">Package</label>
-                    <select class="form-select" wire:model.debounce.200ms="packageId">
+                    <select class="form-select" wire:model.live="packageId">
+                        <option value="">Select one please</option>
                         @foreach($packages as $p)
+                            @php
+                                $devices = ($p->max_connections ?? 0) == 0 ? 'Unlimited' : (int) $p->max_connections;
+                            @endphp
                             <option value="{{ $p->id }}">
-                                {{ $p->name }} — {{ $p->price_credits }} credits
-                                (max {{ $p->max_connections == 0 ? 'Unlimited' : $p->max_connections }} conn)
+                                {{ $p->name }} — {{ $devices }} device{{ $devices === 1 ? '' : 's' }} — {{ (int) $p->price_credits }} cr/mo
                             </option>
                         @endforeach
                     </select>
                     @error('packageId') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
                 </div>
 
-                {{-- Credits --}}
-                @php $isAdmin = auth()->user()?->role === 'admin'; @endphp
+                {{-- IPTV-style preview fields --}}
+                <div class="form-group">
+                    <label class="form-label">Max Allowed Connections</label>
+                    <input class="form-input" type="text" value="{{ $maxConnections ?? '' }}" readonly />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Expire Date</label>
+                    <input class="form-input" type="text" value="{{ $expiresAtPreview ?? '' }}" readonly />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Price</label>
+                    <input class="form-input" type="text" value="{{ (int) $priceCredits }}" readonly />
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Credits Left</label>
+                    <input class="form-input" type="text" value="{{ (int) ($creditsLeft ?? 0) }}" readonly />
+                </div>
+
+                {{-- Credits / warnings --}}
                 <div class="mt-2 text-xs muted space-y-0.5 md:col-span-2">
                     @if ($isAdmin)
                         <div class="text-green-300">Admin — no credits deducted.</div>
-                        <div>Package total: <span class="font-semibold">{{ $priceCredits }}</span> credits</div>
                     @else
-                        <div>Cost: <span class="font-semibold">{{ $priceCredits }}</span> credits</div>
-                        <div>Your credits: <span class="font-semibold">{{ $adminCredits }}</span></div>
-                        @if ($adminCredits < $priceCredits)
+                        <div>Your credits: <span class="font-semibold">{{ (int) $adminCredits }}</span></div>
+                        <div>Cost: <span class="font-semibold">{{ (int) $priceCredits }}</span></div>
+
+                        @if ((int) $adminCredits < (int) $priceCredits)
                             <div class="text-red-300">Not enough credits.</div>
                         @endif
                     @endif
@@ -103,16 +125,16 @@
                    class="pill-card cursor-pointer flex items-center justify-between p-3 hover:outline-cya mb-3">
                 <div class="min-w-0">
                     <div class="font-medium truncate">All Servers</div>
-                    <div class="text-xs muted">Automatically selects every server</div>
+                    <div class="text-xs muted">Automatically selects every enabled server</div>
                 </div>
 
                 <input id="{{ $allId }}"
                        type="checkbox"
                        class="sr-only peer"
-                       wire:click="toggleAllServers"
-                />
+                       wire:model.live="selectAllServers" />
 
-                <div class="ml-3 h-5 w-5 rounded border" style="border-color:rgba(255,255,255,.25)"></div>
+                <div class="ml-3 h-5 w-5 rounded border"
+                     style="border-color:rgba(255,255,255,.25)"></div>
             </label>
 
             <style>
@@ -140,8 +162,8 @@
                                type="checkbox"
                                class="sr-only peer"
                                value="{{ (string) $server->id }}"
-                               wire:model="selectedServers"
-                        />
+                               wire:model.live="selectedServers"
+                               @disabled($selectAllServers) />
 
                         <div class="ml-3 h-5 w-5 rounded border"
                              style="border-color:rgba(255,255,255,.25)"></div>
@@ -169,6 +191,5 @@
                 {{ $isAdmin ? 'Save (Free)' : 'Save' }}
             </x-button>
         </div>
-
     </form>
 </div>
