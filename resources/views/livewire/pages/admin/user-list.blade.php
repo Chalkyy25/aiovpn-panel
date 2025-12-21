@@ -1,22 +1,22 @@
 <div>
     <!-- Flash Message -->
     @if (session()->has('status-message'))
-        <div class="mb-4 p-4 bg-green-100 border border-green-300 text-green-800 rounded">
+        <div class="mb-4 p-4 bg-green-900/20 border border-green-700 text-green-100 rounded">
             {{ session('status-message') }}
         </div>
     @endif
 
     <!-- Edit Form (shows when editingUser is set) -->
     @if ($editingUser)
-        <div class="mb-6 p-4 border rounded bg-gray-50">
-            <h3 class="font-semibold mb-4">Edit User: {{ $editingUser->email }}</h3>
+        <div class="mb-6 aio-card p-4">
+            <h3 class="font-semibold mb-4 text-[var(--aio-ink)]">Edit User: {{ $editingUser->email }}</h3>
             <x-input label="Name" wire:model="editName" class="mb-3" />
             <x-input label="Email" wire:model="editEmail" class="mb-3" />
             <x-select label="Role" wire:model="editRole" :options="['admin' => 'Admin', 'reseller' => 'Reseller', 'client' => 'Client']" class="mb-4" />
 
             <div class="flex gap-2">
-                <x-button wire:click="updateUser">Save</x-button>
-                <x-button variant="light" wire:click="cancelEdit">Cancel</x-button>
+                <x-button wire:click="updateUser" variant="primary">Save</x-button>
+                <x-button variant="secondary" wire:click="cancelEdit">Cancel</x-button>
             </div>
         </div>
     @endif
@@ -34,10 +34,11 @@
 
     <!-- 🖥️ Desktop Table -->
     <div class="hidden md:block overflow-x-auto">
-        <table class="min-w-full table-auto text-sm border">
-            <thead class="bg-gray-100 text-left">
-                <tr>
-                    <th class="px-4 py-2">Email</th>
+        <div class="aio-card overflow-hidden">
+            <table class="aio-table min-w-full">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-2">Email</th>
                     <th class="px-4 py-2">Active</th>
                     <th class="px-4 py-2">Role</th>
                     <th class="px-4 py-2">Created By</th>
@@ -46,40 +47,45 @@
             </thead>
             <tbody>
                 @foreach ($users as $user)
-                    <tr class="border-t">
-                        <td class="px-4 py-2">{{ $user->email }}</td>
+                    <tr>
+                        <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $user->email }}</td>
                         <td class="px-4 py-2">
-                            <span class="{{ $user->is_active ? 'text-green-600' : 'text-red-600' }}">
-                                {{ $user->is_active ? 'Active' : 'Inactive' }}
-                            </span>
+                            @if($user->is_active)
+                                <span class="aio-pill pill-success">Active</span>
+                            @else
+                                <span class="aio-pill pill-danger">Inactive</span>
+                            @endif
                         </td>
-                        <td class="px-4 py-2">{{ $user->role }}</td>
-                        <td class="px-4 py-2">{{ $user->creator->name ?? '—' }}</td>
+                        <td class="px-4 py-2 text-[var(--aio-ink)]">{{ $user->role }}</td>
+                        <td class="px-4 py-2 text-[var(--aio-sub)]">{{ $user->creator->name ?? '—' }}</td>
                         <td class="px-4 py-2 space-x-2">
-                            <x-button wire:click.prevent="startEdit({{ $user->id }})" size="sm">Edit</x-button>
+                            <x-button wire:click.prevent="startEdit({{ $user->id }})" size="sm" variant="secondary">Edit</x-button>
                             <x-button variant="danger" wire:click.prevent="confirmDelete({{ $user->id }})" size="sm">Delete</x-button>
                         </td>
                     </tr>
                 @endforeach
             </tbody>
         </table>
+        </div>
     </div>
 
     <!-- 📱 Mobile Cards -->
     <div class="md:hidden space-y-4">
         @foreach ($users as $user)
-            <div class="border rounded p-4 shadow-sm space-y-2">
-                <div><strong>Email:</strong> {{ $user->email }}</div>
+            <div class="aio-card p-4 space-y-2">
+                <div><strong class="text-[var(--aio-ink)]">Email:</strong> <span class="text-[var(--aio-ink)]">{{ $user->email }}</span></div>
                 <div>
-                    <strong>Status:</strong>
-                    <span class="{{ $user->is_active ? 'text-green-600' : 'text-red-600' }}">
-                        {{ $user->is_active ? 'Active' : 'Inactive' }}
-                    </span>
+                    <strong class="text-[var(--aio-ink)]">Status:</strong>
+                    @if($user->is_active)
+                        <span class="aio-pill pill-success">Active</span>
+                    @else
+                        <span class="aio-pill pill-danger">Inactive</span>
+                    @endif
                 </div>
-                <div><strong>Role:</strong> {{ $user->role }}</div>
-                <div><strong>Created By:</strong> {{ $user->creator->name ?? '—' }}</div>
+                <div><strong class="text-[var(--aio-ink)]">Role:</strong> <span class="text-[var(--aio-ink)]">{{ $user->role }}</span></div>
+                <div><strong class="text-[var(--aio-ink)]">Created By:</strong> <span class="text-[var(--aio-sub)]">{{ $user->creator->name ?? '—' }}</span></div>
                 <div class="flex gap-2 pt-1">
-                    <x-button wire:click.prevent="startEdit({{ $user->id }})" size="sm">Edit</x-button>
+                    <x-button wire:click.prevent="startEdit({{ $user->id }})" size="sm" variant="secondary">Edit</x-button>
                     <x-button variant="danger" wire:click.prevent="confirmDelete({{ $user->id }})" size="sm">Delete</x-button>
                 </div>
             </div>
@@ -89,12 +95,12 @@
     <!-- Confirm Delete Modal -->
     @if ($confirmingDeleteId)
         <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-            <div class="bg-white p-6 rounded shadow-lg w-full max-w-sm">
-                <h2 class="text-lg font-semibold mb-4">Delete User</h2>
-                <p class="mb-4">Are you sure you want to delete this user?</p>
+            <div class="aio-card p-6 w-full max-w-sm">
+                <h2 class="text-lg font-semibold mb-4 text-[var(--aio-ink)]">Delete User</h2>
+                <p class="mb-4 text-[var(--aio-sub)]">Are you sure you want to delete this user?</p>
                 <div class="flex gap-2 justify-end">
                     <x-button wire:click="deleteUser" variant="danger">Yes, Delete</x-button>
-                    <x-button wire:click="$set('confirmingDeleteId', null)" variant="light">Cancel</x-button>
+                    <x-button wire:click="$set('confirmingDeleteId', null)" variant="secondary">Cancel</x-button>
                 </div>
             </div>
         </div>
