@@ -95,6 +95,8 @@
   .aio-card,
   .aio-header {
     @apply rounded-xl border;
+    background: var(--aio-card);
+    border-color: var(--aio-border);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
