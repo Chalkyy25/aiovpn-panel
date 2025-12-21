@@ -8,7 +8,8 @@
 
     <!-- Edit Form (shows when editingUser is set) -->
     @if ($editingUser)
-        <div class="mb-6 aio-card p-4">
+        <div class="mb-6 aio-card">
+            <div class="aio-card-body">
             <h3 class="font-semibold mb-4 text-[var(--aio-ink)]">Edit User: {{ $editingUser->email }}</h3>
             <x-input label="Name" wire:model="editName" class="mb-3" />
             <x-input label="Email" wire:model="editEmail" class="mb-3" />
@@ -17,6 +18,7 @@
             <div class="flex gap-2">
                 <x-button wire:click="updateUser" variant="primary">Save</x-button>
                 <x-button variant="secondary" wire:click="cancelEdit">Cancel</x-button>
+            </div>
             </div>
         </div>
     @endif
@@ -72,7 +74,8 @@
     <!-- 📱 Mobile Cards -->
     <div class="md:hidden space-y-4">
         @foreach ($users as $user)
-            <div class="aio-card p-4 space-y-2">
+            <div class="aio-card">
+                <div class="aio-card-body space-y-2">
                 <div><strong class="text-[var(--aio-ink)]">Email:</strong> <span class="text-[var(--aio-ink)]">{{ $user->email }}</span></div>
                 <div>
                     <strong class="text-[var(--aio-ink)]">Status:</strong>
@@ -88,6 +91,7 @@
                     <x-button wire:click.prevent="startEdit({{ $user->id }})" size="sm" variant="secondary">Edit</x-button>
                     <x-button variant="danger" wire:click.prevent="confirmDelete({{ $user->id }})" size="sm">Delete</x-button>
                 </div>
+                </div>
             </div>
         @endforeach
     </div>
@@ -95,7 +99,8 @@
     <!-- Confirm Delete Modal -->
     @if ($confirmingDeleteId)
         <div class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-            <div class="aio-card p-6 w-full max-w-sm">
+            <div class="aio-card w-full max-w-sm">
+                <div class="aio-card-body">
                 <h2 class="text-lg font-semibold mb-4 text-[var(--aio-ink)]">Delete User</h2>
                 <p class="mb-4 text-[var(--aio-sub)]">Are you sure you want to delete this user?</p>
                 <div class="flex gap-2 justify-end">

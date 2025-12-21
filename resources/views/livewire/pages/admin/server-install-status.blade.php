@@ -16,15 +16,17 @@
     </div>
 <div
     wire:poll.2s="refreshStatus"
-    class="aio-card bg-black/90 p-4 overflow-y-auto"
+    class="aio-card bg-black/90 overflow-y-auto"
     style="min-height: 250px; max-height: 400px; font-family: monospace;"
     id="deployment-log"
 >
+    <div class="aio-card-body">
     @forelse($this->filteredLog as $entry)
         <div class="{{ $entry['color'] }}">{{ $entry['text'] }}</div>
     @empty
         <div class="text-[var(--aio-sub)]">No deployment logs found.</div>
     @endforelse
+    </div>
 </div>
 </div>
 

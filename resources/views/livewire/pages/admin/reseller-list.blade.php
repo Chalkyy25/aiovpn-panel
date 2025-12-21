@@ -145,7 +145,8 @@
     {{-- Mobile card list --}}
     <div class="md:hidden space-y-3">
         @forelse($resellers as $r)
-            <div class="aio-card p-4">
+            <div class="aio-card">
+                <div class="aio-card-body">
                 <div class="flex items-start justify-between">
                     <div class="flex items-center gap-2">
                         <span class="h-2.5 w-2.5 rounded-full {{ $r->is_active ? 'bg-green-500' : 'bg-[var(--aio-border)]' }}"></span>
@@ -191,6 +192,7 @@
                         size="sm">
                         Credits
                     </x-button>
+                </div>
                 </div>
             </div>
         @empty

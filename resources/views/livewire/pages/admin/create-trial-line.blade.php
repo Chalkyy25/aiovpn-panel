@@ -1,4 +1,5 @@
-<div class="aio-card p-6">
+<div class="aio-card">
+    <div class="aio-card-body">
     @if ($errors->any())
         <div class="mb-4 p-4 bg-red-900/20 text-red-100 border border-red-700 rounded-md">
             <div class="font-semibold mb-1">Form errors</div>
@@ -116,4 +117,5 @@
             </div>
         </div>
     @endif
+    </div>
 </div>

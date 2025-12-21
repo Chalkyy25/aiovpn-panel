@@ -112,6 +112,23 @@
                 0 40px 80px -16px rgba(0, 0, 0, 0.3);
   }
 
+  /* Card sections with automatic padding */
+  .aio-card-header,
+  .aio-card-body,
+  .aio-card-footer {
+    @apply px-6 py-5;
+  }
+
+  .aio-card-header {
+    @apply border-b;
+    border-color: var(--aio-border);
+  }
+
+  .aio-card-footer {
+    @apply border-t;
+    border-color: var(--aio-border);
+  }
+
   .aio-divider { border-color: var(--aio-border); }
 
   .aio-section {
@@ -133,6 +150,23 @@
                 0 40px 80px -16px rgba(0, 0, 0, 0.3);
   }
   .aio-section + .aio-section { @apply mt-6; }
+
+  /* Section parts with automatic padding */
+  .aio-section-header,
+  .aio-section-body,
+  .aio-section-footer {
+    @apply px-6 py-5;
+  }
+
+  .aio-section-header {
+    @apply border-b;
+    border-color: var(--aio-border);
+  }
+
+  .aio-section-footer {
+    @apply border-t;
+    border-color: var(--aio-border);
+  }
 
   .aio-section-title {
     @apply flex items-center gap-2 text-lg font-semibold mb-1;
@@ -261,13 +295,13 @@
     letter-spacing: .06em;
     color: var(--aio-sub);
     background: color-mix(in srgb, var(--aio-card) 92%, var(--aio-hover));
-    padding: .75rem 1rem;
+    padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--aio-border);
     white-space: nowrap;
   }
 
   .aio-table tbody td {
-    padding: .75rem 1rem;
+    padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--aio-border);
     color: var(--aio-ink);
     vertical-align: middle;

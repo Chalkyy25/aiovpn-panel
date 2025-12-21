@@ -15,8 +15,8 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {{-- Reseller list --}}
-        <div class="lg:col-span-2 aio-card divide-y divide-[var(--aio-border)]">
-            <div class="p-4">
+        <div class="lg:col-span-2 aio-card">
+            <div class="aio-card-header">
                 <input
                     type="text"
                     wire:model.debounce.300ms="search"
@@ -55,16 +55,18 @@
                 </table>
             </div>
 
-            <div class="p-4">
+            <div class="aio-card-footer">
                 {{ $resellers->links() }}
             </div>
         </div>
 
         {{-- Credit form --}}
-        <div class="aio-card p-5">
-            <h2 class="font-semibold mb-3 text-[var(--aio-ink)]">Adjust Credits</h2>
+        <div class="aio-card">
+            <div class="aio-card-header">
+                <h2 class="font-semibold text-[var(--aio-ink)]">Adjust Credits</h2>
+            </div>
 
-            <div class="space-y-4">
+            <div class="aio-card-body space-y-4">
                 <div>
                     <label class="block text-sm text-[var(--aio-sub)] mb-1">Selected reseller</label>
                     <input class="form-input w-full"

@@ -1,6 +1,6 @@
 <div class="p-6">
     <div class="aio-card">
-        <div class="p-6">
+        <div class="aio-card-body">
             <h2 class="text-xl font-bold mb-4 text-[var(--aio-ink)]">
                 VPN Config Downloads for {{ $vpnUser->username }}
             </h2>

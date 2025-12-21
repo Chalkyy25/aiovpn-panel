@@ -1,5 +1,6 @@
 <div class="max-w-xl mx-auto p-6 space-y-5">
-    <div class="aio-card p-6">
+    <div class="aio-card">
+        <div class="aio-card-body">
         <h2 class="text-xl font-semibold text-[var(--aio-ink)] mb-6">Create New VPN Client</h2>
 
         @if (session()->has('success'))
@@ -36,5 +37,6 @@
                 </x-button>
             </div>
         </form>
+        </div>
     </div>
 </div>

@@ -16,11 +16,11 @@
 
             {{-- Card: Details --}}
             <div class="aio-card">
-                <div class="p-5 border-b border-[var(--aio-border)]">
+                <div class="aio-card-header">
                     <h2 class="text-sm font-semibold text-[var(--aio-ink)]">User details</h2>
                 </div>
 
-                <div class="p-5 space-y-4">
+                <div class="aio-card-body space-y-4">
 
                     {{-- Username --}}
                     <div>
@@ -52,14 +52,14 @@
 
             {{-- Card: Servers --}}
             <div class="aio-card">
-                <div class="p-5 border-b border-[var(--aio-border)] flex items-center justify-between">
+                <div class="aio-card-header flex items-center justify-between">
                     <div>
                         <h2 class="text-sm font-semibold text-[var(--aio-ink)]">Assign servers</h2>
                         <p class="text-xs text-[var(--aio-sub)] mt-0.5">Select one or more servers.</p>
                     </div>
                 </div>
 
-                <div class="p-5 space-y-3">
+                <div class="aio-card-body space-y-3">
                     @error('selectedServers') <p class="text-sm text-red-400">{{ $message }}</p> @enderror
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -88,11 +88,11 @@
 
             {{-- Summary --}}
             <div class="aio-card">
-                <div class="p-5 border-b border-[var(--aio-border)]">
+                <div class="aio-card-header">
                     <h2 class="text-sm font-semibold text-[var(--aio-ink)]">Summary</h2>
                 </div>
 
-                <div class="p-5 space-y-3 text-sm">
+                <div class="aio-card-body space-y-3 text-sm">
                     <div class="flex items-center justify-between">
                         <span class="text-[var(--aio-sub)]">Max connections</span>
                         <span class="font-semibold text-[var(--aio-ink)]">{{ $maxConnections ?? 0 }}</span>
