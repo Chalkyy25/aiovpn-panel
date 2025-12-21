@@ -97,18 +97,18 @@
     @apply rounded-xl border;
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
-                0 2px 4px -2px rgba(0, 0, 0, 0.1),
-                0 10px 15px -3px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 
+                0 8px 10px -6px rgba(0, 0, 0, 0.12),
+                0 20px 40px -10px rgba(0, 0, 0, 0.1);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   
   .aio-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15), 
-                0 4px 8px -4px rgba(0, 0, 0, 0.1),
-                0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.2), 
+                0 12px 20px -8px rgba(0, 0, 0, 0.15),
+                0 30px 60px -12px rgba(0, 0, 0, 0.15);
   }
 
   .aio-divider { border-color: var(--aio-border); }
@@ -117,18 +117,18 @@
     @apply rounded-2xl border;
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
-                0 2px 4px -2px rgba(0, 0, 0, 0.1),
-                0 10px 15px -3px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 
+                0 8px 10px -6px rgba(0, 0, 0, 0.12),
+                0 20px 40px -10px rgba(0, 0, 0, 0.1);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   
   .aio-section:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.15), 
-                0 4px 8px -4px rgba(0, 0, 0, 0.1),
-                0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.2), 
+                0 12px 20px -8px rgba(0, 0, 0, 0.15),
+                0 30px 60px -12px rgba(0, 0, 0, 0.15);
   }
   .aio-section + .aio-section { @apply mt-6; }
 
@@ -229,17 +229,17 @@
     @apply rounded-xl border;
     background: var(--aio-card);
     border-color: var(--aio-border);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
-                0 2px 4px -2px rgba(0, 0, 0, 0.1),
-                0 10px 15px -3px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 
+                0 8px 10px -6px rgba(0, 0, 0, 0.12),
+                0 20px 40px -10px rgba(0, 0, 0, 0.1);
     transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
   .pill-card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-6px);
     background: var(--aio-card);
-    box-shadow: 0 14px 28px -8px rgba(0, 0, 0, 0.2), 
-                0 6px 12px -6px rgba(0, 0, 0, 0.15),
-                0 25px 35px -8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 
+                0 15px 25px -10px rgba(0, 0, 0, 0.2),
+                0 40px 70px -15px rgba(0, 0, 0, 0.18);
   }
 
   /* =========================
