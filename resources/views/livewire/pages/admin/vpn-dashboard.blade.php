@@ -45,6 +45,23 @@
   "
   class="space-y-6"
 >
+
+<button data-modal-target="flowbiteTest" data-modal-toggle="flowbiteTest"
+  class="px-4 py-2 text-white bg-blue-600 rounded-lg">
+  Test Flowbite Modal
+</button>
+
+<div id="flowbiteTest" tabindex="-1"
+  class="hidden fixed inset-0 z-50 items-center justify-center p-4 overflow-x-hidden overflow-y-auto">
+  <div class="relative w-full max-w-md">
+    <div class="relative bg-white rounded-lg shadow">
+      <div class="p-4 text-black">
+        Flowbite is working.
+      </div>
+    </div>
+  </div>
+</div>
+
   {{-- HEADER --}}
   <div class="flex items-end justify-between">
     <div>
