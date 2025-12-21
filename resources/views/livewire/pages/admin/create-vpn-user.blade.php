@@ -1,195 +1,102 @@
-{{-- resources/views/livewire/pages/admin/create-vpn-user.blade.php --}}
-<div class="space-y-6">
-    {{-- Global errors --}}
-    @if ($errors->any())
-        <div class="aio-card p-4 border-red-500/30">
-            <h3 class="text-sm font-semibold text-red-300">Form errors</h3>
-            <ul class="mt-2 list-disc pl-5 space-y-1 text-red-200 text-sm">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+<div class="max-w-7xl mx-auto space-y-6">
 
-    {{-- Success --}}
-    @if (session()->has('success'))
-        <div class="aio-card p-4">
-            <span class="aio-pill pill-neon">✅</span>
-            <span class="ml-2">{{ session('success') }}</span>
-        </div>
-    @endif
+    <form wire:submit.prevent="save" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-    @php $isAdmin = auth()->user()?->role === 'admin'; @endphp
+        {{-- LEFT: Form --}}
+        <div class="lg:col-span-2 space-y-6">
 
-    <form wire:submit.prevent="save" class="space-y-6">
-        {{-- User Details --}}
-        <section class="aio-section">
-            <h3 class="aio-section-title">
-                <span class="w-1.5 h-6 rounded accent-cya"></span> Create VPN User
-            </h3>
-            <p class="aio-section-sub">Choose username, duration, package & servers.</p>
+            <div class="p-6 bg-aio-card rounded-xl shadow">
+                <h2 class="text-lg font-semibold mb-4">Create VPN User</h2>
 
-            <div class="form-grid">
-                {{-- Username --}}
-                <div class="form-group md:col-span-2">
-                    <label class="form-label">Username</label>
-                    <input class="form-input"
-                           type="text"
-                           wire:model.lazy="username"
-                           autocomplete="off"
-                           autocorrect="off"
-                           autocapitalize="off"
-                           spellcheck="false" />
-                    @error('username') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
-                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                {{-- Duration --}}
-                <div class="form-group">
-                    <label class="form-label">Duration</label>
-                    <select class="form-select" wire:model.live="expiry">
-                        <option value="1m">1 Month</option>
-                        <option value="3m">3 Months</option>
-                        <option value="6m">6 Months</option>
-                        <option value="12m">12 Months (Yearly)</option>
-                    </select>
-                    @error('expiry') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
-                </div>
+                    <div>
+                        <label class="block text-sm mb-1">Username</label>
+                        <input wire:model.lazy="username"
+                               class="w-full rounded-lg bg-aio-bg border border-white/10 px-3 py-2" />
+                    </div>
 
-                {{-- Package --}}
-                <div class="form-group">
-                    <label class="form-label">Package</label>
-                    <select class="form-select" wire:model.live="packageId">
-                        <option value="">Select one please</option>
-                        @foreach($packages as $p)
-                            @php
-                                $devices = ($p->max_connections ?? 0) == 0 ? 'Unlimited' : (int) $p->max_connections;
-                            @endphp
-                            <option value="{{ $p->id }}">
-                                {{ $p->name }} — {{ $devices }} device{{ $devices === 1 ? '' : 's' }} — {{ (int) $p->price_credits }} cr/mo
-                            </option>
-                        @endforeach
-                    </select>
-                    @error('packageId') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
-                </div>
+                    <div>
+                        <label class="block text-sm mb-1">Duration</label>
+                        <select wire:model="expiry"
+                                class="w-full rounded-lg bg-aio-bg border border-white/10 px-3 py-2">
+                            <option value="1m">1 Month</option>
+                            <option value="3m">3 Months</option>
+                            <option value="6m">6 Months</option>
+                            <option value="12m">12 Months</option>
+                        </select>
+                    </div>
 
-                {{-- IPTV-style preview fields --}}
-                <div class="form-group">
-                    <label class="form-label">Max Allowed Connections</label>
-                    <input class="form-input" type="text" value="{{ $maxConnections ?? '' }}" readonly />
-                </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm mb-1">Package</label>
+                        <select wire:model="packageId"
+                                class="w-full rounded-lg bg-aio-bg border border-white/10 px-3 py-2">
+                            @foreach($packages as $p)
+                                <option value="{{ $p->id }}">
+                                    {{ $p->name }} — {{ $p->max_connections ?: 'Unlimited' }} device{{ $p->max_connections === 1 ? '' : 's' }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
 
-                <div class="form-group">
-                    <label class="form-label">Expire Date</label>
-                    <input class="form-input" type="text" value="{{ $expiresAtPreview ?? '' }}" readonly />
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Price</label>
-                    <input class="form-input" type="text" value="{{ (int) $priceCredits }}" readonly />
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Credits Left</label>
-                    <input class="form-input" type="text" value="{{ (int) ($creditsLeft ?? 0) }}" readonly />
-                </div>
-
-                {{-- Credits / warnings --}}
-                <div class="mt-2 text-xs muted space-y-0.5 md:col-span-2">
-                    @if ($isAdmin)
-                        <div class="text-green-300">Admin — no credits deducted.</div>
-                    @else
-                        <div>Your credits: <span class="font-semibold">{{ (int) $adminCredits }}</span></div>
-                        <div>Cost: <span class="font-semibold">{{ (int) $priceCredits }}</span></div>
-
-                        @if ((int) $adminCredits < (int) $priceCredits)
-                            <div class="text-red-300">Not enough credits.</div>
-                        @endif
-                    @endif
                 </div>
             </div>
-        </section>
 
-        {{-- Servers --}}
-        <section class="aio-section">
-            <div class="aio-section-title">Assign to Servers</div>
-            <p class="aio-section-sub">Pick one or select ALL.</p>
+            {{-- Servers --}}
+            <div class="p-6 bg-aio-card rounded-xl shadow">
+                <h3 class="font-medium mb-4">Assign Servers</h3>
 
-            @error('selectedServers')
-                <div class="mb-3 text-sm text-red-400">{{ $message }}</div>
-            @enderror
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    @foreach($servers as $server)
+                        <label class="flex items-center justify-between p-3 rounded-lg border border-white/10 cursor-pointer">
+                            <div>
+                                <div class="font-medium">{{ $server->name }}</div>
+                                <div class="text-xs text-aio-sub">{{ $server->ip_address }}</div>
+                            </div>
 
-            {{-- ALL SERVERS OPTION --}}
-            @php $allId = 'srv-all'; @endphp
-            <label for="{{ $allId }}"
-                   class="pill-card cursor-pointer flex items-center justify-between p-3 hover:outline-cya mb-3">
-                <div class="min-w-0">
-                    <div class="font-medium truncate">All Servers</div>
-                    <div class="text-xs muted">Automatically selects every enabled server</div>
+                            <input type="checkbox"
+                                   wire:model="selectedServers"
+                                   value="{{ $server->id }}"
+                                   class="rounded border-white/20 bg-aio-bg">
+                        </label>
+                    @endforeach
                 </div>
-
-                <input id="{{ $allId }}"
-                       type="checkbox"
-                       class="sr-only peer"
-                       wire:model.live="selectAllServers" />
-
-                <div class="ml-3 h-5 w-5 rounded border"
-                     style="border-color:rgba(255,255,255,.25)"></div>
-            </label>
-
-            <style>
-                #{{ $allId }}:checked + div { background: var(--aio-neon); }
-                label[for="{{ $allId }}"]:has(#{{ $allId }}:checked) {
-                    box-shadow: inset 0 0 0 1px rgba(61,255,127,.35);
-                }
-            </style>
-
-            {{-- INDIVIDUAL SERVERS --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                @foreach ($servers as $server)
-                    @php $cbId = 'srv-'.$server->id; @endphp
-
-                    <label wire:key="srv-{{ $server->id }}"
-                           for="{{ $cbId }}"
-                           class="pill-card cursor-pointer flex items-center justify-between p-3 hover:outline-cya">
-
-                        <div class="min-w-0">
-                            <div class="font-medium truncate">{{ $server->name }}</div>
-                            <div class="text-xs muted truncate">{{ $server->ip_address }}</div>
-                        </div>
-
-                        <input id="{{ $cbId }}"
-                               type="checkbox"
-                               class="sr-only peer"
-                               value="{{ (string) $server->id }}"
-                               wire:model.live="selectedServers"
-                               @disabled($selectAllServers) />
-
-                        <div class="ml-3 h-5 w-5 rounded border"
-                             style="border-color:rgba(255,255,255,.25)"></div>
-                    </label>
-
-                    <style>
-                        #{{ $cbId }}:checked + div { background: var(--aio-neon); }
-                        label[for="{{ $cbId }}"]:has(#{{ $cbId }}:checked) {
-                            box-shadow: inset 0 0 0 1px rgba(61,255,127,.35);
-                        }
-                    </style>
-                @endforeach
             </div>
 
-            <p class="form-help mt-3">Users can be connected to multiple servers.</p>
-        </section>
-
-        {{-- Actions --}}
-        <div class="mt-6 flex items-center justify-end gap-2">
-            <x-button variant="light" :href="route('admin.vpn-users.index')">
-                Cancel
-            </x-button>
-
-            <x-button type="submit" wire:loading.attr="disabled">
-                {{ $isAdmin ? 'Save (Free)' : 'Save' }}
-            </x-button>
         </div>
+
+        {{-- RIGHT: Summary --}}
+        <div class="space-y-4">
+
+            <div class="p-6 bg-aio-card rounded-xl shadow">
+                <h3 class="font-medium mb-4">Summary</h3>
+
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <span>Max connections</span>
+                        <span class="font-medium">{{ $maxConnections }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Expires</span>
+                        <span class="font-medium">{{ $expiresAtPreview }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Total cost</span>
+                        <span class="font-medium">{{ $priceCredits }} credits</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span>Balance after</span>
+                        <span class="font-medium">{{ $creditsLeft }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit"
+                    class="w-full py-3 rounded-xl bg-aio-neon text-black font-semibold hover:opacity-90">
+                Create User
+            </button>
+
+        </div>
+
     </form>
 </div>
