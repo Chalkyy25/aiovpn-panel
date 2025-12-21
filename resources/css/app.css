@@ -17,6 +17,8 @@
   --aio-sub:     #6b7280;
   --aio-bg-1: #f7faff;   /* top */
   --aio-bg-2: #edf2f8;
+    --aio-glow: color-mix(in srgb, var(--aio-accent) 16%, transparent);
+
 
   --aio-border:  rgba(17,24,39,.12);
   --aio-soft:    rgba(17,24,39,.06);
@@ -37,6 +39,8 @@
   --aio-sub:     #9ca3af;
   --aio-bg-1: #0b1220;   /* top */
   --aio-bg-2: #0f1a33;
+    --aio-glow: color-mix(in srgb, var(--aio-accent) 18%, transparent);
+
 
   --aio-border:  rgba(255,255,255,.12);
   --aio-soft:    rgba(255,255,255,.06);
@@ -54,28 +58,18 @@
    Base
    ========================= */
 @layer base {
-  html, body {
-    min-height: 100%;
-  }
+  html, body { min-height: 100%; }
 
   body {
-    background:
-      radial-gradient(
-        900px 500px at 15% -10%,
-        var(--aio-glow),
-        transparent 60%
-      ),
-      linear-gradient(
-        180deg,
-        var(--aio-bg-1),
-        var(--aio-bg-2)
-      );
-
-    background-color: var(--aio-bg); /* fallback */
     color: var(--aio-ink);
+    background:
+      radial-gradient(900px 500px at 15% -10%, var(--aio-glow), transparent 60%),
+      radial-gradient(800px 520px at 110% 10%, color-mix(in srgb, var(--aio-accent) 10%, transparent), transparent 55%),
+      linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
+    background-attachment: fixed;
+    background-color: var(--aio-bg);
   }
 }
-
 /* =========================
    Components
    ========================= */
