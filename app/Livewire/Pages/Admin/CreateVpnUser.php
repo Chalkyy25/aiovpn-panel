@@ -21,9 +21,6 @@ class CreateVpnUser extends Component
     /** @var array<int> */
     public array $selectedServers = [];
 
-    // 1m|3m|6m|12m
-    public string $expiry = '1m';
-
     public ?int $packageId = null;
 
     // UI fields (read-only in Blade)
@@ -78,27 +75,11 @@ class CreateVpnUser extends Component
         $this->syncComputedFields();
     }
 
-    public function updatedExpiry(): void
-    {
-        $this->syncComputedFields();
-    }
-
-    private function monthsFromExpiry(): int
-    {
-        return match ($this->expiry) {
-            '1m'  => 1,
-            '3m'  => 3,
-            '6m'  => 6,
-            '12m' => 12,
-            default => 1,
-        };
-    }
-
     private function syncComputedFields(): void
     {
         $pkg = $this->packages->firstWhere('id', $this->packageId);
 
-        $months = $this->monthsFromExpiry();
+        $months = (int) ($pkg->duration_months ?? 1);
         $rate   = (int) ($pkg->price_credits ?? 0);
 
         $this->priceCredits   = $months * $rate;
@@ -124,7 +105,6 @@ class CreateVpnUser extends Component
             ],
             'selectedServers'   => ['required', 'array', 'min:1'],
             'selectedServers.*' => ['integer', Rule::exists('vpn_servers', 'id')],
-            'expiry'            => ['required', Rule::in(['1m', '3m', '6m', '12m'])],
             'packageId'         => ['required', Rule::exists('packages', 'id')],
         ];
     }
@@ -170,7 +150,7 @@ class CreateVpnUser extends Component
         ]);
 
         // Never trust computed UI values — recompute server-side
-        $months      = $this->monthsFromExpiry();
+        $months      = (int) $pkg->duration_months;
         $rate        = (int) $pkg->price_credits;
         $totalCost   = $months * $rate;
         $expiresAt   = Carbon::now()->addMonths($months);
