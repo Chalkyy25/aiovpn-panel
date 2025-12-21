@@ -217,6 +217,11 @@
     color: var(--aio-warning);
   }
   .pill-danger {
+    background: color-mix(in srgb, var(--aio-danger) 14%, transparent);
+    border-color: color-mix(in srgb, var(--aio-danger) 35%, transparent);
+    color: var(--aio-danger);
+  }
+
   /* =========================
      Dashboard tiles
      ========================= */
