@@ -33,8 +33,11 @@
     </div>
 
     <div class="flex items-center gap-3 shrink-0">
-      <x-button type="button" variant="secondary" size="sm"
-        :disabled="refreshing"
+      <x-button
+        type="button"
+        variant="secondary"
+        size="sm"
+        x-bind:disabled="refreshing"
         @click.prevent="refreshNow()"
       >
         <span x-show="!refreshing">Refresh</span>
@@ -91,9 +94,12 @@
 
   {{-- FILTER --}}
   <div class="flex items-center justify-between gap-3">
-    <x-button type="button" variant="secondary" size="sm"
+    <x-button
+      type="button"
+      variant="secondary"
+      size="sm"
       @click="toggleFilters()"
-      :aria-expanded="showFilters"
+      x-bind:aria-expanded="showFilters"
       class="gap-2"
     >
       <x-icon name="o-filter" class="w-4 h-4" />
@@ -145,12 +151,7 @@
   </div>
 
   {{-- ACTIVE CONNECTIONS --}}
-  <x-table
-    title="Active Connections"
-    :subtitle="''"
-    class="mt-2"
-  >
-    {{-- Desktop table --}}
+  <x-table title="Active Connections" class="mt-2">
     <thead class="hidden md:table-header-group">
       <tr>
         <th>User</th>
@@ -167,9 +168,7 @@
     <tbody class="hidden md:table-row-group">
       <template x-for="row in activeRows()" :key="row.__key">
         <tr>
-          <td>
-            <span class="font-medium" x-text="row.username"></span>
-          </td>
+          <td><span class="font-medium" x-text="row.username"></span></td>
           <td class="cell-muted" x-text="row.server_name"></td>
           <td x-text="row.client_ip || '—'"></td>
           <td x-text="row.virtual_ip || '—'"></td>
@@ -184,9 +183,7 @@
           <td x-text="row.formatted_bytes ?? '—'"></td>
 
           <td class="cell-right">
-            <x-button type="button" variant="danger" size="sm"
-              @click.prevent="disconnect(row)"
-            >
+            <x-button type="button" variant="danger" size="sm" @click.prevent="disconnect(row)">
               Disconnect
             </x-button>
           </td>
@@ -224,9 +221,7 @@
               </div>
             </div>
 
-            <x-button type="button" variant="danger" size="sm"
-              @click.prevent="disconnect(row)"
-            >
+            <x-button type="button" variant="danger" size="sm" @click.prevent="disconnect(row)">
               Disconnect
             </x-button>
           </div>
