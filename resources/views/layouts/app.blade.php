@@ -23,10 +23,10 @@
 
 <body class="min-h-full font-sans antialiased" x-data="panelLayout()" x-init="init()">
 
-  <div class="min-h-screen flex bg-[var(--aio-bg)] text-[var(--aio-ink)]">
+<div class="min-h-screen flex text-[var(--aio-ink)]">
 
     {{-- DESKTOP SIDEBAR --}}
-    <aside class="sidebar hidden md:flex md:flex-col border-r border-[var(--aio-border)] bg-[var(--aio-card)]
+    <aside class="sidebar hidden md:flex md:flex-col border-r border-[var(--aio-border)] bg-[color-mix(in_srgb,var(--aio-card)_92%,transparent)] backdrop-blur-md
                   transition-[width] duration-200"
            :class="sidebarCollapsed ? 'md:w-20' : 'md:w-64'"
            aria-label="Main Navigation">
