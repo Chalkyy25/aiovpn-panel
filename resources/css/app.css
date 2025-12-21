@@ -7,66 +7,78 @@
 [x-cloak] { display: none !important; }
 
 /* =========================
-   AIO brand (logo colors)
+   Theme tokens (neutral, standard)
+   Light default, .dark overrides
    ========================= */
 :root {
-  /* LIGHT MODE (default) */
-  --aio-bg:   #f3f4f6;   /* page background */
-  --aio-card: #ffffff;   /* card surface */
-  --aio-ink:  #111827;   /* primary text */
-  --aio-sub:  #6b7280;   /* secondary text */
-  --aio-border: rgba(17,24,39,.12);
+  /* Surfaces */
+  --aio-bg:      #f3f4f6;                 /* page background */
+  --aio-card:    #ffffff;                 /* card surface */
+  --aio-ink:     #111827;                 /* primary text */
+  --aio-sub:     #6b7280;                 /* secondary text */
+  --aio-border:  rgba(17,24,39,.12);      /* border */
+  --aio-soft:    rgba(17,24,39,.06);      /* soft fill */
+  --aio-hover:   rgba(17,24,39,.03);      /* hover fill */
 
-  /* brand accents stay same */
-  --aio-neon: #3DFF7F;
-  --aio-mag:  #FF2FB9;
-  --aio-pup:  #7C4DFF;
-  --aio-cya:  #3BA7F0;
+  /* Accent (keep one, boring + usable) */
+  --aio-accent:       #2563eb;            /* blue-600 */
+  --aio-accent-weak:  rgba(37,99,235,.18);
+
+  /* Status colors (used sparingly) */
+  --aio-success: #16a34a;
+  --aio-warning: #d97706;
+  --aio-danger:  #dc2626;
 }
 
 .dark {
-  /* DARK MODE */
-  --aio-bg:   #0b0f1a;
-  --aio-card: #111827;
-  --aio-ink:  #e5e7eb;
-  --aio-sub:  #9ca3af;
-  --aio-border: rgba(255,255,255,.12);
+  --aio-bg:      #0b1220;
+  --aio-card:    #111827;
+  --aio-ink:     #e5e7eb;
+  --aio-sub:     #9ca3af;
+  --aio-border:  rgba(255,255,255,.12);
+  --aio-soft:    rgba(255,255,255,.06);
+  --aio-hover:   rgba(255,255,255,.04);
+
+  --aio-accent:      #60a5fa;             /* blue-400 */
+  --aio-accent-weak: rgba(96,165,250,.22);
+
+  --aio-success: #22c55e;
+  --aio-warning: #f59e0b;
+  --aio-danger:  #ef4444;
 }
 
-/* Global dark base */
+/* =========================
+   Base
+   ========================= */
 @layer base {
-  html.dark body {
+  body {
     background-color: var(--aio-bg);
     color: var(--aio-ink);
   }
 }
 
 /* =========================
-   Reusable components
+   Components (same class names)
    ========================= */
 @layer components {
-  /* ===== Frosted cards / headers ===== */
+
+  /* ===== Cards / header ===== */
   .aio-card,
   .aio-header {
     @apply rounded-xl border;
-    background-color: rgba(17, 24, 39, 0.55);
-    border-color: rgba(255, 255, 255, 0.10);
-    -webkit-backdrop-filter: saturate(160%) blur(10px);
-    backdrop-filter: saturate(160%) blur(10px);
+    background-color: var(--aio-card);
+    border-color: var(--aio-border);
   }
 
-  .aio-card:hover {
-    background-color: rgba(17, 24, 39, 0.62);
-    border-color: rgba(255, 255, 255, 0.14);
-  }
+  .aio-card:hover { background-color: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover)); }
 
-  .aio-divider { border-color: rgba(255, 255, 255, 0.08); }
+  .aio-divider { border-color: var(--aio-border); }
 
   /* ===== Sections ===== */
   .aio-section {
     @apply rounded-2xl border p-5 md:p-6;
-    background-color: rgba(17,24,39,.92);
-    border-color: rgba(255,255,255,.08);
+    background-color: var(--aio-card);
+    border-color: var(--aio-border);
   }
   .aio-section + .aio-section { @apply mt-6; }
 
@@ -86,23 +98,28 @@
 
   .form-input, .form-select, .form-textarea {
     @apply w-full rounded-lg border px-3 py-2.5 outline-none transition;
-    background: rgba(255,255,255,.04);
-    border-color: rgba(255,255,255,.12);
+    background: var(--aio-card);
+    border-color: var(--aio-border);
     color: var(--aio-ink);
   }
-  .form-textarea { @apply min-h-[110px] resize-y; }
-  .form-input::placeholder, .form-textarea::placeholder { color: rgba(229,231,235,.45); }
 
-  .form-input:focus, .form-select:focus, .form-textarea:focus {
-    border-color: rgba(124,77,255,.55);
-    box-shadow: 0 0 0 3px rgba(124,77,255,.25), 0 0 0 1px rgba(124,77,255,.35) inset;
+  .form-textarea { @apply min-h-[110px] resize-y; }
+
+  .form-input::placeholder, .form-textarea::placeholder {
+    color: color-mix(in srgb, var(--aio-sub) 70%, transparent);
   }
 
+  .form-input:focus, .form-select:focus, .form-textarea:focus {
+    border-color: var(--aio-accent);
+    box-shadow: 0 0 0 3px var(--aio-accent-weak);
+  }
+
+  /* Consistent selects across browsers */
   .form-select {
     appearance: none;
     background-image:
-      linear-gradient(45deg, transparent 50%, var(--aio-ink) 50%),
-      linear-gradient(135deg, var(--aio-ink) 50%, transparent 50%);
+      linear-gradient(45deg, transparent 50%, currentColor 50%),
+      linear-gradient(135deg, currentColor 50%, transparent 50%);
     background-position: calc(100% - 22px) calc(1.05em), calc(100% - 16px) calc(1.05em);
     background-size: 6px 6px, 6px 6px;
     background-repeat: no-repeat;
@@ -112,26 +129,28 @@
   .form-check { @apply inline-flex items-center gap-2 text-sm; color: var(--aio-ink); }
   .form-check input[type="checkbox"] {
     @apply h-4 w-4 rounded border;
-    background: rgba(255,255,255,.04);
-    border-color: rgba(255,255,255,.18);
-    accent-color: var(--aio-neon);
+    background: var(--aio-card);
+    border-color: var(--aio-border);
+    accent-color: var(--aio-accent);
   }
 
   /* ===== Buttons ===== */
   .btn {
     @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold transition;
-    color: #0a0f18;
-    background: var(--aio-neon);
+    color: #ffffff;
+    background: var(--aio-accent);
   }
   .btn:hover { filter: brightness(1.05); }
 
   .btn-secondary {
-    @apply rounded-lg px-4 py-2.5 font-semibold;
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold transition border;
     color: var(--aio-ink);
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.12);
+    background: var(--aio-soft);
+    border-color: var(--aio-border);
   }
-  .btn-danger { color: #fff; background: #ef4444; }
+  .btn-secondary:hover { background: var(--aio-hover); }
+
+  .btn-danger { @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold; color:#fff; background: var(--aio-danger); }
 
   .btn:disabled,
   .btn[disabled],
@@ -141,101 +160,68 @@
     opacity: .6; cursor: not-allowed; filter: none;
   }
 
-  /* ===== Pills (default muted everywhere) ===== */
+  /* ===== Pills ===== */
   .aio-pill {
     display:inline-flex; align-items:center; gap:.375rem;
     padding:.25rem .5rem; border-radius:.5rem;
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.10);
+    background: var(--aio-soft);
+    border: 1px solid var(--aio-border);
     color: var(--aio-ink);
     font-size:.8125rem;
     line-height:1rem;
   }
 
-  /* ===== Sidebar-only bright pills ===== */
-  .sidebar .pill-neon { background: var(--aio-neon); color:#0b0f1a; }
-  .sidebar .pill-mag  { background: var(--aio-mag);  color:#fff; }
-  .sidebar .pill-pup  { background: var(--aio-pup);  color:#fff; }
-  .sidebar .pill-cya  { background: var(--aio-cya);  color:#fff; }
-  
-/* Active — solid brand color + softer glow */
-.sidebar .nav-pill.active,
-.drawer .nav-pill.active {
-  font-weight: 600;
-  color: #0b0f1a; /* dark text for contrast */
-  background: var(--aio-neon); /* fallback, overridden by per-variant */
-  box-shadow: 0 0 6px rgba(255,255,255,.25), 
-              0 0 12px currentColor; /* softer glow */
-}
+  /* Status pills (optional) */
+  .pill-success { background: color-mix(in srgb, var(--aio-success) 15%, transparent); border-color: color-mix(in srgb, var(--aio-success) 35%, transparent); color: var(--aio-success); }
+  .pill-warning { background: color-mix(in srgb, var(--aio-warning) 15%, transparent); border-color: color-mix(in srgb, var(--aio-warning) 35%, transparent); color: var(--aio-warning); }
+  .pill-danger  { background: color-mix(in srgb, var(--aio-danger) 15%, transparent);  border-color: color-mix(in srgb, var(--aio-danger) 35%, transparent);  color: var(--aio-danger); }
 
-/* Per-variant active overrides */
-.sidebar .pill-neon.active,
-.drawer .pill-neon.active {
-  background: var(--aio-neon);
-  box-shadow: 0 0 6px rgba(61,255,127,.4), 0 0 12px rgba(61,255,127,.25);
-}
-
-.sidebar .pill-cya.active,
-.drawer .pill-cya.active {
-  background: var(--aio-cya);
-  box-shadow: 0 0 6px rgba(59,167,240,.4), 0 0 12px rgba(59,167,240,.25);
-}
-
-.sidebar .pill-pup.active,
-.drawer .pill-pup.active {
-  background: var(--aio-pup);
-  box-shadow: 0 0 6px rgba(124,77,255,.4), 0 0 12px rgba(124,77,255,.25);
-}
-
-.sidebar .pill-mag.active,
-.drawer .pill-mag.active {
-  background: var(--aio-mag);
-  box-shadow: 0 0 6px rgba(255,47,185,.4), 0 0 12px rgba(255,47,185,.25);
-}
-
-  /* Nav-pill helper */
+  /* ===== Sidebar / nav ===== */
   .nav-pill {
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.10);
+    background: transparent;
+    border: 1px solid transparent;
+  }
+
+  .sidebar .nav-pill.active,
+  .drawer .nav-pill.active {
+    font-weight: 600;
+    background: var(--aio-accent);
+    border-color: transparent;
+    color: #fff;
   }
 
   /* ===== Dashboard cards ===== */
   .pill-card {
     @apply rounded-xl border;
-    background-color: rgba(17, 24, 39, 0.88);
-    border-color: rgba(255, 255, 255, 0.08);
-    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    background-color: var(--aio-card);
+    border-color: var(--aio-border);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
   }
   .pill-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 0 18px rgba(61, 255, 127, 0.20), 0 0 28px rgba(124, 77, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.14);
+    background-color: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover));
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
   }
 
-  .outline-neon { box-shadow: 0 0 0 1px rgba(61, 255, 127, 0.35) inset; }
-  .outline-mag  { box-shadow: 0 0 0 1px rgba(255, 47, 185, 0.35) inset; }
-  .outline-pup  { box-shadow: 0 0 0 1px rgba(124, 77, 255, 0.35) inset; }
-  .outline-cya  { box-shadow: 0 0 0 1px rgba(59, 167, 240, 0.35) inset; }
-
-  /* ===== Sidebar links ===== */
+  /* ===== Sidebar links (simple, neutral) ===== */
   .side-link {
     @apply flex items-center gap-3 px-3 py-2 rounded-md transition;
-    color: rgba(229, 231, 235, 0.75);
+    color: color-mix(in srgb, var(--aio-ink) 70%, transparent);
   }
   .side-link:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-    color: #ffffff;
+    background-color: var(--aio-hover);
+    color: var(--aio-ink);
   }
   .side-link-active {
-    color: #ffffff;
-    background: linear-gradient(90deg, rgba(124, 77, 255, 0.25), rgba(255, 47, 185, 0.18));
-    box-shadow: 0 0 12px rgba(124, 77, 255, 0.30);
+    color: var(--aio-ink);
+    background: var(--aio-soft);
+    border: 1px solid var(--aio-border);
   }
 
   /* ===== Tables ===== */
   .table-dark { @apply min-w-full text-sm text-left; }
-  .table-dark thead tr { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-  .table-dark tbody tr { border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+  .table-dark thead tr { border-bottom: 1px solid var(--aio-border); }
+  .table-dark tbody tr { border-bottom: 1px solid var(--aio-border); }
   .table-dark th, .table-dark td { @apply px-4 py-2; }
 
   .muted { color: var(--aio-sub); }
@@ -246,10 +232,3 @@
 .aio-section, .pill-card { pointer-events: auto; }
 .aio-overlay { position: relative; }
 .aio-overlay > * { pointer-events: auto; }
-
-@supports ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
-  .aio-card, .aio-header {
-    -webkit-backdrop-filter: saturate(160%) blur(10px);
-    backdrop-filter: saturate(160%) blur(10px);
-  }
-}
