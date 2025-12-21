@@ -217,7 +217,13 @@
     color: var(--aio-warning);
   }
   .pill-danger {
-    background: color-mix(in srgb, var(--aio-danger) 14%, transparent);
+  /* =========================
+     Dashboard tiles
+     ========================= */
+  .pill-card {
+    @apply rounded-xl border;
+    background: var(--aio-card);
+    border-color: var(--aio-border);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
                 0 2px 4px -2px rgba(0, 0, 0, 0.1),
                 0 10px 15px -3px rgba(0, 0, 0, 0.08);
@@ -228,18 +234,7 @@
     background: var(--aio-card);
     box-shadow: 0 14px 28px -8px rgba(0, 0, 0, 0.2), 
                 0 6px 12px -6px rgba(0, 0, 0, 0.15),
-                0 25px 35px -8px rgba(0, 0, 0, 0
-    @apply rounded-xl border;
-    background: var(--aio-card);
-    border-color: var(--aio-border);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
-  }
-  .pill-card:hover {
-    transform: translateY(-2px);
-    background: color-mix(in srgb, var(--aio-card) 92%, white);
-    box-shadow: 0 15px 40px rgba(0,0,0,.15);
+                0 25px 35px -8px rgba(0, 0, 0, 0.15);
   }
 
   /* =========================
