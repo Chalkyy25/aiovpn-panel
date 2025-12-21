@@ -1,4 +1,4 @@
-/* Tailwind base */
+/* Tailwind */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,24 +7,22 @@
 [x-cloak] { display: none !important; }
 
 /* =========================
-   Theme tokens (neutral, standard)
+   Theme tokens (neutral)
    Light default, .dark overrides
    ========================= */
 :root {
-  /* Surfaces */
-  --aio-bg:      #f3f4f6;                 /* page background */
-  --aio-card:    #ffffff;                 /* card surface */
-  --aio-ink:     #111827;                 /* primary text */
-  --aio-sub:     #6b7280;                 /* secondary text */
-  --aio-border:  rgba(17,24,39,.12);      /* border */
-  --aio-soft:    rgba(17,24,39,.06);      /* soft fill */
-  --aio-hover:   rgba(17,24,39,.03);      /* hover fill */
+  --aio-bg:      #f3f4f6;
+  --aio-card:    #ffffff;
+  --aio-ink:     #111827;
+  --aio-sub:     #6b7280;
 
-  /* Accent (keep one, boring + usable) */
-  --aio-accent:       #2563eb;            /* blue-600 */
+  --aio-border:  rgba(17,24,39,.12);
+  --aio-soft:    rgba(17,24,39,.06);
+  --aio-hover:   rgba(17,24,39,.03);
+
+  --aio-accent:       #2563eb;     /* blue-600 */
   --aio-accent-weak:  rgba(37,99,235,.18);
 
-  /* Status colors (used sparingly) */
   --aio-success: #16a34a;
   --aio-warning: #d97706;
   --aio-danger:  #dc2626;
@@ -35,11 +33,12 @@
   --aio-card:    #111827;
   --aio-ink:     #e5e7eb;
   --aio-sub:     #9ca3af;
+
   --aio-border:  rgba(255,255,255,.12);
   --aio-soft:    rgba(255,255,255,.06);
   --aio-hover:   rgba(255,255,255,.04);
 
-  --aio-accent:      #60a5fa;             /* blue-400 */
+  --aio-accent:      #60a5fa;      /* blue-400 */
   --aio-accent-weak: rgba(96,165,250,.22);
 
   --aio-success: #22c55e;
@@ -52,58 +51,30 @@
    ========================= */
 @layer base {
   body {
-    background-color: var(--aio-bg);
+    background: var(--aio-bg);
     color: var(--aio-ink);
   }
 }
 
 /* =========================
-   Components (same class names)
+   Components
    ========================= */
 @layer components {
 
-  /* ===== Cards / header ===== */
+  /* Cards / header surfaces (legacy classes still supported) */
   .aio-card,
   .aio-header {
     @apply rounded-xl border;
-    background-color: var(--aio-card);
+    background: var(--aio-card);
     border-color: var(--aio-border);
   }
 
-  .aio-card:hover { background-color: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover)); }
-
   .aio-divider { border-color: var(--aio-border); }
-  
-  /* ===== Tables (unified) ===== */
-.aio-table { width: 100%; font-size: 0.875rem; line-height: 1.25rem; }
-.aio-table thead th {
-  text-align: left;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--aio-sub);
-  background: color-mix(in srgb, var(--aio-card) 92%, var(--aio-hover));
-  padding: .75rem 1rem;
-  border-bottom: 1px solid var(--aio-border);
-  white-space: nowrap;
-}
-.aio-table tbody td {
-  padding: .75rem 1rem;
-  border-bottom: 1px solid var(--aio-border);
-  color: var(--aio-ink);
-  vertical-align: middle;
-}
-.aio-table tbody tr:hover td {
-  background: var(--aio-hover);
-}
-.aio-table .cell-muted { color: var(--aio-sub); }
-.aio-table .cell-right { text-align: right; }
-.aio-table .cell-nowrap { white-space: nowrap; }
 
-  /* ===== Sections ===== */
+  /* Sections (if still used) */
   .aio-section {
     @apply rounded-2xl border p-5 md:p-6;
-    background-color: var(--aio-card);
+    background: var(--aio-card);
     border-color: var(--aio-border);
   }
   .aio-section + .aio-section { @apply mt-6; }
@@ -114,7 +85,9 @@
   }
   .aio-section-sub { @apply text-sm mb-4; color: var(--aio-sub); }
 
-  /* ===== Forms ===== */
+  /* =========================
+     Forms
+     ========================= */
   .form-grid { @apply grid gap-4; grid-template-columns: 1fr; }
   @media (min-width: 768px) { .form-grid { grid-template-columns: 1fr 1fr; } }
 
@@ -122,7 +95,9 @@
   .form-label { @apply text-sm font-medium; color: var(--aio-ink); }
   .form-help  { @apply text-xs; color: var(--aio-sub); }
 
-  .form-input, .form-select, .form-textarea {
+  .form-input,
+  .form-select,
+  .form-textarea {
     @apply w-full rounded-lg border px-3 py-2.5 outline-none transition;
     background: var(--aio-card);
     border-color: var(--aio-border);
@@ -131,22 +106,26 @@
 
   .form-textarea { @apply min-h-[110px] resize-y; }
 
-  .form-input::placeholder, .form-textarea::placeholder {
+  .form-input::placeholder,
+  .form-textarea::placeholder {
     color: color-mix(in srgb, var(--aio-sub) 70%, transparent);
   }
 
-  .form-input:focus, .form-select:focus, .form-textarea:focus {
+  .form-input:focus,
+  .form-select:focus,
+  .form-textarea:focus {
     border-color: var(--aio-accent);
     box-shadow: 0 0 0 3px var(--aio-accent-weak);
   }
 
-  /* Consistent selects across browsers */
+  /* Select arrow (consistent across browsers) */
   .form-select {
     appearance: none;
     background-image:
       linear-gradient(45deg, transparent 50%, currentColor 50%),
       linear-gradient(135deg, currentColor 50%, transparent 50%);
-    background-position: calc(100% - 22px) calc(1.05em), calc(100% - 16px) calc(1.05em);
+    background-position: calc(100% - 22px) calc(1.05em),
+                         calc(100% - 16px) calc(1.05em);
     background-size: 6px 6px, 6px 6px;
     background-repeat: no-repeat;
     padding-right: 2.5rem;
@@ -160,33 +139,9 @@
     accent-color: var(--aio-accent);
   }
 
-  /* ===== Buttons ===== */
-  .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold transition;
-    color: #ffffff;
-    background: var(--aio-accent);
-  }
-  .btn:hover { filter: brightness(1.05); }
-
-  .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold transition border;
-    color: var(--aio-ink);
-    background: var(--aio-soft);
-    border-color: var(--aio-border);
-  }
-  .btn-secondary:hover { background: var(--aio-hover); }
-
-  .btn-danger { @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold; color:#fff; background: var(--aio-danger); }
-
-  .btn:disabled,
-  .btn[disabled],
-  .btn[aria-disabled="true"],
-  .btn-secondary:disabled,
-  .btn-secondary[disabled] {
-    opacity: .6; cursor: not-allowed; filter: none;
-  }
-
-  /* ===== Pills ===== */
+  /* =========================
+     Pills / status
+     ========================= */
   .aio-pill {
     display:inline-flex; align-items:center; gap:.375rem;
     padding:.25rem .5rem; border-radius:.5rem;
@@ -197,64 +152,90 @@
     line-height:1rem;
   }
 
-  /* Status pills (optional) */
-  .pill-success { background: color-mix(in srgb, var(--aio-success) 15%, transparent); border-color: color-mix(in srgb, var(--aio-success) 35%, transparent); color: var(--aio-success); }
-  .pill-warning { background: color-mix(in srgb, var(--aio-warning) 15%, transparent); border-color: color-mix(in srgb, var(--aio-warning) 35%, transparent); color: var(--aio-warning); }
-  .pill-danger  { background: color-mix(in srgb, var(--aio-danger) 15%, transparent);  border-color: color-mix(in srgb, var(--aio-danger) 35%, transparent);  color: var(--aio-danger); }
-
-  /* ===== Sidebar / nav ===== */
-  .nav-pill {
-    background: transparent;
-    border: 1px solid transparent;
+  .pill-success {
+    background: color-mix(in srgb, var(--aio-success) 14%, transparent);
+    border-color: color-mix(in srgb, var(--aio-success) 35%, transparent);
+    color: var(--aio-success);
+  }
+  .pill-warning {
+    background: color-mix(in srgb, var(--aio-warning) 14%, transparent);
+    border-color: color-mix(in srgb, var(--aio-warning) 35%, transparent);
+    color: var(--aio-warning);
+  }
+  .pill-danger {
+    background: color-mix(in srgb, var(--aio-danger) 14%, transparent);
+    border-color: color-mix(in srgb, var(--aio-danger) 35%, transparent);
+    color: var(--aio-danger);
   }
 
-  .sidebar .nav-pill.active,
-  .drawer .nav-pill.active {
-    font-weight: 600;
-    background: var(--aio-accent);
-    border-color: transparent;
-    color: #fff;
-  }
-
-  /* ===== Dashboard cards ===== */
+  /* =========================
+     Dashboard cards
+     ========================= */
   .pill-card {
     @apply rounded-xl border;
-    background-color: var(--aio-card);
+    background: var(--aio-card);
     border-color: var(--aio-border);
-    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
+    transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
   .pill-card:hover {
     transform: translateY(-2px);
-    background-color: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover));
+    background: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover));
     box-shadow: 0 10px 30px rgba(0,0,0,.08);
   }
 
-  /* ===== Sidebar links (simple, neutral) ===== */
-  .side-link {
-    @apply flex items-center gap-3 px-3 py-2 rounded-md transition;
-    color: color-mix(in srgb, var(--aio-ink) 70%, transparent);
-  }
-  .side-link:hover {
-    background-color: var(--aio-hover);
-    color: var(--aio-ink);
-  }
-  .side-link-active {
-    color: var(--aio-ink);
-    background: var(--aio-soft);
-    border: 1px solid var(--aio-border);
+  /* =========================
+     Sidebar (neutral)
+     ========================= */
+  .nav-pill { background: transparent; border: 1px solid transparent; }
+
+  /* (Optional) old classes still won't break, but nav-link now controls active styles */
+
+  /* =========================
+     Tables (single source of truth)
+     ========================= */
+  .aio-table {
+    width: 100%;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
   }
 
-  /* ===== Tables ===== */
+  .aio-table thead th {
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--aio-sub);
+    background: color-mix(in srgb, var(--aio-card) 92%, var(--aio-hover));
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--aio-border);
+    white-space: nowrap;
+  }
+
+  .aio-table tbody td {
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--aio-border);
+    color: var(--aio-ink);
+    vertical-align: middle;
+  }
+
+  .aio-table tbody tr:hover td { background: var(--aio-hover); }
+
+  .aio-table .cell-muted  { color: var(--aio-sub); }
+  .aio-table .cell-right  { text-align: right; }
+  .aio-table .cell-nowrap { white-space: nowrap; }
+
+  /* Compatibility: if any old pages still use table-dark */
   .table-dark { @apply min-w-full text-sm text-left; }
-  .table-dark thead tr { border-bottom: 1px solid var(--aio-border); }
+  .table-dark thead tr,
   .table-dark tbody tr { border-bottom: 1px solid var(--aio-border); }
   .table-dark th, .table-dark td { @apply px-4 py-2; }
 
   .muted { color: var(--aio-sub); }
 }
 
-/* ===== Utilities ===== */
+/* =========================
+   Utilities
+   ========================= */
 .brand-logo { height: 32px; max-height: 32px; width: auto; object-fit: contain; }
-.aio-section, .pill-card { pointer-events: auto; }
 .aio-overlay { position: relative; }
 .aio-overlay > * { pointer-events: auto; }
