@@ -1,29 +1,14 @@
 @props([
   'title'      => null,
-  'actions'    => null,    // right side header actions
-  'flush'      => false,   // no inner padding (for tables)
-  'subtitle'   => null,    // small helper text
-  'headerBlur' => false,   // apply a tiny blur only to the header strip
-  'noBlur'     => true,    // keep the whole card non-blurred (recommended)
-  'cardClass'  => '',      // extra classes for wrapper
+  'actions'    => null,   // right side header actions
+  'flush'      => false,  // no inner padding (for tables)
+  'subtitle'   => null,   // helper text
+  'cardClass'  => '',     // extra classes for wrapper
 ])
 
 @php
-  // Solid, non-blurred card surface by default.
-  // If you *really* want blur, set noBlur=false (not recommended for large blocks).
-  $wrapper = trim('rounded-2xl border ' . $cardClass);
-
-  if ($noBlur) {
-      // Solid translucent background, no backdrop filter
-      $wrapper .= ' bg-[rgba(17,24,39,0.90)] border-white/10';
-  } else {
-      // Frosted look (use sparingly!)
-      $wrapper .= ' bg-white/5 border-white/10 backdrop-blur-sm';
-  }
-
-  // Header strip style; optional tiny blur just on the strip:
-  $head = 'px-4 py-3 border-b border-white/10 flex items-center justify-between';
-  if ($headerBlur) $head .= ' bg-white/5 backdrop-blur-sm';
+  $wrapper = trim("rounded-2xl border bg-[var(--aio-card)] border-[var(--aio-border)] {$cardClass}");
+  $head    = "px-4 py-3 border-b border-[var(--aio-border)] flex items-center justify-between";
 @endphp
 
 <div {{ $attributes->merge(['class' => $wrapper]) }}>
@@ -34,11 +19,12 @@
           <h2 class="font-semibold truncate text-[var(--aio-ink)]">{{ $title }}</h2>
         @endif
         @if($subtitle)
-          <p class="text-xs text-[var(--aio-sub)] truncate">{{ $subtitle }}</p>
+          <p class="text-xs truncate text-[var(--aio-sub)]">{{ $subtitle }}</p>
         @endif
       </div>
+
       @if($actions)
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 shrink-0">
           {{ $actions }}
         </div>
       @endif

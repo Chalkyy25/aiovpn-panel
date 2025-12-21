@@ -1,4 +1,4 @@
-/* Tailwind base */
+/* Tailwind */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,56 +7,102 @@
 [x-cloak] { display: none !important; }
 
 /* =========================
-   AIO brand (logo colors)
+   Theme tokens
+   Light default, .dark overrides
    ========================= */
 :root {
-  /* base surfaces */
-  --aio-bg:   #0b0f1a;  /* page background (near-black blue) */
-  --aio-card: #111827;  /* card surface (dark slate) */
-  --aio-ink:  #e5e7eb;  /* primary text */
-  --aio-sub:  #9ca3af;  /* secondary text */
+  --aio-bg:      #f3f4f6;
+  --aio-card:    #ffffff;
+  --aio-ink:     #111827;
+  --aio-sub:     #6b7280;
 
-  /* brand accents from the logo */
-  --aio-neon: #3DFF7F;  /* neon green */
-  --aio-mag:  #FF2FB9;  /* magenta */
-  --aio-pup:  #7C4DFF;  /* electric purple */
-  --aio-cya:  #3BA7F0;  /* cyan/blue */
+  --aio-border:  rgba(17,24,39,.12);
+  --aio-soft:    rgba(17,24,39,.06);
+  --aio-hover:   rgba(17,24,39,.03);
+
+  --aio-accent:       #2563eb;     /* blue-600 */
+  --aio-accent-weak:  rgba(37,99,235,.18);
+
+  --aio-success: #16a34a;
+  --aio-warning: #d97706;
+  --aio-danger:  #dc2626;
+
+  /* Background gradient stops */
+  --aio-bg-1: #f7faff;   /* top */
+  --aio-bg-2: #e6eef9;   /* bottom */
 }
 
-/* Global dark base */
+.dark {
+  --aio-bg:      #0b1220;
+  --aio-card:    #111827;
+  --aio-ink:     #e5e7eb;
+  --aio-sub:     #9ca3af;
+
+  --aio-border:  rgba(255,255,255,.12);
+  --aio-soft:    rgba(255,255,255,.06);
+  --aio-hover:   rgba(255,255,255,.04);
+
+  --aio-accent:      #60a5fa;      /* blue-400 */
+  --aio-accent-weak: rgba(96,165,250,.22);
+
+  --aio-success: #22c55e;
+  --aio-warning: #f59e0b;
+  --aio-danger:  #ef4444;
+
+  /* Background gradient stops */
+  --aio-bg-1: #0b1220;   /* top */
+  --aio-bg-2: #0f1a33;   /* bottom */
+}
+
+/* =========================
+   Base
+   ========================= */
 @layer base {
-  html.dark body {
-    background-color: var(--aio-bg);
+  html, body { min-height: 100%; }
+
+  body {
     color: var(--aio-ink);
+    background-color: var(--aio-bg);
   }
 }
 
 /* =========================
-   Reusable components
+   Background (single source of truth)
+   Apply .aio-bg to <body>
    ========================= */
 @layer components {
-  /* ===== Frosted cards / headers ===== */
+  .aio-bg {
+    background:
+      radial-gradient(800px 420px at 20% -10%, rgba(37,99,235,.18), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(37,99,235,.12), transparent 55%),
+      linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
+    background-color: var(--aio-bg);
+  }
+
+  .dark .aio-bg {
+    background:
+      radial-gradient(800px 420px at 20% -10%, rgba(96,165,250,.16), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(96,165,250,.10), transparent 55%),
+      linear-gradient(180deg, var(--aio-bg-1), var(--aio-bg-2));
+    background-color: var(--aio-bg);
+  }
+
+  /* =========================
+     Cards / header surfaces
+     ========================= */
   .aio-card,
   .aio-header {
     @apply rounded-xl border;
-    background-color: rgba(17, 24, 39, 0.55);
-    border-color: rgba(255, 255, 255, 0.10);
-    -webkit-backdrop-filter: saturate(160%) blur(10px);
-    backdrop-filter: saturate(160%) blur(10px);
+    background: var(--aio-card);
+    border-color: var(--aio-border);
   }
 
-  .aio-card:hover {
-    background-color: rgba(17, 24, 39, 0.62);
-    border-color: rgba(255, 255, 255, 0.14);
-  }
+  .aio-divider { border-color: var(--aio-border); }
 
-  .aio-divider { border-color: rgba(255, 255, 255, 0.08); }
-
-  /* ===== Sections ===== */
   .aio-section {
     @apply rounded-2xl border p-5 md:p-6;
-    background-color: rgba(17,24,39,.92);
-    border-color: rgba(255,255,255,.08);
+    background: var(--aio-card);
+    border-color: var(--aio-border);
   }
   .aio-section + .aio-section { @apply mt-6; }
 
@@ -66,7 +112,9 @@
   }
   .aio-section-sub { @apply text-sm mb-4; color: var(--aio-sub); }
 
-  /* ===== Forms ===== */
+  /* =========================
+     Forms
+     ========================= */
   .form-grid { @apply grid gap-4; grid-template-columns: 1fr; }
   @media (min-width: 768px) { .form-grid { grid-template-columns: 1fr 1fr; } }
 
@@ -74,26 +122,36 @@
   .form-label { @apply text-sm font-medium; color: var(--aio-ink); }
   .form-help  { @apply text-xs; color: var(--aio-sub); }
 
-  .form-input, .form-select, .form-textarea {
+  .form-input,
+  .form-select,
+  .form-textarea {
     @apply w-full rounded-lg border px-3 py-2.5 outline-none transition;
-    background: rgba(255,255,255,.04);
-    border-color: rgba(255,255,255,.12);
+    background: var(--aio-card);
+    border-color: var(--aio-border);
     color: var(--aio-ink);
   }
-  .form-textarea { @apply min-h-[110px] resize-y; }
-  .form-input::placeholder, .form-textarea::placeholder { color: rgba(229,231,235,.45); }
 
-  .form-input:focus, .form-select:focus, .form-textarea:focus {
-    border-color: rgba(124,77,255,.55);
-    box-shadow: 0 0 0 3px rgba(124,77,255,.25), 0 0 0 1px rgba(124,77,255,.35) inset;
+  .form-textarea { @apply min-h-[110px] resize-y; }
+
+  .form-input::placeholder,
+  .form-textarea::placeholder {
+    color: color-mix(in srgb, var(--aio-sub) 70%, transparent);
+  }
+
+  .form-input:focus,
+  .form-select:focus,
+  .form-textarea:focus {
+    border-color: var(--aio-accent);
+    box-shadow: 0 0 0 3px var(--aio-accent-weak);
   }
 
   .form-select {
     appearance: none;
     background-image:
-      linear-gradient(45deg, transparent 50%, var(--aio-ink) 50%),
-      linear-gradient(135deg, var(--aio-ink) 50%, transparent 50%);
-    background-position: calc(100% - 22px) calc(1.05em), calc(100% - 16px) calc(1.05em);
+      linear-gradient(45deg, transparent 50%, currentColor 50%),
+      linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position: calc(100% - 22px) 1.05em,
+                         calc(100% - 16px) 1.05em;
     background-size: 6px 6px, 6px 6px;
     background-repeat: no-repeat;
     padding-right: 2.5rem;
@@ -102,144 +160,95 @@
   .form-check { @apply inline-flex items-center gap-2 text-sm; color: var(--aio-ink); }
   .form-check input[type="checkbox"] {
     @apply h-4 w-4 rounded border;
-    background: rgba(255,255,255,.04);
-    border-color: rgba(255,255,255,.18);
-    accent-color: var(--aio-neon);
+    background: var(--aio-card);
+    border-color: var(--aio-border);
+    accent-color: var(--aio-accent);
   }
 
-  /* ===== Buttons ===== */
-  .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2.5 font-semibold transition;
-    color: #0a0f18;
-    background: var(--aio-neon);
-  }
-  .btn:hover { filter: brightness(1.05); }
-
-  .btn-secondary {
-    @apply rounded-lg px-4 py-2.5 font-semibold;
-    color: var(--aio-ink);
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.12);
-  }
-  .btn-danger { color: #fff; background: #ef4444; }
-
-  .btn:disabled,
-  .btn[disabled],
-  .btn[aria-disabled="true"],
-  .btn-secondary:disabled,
-  .btn-secondary[disabled] {
-    opacity: .6; cursor: not-allowed; filter: none;
-  }
-
-  /* ===== Pills (default muted everywhere) ===== */
+  /* =========================
+     Pills
+     ========================= */
   .aio-pill {
     display:inline-flex; align-items:center; gap:.375rem;
     padding:.25rem .5rem; border-radius:.5rem;
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.10);
+    background: var(--aio-soft);
+    border: 1px solid var(--aio-border);
     color: var(--aio-ink);
     font-size:.8125rem;
     line-height:1rem;
   }
 
-  /* ===== Sidebar-only bright pills ===== */
-  .sidebar .pill-neon { background: var(--aio-neon); color:#0b0f1a; }
-  .sidebar .pill-mag  { background: var(--aio-mag);  color:#fff; }
-  .sidebar .pill-pup  { background: var(--aio-pup);  color:#fff; }
-  .sidebar .pill-cya  { background: var(--aio-cya);  color:#fff; }
-  
-/* Active — solid brand color + softer glow */
-.sidebar .nav-pill.active,
-.drawer .nav-pill.active {
-  font-weight: 600;
-  color: #0b0f1a; /* dark text for contrast */
-  background: var(--aio-neon); /* fallback, overridden by per-variant */
-  box-shadow: 0 0 6px rgba(255,255,255,.25), 
-              0 0 12px currentColor; /* softer glow */
-}
-
-/* Per-variant active overrides */
-.sidebar .pill-neon.active,
-.drawer .pill-neon.active {
-  background: var(--aio-neon);
-  box-shadow: 0 0 6px rgba(61,255,127,.4), 0 0 12px rgba(61,255,127,.25);
-}
-
-.sidebar .pill-cya.active,
-.drawer .pill-cya.active {
-  background: var(--aio-cya);
-  box-shadow: 0 0 6px rgba(59,167,240,.4), 0 0 12px rgba(59,167,240,.25);
-}
-
-.sidebar .pill-pup.active,
-.drawer .pill-pup.active {
-  background: var(--aio-pup);
-  box-shadow: 0 0 6px rgba(124,77,255,.4), 0 0 12px rgba(124,77,255,.25);
-}
-
-.sidebar .pill-mag.active,
-.drawer .pill-mag.active {
-  background: var(--aio-mag);
-  box-shadow: 0 0 6px rgba(255,47,185,.4), 0 0 12px rgba(255,47,185,.25);
-}
-
-  /* Nav-pill helper */
-  .nav-pill {
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.10);
+  .pill-success {
+    background: color-mix(in srgb, var(--aio-success) 14%, transparent);
+    border-color: color-mix(in srgb, var(--aio-success) 35%, transparent);
+    color: var(--aio-success);
+  }
+  .pill-warning {
+    background: color-mix(in srgb, var(--aio-warning) 14%, transparent);
+    border-color: color-mix(in srgb, var(--aio-warning) 35%, transparent);
+    color: var(--aio-warning);
+  }
+  .pill-danger {
+    background: color-mix(in srgb, var(--aio-danger) 14%, transparent);
+    border-color: color-mix(in srgb, var(--aio-danger) 35%, transparent);
+    color: var(--aio-danger);
   }
 
-  /* ===== Dashboard cards ===== */
+  /* =========================
+     Dashboard tiles
+     ========================= */
   .pill-card {
     @apply rounded-xl border;
-    background-color: rgba(17, 24, 39, 0.88);
-    border-color: rgba(255, 255, 255, 0.08);
-    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    background: var(--aio-card);
+    border-color: var(--aio-border);
+    transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
   }
   .pill-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 0 18px rgba(61, 255, 127, 0.20), 0 0 28px rgba(124, 77, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.14);
+    background: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover));
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
   }
 
-  .outline-neon { box-shadow: 0 0 0 1px rgba(61, 255, 127, 0.35) inset; }
-  .outline-mag  { box-shadow: 0 0 0 1px rgba(255, 47, 185, 0.35) inset; }
-  .outline-pup  { box-shadow: 0 0 0 1px rgba(124, 77, 255, 0.35) inset; }
-  .outline-cya  { box-shadow: 0 0 0 1px rgba(59, 167, 240, 0.35) inset; }
-
-  /* ===== Sidebar links ===== */
-  .side-link {
-    @apply flex items-center gap-3 px-3 py-2 rounded-md transition;
-    color: rgba(229, 231, 235, 0.75);
-  }
-  .side-link:hover {
-    background-color: rgba(255, 255, 255, 0.06);
-    color: #ffffff;
-  }
-  .side-link-active {
-    color: #ffffff;
-    background: linear-gradient(90deg, rgba(124, 77, 255, 0.25), rgba(255, 47, 185, 0.18));
-    box-shadow: 0 0 12px rgba(124, 77, 255, 0.30);
+  /* =========================
+     Tables
+     ========================= */
+  .aio-table {
+    width: 100%;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
   }
 
-  /* ===== Tables ===== */
-  .table-dark { @apply min-w-full text-sm text-left; }
-  .table-dark thead tr { border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-  .table-dark tbody tr { border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
-  .table-dark th, .table-dark td { @apply px-4 py-2; }
+  .aio-table thead th {
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--aio-sub);
+    background: color-mix(in srgb, var(--aio-card) 92%, var(--aio-hover));
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--aio-border);
+    white-space: nowrap;
+  }
+
+  .aio-table tbody td {
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--aio-border);
+    color: var(--aio-ink);
+    vertical-align: middle;
+  }
+
+  .aio-table tbody tr:hover td { background: var(--aio-hover); }
+
+  .aio-table .cell-muted  { color: var(--aio-sub); }
+  .aio-table .cell-right  { text-align: right; }
+  .aio-table .cell-nowrap { white-space: nowrap; }
 
   .muted { color: var(--aio-sub); }
 }
 
-/* ===== Utilities ===== */
+/* =========================
+   Utilities
+   ========================= */
 .brand-logo { height: 32px; max-height: 32px; width: auto; object-fit: contain; }
-.aio-section, .pill-card { pointer-events: auto; }
 .aio-overlay { position: relative; }
 .aio-overlay > * { pointer-events: auto; }
-
-@supports ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
-  .aio-card, .aio-header {
-    -webkit-backdrop-filter: saturate(160%) blur(10px);
-    backdrop-filter: saturate(160%) blur(10px);
-  }
-}

@@ -1,30 +1,35 @@
-import defaultTheme from 'tailwindcss/defaultTheme';
-import forms from '@tailwindcss/forms';
+import defaultTheme from 'tailwindcss/defaultTheme'
+import forms from '@tailwindcss/forms'
+import flowbite from 'flowbite/plugin'
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: 'class', // we'll toggle with a class
+  darkMode: 'class',
+
   content: [
     './resources/views/**/*.blade.php',
     './app/View/Components/**/*.php',
     './resources/js/**/*.js',
+
+    // ✅ Flowbite
+    './node_modules/flowbite/**/*.js',
   ],
+
   theme: {
     extend: {
       fontFamily: {
         sans: ['Figtree', ...defaultTheme.fontFamily.sans],
       },
       colors: {
-        // AIO brand — tweak the hexes if you prefer
         aio: {
-          bg:   '#0b0f1a',   // page background (almost black-blue)
-          card: '#111827',  // surface (dark slate)
-          ink:  '#e5e7eb',  // primary text (gray-200)
-          sub:  '#9ca3af',  // secondary text (gray-400)
-          neon: '#3DFF7F',  // neon green (eyes)
-          mag:  '#FF2FB9',  // hot magenta
-          pup:  '#7C4DFF',  // electric purple
-          cya:  '#3BA7F0',  // cyan/blue
+          bg: '#0b0f1a',
+          card: '#111827',
+          ink: '#e5e7eb',
+          sub: '#9ca3af',
+          neon: '#3DFF7F',
+          mag: '#FF2FB9',
+          pup: '#7C4DFF',
+          cya: '#3BA7F0',
         },
       },
       boxShadow: {
@@ -35,5 +40,9 @@ export default {
       },
     },
   },
-  plugins: [forms],
-};
+
+  plugins: [
+    forms,
+    flowbite, // ✅ Flowbite plugin
+  ],
+}

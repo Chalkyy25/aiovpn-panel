@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+
+// ✅ Models (if you really need them here)
 use App\Models\User;
 use App\Models\VpnUser;
 
@@ -17,11 +19,14 @@ use App\Http\Controllers\ClientAuthController;
 use App\Http\Controllers\AdminImpersonationController;
 use App\Http\Controllers\Client\AuthController;
 use App\Http\Controllers\Admin\Auth\LoginController as AdminLogin;
-use App\Http\Controllers\Admin\AppBuildController;
 
+// ✅ Downloads (NO conflicts)
+use App\Http\Controllers\AppBuildPublicDownloadController;
+use App\Http\Controllers\Admin\AppBuildDownloadController as AdminAppBuildDownloadController;
 
-// ✅ Livewire Pages
-use App\Livewire\Pages\Admin\{CreateUser,
+// ✅ Livewire Pages (Admin)
+use App\Livewire\Pages\Admin\{
+    CreateUser,
     AppBuilds,
     CreateVpnUser,
     CreateTrialLine,
@@ -37,24 +42,28 @@ use App\Livewire\Pages\Admin\{CreateUser,
     CreateReseller,
     ResellerList,
     ManageCredits,
-    VpnDashboard};
-    
-// Reseller Routes
+    VpnDashboard
+};
+
+// ✅ Livewire Pages (Reseller)
 use App\Livewire\Pages\Reseller\Dashboard as ResellerDashboard;
 use App\Livewire\Pages\Reseller\Credits as ResellerCredits;
 use App\Livewire\Pages\Reseller\ClientsList;
 use App\Livewire\Pages\Reseller\CreateClientLine;
 
-// Client Routes
+// ✅ Livewire Pages (Client)
 use App\Livewire\Pages\Client\Dashboard;
 
-// 🌐 Public Landing Page
+
+// ============================
+// 🌐 Public Routes
+// ============================
+
 Route::get('/', fn () => view('welcome'));
 
-// ✅ Shared Fallback Dashboard
-Route::get('/dashboard', fn () => view('dashboard'))
-    ->middleware(['auth', 'verified'])
-    ->name('dashboard');
+// ✅ Permanent public APK link for AFTV/Downloader (NEVER changes)
+Route::get('/downloads/app.apk', [AppBuildPublicDownloadController::class, 'latest'])
+    ->name('downloads.app.latest');
 
 Route::get('/debug/reverb', function () {
     return response()->json([
@@ -67,6 +76,11 @@ Route::get('/debug-db', function () {
     return config('database.connections.mysql');
 });
 
+// ✅ Shared Fallback Dashboard
+Route::get('/dashboard', fn () => view('dashboard'))
+    ->middleware(['auth', 'verified'])
+    ->name('dashboard');
+
 
 // ======================
 // ✅ Admin Routes
@@ -76,13 +90,13 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
-        // Dashboard (controller — invokes __invoke on DashboardController)
+
+        // Dashboard
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
-        // ...keep your other admin routes here (vpn-dashboard, users, servers, etc.)
         // VPN Dashboard
         Route::get('/vpn-dashboard', VpnDashboard::class)->name('vpn-dashboard');
-        Route::post('/servers/{server}/disconnect', [\App\Http\Controllers\VpnDisconnectController::class, 'disconnect'])->name('servers.disconnect');
+        Route::post('/servers/{server}/disconnect', [VpnDisconnectController::class, 'disconnect'])->name('servers.disconnect');
 
         // Users
         Route::get('/users', UserList::class)->name('users.index');
@@ -94,6 +108,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 
         // Settings
         Route::get('/settings', fn () => view('admin.settings'))->name('settings');
+
+        // Packages
         Route::resource('packages', PackageController::class);
 
         // VPN Users (global list)
@@ -101,32 +117,34 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/vpn-users/create', CreateVpnUser::class)->name('vpn-users.create');
         Route::get('/vpn-users/{vpnUser}/edit', EditVpnUser::class)->name('vpn-users.edit');
 
-        //Trial Line Create
+        // Trial Line Create
         Route::get('/vpn-users/trial', CreateTrialLine::class)->name('vpn-users.trial');
 
-        // Reseller Create
+        // Resellers
         Route::get('/resellers/create', CreateReseller::class)->name('resellers.create');
-
-        //Reseller List
         Route::get('/resellers', ResellerList::class)->name('resellers.index');
 
-        //Manage Credits
-         Route::get('/credits', ManageCredits::class)->name('credits');
+        // Credits
+        Route::get('/credits', ManageCredits::class)->name('credits');
 
         // Admin Impersonation
         Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])->name('impersonate');
         Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])->name('stop-impersonation');
-	Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
-});
+
+        // App Builds
+        Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
+        Route::get('/app-builds/{build}/download', AdminAppBuildDownloadController::class)->name('app-builds.download');
+    });
+
 
 // ============================
-// ✅ VPN Server Management
+// ✅ VPN Server Management (Admin)
 // ============================
 Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('admin/servers')
     ->name('admin.servers.')
     ->group(function () {
-        // Core Server Routes
+
         Route::get('/', VpnServerList::class)->name('index');
         Route::get('/create', ServerCreate::class)->name('create');
         Route::get('/{vpnserver}/edit', ServerEdit::class)->name('edit');
@@ -138,7 +156,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::prefix('/{vpnserver}/users')->group(function () {
             Route::get('/', [VpnUserController::class, 'index'])->name('users.index');
             Route::get('/create', [VpnUserController::class, 'create'])->name('users.create');
-            Route::post('/', [VpnUserController::class, 'store'])->name('users.store'); // ✅ FIXED
+            Route::post('/', [VpnUserController::class, 'store'])->name('users.store');
             Route::post('/sync', [VpnUserController::class, 'sync'])->name('users.sync');
         });
     });
@@ -167,11 +185,11 @@ Route::middleware(['auth', 'verified', 'role:reseller'])
     ->prefix('reseller')
     ->name('reseller.')
     ->group(function () {
-        Route::get('/dashboard', ResellerDashboard::class)->name('dashboard');
-        Route::get('/credits',   ResellerCredits::class)->name('credits');
 
-        // Lines/clients (the “subsellers/clients” that belong to the reseller)
-        Route::get('/clients',        ClientsList::class)->name('clients.index');
+        Route::get('/dashboard', ResellerDashboard::class)->name('dashboard');
+        Route::get('/credits', ResellerCredits::class)->name('credits');
+
+        Route::get('/clients', ClientsList::class)->name('clients.index');
         Route::get('/clients/create', CreateClientLine::class)->name('clients.create');
     });
 
@@ -179,32 +197,33 @@ Route::middleware(['auth', 'verified', 'role:reseller'])
 // ============================
 // ✅ Client Routes
 // ============================
-
 Route::prefix('client')->name('client.')->group(function () {
+
     // Guest-only routes (not logged in as client)
     Route::middleware('guest:client')->group(function () {
-        Route::get('login',  [AuthController::class, 'showLoginForm'])->name('login.form');
+        Route::get('login', [AuthController::class, 'showLoginForm'])->name('login.form');
         Route::post('login', [AuthController::class, 'login'])->name('login');
     });
 
     // Authenticated client routes
     Route::middleware('auth:client')->group(function () {
         Route::post('logout', [AuthController::class, 'logout'])->name('logout');
-
         Route::get('dashboard', Dashboard::class)->name('dashboard');
 
-        // Client downloads an OVPN (or WG) for a specific server
         Route::get('vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])
             ->name('vpn.download');
     });
 });
 
 
-// ADMIN auth (web guard)
+// ============================
+// ✅ ADMIN auth (web guard)
+// ============================
 Route::middleware('guest:web')->group(function () {
-    Route::get('/login',  [AdminLogin::class, 'show'])->name('login.form');
+    Route::get('/login', [AdminLogin::class, 'show'])->name('login.form');
     Route::post('/login', [AdminLogin::class, 'login'])->name('login');
 });
+
 Route::post('/logout', [AdminLogin::class, 'logout'])
     ->middleware('auth:web')
     ->name('logout');
@@ -221,4 +240,4 @@ Route::middleware('auth')->group(function () {
 
 
 // ✅ Laravel Auth (Fortify / Breeze / Jetstream)
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

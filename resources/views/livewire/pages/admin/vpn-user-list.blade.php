@@ -1,387 +1,305 @@
 <div wire:poll.10s class="max-w-7xl mx-auto p-4 space-y-4">
 
-    {{-- Config generation progress --}}
-    <div wire:poll.1s="pollConfigProgress">
-        @if($configUserId && $configProgress > 0 && $configProgress < 100)
-            <div class="aio-card p-3">
-                <div class="text-xs text-[var(--aio-sub)]">
-                    {{ $configMessage ?: 'Generating config pack...' }}
-                </div>
-                <div class="w-full bg-white/5 rounded-full h-2 mt-1 overflow-hidden">
-                    <div class="h-2 rounded-full bg-[var(--aio-cya)] transition-all"
-                         style="width: {{ $configProgress }}%"></div>
-                </div>
-            </div>
-        @elseif($configUserId && $configProgress === 100)
-            <div class="aio-pill pill-neon inline-block text-xs">
-                {{ $configMessage ?: 'Config pack complete.' }}
-            </div>
-        @endif
-    </div>
-
-    {{-- Header + Add button --}}
-    <div class="flex items-center justify-between">
-        <h2 class="text-xl font-semibold">VPN Users</h2>
-
-        <x-button :href="route('admin.vpn-users.create')" variant="light" size="sm" class="gap-2">
-            <span class="text-base leading-none">＋</span>
-            <span>Add User</span>
-        </x-button>
-    </div>
-
-    @if (session()->has('message'))
-        <div class="aio-pill pill-neon inline-block">
-            {{ session('message') }}
+  {{-- Config generation progress --}}
+  <div wire:poll.1s="pollConfigProgress">
+    @if($configUserId && $configProgress > 0 && $configProgress < 100)
+      <x-section-card title="Generating Config Pack" subtitle="{{ $configMessage ?: 'Please wait…' }}" class="p-0" flush>
+        <div class="p-4">
+          <div class="w-full rounded-full h-2 overflow-hidden bg-[var(--aio-soft)] border border-[var(--aio-border)]">
+            <div class="h-2 bg-[var(--aio-accent)] transition-all"
+                 style="width: {{ $configProgress }}%"></div>
+          </div>
+          <div class="mt-2 text-xs text-[var(--aio-sub)]">{{ $configProgress }}%</div>
         </div>
+      </x-section-card>
+    @elseif($configUserId && $configProgress === 100)
+      <div class="aio-pill pill-success inline-block text-xs">
+        {{ $configMessage ?: 'Config pack complete.' }}
+      </div>
     @endif
+  </div>
 
-    {{-- Search --}}
+  {{-- Header --}}
+  <div class="flex items-center justify-between gap-3">
     <div>
-        <input wire:model.debounce.300ms="search"
-               type="text"
-               placeholder="Search users..."
-               class="w-full md:w-1/3 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-[var(--aio-ink)] placeholder-[var(--aio-sub)] focus:outline-none focus:ring-2 focus:ring-[var(--aio-cya)]">
+      <h2 class="text-xl font-semibold text-[var(--aio-ink)]">VPN Users</h2>
+      <p class="text-sm text-[var(--aio-sub)]">Manage credentials, servers and expiry.</p>
     </div>
 
-    {{-- Responsive list: cards on mobile, table on md+ --}}
-    <div class="aio-card overflow-x-auto">
+    <x-button :href="route('admin.vpn-users.create')" variant="primary" size="sm" class="gap-2">
+      <span class="text-base leading-none">＋</span>
+      <span>Add User</span>
+    </x-button>
+  </div>
 
-        {{-- md+: classic table --}}
-        <table class="min-w-full text-sm hidden md:table">
-            <thead class="bg-white/5">
-                <tr class="text-[var(--aio-sub)] uppercase text-xs">
-                    <th class="px-6 py-3 text-left">Credentials</th>
-                    <th class="px-6 py-3 text-left">Servers</th>
-                    <th class="px-6 py-3 text-left">Expires</th>
-                    <th class="px-6 py-3 text-left">Status</th>
-                    <th class="px-6 py-3 text-left">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-white/10">
-                @forelse ($users as $user)
-                    <tr>
-                        {{-- Credentials --}}
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <div x-data="{ copied:false }" class="flex items-center gap-2">
-                                <div class="font-mono text-[var(--aio-ink)] leading-tight">
-                                    Username: {{ $user->username }}<br>
-                                    Password: {{ $user->plain_password ?? '******' }}
-                                </div>
+  @if (session()->has('message'))
+    <div class="aio-pill pill-success inline-block">
+      {{ session('message') }}
+    </div>
+  @endif
 
-                                @if($user->plain_password)
-                                    <button type="button"
-                                            class="p-1 rounded hover:bg-white/10 focus:outline-none"
-                                            @click="navigator.clipboard.writeText('Username: {{ $user->username }}\nPassword: {{ $user->plain_password }}');copied=true;setTimeout(()=>copied=false,1500)"
-                                            :aria-label="copied ? 'Copied' : 'Copy credentials'">
-                                        <template x-if="!copied">
-                                            <svg xmlns="http://www.w3.org/2000/svg"
-                                                 class="w-4 h-4 text-[var(--aio-cya)]"
-                                                 fill="none" viewBox="0 0 24 24"
-                                                 stroke="currentColor">
-                                                <path stroke-linecap="round"
-                                                      stroke-linejoin="round"
-                                                      stroke-width="1.5"
-                                                      d="M8 16h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-5l-3 3v6a2 2 0 0 0 2 2z" />
-                                                <path stroke-linecap="round"
-                                                      stroke-linejoin="round"
-                                                      stroke-width="1.5"
-                                                      d="M15 20H7a2 2 0 0 1-2-2V9" />
-                                            </svg>
-                                        </template>
-                                        <template x-if="copied">
-                                            <svg xmlns="http://www.w3.org/2000/svg"
-                                                 class="w-4 h-4 text-green-400"
-                                                 viewBox="0 0 20 20"
-                                                 fill="currentColor">
-                                                <path fill-rule="evenodd"
-                                                      d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z"
-                                                      clip-rule="evenodd" />
-                                            </svg>
-                                        </template>
-                                    </button>
-                                @endif
-                            </div>
-                        </td>
+  {{-- Search --}}
+  <x-section-card title="Search" flush class="p-0">
+    <div class="p-4">
+      <input wire:model.debounce.300ms="search"
+             type="text"
+             placeholder="Search users..."
+             class="form-input w-full md:w-1/3">
+    </div>
+  </x-section-card>
 
-                        {{-- Servers --}}
-                        <td class="px-6 py-4">
-                            @if($user->vpnServers->count())
-                                <div class="flex flex-wrap gap-1">
-                                    @foreach($user->vpnServers as $server)
-                                        <a href="{{ route('admin.servers.show', $server->id) }}"
-                                           class="aio-pill pill-mag text-xs hover:shadow-glow">
-                                            {{ $server->name }}
-                                        </a>
-                                    @endforeach
-                                </div>
-                            @else
-                                <span class="text-gray-500">No servers</span>
-                            @endif
-                        </td>
+  {{-- Table / list --}}
+  <x-section-card
+    title="Users"
+    subtitle="Showing {{ $users->count() }} results"
+    flush
+  >
+    <x-slot:actions>
+      <span class="aio-pill text-xs">Auto refresh: 10s</span>
+    </x-slot:actions>
 
-                        {{-- Expiry --}}
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            {{ $user->expires_at ? \Carbon\Carbon::parse($user->expires_at)->format('d M Y') : 'Never' }}
-                        </td>
+    {{-- md+: table --}}
+    <div class="hidden md:block overflow-x-auto">
+      <table class="aio-table">
+        <thead>
+          <tr>
+            <th>Credentials</th>
+            <th>Servers</th>
+            <th>Expires</th>
+            <th>Status</th>
+            <th class="cell-right">Actions</th>
+          </tr>
+        </thead>
 
-                        {{-- Status --}}
-                        <td class="px-6 py-4 whitespace-nowrap space-y-1">
-                            <span class="aio-pill {{ $user->is_active ? 'pill-neon' : 'bg-red-500/20 text-red-400' }}">
-                                {{ $user->is_active ? 'Active' : 'Inactive' }}
-                            </span>
-                            @if($user->is_online)
-                                <span class="aio-pill pill-cya">
-                                    {{ $user->activeConnections->count() }} conn
-                                </span>
-                            @endif
-                        </td>
+        <tbody>
+          @forelse ($users as $user)
+            <tr>
 
-                        {{-- Actions --}}
-<td class="px-6 py-4 whitespace-nowrap text-xs space-x-2">
-    <a href="{{ route('admin.vpn-users.edit', $user->id) }}"
-       class="text-[var(--aio-neon)] hover:underline">
-        Edit
-    </a>
+              {{-- Credentials --}}
+              <td class="cell-nowrap">
+                <div x-data="{ copied:false }" class="flex items-start gap-3">
+                  <div class="font-mono text-sm leading-tight">
+                    <div><span class="cell-muted">Username:</span> <span class="font-semibold">{{ $user->username }}</span></div>
+                    <div><span class="cell-muted">Password:</span> {{ $user->plain_password ?? '******' }}</div>
+                  </div>
 
-    {{-- Full config pack trigger --}}
-    <button wire:click="generateOvpn({{ $user->id }})"
-            class="text-[var(--aio-cya)] hover:underline">
-        Generate Configs
-    </button>
-
-    {{-- Ensure WG peers on all linked servers --}}
-    <button wire:click="generateWireGuard({{ $user->id }})"
-            class="text-[var(--aio-cya)] hover:underline">
-        Ensure WG Peers
-    </button>
-
-    {{-- Mark WG peers revoked for this user --}}
-    <button wire:click="forceRemoveWireGuardPeer({{ $user->id }})"
-            class="text-red-300 hover:underline">
-        Revoke WG Peers
-    </button>
-
-    @php $linked = $user->vpnServers ?? collect(); @endphp
-
-    {{-- WireGuard download --}}
-    @if($linked->count() === 1)
-        <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $linked->first()->id]) }}"
-           class="text-[var(--aio-cya)] hover:underline"
-           title="Download WireGuard config">
-            WG Download
-        </a>
-    @elseif($linked->count() > 1)
-        <details class="inline-block align-middle">
-            <summary class="cursor-pointer text-[var(--aio-cya)] hover:underline inline">
-                WG Download ▾
-            </summary>
-            <div class="mt-1 border border-white/10 rounded bg-white/5 shadow-lg">
-                @foreach($linked as $s)
-                    <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $s->id]) }}"
-                       class="block px-3 py-2 hover:bg-white/10">
-                        {{ $s->name }}
-                    </a>
-                @endforeach
-            </div>
-        </details>
-    @else
-        <span class="text-gray-500">WG (no servers)</span>
-    @endif
-
-    <form method="POST"
-          action="{{ route('admin.impersonate', $user->id) }}"
-          class="inline">
-        @csrf
-        <button type="submit"
-                class="text-[var(--aio-pup)] hover:underline"
-                title="Login as this client">
-            Login
-        </button>
-    </form>
-
-    <button wire:click="toggleActive({{ $user->id }})"
-            class="text-yellow-400 hover:underline">
-        {{ $user->is_active ? 'Disable' : 'Enable' }}
-    </button>
-
-    <button wire:click="deleteUser({{ $user->id }})"
-            onclick="return confirm('Delete this user?')"
-            class="text-red-400 hover:underline">
-        Delete
-    </button>
-</td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="5"
-                            class="px-6 py-4 text-center text-gray-500">
-                            No VPN users found
-                        </td>
-                    </tr>
-                @endforelse
-            </tbody>
-        </table>
-
-        {{-- Mobile: stacked cards --}}
-        <div class="md:hidden divide-y divide-white/10">
-            @forelse ($users as $user)
-                <div class="p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <div x-data="{ copied:false }"
-                                 class="flex items-center gap-2">
-                                <div class="font-mono text-[var(--aio-ink)] leading-tight">
-                                    Username: {{ $user->username }}<br>
-                                    Password: {{ $user->plain_password ?? '******' }}
-                                </div>
-                                @if($user->plain_password)
-                                    <button type="button"
-                                            class="p-1 rounded hover:bg-white/10 focus:outline-none"
-                                            @click="navigator.clipboard.writeText('Username: {{ $user->username }}\nPassword: {{ $user->plain_password }}');copied=true;setTimeout(()=>copied=false,1500)">
-                                        <template x-if="!copied">
-                                            <svg xmlns="http://www.w3.org/2000/svg"
-                                                 class="w-4 h-4 text-[var(--aio-cya)]"
-                                                 fill="none" viewBox="0 0 24 24"
-                                                 stroke="currentColor">
-                                                <path stroke-linecap="round"
-                                                      stroke-linejoin="round"
-                                                      stroke-width="1.5"
-                                                      d="M8 16h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-5l-3 3v6a2 2 0 0 0 2 2z" />
-                                                <path stroke-linecap="round"
-                                                      stroke-linejoin="round"
-                                                      stroke-width="1.5"
-                                                      d="M15 20H7a2 2 0 0 1-2-2V9" />
-                                            </svg>
-                                        </template>
-                                        <template x-if="copied">
-                                            <svg xmlns="http://www.w3.org/2000/svg"
-                                                 class="w-4 h-4 text-green-400"
-                                                 viewBox="0 0 20 20"
-                                                 fill="currentColor">
-                                                <path fill-rule="evenodd"
-                                                      d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z"
-                                                      clip-rule="evenodd" />
-                                            </svg>
-                                        </template>
-                                    </button>
-                                @endif
-                            </div>
-                        </div>
-                        <span class="aio-pill {{ $user->is_active ? 'pill-neon' : 'bg-red-500/20 text-red-400' }}">
-                            {{ $user->is_active ? 'Active' : 'Inactive' }}
-                        </span>
-                    </div>
-
-                    <dl class="mt-3 grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                            <dt class="text-[var(--aio-sub)]">Expires</dt>
-                            <dd class="mt-0.5">
-                                {{ $user->expires_at ? \Carbon\Carbon::parse($user->expires_at)->isoFormat('D MMM YYYY') : 'Never' }}
-                            </dd>
-                        </div>
-                        <div class="col-span-2">
-                            <dt class="text-[var(--aio-sub)]">Servers</dt>
-                            <dd class="mt-0.5 flex flex-wrap gap-1">
-                                @if($user->vpnServers->count())
-                                    @foreach($user->vpnServers as $server)
-                                        <a href="{{ route('admin.servers.show', $server->id) }}"
-                                           class="aio-pill pill-mag">
-                                            {{ $server->name }}
-                                        </a>
-                                    @endforeach
-                                @else
-                                    <span class="text-gray-500">No servers</span>
-                                @endif
-                            </dd>
-                        </div>
-                        @if($user->is_online)
-                            <div>
-                                <dt class="text-[var(--aio-sub)]">Connections</dt>
-                                <dd class="mt-0.5 aio-pill pill-cya inline-block">
-                                    {{ $user->activeConnections->count() }} conn
-                                </dd>
-                            </div>
-                        @endif
-                    </dl>
-
-                    <div class="mt-3 flex flex-wrap gap-3 text-xs">
-    <a href="{{ route('admin.vpn-users.edit', $user->id) }}"
-       class="text-[var(--aio-neon)] underline">
-        Edit
-    </a>
-
-    <button wire:click="generateOvpn({{ $user->id }})"
-            class="text-[var(--aio-cya)] underline">
-        Generate Configs
-    </button>
-
-    <button wire:click="generateWireGuard({{ $user->id }})"
-            class="text-[var(--aio-cya)] underline">
-        Ensure WG Peers
-    </button>
-
-    <button wire:click="forceRemoveWireGuardPeer({{ $user->id }})"
-            class="text-red-300 underline">
-        Revoke WG Peers
-    </button>
-
-    @php $linked = $user->vpnServers ?? collect(); @endphp
-
-    @if($linked->count() === 1)
-        <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $linked->first()->id]) }}"
-           class="text-[var(--aio-cya)] underline">
-            WG Download
-        </a>
-    @elseif($linked->count() > 1)
-        <details class="inline-block">
-            <summary class="cursor-pointer text-[var(--aio-cya)] underline">
-                WG Download ▾
-            </summary>
-            <div class="mt-1 border border-white/10 rounded bg-white/5">
-                @foreach($linked as $s)
-                    <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $s->id]) }}"
-                       class="block px-3 py-2 hover:bg-white/10">
-                        {{ $s->name }}
-                    </a>
-                @endforeach
-            </div>
-        </details>
-    @else
-        <span class="text-gray-500">WG (no servers)</span>
-    @endif
-
-    <form method="POST"
-          action="{{ route('admin.impersonate', $user->id) }}"
-          class="inline">
-        @csrf
-        <button type="submit"
-                class="text-[var(--aio-pup)] underline"
-                title="Login as this client">
-            Login
-        </button>
-    </form>
-
-    <button wire:click="toggleActive({{ $user->id }})"
-            class="text-yellow-400 underline">
-        {{ $user->is_active ? 'Disable' : 'Enable' }}
-    </button>
-
-    <button wire:click="deleteUser({{ $user->id }})"
-            onclick="return confirm('Delete this user?')"
-            class="text-red-400 underline">
-        Delete
-    </button>
-</div>
+                  @if($user->plain_password)
+                    <button type="button"
+                            class="p-2 rounded-md border border-transparent hover:border-[var(--aio-border)] hover:bg-[var(--aio-hover)]"
+                            @click="navigator.clipboard.writeText('Username: {{ $user->username }}\nPassword: {{ $user->plain_password }}');copied=true;setTimeout(()=>copied=false,1500)"
+                            :aria-label="copied ? 'Copied' : 'Copy credentials'">
+                      <span x-show="!copied" class="text-[var(--aio-sub)]">Copy</span>
+                      <span x-show="copied" class="text-[var(--aio-success)]">✓</span>
+                    </button>
+                  @endif
                 </div>
-            @empty
-                <div class="p-6 text-center text-gray-500">
-                    No VPN users found
+              </td>
+
+              {{-- Servers --}}
+              <td>
+                @if($user->vpnServers->count())
+                  <div class="flex flex-wrap gap-1">
+                    @foreach($user->vpnServers as $server)
+                      <a href="{{ route('admin.servers.show', $server->id) }}"
+                         class="aio-pill text-xs hover:bg-[var(--aio-hover)]">
+                        {{ $server->name }}
+                      </a>
+                    @endforeach
+                  </div>
+                @else
+                  <span class="cell-muted">No servers</span>
+                @endif
+              </td>
+
+              {{-- Expiry --}}
+              <td class="cell-nowrap">
+                {{ $user->expires_at ? \Carbon\Carbon::parse($user->expires_at)->format('d M Y') : 'Never' }}
+              </td>
+
+              {{-- Status --}}
+              <td class="cell-nowrap">
+                <div class="flex flex-wrap items-center gap-2">
+                  @if($user->is_active)
+                    <span class="aio-pill pill-success text-xs">Active</span>
+                  @else
+                    <span class="aio-pill pill-danger text-xs">Inactive</span>
+                  @endif
+
+                  @if($user->is_online)
+                    <span class="aio-pill text-xs">
+                      {{ $user->activeConnections->count() }} conn
+                    </span>
+                  @endif
                 </div>
-            @endforelse
+              </td>
+
+              {{-- Actions --}}
+              <td class="cell-right cell-nowrap">
+                <div class="flex items-center justify-end gap-2">
+
+                  <x-button :href="route('admin.vpn-users.edit', $user->id)" variant="secondary" size="sm">
+                    Edit
+                  </x-button>
+
+                  <x-button type="button" wire:click="generateOvpn({{ $user->id }})" variant="secondary" size="sm">
+                    Configs
+                  </x-button>
+
+                  <x-button type="button" wire:click="generateWireGuard({{ $user->id }})" variant="secondary" size="sm">
+                    Ensure WG
+                  </x-button>
+
+                  <x-button type="button" wire:click="forceRemoveWireGuardPeer({{ $user->id }})" variant="secondary" size="sm">
+                    Revoke WG
+                  </x-button>
+
+                  @php $linked = $user->vpnServers ?? collect(); @endphp
+
+                  @if($linked->count() === 1)
+                    <x-button :href="route('admin.vpn-users.wg.download', [$user->id, $linked->first()->id])" variant="secondary" size="sm">
+                      WG
+                    </x-button>
+                  @elseif($linked->count() > 1)
+                    <details class="relative">
+                      <summary class="cursor-pointer select-none aio-pill text-xs">WG ▾</summary>
+                      <div class="absolute right-0 mt-2 w-44 bg-[var(--aio-card)] border border-[var(--aio-border)] rounded-md shadow-lg overflow-hidden z-50">
+                        @foreach($linked as $s)
+                          <a href="{{ route('admin.vpn-users.wg.download', [$user->id, $s->id]) }}"
+                             class="block px-3 py-2 text-sm hover:bg-[var(--aio-hover)]">
+                            {{ $s->name }}
+                          </a>
+                        @endforeach
+                      </div>
+                    </details>
+                  @endif
+
+                  <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
+                    @csrf
+                    <x-button type="submit" variant="secondary" size="sm">
+                      Login
+                    </x-button>
+                  </form>
+
+                  <x-button type="button" wire:click="toggleActive({{ $user->id }})" variant="secondary" size="sm">
+                    {{ $user->is_active ? 'Disable' : 'Enable' }}
+                  </x-button>
+
+                  <x-button type="button"
+                            wire:click="deleteUser({{ $user->id }})"
+                            onclick="return confirm('Delete this user?')"
+                            variant="danger"
+                            size="sm">
+                    Delete
+                  </x-button>
+                </div>
+              </td>
+
+            </tr>
+          @empty
+            <tr>
+              <td colspan="5" class="cell-muted py-8 text-center">
+                No VPN users found
+              </td>
+            </tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
+
+    {{-- Mobile: stacked cards --}}
+    <div class="md:hidden divide-y border-t border-[var(--aio-border)]">
+      @forelse ($users as $user)
+        <div class="p-4 space-y-3">
+
+          <div class="flex items-start justify-between gap-3">
+            <div x-data="{ copied:false }" class="space-y-1">
+              <div class="font-mono text-sm leading-tight">
+                <div><span class="cell-muted">Username:</span> <span class="font-semibold">{{ $user->username }}</span></div>
+                <div><span class="cell-muted">Password:</span> {{ $user->plain_password ?? '******' }}</div>
+              </div>
+
+              @if($user->plain_password)
+                <button type="button"
+                        class="aio-pill text-xs hover:bg-[var(--aio-hover)]"
+                        @click="navigator.clipboard.writeText('Username: {{ $user->username }}\nPassword: {{ $user->plain_password }}');copied=true;setTimeout(()=>copied=false,1500)">
+                  <span x-show="!copied">Copy</span>
+                  <span x-show="copied" class="text-[var(--aio-success)]">✓</span>
+                </button>
+              @endif
+            </div>
+
+            @if($user->is_active)
+              <span class="aio-pill pill-success text-xs">Active</span>
+            @else
+              <span class="aio-pill pill-danger text-xs">Inactive</span>
+            @endif
+          </div>
+
+          <dl class="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <dt class="text-[var(--aio-sub)]">Expires</dt>
+              <dd class="mt-1">{{ $user->expires_at ? \Carbon\Carbon::parse($user->expires_at)->isoFormat('D MMM YYYY') : 'Never' }}</dd>
+            </div>
+
+            @if($user->is_online)
+              <div>
+                <dt class="text-[var(--aio-sub)]">Connections</dt>
+                <dd class="mt-1">
+                  <span class="aio-pill text-xs">{{ $user->activeConnections->count() }} conn</span>
+                </dd>
+              </div>
+            @endif
+
+            <div class="col-span-2">
+              <dt class="text-[var(--aio-sub)]">Servers</dt>
+              <dd class="mt-1 flex flex-wrap gap-1">
+                @if($user->vpnServers->count())
+                  @foreach($user->vpnServers as $server)
+                    <a href="{{ route('admin.servers.show', $server->id) }}"
+                       class="aio-pill text-xs hover:bg-[var(--aio-hover)]">
+                      {{ $server->name }}
+                    </a>
+                  @endforeach
+                @else
+                  <span class="cell-muted">No servers</span>
+                @endif
+              </dd>
+            </div>
+          </dl>
+
+          <div class="flex flex-wrap gap-2">
+            <x-button :href="route('admin.vpn-users.edit', $user->id)" variant="secondary" size="sm">Edit</x-button>
+            <x-button type="button" wire:click="generateOvpn({{ $user->id }})" variant="secondary" size="sm">Configs</x-button>
+            <x-button type="button" wire:click="generateWireGuard({{ $user->id }})" variant="secondary" size="sm">Ensure WG</x-button>
+            <x-button type="button" wire:click="forceRemoveWireGuardPeer({{ $user->id }})" variant="secondary" size="sm">Revoke WG</x-button>
+
+            <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
+              @csrf
+              <x-button type="submit" variant="secondary" size="sm">Login</x-button>
+            </form>
+
+            <x-button type="button" wire:click="toggleActive({{ $user->id }})" variant="secondary" size="sm">
+              {{ $user->is_active ? 'Disable' : 'Enable' }}
+            </x-button>
+
+            <x-button type="button"
+                      wire:click="deleteUser({{ $user->id }})"
+                      onclick="return confirm('Delete this user?')"
+                      variant="danger"
+                      size="sm">
+              Delete
+            </x-button>
+          </div>
         </div>
+      @empty
+        <div class="p-6 text-center text-[var(--aio-sub)]">No VPN users found</div>
+      @endforelse
     </div>
 
-    <div>
-        {{ $users->links() }}
-    </div>
+  </x-section-card>
+
+  <div>
+    {{ $users->links() }}
+  </div>
+
 </div>

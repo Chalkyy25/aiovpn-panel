@@ -1,174 +1,155 @@
-{{-- resources/views/livewire/pages/admin/create-vpn-user.blade.php --}}
-<div class="space-y-6">
-    {{-- Global errors --}}
-    @if ($errors->any())
-        <div class="aio-card p-4 border-red-500/30">
-            <h3 class="text-sm font-semibold text-red-300">Form errors</h3>
-            <ul class="mt-2 list-disc pl-5 space-y-1 text-red-200 text-sm">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
+@php $isAdmin = auth()->user()?->role === 'admin'; @endphp
+
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 [color-scheme:dark]">
+
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold text-aio-ink">Create VPN User</h1>
+            <p class="text-sm text-aio-sub">Username, duration, package and server assignment.</p>
         </div>
-    @endif
+    </div>
 
-    {{-- Success --}}
-    @if (session()->has('success'))
-        <div class="aio-card p-4">
-            <span class="aio-pill pill-neon">✅</span>
-            <span class="ml-2">{{ session('success') }}</span>
-        </div>
-    @endif
+    <form wire:submit.prevent="save" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-    <form wire:submit.prevent="save" class="space-y-6">
+        {{-- LEFT --}}
+        <div class="lg:col-span-2 space-y-6">
 
-        {{-- User Details --}}
-        <section class="aio-section">
-            <h3 class="aio-section-title">
-                <span class="w-1.5 h-6 rounded accent-cya"></span> Create VPN User
-            </h3>
-            <p class="aio-section-sub">Choose username, duration, package & servers.</p>
-
-            <div class="form-grid">
-
-                {{-- Username --}}
-                <div class="form-group md:col-span-2">
-                    <label class="form-label">Username</label>
-                    <input class="form-input"
-                           type="text"
-                           wire:model.lazy="username"
-                           autocomplete="off"
-                           autocorrect="off"
-                           autocapitalize="off"
-                           spellcheck="false"
-                    />
-                    @error('username') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
+            {{-- Card: Details --}}
+            <div class="rounded-2xl border border-white/10 bg-aio-card/70 backdrop-blur shadow-lg">
+                <div class="p-5 border-b border-white/10">
+                    <h2 class="text-sm font-semibold text-aio-ink">User details</h2>
                 </div>
 
-                {{-- Duration --}}
-                <div class="form-group">
-                    <label class="form-label">Duration</label>
-                    <select class="form-select" wire:model.debounce.200ms="expiry">
-                        <option value="1m">1 Month</option>
-                        <option value="3m">3 Months</option>
-                        <option value="6m">6 Months</option>
-                        <option value="12m">12 Months</option>
-                    </select>
-                    @error('expiry') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
+                <div class="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                    {{-- Username --}}
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-medium text-aio-sub mb-1">Username</label>
+                        <input wire:model.lazy="username"
+                               type="text"
+                               class="w-full rounded-xl bg-black/30 border border-white/10 text-aio-ink placeholder:text-white/30
+                                      focus:ring-2 focus:ring-aio-cya/50 focus:border-aio-cya/50"
+                               placeholder="user-xxxxxx">
+                        @error('username') <p class="mt-1 text-xs text-red-300">{{ $message }}</p> @enderror
+                    </div>
+
+                    {{-- Duration --}}
+                    <div>
+                        <label class="block text-xs font-medium text-aio-sub mb-1">Duration</label>
+                        <select wire:model.live="expiry"
+                                class="w-full rounded-xl bg-black/30 border border-white/10 text-aio-ink
+                                       focus:ring-2 focus:ring-aio-cya/50 focus:border-aio-cya/50">
+                            <option value="1m">1 Month</option>
+                            <option value="3m">3 Months</option>
+                            <option value="6m">6 Months</option>
+                            <option value="12m">12 Months</option>
+                        </select>
+                        @error('expiry') <p class="mt-1 text-xs text-red-300">{{ $message }}</p> @enderror
+                    </div>
+
+                    {{-- Package --}}
+                    <div>
+                        <label class="block text-xs font-medium text-aio-sub mb-1">Package</label>
+                        <select wire:model.live="packageId"
+                                class="w-full rounded-xl bg-black/30 border border-white/10 text-aio-ink
+                                       focus:ring-2 focus:ring-aio-cya/50 focus:border-aio-cya/50">
+                            @foreach($packages as $p)
+                                @php $dev = (int) $p->max_connections; @endphp
+                                <option value="{{ $p->id }}">
+                                    {{ $p->name }} — {{ $dev === 0 ? 'Unlimited' : $dev }} device{{ $dev === 1 ? '' : 's' }} — {{ (int)$p->price_credits }} cr/mo
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('packageId') <p class="mt-1 text-xs text-red-300">{{ $message }}</p> @enderror
+                    </div>
+
+                </div>
+            </div>
+
+            {{-- Card: Servers --}}
+            <div class="rounded-2xl border border-white/10 bg-aio-card/70 backdrop-blur shadow-lg">
+                <div class="p-5 border-b border-white/10 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-sm font-semibold text-aio-ink">Assign servers</h2>
+                        <p class="text-xs text-aio-sub mt-0.5">Select one or more servers.</p>
+                    </div>
                 </div>
 
-                {{-- Package --}}
-                <div class="form-group">
-                    <label class="form-label">Package</label>
-                    <select class="form-select" wire:model.debounce.200ms="packageId">
-                        @foreach($packages as $p)
-                            <option value="{{ $p->id }}">
-                                {{ $p->name }} — {{ $p->price_credits }} credits
-                                (max {{ $p->max_connections == 0 ? 'Unlimited' : $p->max_connections }} conn)
-                            </option>
+                <div class="p-5 space-y-3">
+                    @error('selectedServers') <p class="text-sm text-red-300">{{ $message }}</p> @enderror
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        @foreach($servers as $server)
+                            <label class="group flex items-center justify-between rounded-xl border border-white/10 bg-black/20 p-4
+                                          hover:border-aio-cya/40 hover:bg-black/30 transition">
+                                <div class="min-w-0">
+                                    <div class="text-sm font-semibold text-aio-ink truncate">{{ $server->name }}</div>
+                                    <div class="text-xs text-aio-sub truncate">{{ $server->ip_address }}</div>
+                                </div>
+
+                                <input type="checkbox"
+                                       wire:model.live="selectedServers"
+                                       value="{{ (string)$server->id }}"
+                                       class="h-5 w-5 rounded-md border-white/20 bg-black/30 text-aio-cya focus:ring-aio-cya/40">
+                            </label>
                         @endforeach
-                    </select>
-                    @error('packageId') <p class="text-red-300 text-xs">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        {{-- RIGHT --}}
+        <div class="space-y-6">
+
+            {{-- Summary --}}
+            <div class="rounded-2xl border border-white/10 bg-aio-card/70 backdrop-blur shadow-lg">
+                <div class="p-5 border-b border-white/10">
+                    <h2 class="text-sm font-semibold text-aio-ink">Summary</h2>
                 </div>
 
-                {{-- Credits --}}
-                @php $isAdmin = auth()->user()?->role === 'admin'; @endphp
-                <div class="mt-2 text-xs muted space-y-0.5 md:col-span-2">
-                    @if ($isAdmin)
-                        <div class="text-green-300">Admin — no credits deducted.</div>
-                        <div>Package total: <span class="font-semibold">{{ $priceCredits }}</span> credits</div>
-                    @else
-                        <div>Cost: <span class="font-semibold">{{ $priceCredits }}</span> credits</div>
-                        <div>Your credits: <span class="font-semibold">{{ $adminCredits }}</span></div>
-                        @if ($adminCredits < $priceCredits)
-                            <div class="text-red-300">Not enough credits.</div>
-                        @endif
+                <div class="p-5 space-y-3 text-sm">
+                    <div class="flex items-center justify-between">
+                        <span class="text-aio-sub">Max connections</span>
+                        <span class="font-semibold text-aio-ink">{{ $maxConnections ?? 0 }}</span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-aio-sub">Expires</span>
+                        <span class="font-semibold text-aio-ink">{{ $expiresAtPreview ?? '' }}</span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-aio-sub">Total cost</span>
+                        <span class="font-semibold text-aio-ink">{{ (int)($priceCredits ?? 0) }} credits</span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-aio-sub">{{ $isAdmin ? 'Current credits' : 'Balance after' }}</span>
+                        <span class="font-semibold text-aio-ink">{{ $isAdmin ? (int)$adminCredits : (int)($creditsLeft ?? 0) }}</span>
+                    </div>
+
+                    @if(!$isAdmin && (int)$adminCredits < (int)($priceCredits ?? 0))
+                        <div class="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                            Not enough credits for this purchase.
+                        </div>
+                    @endif
+
+                    @if($isAdmin)
+                        <div class="mt-3 text-xs text-green-300">
+                            Admin — price shown, not deducted.
+                        </div>
                     @endif
                 </div>
             </div>
-        </section>
 
-        {{-- Servers --}}
-        <section class="aio-section">
-            <div class="aio-section-title">Assign to Servers</div>
-            <p class="aio-section-sub">Pick one or select ALL.</p>
+            <button type="submit"
+                    class="w-full rounded-2xl px-4 py-3 font-semibold text-black bg-aio-neon hover:opacity-90
+                           disabled:opacity-40 disabled:cursor-not-allowed"
+                    wire:loading.attr="disabled">
+                Create User
+            </button>
 
-            @error('selectedServers')
-                <div class="mb-3 text-sm text-red-400">{{ $message }}</div>
-            @enderror
-
-            {{-- ALL SERVERS OPTION --}}
-            @php $allId = 'srv-all'; @endphp
-            <label for="{{ $allId }}"
-                   class="pill-card cursor-pointer flex items-center justify-between p-3 hover:outline-cya mb-3">
-                <div class="min-w-0">
-                    <div class="font-medium truncate">All Servers</div>
-                    <div class="text-xs muted">Automatically selects every server</div>
-                </div>
-
-                <input id="{{ $allId }}"
-                       type="checkbox"
-                       class="sr-only peer"
-                       wire:click="toggleAllServers"
-                />
-
-                <div class="ml-3 h-5 w-5 rounded border" style="border-color:rgba(255,255,255,.25)"></div>
-            </label>
-
-            <style>
-                #{{ $allId }}:checked + div { background: var(--aio-neon); }
-                label[for="{{ $allId }}"]:has(#{{ $allId }}:checked) {
-                    box-shadow: inset 0 0 0 1px rgba(61,255,127,.35);
-                }
-            </style>
-
-            {{-- INDIVIDUAL SERVERS --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                @foreach ($servers as $server)
-                    @php $cbId = 'srv-'.$server->id; @endphp
-
-                    <label wire:key="srv-{{ $server->id }}"
-                           for="{{ $cbId }}"
-                           class="pill-card cursor-pointer flex items-center justify-between p-3 hover:outline-cya">
-
-                        <div class="min-w-0">
-                            <div class="font-medium truncate">{{ $server->name }}</div>
-                            <div class="text-xs muted truncate">{{ $server->ip_address }}</div>
-                        </div>
-
-                        <input id="{{ $cbId }}"
-                               type="checkbox"
-                               class="sr-only peer"
-                               value="{{ (string) $server->id }}"
-                               wire:model="selectedServers"
-                        />
-
-                        <div class="ml-3 h-5 w-5 rounded border"
-                             style="border-color:rgba(255,255,255,.25)"></div>
-                    </label>
-
-                    <style>
-                        #{{ $cbId }}:checked + div { background: var(--aio-neon); }
-                        label[for="{{ $cbId }}"]:has(#{{ $cbId }}:checked) {
-                            box-shadow: inset 0 0 0 1px rgba(61,255,127,.35);
-                        }
-                    </style>
-                @endforeach
-            </div>
-
-            <p class="form-help mt-3">Users can be connected to multiple servers.</p>
-        </section>
-
-        {{-- Actions --}}
-        <div class="mt-6 flex items-center justify-end gap-2">
-            <x-button variant="light" :href="route('admin.vpn-users.index')">
-                Cancel
-            </x-button>
-
-            <x-button type="submit" wire:loading.attr="disabled">
-                {{ $isAdmin ? 'Save (Free)' : 'Save' }}
-            </x-button>
         </div>
-
     </form>
 </div>

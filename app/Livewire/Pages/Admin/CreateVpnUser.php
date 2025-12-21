@@ -26,8 +26,12 @@ class CreateVpnUser extends Component
 
     public ?int $packageId = null;
 
-    public int $priceCredits = 0;
-    public int $adminCredits = 0;
+    // UI fields (read-only in Blade)
+    public int $priceCredits = 0;        // total cost (months * credits_per_month)
+    public int $adminCredits = 0;        // current admin/reseller credits
+    public int $creditsLeft = 0;         // adminCredits - priceCredits
+    public int $maxConnections = 1;      // from package.max_connections
+    public string $expiresAtPreview = ''; // formatted expire date preview
 
     /** @var \Illuminate\Support\Collection<int,VpnServer> */
     public $servers;
@@ -41,29 +45,27 @@ class CreateVpnUser extends Component
     {
         $this->username ??= 'user-' . Str::lower(Str::random(6));
 
-        $this->servers = VpnServer::orderBy('name')->get([
-            'id',
-            'name',
-            'ip_address',
-        ]);
+        $this->servers = VpnServer::query()
+            ->orderBy('name')
+            ->get(['id', 'name', 'ip_address']);
 
-        $this->packages = Package::orderBy('price_credits')->get([
-            'id',
-            'name',
-            'price_credits',
-            'max_connections',
-        ]);
+        $this->packages = Package::query()
+            ->active()
+            ->orderBy('price_credits')
+            ->get(['id', 'name', 'price_credits', 'max_connections']);
 
-        if ($this->packageId === null && $this->packages->isNotEmpty()) {
+        if (! $this->packageId && $this->packages->isNotEmpty()) {
             $this->packageId = (int) $this->packages->first()->id;
         }
 
-        $this->recalcCredits();
+        $this->syncComputedFields();
     }
 
     public function render()
     {
+        // keep fresh on every render
         $this->adminCredits = (int) (auth()->user()->fresh()?->credits ?? 0);
+        $this->creditsLeft  = max(0, $this->adminCredits - $this->priceCredits);
 
         return view('livewire.pages.admin.create-vpn-user', [
             'servers'  => $this->servers,
@@ -73,30 +75,40 @@ class CreateVpnUser extends Component
 
     public function updatedPackageId(): void
     {
-        $this->recalcCredits();
+        $this->syncComputedFields();
     }
 
     public function updatedExpiry(): void
     {
-        $this->recalcCredits();
+        $this->syncComputedFields();
     }
 
-    private function recalcCredits(): void
+    private function monthsFromExpiry(): int
     {
-        $pkg = $this->packages->firstWhere('id', $this->packageId);
-
-        $months = match ($this->expiry) {
-            '1m' => 1,
-            '3m' => 3,
-            '6m' => 6,
+        return match ($this->expiry) {
+            '1m'  => 1,
+            '3m'  => 3,
+            '6m'  => 6,
             '12m' => 12,
             default => 1,
         };
+    }
 
-        $rate = (int) ($pkg->price_credits ?? 0);
-        $this->priceCredits = $months * $rate;
+    private function syncComputedFields(): void
+    {
+        $pkg = $this->packages->firstWhere('id', $this->packageId);
+
+        $months = $this->monthsFromExpiry();
+        $rate   = (int) ($pkg->price_credits ?? 0);
+
+        $this->priceCredits   = $months * $rate;
+        $this->maxConnections = (int) ($pkg->max_connections ?? 1);
+
+        $expiresAt = Carbon::now()->addMonths($months);
+        $this->expiresAtPreview = $expiresAt->format('Y-m-d H:i');
 
         $this->adminCredits = (int) (auth()->user()->fresh()?->credits ?? 0);
+        $this->creditsLeft  = max(0, $this->adminCredits - $this->priceCredits);
     }
 
     protected function rules(): array
@@ -120,15 +132,14 @@ class CreateVpnUser extends Component
     public function toggleAllServers(): void
     {
         if (count($this->selectedServers) === $this->servers->count()) {
-            // Uncheck all
             $this->selectedServers = [];
-        } else {
-            // Select all server IDs as ints
-            $this->selectedServers = $this->servers
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->toArray();
+            return;
         }
+
+        $this->selectedServers = $this->servers
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->toArray();
     }
 
     public function save()
@@ -143,14 +154,10 @@ class CreateVpnUser extends Component
             return;
         }
 
-        if ($admin->role !== 'admin' && $admin->credits < $this->priceCredits) {
-            $this->addError('packageId', 'Not enough credits for this package.');
-            return;
-        }
-
         // If user selected "ALL SERVERS"
         if ($this->selectAllServers) {
-            $this->selectedServers = VpnServer::where('enabled', 1)
+            $this->selectedServers = VpnServer::query()
+                ->where('enabled', 1)
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
                 ->toArray();
@@ -162,45 +169,53 @@ class CreateVpnUser extends Component
             'selectedServers.*' => ['integer', Rule::exists('vpn_servers', 'id')],
         ]);
 
-        $months = (int) rtrim($this->expiry, 'm');
-        $plain  = Str::random(5);
+        // Never trust computed UI values — recompute server-side
+        $months      = $this->monthsFromExpiry();
+        $rate        = (int) $pkg->price_credits;
+        $totalCost   = $months * $rate;
+        $expiresAt   = Carbon::now()->addMonths($months);
+        $plainPass   = Str::random(5);
 
-        // Now + N months = real expiry
-        $expiresAt = Carbon::now()->addMonths($months);
+        // Credit check for non-admin (resellers)
+        if ($admin->role !== 'admin' && (int) $admin->credits < $totalCost) {
+            $this->addError('packageId', 'Not enough credits for this purchase.');
+            return;
+        }
 
         try {
-            DB::transaction(function () use ($admin, $pkg, $months): void {
+            DB::transaction(function () use ($admin, $pkg, $months, $totalCost): void {
                 if ($admin->role !== 'admin') {
                     $admin->deductCredits(
-                        $this->priceCredits,
+                        $totalCost,
                         'Create VPN user',
                         [
-                            'username'   => $this->username,
-                            'package_id' => $pkg->id,
-                            'months'     => $months,
+                            'username'      => $this->username,
+                            'package_id'    => $pkg->id,
+                            'months'        => $months,
+                            'connections'   => (int) $pkg->max_connections,
+                            'credits_per_m' => (int) $pkg->price_credits,
                         ]
                     );
                 }
             });
 
-            // Queue user creation WITH expiry info
             CreateVpnUserJob::dispatch(
                 $this->username,
                 $this->selectedServers,
                 $admin->id,
-                $plain,
+                $plainPass,
                 $expiresAt
             );
 
             session()->flash(
                 'success',
-                "VPN user {$this->username} queued for creation. Password: {$plain}"
+                "VPN user {$this->username} queued for creation. Password: {$plainPass}"
                 . ($admin->role === 'admin' ? " (no credits deducted)" : "")
             );
 
             return to_route('admin.vpn-users.index');
         } catch (\Throwable $e) {
-            Log::error('CreateVpnUser failed: ' . $e->getMessage(), [
+            Log::error('CreateVpnUser failed: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
