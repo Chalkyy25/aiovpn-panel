@@ -73,6 +73,32 @@
   .aio-card:hover { background-color: color-mix(in srgb, var(--aio-card) 96%, var(--aio-hover)); }
 
   .aio-divider { border-color: var(--aio-border); }
+  
+  /* ===== Tables (unified) ===== */
+.aio-table { width: 100%; font-size: 0.875rem; line-height: 1.25rem; }
+.aio-table thead th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--aio-sub);
+  background: color-mix(in srgb, var(--aio-card) 92%, var(--aio-hover));
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--aio-border);
+  white-space: nowrap;
+}
+.aio-table tbody td {
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--aio-border);
+  color: var(--aio-ink);
+  vertical-align: middle;
+}
+.aio-table tbody tr:hover td {
+  background: var(--aio-hover);
+}
+.aio-table .cell-muted { color: var(--aio-sub); }
+.aio-table .cell-right { text-align: right; }
+.aio-table .cell-nowrap { white-space: nowrap; }
 
   /* ===== Sections ===== */
   .aio-section {
