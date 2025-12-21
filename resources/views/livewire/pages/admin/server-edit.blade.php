@@ -5,26 +5,20 @@
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
     <div>
       <label class="block text-xs text-[var(--aio-sub)] mb-1">Provider</label>
-      <input type="text"
-             wire:model.defer="provider"
-             class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+      <input type="text" wire:model.defer="provider" class="form-input w-full">
       @error('provider') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
     </div>
 
     <div>
       <label class="block text-xs text-[var(--aio-sub)] mb-1">Region</label>
-      <input type="text"
-             wire:model.defer="region"
-             class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2"
-             placeholder="e.g. EU-West, UK-LON">
+      <input type="text" wire:model.defer="region" class="form-input w-full" placeholder="e.g. EU-West, UK-LON">
       @error('region') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
     </div>
 
     <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-xs text-[var(--aio-sub)] mb-1">Country</label>
-        <select wire:model.defer="country_code"
-                class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 uppercase">
+        <select wire:model.defer="country_code" class="form-select w-full uppercase">
           <option value="">Select</option>
           <option value="DE">Germany</option>
           <option value="ES">Spain</option>
@@ -40,20 +34,14 @@
 
       <div>
         <label class="block text-xs text-[var(--aio-sub)] mb-1">City</label>
-        <input type="text"
-               wire:model.defer="city"
-               class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2"
-               placeholder="Frankfurt">
+        <input type="text" wire:model.defer="city" class="form-input w-full" placeholder="Frankfurt">
         @error('city') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
       </div>
     </div>
 
     <div class="md:col-span-2">
       <label class="block text-xs text-[var(--aio-sub)] mb-1">Tags (CSV)</label>
-      <input type="text"
-             wire:model.defer="tags"
-             class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2"
-             placeholder="premium, netflix, gaming">
+      <input type="text" wire:model.defer="tags" class="form-input w-full" placeholder="premium, netflix, gaming">
       <p class="text-xs text-[var(--aio-sub)] mt-1">
         Comma or space separated. Example:
         <code>premium, netflix</code> or <code>premium netflix</code>
@@ -62,11 +50,8 @@
     </div>
 
     <div class="flex items-center gap-2">
-      <input type="checkbox"
-             id="enabled"
-             wire:model.defer="enabled"
-             class="h-4 w-4 rounded border-white/20 bg-white/5">
-      <label for="enabled" class="text-sm">Enabled</label>
+      <input type="checkbox" id="enabled" wire:model.defer="enabled" class="h-4 w-4 rounded border-[var(--aio-border)]">
+      <label for="enabled" class="text-sm text-[var(--aio-ink)]">Enabled</label>
     </div>
   </div>
 </x-section-card>
@@ -75,23 +60,23 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div>
         <label class="block text-xs text-[var(--aio-sub)] mb-1">SSH Port</label>
-        <input type="number" min="1" max="65535" wire:model.defer="ssh_port" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        <input type="number" min="1" max="65535" wire:model.defer="ssh_port" class="form-input w-full">
         @error('ssh_port') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
       </div>
       <div>
         <label class="block text-xs text-[var(--aio-sub)] mb-1">DNS (CSV)</label>
-        <input type="text" wire:model.defer="dns" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2" placeholder="1.1.1.1,8.8.8.8">
+        <input type="text" wire:model.defer="dns" class="form-input w-full" placeholder="1.1.1.1,8.8.8.8">
         @error('dns') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
       </div>
       <div>
         <label class="block text-xs text-[var(--aio-sub)] mb-1">MTU</label>
-        <input type="number" min="576" max="9000" wire:model.defer="mtu" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+        <input type="number" min="576" max="9000" wire:model.defer="mtu" class="form-input w-full">
         @error('mtu') <p class="text-xs text-red-400 mt-1">{{ $message }}</p> @enderror
       </div>
 
       <div class="flex items-center gap-2">
-        <input type="checkbox" id="ipv6_enabled" wire:model.defer="ipv6_enabled" class="h-4 w-4 rounded border-white/20 bg-white/5">
-        <label for="ipv6_enabled" class="text-sm">IPv6 Enabled</label>
+        <input type="checkbox" id="ipv6_enabled" wire:model.defer="ipv6_enabled" class="h-4 w-4 rounded border-[var(--aio-border)]">
+        <label for="ipv6_enabled" class="text-sm text-[var(--aio-ink)]">IPv6 Enabled</label>
       </div>
     </div>
   </x-section-card>
