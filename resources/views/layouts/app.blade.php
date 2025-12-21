@@ -7,40 +7,38 @@
   <title>{{ config('app.name','AIO VPN') }}</title>
 
   <script>
-    // lock dark early to avoid flash
+    // Apply theme early (default LIGHT). No flash.
     try {
-      if ((localStorage.getItem('theme') ?? 'dark') === 'dark') {
-        document.documentElement.classList.add('dark');
-      }
-    } catch(e){}
+      const saved = localStorage.getItem('theme') ?? 'light';
+      if (saved === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    } catch (e) {}
   </script>
 
   @vite(['resources/css/app.css'])
-
-  {{-- Livewire styles only ONCE --}}
   @livewireStyles
-
   @stack('styles')
   <style>[x-cloak]{display:none!important}</style>
 </head>
 
-<body class="min-h-full font-sans antialiased"
-      x-data="panelLayout()" x-init="init()">
+<body class="min-h-full font-sans antialiased" x-data="panelLayout()" x-init="init()">
 
   <div class="min-h-screen flex bg-[var(--aio-bg)] text-[var(--aio-ink)]">
 
     {{-- DESKTOP SIDEBAR --}}
-    <aside class="sidebar hidden md:flex md:flex-col aio-card border-r transition-[width] duration-200"
+    <aside class="sidebar hidden md:flex md:flex-col border-r border-[var(--aio-border)] bg-[var(--aio-card)]
+                  transition-[width] duration-200"
            :class="sidebarCollapsed ? 'md:w-20' : 'md:w-64'"
            aria-label="Main Navigation">
 
-      <div class="h-16 flex items-center justify-between px-3">
+      <div class="h-16 flex items-center justify-between px-3 border-b border-[var(--aio-border)]">
         <div class="flex items-center gap-2 overflow-hidden">
           <x-application-logo type="mark" class="w-8 h-8 shrink-0"/>
           <span x-show="!sidebarCollapsed" class="font-bold truncate">AIO VPN</span>
         </div>
 
-        <button class="hidden md:inline-flex p-2 rounded hover:bg-white/10"
+        <button class="hidden md:inline-flex p-2 rounded-md border border-transparent hover:border-[var(--aio-border)]
+                       hover:bg-[var(--aio-hover)]"
                 type="button"
                 @click="toggleCollapse()"
                 :aria-expanded="!sidebarCollapsed"
@@ -52,21 +50,23 @@
         </button>
       </div>
 
-      @include('layouts.partials.sidebar')
+      <div class="p-2">
+        @include('layouts.partials.sidebar')
+      </div>
     </aside>
 
     {{-- MOBILE DRAWER --}}
     <template x-teleport="body">
-      <div x-show="sidebarOpen" x-cloak
-           class="fixed inset-0 z-[100]"
-           @keydown.escape.window="sidebarOpen=false"
-           x-transition.opacity>
+      <div x-show="sidebarOpen" x-cloak class="fixed inset-0 z-[100]"
+           @keydown.escape.window="sidebarOpen=false" x-transition.opacity>
 
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        {{-- overlay --}}
+        <div class="absolute inset-0 bg-black/40"
              @click="sidebarOpen=false"
              aria-hidden="true"></div>
 
-        <aside class="sidebar drawer absolute left-0 top-0 bottom-0 w-72 aio-card border-r p-3 z-[101] overflow-y-auto"
+        <aside class="drawer absolute left-0 top-0 bottom-0 w-72 bg-[var(--aio-card)] border-r border-[var(--aio-border)]
+                      p-3 z-[101] overflow-y-auto"
                x-transition:enter="transform transition ease-out duration-200"
                x-transition:enter-start="-translate-x-full"
                x-transition:enter-end="translate-x-0"
@@ -75,9 +75,11 @@
                x-transition:leave-end="-translate-x-full"
                role="dialog" aria-modal="true">
 
-          <div class="h-14 flex items-center justify-between">
+          <div class="h-14 flex items-center justify-between border-b border-[var(--aio-border)] pb-2 mb-2">
             <span class="font-semibold">AIO VPN</span>
-            <button class="p-2 rounded hover:bg-white/10"
+
+            <button class="p-2 rounded-md border border-transparent hover:border-[var(--aio-border)]
+                           hover:bg-[var(--aio-hover)]"
                     type="button"
                     @click="sidebarOpen=false"
                     aria-label="Close">
@@ -95,9 +97,12 @@
 
     {{-- MAIN --}}
     <div class="flex-1 flex flex-col min-w-0">
-      <header class="aio-header h-16 flex items-center justify-between px-3 md:px-4 sticky top-0 z-50">
+
+      <header class="h-16 flex items-center justify-between px-3 md:px-4 sticky top-0 z-50
+                     border-b border-[var(--aio-border)] bg-[var(--aio-card)]">
         <div class="flex items-center gap-2">
-          <button class="md:hidden p-2 rounded hover:bg-white/10"
+          <button class="md:hidden p-2 rounded-md border border-transparent hover:border-[var(--aio-border)]
+                         hover:bg-[var(--aio-hover)]"
                   type="button"
                   @click="sidebarOpen=true"
                   aria-label="Open menu">
@@ -106,12 +111,14 @@
                     d="M4 6h16M4 12h16M4 18h16"/>
             </svg>
           </button>
+
           <h1 class="text-lg font-semibold">{{ $heading ?? '' }}</h1>
         </div>
 
         <div class="flex items-center gap-3">
           @auth
-            <a href="{{ route('admin.credits') }}" class="aio-pill inline-flex items-center gap-1.5">
+            <a href="{{ route('admin.credits') }}"
+               class="aio-pill inline-flex items-center gap-1.5">
               <x-icon name="o-currency-dollar" class="w-4 h-4"/>
               {{ auth()->user()->credits ?? 0 }}
             </a>
@@ -120,8 +127,8 @@
           <button class="aio-pill" type="button"
                   @click="
                     const el=document.documentElement;
-                    const dark=el.classList.toggle('dark');
-                    localStorage.setItem('theme', dark ? 'dark' : 'light');
+                    const isDark=el.classList.toggle('dark');
+                    localStorage.setItem('theme', isDark ? 'dark' : 'light');
                   ">
             🌓 Theme
           </button>
@@ -134,18 +141,14 @@
         @yield('content')
         {{ $slot ?? '' }}
       </main>
+
     </div>
   </div>
 
-  {{-- IMPORTANT ORDER:
-       1) Livewire scripts
-       2) Your app.js (Echo/Reverb etc)
-  --}}
   @stack('scripts')
 
   @livewireScripts
   @livewireScriptConfig
-
   @vite(['resources/js/app.js'])
 
   <script>
