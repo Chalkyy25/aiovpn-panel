@@ -1,62 +1,29 @@
 @props([
     'href'          => '#',
-    'active'        => false,   // route match overrides this
+    'active'        => false,
     'icon'          => null,
-    // neon | mag | pup | cya | slate
-    'variant'       => 'pup',
     'collapseAware' => true,
 ])
 
 @php
-  $tones = [
-    'neon' => [
-      'ring'   => 'ring-[rgba(61,255,127,.28)]',
-      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
-      'active' => 'pill-neon active-neon',
-      'icon'   => 'text-[var(--aio-neon)]',
-    ],
-    'mag' => [
-      'ring'   => 'ring-[rgba(255,47,185,.28)]',
-      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
-      'active' => 'pill-mag active-mag',
-      'icon'   => 'text-[var(--aio-mag)]',
-    ],
-    'pup' => [
-      'ring'   => 'ring-[rgba(124,77,255,.28)]',
-      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
-      'active' => 'pill-pup active-pup',
-      'icon'   => 'text-[var(--aio-pup)]',
-    ],
-    'cya' => [
-      'ring'   => 'ring-[rgba(59,167,240,.28)]',
-      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
-      'active' => 'pill-cya active-cya',
-      'icon'   => 'text-[var(--aio-cya)]',
-    ],
-    'slate' => [
-      'ring'   => 'ring-white/10',
-      'idle'   => 'bg-white/6 text-[var(--aio-ink)] hover:bg-white/10',
-      'active' => 'bg-white/20 text-[var(--aio-ink)] active-slate',
-      'icon'   => 'text-[var(--aio-sub)]',
-    ],
-  ];
+  // Plain, neutral defaults that work in light + dark via your CSS vars
+  $base = "flex items-center gap-2 w-full px-3 py-2 rounded-md border border-transparent
+           transition-colors duration-150";
 
-  $tone = $tones[$variant] ?? $tones['pup'];
+  $inactive = "text-[color-mix(in_srgb,var(--aio-ink)_70%,transparent)]
+               hover:bg-[var(--aio-hover)]
+               hover:border-[var(--aio-border)]
+               hover:text-[var(--aio-ink)]";
 
-  // Shared base
-  $base = "nav-pill flex items-center gap-2 w-full px-3 py-2 rounded-xl
-           ring-1 {$tone['ring']} shadow-[inset_0_0_0_1px_rgba(255,255,255,.06)]
-           transition-all duration-200";
+  $activeCls = "bg-[var(--aio-accent)] text-white border-transparent";
 
-  // Active adds glow helpers
-  $classes = $active
-      ? "$base {$tone['active']} active font-semibold"
-      : "$base {$tone['idle']}";
+  $classes = $active ? "{$base} {$activeCls} font-semibold" : "{$base} {$inactive}";
 @endphp
 
 <a href="{{ $href }}" {{ $attributes->merge(['class' => $classes]) }}>
   @if ($icon)
-    <x-icon :name="$icon" class="w-5 h-5 shrink-0 {{ $tone['icon'] }}" />
+    <x-icon :name="$icon"
+            class="w-5 h-5 shrink-0 {{ $active ? 'text-white' : 'text-[var(--aio-sub)]' }}" />
   @endif
 
   @if ($collapseAware)
