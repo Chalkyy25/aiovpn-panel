@@ -15,7 +15,7 @@
   --aio-card:    #ffffff;
   --aio-ink:     #111827;
   --aio-sub:     #6b7280;
-    --aio-bg-1: #eef4ff;   /* stronger top */
+    --aio-bg-1: #123456;   /* stronger top */
   --aio-bg-2: #e6eef9;   /* deeper bottom */
   --aio-glow: radial-gradient(
     800px 420px at 20% -10%,
