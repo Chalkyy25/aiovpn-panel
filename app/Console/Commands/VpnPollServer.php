@@ -121,12 +121,12 @@ class VpnPollServer extends Command
                 $this->lastStatus[$server->id] = $currentHash;
 
                 // Broadcast event for real-time dashboard updates
-                broadcast(new ServerMgmtEvent(
-                    $server->id,
-                    now()->toIso8601String(),
-                    $clients,
-                    null,
-                    $raw
+                //broadcast(new ServerMgmtEvent(
+                   // $server->id,
+                   // now()->toIso8601String(),
+                    //$clients,
+                    //null,
+                    //$raw
                 ));
 
                 // Persist to database unless --no-db flag is set
