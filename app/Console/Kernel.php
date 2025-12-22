@@ -25,7 +25,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        /**
+        /*
          * ❌ DISABLED (temporary): These were racing with DeployEventController
          * and causing the dashboard flicker / "_" by rewriting connection state.
          *
@@ -34,7 +34,7 @@ class Kernel extends ConsoleKernel
          * - not overwrite connected_at / is_connected state
          *
          * $schedule->job(UpdateVpnConnectionStatus::class)->everyFifteenSeconds()...
-         * $schedule->command('vpn:sync-connections')->cron('*/2 * * * *')...
+         * $schedule->command('vpn:sync-connections')->cron
          * $schedule->command('vpn:sync')->everyFiveMinutes()...
          */
     }
