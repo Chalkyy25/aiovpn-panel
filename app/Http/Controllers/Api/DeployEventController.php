@@ -8,6 +8,7 @@ use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
 use App\Models\WireguardPeer;
+use App\Traits\ExecutesRemoteCommands;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\Log;
 
 class DeployEventController extends Controller
 {
+    use ExecutesRemoteCommands;
+
     private const OFFLINE_GRACE = 300; // seconds
 
     public function store(Request $request, VpnServer $server): JsonResponse
@@ -136,8 +139,8 @@ class DeployEventController extends Controller
                 'last_mgmt_at' => $now,
             ])->saveQuietly();
 
-            // ✅ (optional) enforce device limits right here AFTER state is accurate
-            // $this->enforceDeviceLimits($server->id, $now);
+            // ✅ Enforce device limits right here AFTER state is accurate
+            $this->enforceDeviceLimits($server->id, $now);
         });
 
         $enriched = $this->enrich($server);
@@ -332,5 +335,143 @@ class DeployEventController extends Controller
                 'session_key'   => $r->session_key,
                 'public_key'    => $r->public_key,
             ])->values()->all();
+    }
+
+    /**
+     * Enforce device limits for all users on this server.
+     * Disconnects oldest connections when user exceeds max_connections.
+     * Actually kills the sessions on the VPN server.
+     */
+    private function enforceDeviceLimits(int $serverId, Carbon $now): void
+    {
+        // Get all users with active connections on this server
+        $userIds = VpnUserConnection::where('vpn_server_id', $serverId)
+            ->where('is_connected', true)
+            ->distinct()
+            ->pluck('vpn_user_id')
+            ->unique();
+
+        foreach ($userIds as $userId) {
+            $user = VpnUser::find($userId);
+            
+            if (!$user) {
+                continue;
+            }
+
+            // Skip if unlimited (0) or no limit set
+            if ((int) $user->max_connections === 0) {
+                continue;
+            }
+
+            // Get all active connections for this user across ALL servers
+            $activeConnections = VpnUserConnection::with('vpnServer')
+                ->where('vpn_user_id', $userId)
+                ->where('is_connected', true)
+                ->orderBy('connected_at', 'asc') // oldest first
+                ->get();
+
+            $maxAllowed = (int) $user->max_connections;
+            $currentCount = $activeConnections->count();
+
+            if ($currentCount <= $maxAllowed) {
+                continue; // within limit
+            }
+
+            // Disconnect oldest connections exceeding the limit
+            $toDisconnect = $currentCount - $maxAllowed;
+
+            Log::channel('vpn')->warning(sprintf(
+                'DEVICE_LIMIT: User %s (%d) exceeded limit: %d/%d devices - disconnecting %d oldest session(s)',
+                $user->username,
+                $userId,
+                $currentCount,
+                $maxAllowed,
+                $toDisconnect
+            ));
+
+            foreach ($activeConnections->take($toDisconnect) as $conn) {
+                // Kill the actual session on the VPN server
+                $this->killSession($conn);
+
+                // Update database to reflect disconnection
+                $conn->update([
+                    'is_connected'     => false,
+                    'disconnected_at'  => $now,
+                    'session_duration' => $conn->connected_at ? $now->diffInSeconds($conn->connected_at) : null,
+                ]);
+
+                Log::channel('vpn')->info(sprintf(
+                    'DEVICE_LIMIT: ✂️ Killed %s session %s for user %s on server %s',
+                    $conn->protocol,
+                    $conn->session_key,
+                    $user->username,
+                    optional($conn->vpnServer)->name ?? "#{$conn->vpn_server_id}"
+                ));
+            }
+
+            // Update user online status
+            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($userId);
+        }
+    }
+
+    /**
+     * Actually kill a VPN session on the server (not just in database).
+     */
+    private function killSession(VpnUserConnection $conn): void
+    {
+        try {
+            $server = $conn->vpnServer;
+            if (!$server) {
+                Log::channel('vpn')->warning("DEVICE_LIMIT: Cannot kill session - server not found for connection #{$conn->id}");
+                return;
+            }
+
+            if ($conn->protocol === 'WIREGUARD') {
+                // For WireGuard: remove peer from server
+                $publicKey = $conn->public_key;
+                if (!$publicKey) {
+                    Log::channel('vpn')->warning("DEVICE_LIMIT: Cannot kill WG session - no public key");
+                    return;
+                }
+
+                $interface = $server->wg_interface ?? 'wg0';
+                $command = sprintf(
+                    'wg set %s peer %s remove 2>/dev/null || true',
+                    escapeshellarg($interface),
+                    escapeshellarg($publicKey)
+                );
+
+                $this->executeRemoteCommand($server, $command, 5);
+                
+                Log::channel('vpn')->debug("DEVICE_LIMIT: WireGuard peer {$publicKey} removed from {$interface}");
+
+            } else {
+                // For OpenVPN: kill client via management interface
+                $mgmtPort = $conn->mgmt_port ?: 7505;
+                $clientId = $conn->client_id;
+
+                if ($clientId === null) {
+                    Log::channel('vpn')->warning("DEVICE_LIMIT: Cannot kill OpenVPN session - no client_id");
+                    return;
+                }
+
+                // Send kill command to OpenVPN management interface
+                $command = sprintf(
+                    'echo "kill %s" | nc 127.0.0.1 %d 2>/dev/null || true',
+                    escapeshellarg((string)$clientId),
+                    $mgmtPort
+                );
+
+                $this->executeRemoteCommand($server, $command, 5);
+                
+                Log::channel('vpn')->debug("DEVICE_LIMIT: OpenVPN client {$clientId} killed on port {$mgmtPort}");
+            }
+        } catch (\Throwable $e) {
+            Log::channel('vpn')->error(sprintf(
+                'DEVICE_LIMIT: Failed to kill session %s: %s',
+                $conn->session_key,
+                $e->getMessage()
+            ));
+        }
     }
 }

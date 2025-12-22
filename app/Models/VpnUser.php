@@ -198,6 +198,131 @@ class VpnUser extends Authenticatable
             : $this->activeConnectionsCount . '/' . (int) $this->max_connections;
     }
 
+    /**
+     * Check if this user is over their device limit.
+     * Returns true if they have MORE active connections than allowed.
+     */
+    public function isOverDeviceLimit(): bool
+    {
+        if ((int) $this->max_connections === 0) {
+            return false; // unlimited
+        }
+
+        $activeCount = $this->activeConnections()->count();
+        return $activeCount > (int) $this->max_connections;
+    }
+
+    /**
+     * Disconnect oldest connections if user exceeds device limit.
+     * Typically called after new connection is established.
+     * Actually kills sessions on VPN servers.
+     * 
+     * @return int Number of connections disconnected
+     */
+    public function enforceDeviceLimit(): int
+    {
+        if ((int) $this->max_connections === 0) {
+            return 0; // unlimited, nothing to enforce
+        }
+
+        $activeConnections = $this->activeConnections()
+            ->with('vpnServer')
+            ->orderBy('connected_at', 'asc') // oldest first
+            ->get();
+
+        $maxAllowed = (int) $this->max_connections;
+        $currentCount = $activeConnections->count();
+
+        if ($currentCount <= $maxAllowed) {
+            return 0; // within limit
+        }
+
+        $toDisconnect = $currentCount - $maxAllowed;
+        $now = now();
+        $disconnectedCount = 0;
+
+        foreach ($activeConnections->take($toDisconnect) as $conn) {
+            // Kill the actual session on VPN server
+            $this->killVpnSession($conn);
+
+            // Update database
+            $conn->update([
+                'is_connected'     => false,
+                'disconnected_at'  => $now,
+                'session_duration' => $conn->connected_at ? $now->diffInSeconds($conn->connected_at) : null,
+            ]);
+
+            $disconnectedCount++;
+
+            Log::channel('vpn')->info(sprintf(
+                'DEVICE_LIMIT: ✂️ Auto-killed %s session %s for user %s (exceeded %d/%d)',
+                $conn->protocol,
+                $conn->session_key,
+                $this->username,
+                $currentCount,
+                $maxAllowed
+            ));
+        }
+
+        // Update user's online status if needed
+        VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($this->id);
+
+        return $disconnectedCount;
+    }
+
+    /**
+     * Kill a VPN session on the actual server (not just database).
+     */
+    private function killVpnSession(VpnUserConnection $conn): void
+    {
+        try {
+            $server = $conn->vpnServer;
+            if (!$server) {
+                return;
+            }
+
+            if ($conn->protocol === 'WIREGUARD') {
+                // Remove WireGuard peer
+                $publicKey = $conn->public_key;
+                if (!$publicKey) {
+                    return;
+                }
+
+                $interface = $server->wg_interface ?? 'wg0';
+                $command = sprintf(
+                    'wg set %s peer %s remove 2>/dev/null || true',
+                    escapeshellarg($interface),
+                    escapeshellarg($publicKey)
+                );
+
+                $this->executeRemoteCommand($server, $command, 5);
+
+            } else {
+                // Kill OpenVPN client via management interface
+                $mgmtPort = $conn->mgmt_port ?: 7505;
+                $clientId = $conn->client_id;
+
+                if ($clientId === null) {
+                    return;
+                }
+
+                $command = sprintf(
+                    'echo \"kill %s\" | nc 127.0.0.1 %d 2>/dev/null || true',
+                    escapeshellarg((string)$clientId),
+                    $mgmtPort
+                );
+
+                $this->executeRemoteCommand($server, $command, 5);
+            }
+        } catch (\Throwable $e) {
+            Log::channel('vpn')->error(sprintf(
+                'Failed to kill VPN session %s: %s',
+                $conn->session_key,
+                $e->getMessage()
+            ));
+        }
+    }
+
     /* ========= Model events ========= */
 
     protected static function booted(): void
