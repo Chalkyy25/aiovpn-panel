@@ -12,17 +12,22 @@ class VpnUserConnection extends Model
     use HasFactory;
 
     protected $fillable = [
-        'vpn_user_id',
-        'vpn_server_id',
-        'is_connected',
-        'client_ip',
-        'virtual_ip',
-        'connected_at',
-        'disconnected_at',
-        'session_duration',
-        'bytes_received',
-        'bytes_sent',
-    ];
+    'vpn_user_id',
+    'vpn_server_id',
+    'session_key',
+    'protocol',
+    'public_key',
+    'client_id',
+    'mgmt_port',
+    'is_connected',
+    'client_ip',
+    'virtual_ip',
+    'connected_at',
+    'disconnected_at',
+    'session_duration',
+    'bytes_received',
+    'bytes_sent',
+];
 
     protected $casts = [
         'is_connected'     => 'boolean',
