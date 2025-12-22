@@ -127,7 +127,7 @@ class VpnPollServer extends Command
                     //$clients,
                     //null,
                     //$raw
-                ));
+                //));
 
                 // Persist to database unless --no-db flag is set
                 if (!$skipDb) {
