@@ -3,52 +3,46 @@
 namespace App\Console;
 
 use App\Jobs\DisableExpiredVpnUsers;
-use App\Jobs\UpdateVpnConnectionStatus;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
-
+    /**
+     * If you register console commands manually, keep them here.
+     * (You can also rely on $this->load(__DIR__.'/Commands') below.)
+     */
     protected $commands = [
-    \App\Console\Commands\VpnPollServer::class,
-];
+        \App\Console\Commands\VpnPollServer::class,
+    ];
+
     protected function schedule(Schedule $schedule): void
     {
-        // === Housekeeping (run once only) ===
+        // ✅ Housekeeping ONLY (safe, does not touch live connection snapshots)
         $schedule->job(DisableExpiredVpnUsers::class)
             ->everyMinute()
-            ->onOneServer() // safe: only 1 copy runs
+            ->onOneServer()
             ->withoutOverlapping()
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
-        // === VPN Fleet Sync (run everywhere) ===
-        // 1) Fast status — every 15 seconds for near real-time updates
-        $schedule->job(UpdateVpnConnectionStatus::class)
-            ->everyFifteenSeconds()
-            ->withoutOverlapping()
-            ->appendOutputTo(storage_path('logs/scheduler.log'));
-
-        // 2) Sync Users
-
-        // 3) Sync active connections — every 2 minutes (even minutes)
-        $schedule->command('vpn:sync-connections')
-            ->cron('*/2 * * * *')
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo(storage_path('logs/scheduler.log'));
-
-        // 4) General maintenance — every 5 minutes
-        $schedule->command('vpn:sync')
-            ->everyFiveMinutes()
-            ->withoutOverlapping()
-            ->runInBackground()
-            ->appendOutputTo(storage_path('logs/scheduler.log'));
+        /**
+         * ❌ DISABLED (temporary): These were racing with DeployEventController
+         * and causing the dashboard flicker / "_" by rewriting connection state.
+         *
+         * Re-enable ONE of these later ONLY after refactoring it to:
+         * - not broadcast mgmt.update, and/or
+         * - not overwrite connected_at / is_connected state
+         *
+         * $schedule->job(UpdateVpnConnectionStatus::class)->everyFifteenSeconds()...
+         * $schedule->command('vpn:sync-connections')->cron('*/2 * * * *')...
+         * $schedule->command('vpn:sync')->everyFiveMinutes()...
+         */
     }
 
     protected function commands(): void
     {
-        $this->load(__DIR__.'/Commands');
+        $this->load(__DIR__ . '/Commands');
+
         require base_path('routes/console.php');
     }
 }
