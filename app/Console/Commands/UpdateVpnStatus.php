@@ -205,12 +205,12 @@ BASH;
      */
     private function broadcastUsers(int $serverId, array $users): void
     {
-        broadcast(new ServerMgmtEvent(
-            $serverId,
-            now()->toIso8601String(),
-            $users,      // ← array payload (preferred, gives Virtual IP, Connected since, Data transfer)
-            null,
-            'sync-job'
-        ));
+        //broadcast(new ServerMgmtEvent(
+            //$serverId,
+            //now()->toIso8601String(),
+            //$users,      // ← array payload (preferred, gives Virtual IP, Connected since, Data transfer)
+           // null,
+           // 'sync-job'
+       // ));
     }
 }
