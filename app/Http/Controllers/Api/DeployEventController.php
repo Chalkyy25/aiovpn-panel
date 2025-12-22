@@ -8,7 +8,6 @@ use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
 use App\Models\WireguardPeer;
-use App\Traits\ExecutesRemoteCommands;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,8 +16,6 @@ use Illuminate\Support\Facades\Log;
 
 class DeployEventController extends Controller
 {
-    use ExecutesRemoteCommands;
-
     private const OFFLINE_GRACE = 300; // seconds
 
     public function store(Request $request, VpnServer $server): JsonResponse
@@ -28,7 +25,7 @@ class DeployEventController extends Controller
             'message' => 'nullable|string',
             'ts'      => 'nullable|string',
             'users'   => 'nullable|array',
-            'cn_list' => 'nullable|string',
+            'cn_list' => 'nullable|string', // legacy openvpn
             'clients' => 'nullable|integer',
         ]);
 
@@ -43,32 +40,34 @@ class DeployEventController extends Controller
         $incoming = $this->normalizeIncoming($data);
 
         Log::channel('vpn')->debug(sprintf(
-            'MGMT EVENT server=%d ts=%s incoming=%d [%s]',
+            'MGMT EVENT server=%d ts=%s incoming=%d',
             $server->id,
             $ts,
-            count($incoming),
-            implode(',', array_column($incoming, 'username'))
+            count($incoming)
         ));
 
         DB::transaction(function () use ($server, $incoming, $now) {
 
+            // username->vpn_users.id (OpenVPN) and pubkey->vpn_user_id (WireGuard)
             [$idByOvpnName, $uidByWgPub] = $this->buildUserMaps($incoming);
 
             $touchedKeys = [];
+            $touchedUserIds = [];
 
             foreach ($incoming as $c) {
-                $proto     = $this->proto($c['proto'] ?? null);
+                $proto     = $this->proto($c['proto'] ?? null); // OPENVPN / WIREGUARD
                 $username  = trim((string)($c['username'] ?? ''));
                 $publicKey = $c['public_key'] ?? null;
-                $clientId  = isset($c['client_id']) ? (int) $c['client_id'] : null;
-                $mgmtPort  = isset($c['mgmt_port']) ? (int) $c['mgmt_port'] : null;
+                $clientId  = isset($c['client_id']) ? (int)$c['client_id'] : null;
+                $mgmtPort  = isset($c['mgmt_port']) ? (int)$c['mgmt_port'] : null;
 
-                // ---- Resolve user id ----
+                // Resolve uid
                 $uid = null;
 
                 if ($proto === 'WIREGUARD') {
-                    $key = $publicKey ?: $username;     // username may be pubkey
-                    $publicKey = $key ?: null;          // force publicKey for WG
+                    // your agents sometimes put pubkey in username; normalize it
+                    $key = $publicKey ?: $username;
+                    $publicKey = $key ?: null;
 
                     if ($publicKey && isset($uidByWgPub[$publicKey])) {
                         $uid = (int) $uidByWgPub[$publicKey];
@@ -80,54 +79,62 @@ class DeployEventController extends Controller
                 }
 
                 if (!$uid) {
-                    Log::channel('vpn')->notice("MGMT: unknown {$proto} user='{$username}' server={$server->id}");
+                    Log::channel('vpn')->notice("MGMT: unknown {$proto} identity='{$username}' server={$server->id}");
                     continue;
                 }
 
-                // ---- Build session key ----
+                // Session key (MUST be stable, matches unique index vpn_server_id+session_key)
                 $sessionKey = $this->sessionKey($proto, $username, $clientId, $mgmtPort, $publicKey);
                 if (!$sessionKey) {
-                    Log::channel('vpn')->notice("MGMT: missing session identity proto={$proto} user='{$username}' server={$server->id}");
+                    Log::channel('vpn')->notice("MGMT: missing session_key proto={$proto} user='{$username}' server={$server->id}");
                     continue;
                 }
 
                 $touchedKeys[] = $sessionKey;
+                $touchedUserIds[] = $uid;
 
-                $connectedAt = !empty($c['connected_at'])
-                    ? $this->parseTime($c['connected_at'])
-                    : null;
+                $connectedAt = !empty($c['connected_at']) ? $this->parseTime($c['connected_at']) : null;
 
-                // ✅ Upsert by server + session_key ONLY
+                // Upsert
                 $row = VpnUserConnection::updateOrCreate(
                     [
                         'vpn_server_id' => $server->id,
                         'session_key'   => $sessionKey,
                     ],
                     [
-                        'vpn_user_id'      => $uid,
-                        'protocol'         => $proto,
-                        'public_key'       => $proto === 'WIREGUARD' ? $publicKey : null,
-                        'client_id'        => $proto === 'OPENVPN' ? $clientId : null,
-                        'mgmt_port'        => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
-                        'is_connected'     => true,
-                        'disconnected_at'  => null,
-                        'connected_at'     => $connectedAt ?? $now,
-                        'client_ip'        => $c['client_ip'] ?? null,
-                        'virtual_ip'       => $c['virtual_ip'] ?? null,
-                        'bytes_received'   => (int) ($c['bytes_in'] ?? 0),
-                        'bytes_sent'       => (int) ($c['bytes_out'] ?? 0),
+                        'vpn_user_id'     => $uid,
+                        'protocol'        => $proto,
+                        'is_connected'    => true,
+                        'disconnected_at' => null,
+
+                        // Protocol-specific identity fields
+                        'public_key' => $proto === 'WIREGUARD' ? $publicKey : null,
+                        'client_id'  => $proto === 'OPENVPN' ? $clientId : null,
+                        'mgmt_port'  => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
+
+                        // Details
+                        'connected_at'   => $connectedAt ?? ($this->fallbackConnectedAt($proto, $now)),
+                        'client_ip'      => $c['client_ip'] ?? null,
+                        'virtual_ip'     => $c['virtual_ip'] ?? null,
+                        'bytes_received' => (int)($c['bytes_in'] ?? 0),
+                        'bytes_sent'     => (int)($c['bytes_out'] ?? 0),
                     ]
                 );
 
-                // user summary
+                // Keep user online
                 VpnUser::whereKey($uid)->update([
                     'is_online' => true,
                     'last_ip'   => $row->client_ip,
                 ]);
             }
 
-            // Disconnect sessions not present (after grace)
+            // Mark missing sessions offline (grace)
             $this->disconnectMissing($server->id, $touchedKeys, $now);
+
+            // If any users got disconnected due to missing sessions, ensure is_online is correct
+            foreach (array_unique($touchedUserIds) as $uid) {
+                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections((int)$uid);
+            }
 
             // Server aggregates
             $liveKnown = VpnUserConnection::where('vpn_server_id', $server->id)
@@ -138,9 +145,6 @@ class DeployEventController extends Controller
                 'online_users' => $liveKnown,
                 'last_mgmt_at' => $now,
             ])->saveQuietly();
-
-            // ✅ Enforce device limits right here AFTER state is accurate
-            $this->enforceDeviceLimits($server->id, $now);
         });
 
         $enriched = $this->enrich($server);
@@ -161,13 +165,15 @@ class DeployEventController extends Controller
         ]);
     }
 
+    /* ------------------------ Normalization ------------------------ */
+
     private function normalizeIncoming(array $data): array
     {
         $out = [];
 
         if (!empty($data['users']) && is_array($data['users'])) {
             foreach ($data['users'] as $u) {
-                $u = is_string($u) ? ['username' => $u] : (array) $u;
+                $u = is_string($u) ? ['username' => $u] : (array)$u;
 
                 $proto = strtolower((string)($u['proto'] ?? $u['protocol'] ?? 'openvpn'));
                 $proto = str_starts_with($proto, 'wire') ? 'wireguard' : 'openvpn';
@@ -188,10 +194,19 @@ class DeployEventController extends Controller
                     'bytes_out'    => (int)($u['bytes_out'] ?? $u['BytesSent'] ?? 0),
                 ];
             }
+        } elseif (!empty($data['cn_list'])) {
+            // legacy OpenVPN list
+            foreach (explode(',', (string)$data['cn_list']) as $name) {
+                $name = trim($name);
+                if ($name !== '') {
+                    $out[] = ['proto' => 'openvpn', 'username' => $name];
+                }
+            }
         }
 
-        // Filter garbage + dedupe by identity
+        // Filter garbage + dedupe by stable identity
         $seen = [];
+
         return array_values(array_filter($out, function ($r) use (&$seen) {
             $proto = strtolower((string)($r['proto'] ?? 'openvpn'));
             $name  = trim((string)($r['username'] ?? ''));
@@ -206,7 +221,7 @@ class DeployEventController extends Controller
                 $dedupeKey = "wg|{$key}";
             } else {
                 if (!preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name)) return false;
-                $dedupeKey = "ovpn|{$name}|" . ($r['client_id'] ?? 'nocid');
+                $dedupeKey = "ovpn|{$name}|" . ($r['client_id'] ?? 'nocid') . '|' . ($r['mgmt_port'] ?? 'nomp');
             }
 
             if (isset($seen[$dedupeKey])) return false;
@@ -214,6 +229,8 @@ class DeployEventController extends Controller
             return true;
         }));
     }
+
+    /* ------------------------ Maps / Identity ------------------------ */
 
     private function buildUserMaps(array $incoming): array
     {
@@ -250,10 +267,13 @@ class DeployEventController extends Controller
             return $key ? "wg:{$key}" : null;
         }
 
+        // OPENVPN
         if ($clientId === null) return null;
         $mp = $mgmtPort ?: 7505;
         return "ovpn:{$mp}:{$clientId}:{$username}";
     }
+
+    /* ------------------------ Offline handling ------------------------ */
 
     private function disconnectMissing(int $serverId, array $touchedSessionKeys, Carbon $now): void
     {
@@ -275,9 +295,11 @@ class DeployEventController extends Controller
                 'session_duration' => $row->connected_at ? $now->diffInSeconds($row->connected_at) : null,
             ]);
 
-            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
+            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections((int)$row->vpn_user_id);
         }
     }
+
+    /* ------------------------ Misc helpers ------------------------ */
 
     private function proto(?string $v): string
     {
@@ -316,6 +338,15 @@ class DeployEventController extends Controller
         return str_contains($ip, '/') ? explode('/', $ip, 2)[0] : $ip;
     }
 
+    /**
+     * WG handshakes are "last handshake", not true "connected since".
+     * If your agent sends connected_at, we use it. Otherwise leave it as now (UI friendly).
+     */
+    private function fallbackConnectedAt(string $proto, Carbon $now): Carbon
+    {
+        return $now;
+    }
+
     private function enrich(VpnServer $server): array
     {
         return VpnUserConnection::with('vpnUser:id,username')
@@ -334,144 +365,8 @@ class DeployEventController extends Controller
                 'protocol'      => $r->protocol,
                 'session_key'   => $r->session_key,
                 'public_key'    => $r->public_key,
-            ])->values()->all();
-    }
-
-    /**
-     * Enforce device limits for all users on this server.
-     * Disconnects oldest connections when user exceeds max_connections.
-     * Actually kills the sessions on the VPN server.
-     */
-    private function enforceDeviceLimits(int $serverId, Carbon $now): void
-    {
-        // Get all users with active connections on this server
-        $userIds = VpnUserConnection::where('vpn_server_id', $serverId)
-            ->where('is_connected', true)
-            ->distinct()
-            ->pluck('vpn_user_id')
-            ->unique();
-
-        foreach ($userIds as $userId) {
-            $user = VpnUser::find($userId);
-            
-            if (!$user) {
-                continue;
-            }
-
-            // Skip if unlimited (0) or no limit set
-            if ((int) $user->max_connections === 0) {
-                continue;
-            }
-
-            // Get all active connections for this user across ALL servers
-            $activeConnections = VpnUserConnection::with('vpnServer')
-                ->where('vpn_user_id', $userId)
-                ->where('is_connected', true)
-                ->orderBy('connected_at', 'asc') // oldest first
-                ->get();
-
-            $maxAllowed = (int) $user->max_connections;
-            $currentCount = $activeConnections->count();
-
-            if ($currentCount <= $maxAllowed) {
-                continue; // within limit
-            }
-
-            // Disconnect oldest connections exceeding the limit
-            $toDisconnect = $currentCount - $maxAllowed;
-
-            Log::channel('vpn')->warning(sprintf(
-                'DEVICE_LIMIT: User %s (%d) exceeded limit: %d/%d devices - disconnecting %d oldest session(s)',
-                $user->username,
-                $userId,
-                $currentCount,
-                $maxAllowed,
-                $toDisconnect
-            ));
-
-            foreach ($activeConnections->take($toDisconnect) as $conn) {
-                // Kill the actual session on the VPN server
-                $this->killSession($conn);
-
-                // Update database to reflect disconnection
-                $conn->update([
-                    'is_connected'     => false,
-                    'disconnected_at'  => $now,
-                    'session_duration' => $conn->connected_at ? $now->diffInSeconds($conn->connected_at) : null,
-                ]);
-
-                Log::channel('vpn')->info(sprintf(
-                    'DEVICE_LIMIT: ✂️ Killed %s session %s for user %s on server %s',
-                    $conn->protocol,
-                    $conn->session_key,
-                    $user->username,
-                    optional($conn->vpnServer)->name ?? "#{$conn->vpn_server_id}"
-                ));
-            }
-
-            // Update user online status
-            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($userId);
-        }
-    }
-
-    /**
-     * Actually kill a VPN session on the server (not just in database).
-     */
-    private function killSession(VpnUserConnection $conn): void
-    {
-        try {
-            $server = $conn->vpnServer;
-            if (!$server) {
-                Log::channel('vpn')->warning("DEVICE_LIMIT: Cannot kill session - server not found for connection #{$conn->id}");
-                return;
-            }
-
-            if ($conn->protocol === 'WIREGUARD') {
-                // For WireGuard: remove peer from server
-                $publicKey = $conn->public_key;
-                if (!$publicKey) {
-                    Log::channel('vpn')->warning("DEVICE_LIMIT: Cannot kill WG session - no public key");
-                    return;
-                }
-
-                $interface = $server->wg_interface ?? 'wg0';
-                $command = sprintf(
-                    'wg set %s peer %s remove 2>/dev/null || true',
-                    escapeshellarg($interface),
-                    escapeshellarg($publicKey)
-                );
-
-                $this->executeRemoteCommand($server, $command, 5);
-                
-                Log::channel('vpn')->debug("DEVICE_LIMIT: WireGuard peer {$publicKey} removed from {$interface}");
-
-            } else {
-                // For OpenVPN: kill client via management interface
-                $mgmtPort = $conn->mgmt_port ?: 7505;
-                $clientId = $conn->client_id;
-
-                if ($clientId === null) {
-                    Log::channel('vpn')->warning("DEVICE_LIMIT: Cannot kill OpenVPN session - no client_id");
-                    return;
-                }
-
-                // Send kill command to OpenVPN management interface
-                $command = sprintf(
-                    'echo "kill %s" | nc 127.0.0.1 %d 2>/dev/null || true',
-                    escapeshellarg((string)$clientId),
-                    $mgmtPort
-                );
-
-                $this->executeRemoteCommand($server, $command, 5);
-                
-                Log::channel('vpn')->debug("DEVICE_LIMIT: OpenVPN client {$clientId} killed on port {$mgmtPort}");
-            }
-        } catch (\Throwable $e) {
-            Log::channel('vpn')->error(sprintf(
-                'DEVICE_LIMIT: Failed to kill session %s: %s',
-                $conn->session_key,
-                $e->getMessage()
-            ));
-        }
+            ])
+            ->values()
+            ->all();
     }
 }
