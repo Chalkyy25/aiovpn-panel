@@ -96,6 +96,11 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
             $parsed  = OpenVpnStatusParser::parse($raw);
             $clients = $parsed['clients'] ?? [];
+            
+            // TEMP DEBUG — REMOVE AFTER
+            if (!empty($clients)) {
+                dd($clients[0]);
+            }
 
             broadcast(new ServerMgmtEvent(
                 $server->id,
