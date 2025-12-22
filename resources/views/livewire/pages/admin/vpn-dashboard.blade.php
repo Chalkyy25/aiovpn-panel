@@ -432,58 +432,64 @@
         return `u:${serverId}:${username}:${protocol}`;
       },
 
-   _shapeRow(serverId, raw, prevRow = null) {
-  const meta = this.serverMeta[serverId] || {};
+       _shapeRow(serverId, raw, prevRow = null) {
+        const meta = this.serverMeta[serverId] || {};
 
-  const protocol = this._shapeProtocol(raw);
-  const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
+        const protocol = this._shapeProtocol(raw);
+        const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
 
-  // ✅ FIX: protocol-aware timestamp
-  let connected_at;
+        // Keep IDs (needed for stable keys + disconnect)
+        const session_key = raw?.session_key ?? raw?.sessionKey ?? prevRow?.session_key ?? null;
+        const connection_id = raw?.connection_id ?? raw?.id ?? prevRow?.connection_id ?? null;
 
-  if (protocol === 'WIREGUARD') {
-    // WG = last seen / handshake time
-    connected_at =
-      raw?.seen_at ??
-      raw?.seenAt ??
-      raw?.updated_at ??
-      raw?.updatedAt ??
-      prevRow?.connected_at ??
-      null;
-  } else {
-    // OpenVPN = real session start
-    connected_at =
-      raw?.connected_at ??
-      raw?.connectedAt ??
-      prevRow?.connected_at ??
-      null;
-  }
+        // ✅ FIX: protocol-aware timestamp
+        let connected_at;
+        if (protocol === 'WIREGUARD') {
+          connected_at =
+            raw?.seen_at ??
+            raw?.seenAt ??
+            raw?.updated_at ??
+            raw?.updatedAt ??
+            prevRow?.connected_at ??
+            null;
+        } else {
+          connected_at =
+            raw?.connected_at ??
+            raw?.connectedAt ??
+            prevRow?.connected_at ??
+            null;
+        }
 
-  const bytes_in  = Number(raw?.bytes_in  ?? raw?.bytesIn  ?? raw?.bytes_received ?? prevRow?.bytes_in  ?? 0);
-  const bytes_out = Number(raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent     ?? prevRow?.bytes_out ?? 0);
+        const bytes_in  = Number(raw?.bytes_in  ?? raw?.bytesIn  ?? raw?.bytes_received ?? prevRow?.bytes_in  ?? 0);
+        const bytes_out = Number(raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent     ?? prevRow?.bytes_out ?? 0);
 
-  return {
-    __key: `${serverId}:${username}:${protocol}`,
-    connection_id: raw?.connection_id ?? raw?.id ?? prevRow?.connection_id ?? null,
+        const __key = this._stableKey(serverId, raw, protocol, username);
 
-    server_id: Number(serverId),
-    server_name: meta.name || raw?.server_name || `Server ${serverId}`,
+        return {
+          __key,
 
-    username,
-    client_ip:  raw?.client_ip  ?? prevRow?.client_ip  ?? null,
-    virtual_ip: raw?.virtual_ip ?? prevRow?.virtual_ip ?? null,
-    protocol,
+          // keep these for actions + merging
+          session_key,
+          connection_id,
 
-    connected_at,
-    connected_human: ago(connected_at),
+          server_id: Number(serverId),
+          server_name: meta.name || raw?.server_name || `Server ${serverId}`,
 
-    bytes_in,
-    bytes_out,
-    down_mb: toMB(bytes_in),
-    up_mb:   toMB(bytes_out),
-    formatted_bytes: humanBytes(bytes_in, bytes_out),
-  };
-}
+          username,
+          client_ip:  raw?.client_ip  ?? prevRow?.client_ip  ?? null,
+          virtual_ip: raw?.virtual_ip ?? prevRow?.virtual_ip ?? null,
+          protocol,
+
+          connected_at,
+          connected_human: ago(connected_at),
+
+          bytes_in,
+          bytes_out,
+          down_mb: toMB(bytes_in),
+          up_mb:   toMB(bytes_out),
+          formatted_bytes: humanBytes(bytes_in, bytes_out),
+        };
+      },
 
       _setExactList(serverId, list) {
         const prevMap = this.usersByServer[serverId] || {};
