@@ -292,7 +292,7 @@
       return new Date(v);
     };
 
-    const ago = v => {
+    const ago = (v) => {
       try {
         const d = toDate(v); if (!d) return '—';
         const diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
@@ -309,7 +309,7 @@
       refreshing: false,
 
       serverMeta: {},
-      usersByServer: {},
+      usersByServer: {}, // { [sid]: { [stableKey]: row } }
       totals: { online_users: 0, active_connections: 0, active_servers: 0 },
 
       selectedServerId: null,
@@ -394,6 +394,7 @@
 
       _subscribePerServer() {
         if (this._subscribed) return;
+
         Object.keys(this.serverMeta).forEach(sid => {
           try {
             window.Echo.private(`servers.${sid}`)
@@ -401,6 +402,7 @@
               .listen('mgmt.update',   e => this.handleEvent(e));
           } catch (_) {}
         });
+
         this._subscribed = true;
       },
 
@@ -414,32 +416,57 @@
         if (protoRaw.startsWith('wire')) return 'WIREGUARD';
         if (protoRaw === 'ovpn' || protoRaw.startsWith('openvpn')) return 'OPENVPN';
         if (protoRaw) return protoRaw.toUpperCase();
+
+        // fallback detection
         const u = (raw?.username || '').toString();
         if (/^[A-Za-z0-9+/=]{40,}$/.test(u)) return 'WIREGUARD';
         return 'OPENVPN';
       },
 
-      _shapeRow(serverId, raw) {
-        const meta = this.serverMeta[serverId] || {};
-        const username = (raw?.username ?? raw?.cn ?? 'unknown') + '';
-        const connected_at = raw?.connected_at ?? raw?.connectedAt ?? null;
+      _stableKey(serverId, raw, protocol, username) {
+        const sessionKey = raw?.session_key ?? raw?.sessionKey ?? null;
+        const cid = raw?.connection_id ?? raw?.id ?? null;
 
-        const bytes_in  = Number(raw?.bytes_in  ?? raw?.bytesIn  ?? raw?.bytes_received ?? 0);
-        const bytes_out = Number(raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent     ?? 0);
+        if (sessionKey) return `sk:${sessionKey}`;
+        if (cid !== null && cid !== undefined) return `cid:${cid}`;
+        return `u:${serverId}:${username}:${protocol}`;
+      },
+
+      _shapeRow(serverId, raw, prevRow = null) {
+        const meta = this.serverMeta[serverId] || {};
 
         const protocol = this._shapeProtocol(raw);
-        const idKey = `${serverId}:${username}:${protocol}`;
+        const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
+
+        // ✅ preserve when missing
+        const connected_at =
+          (raw?.connected_at ?? raw?.connectedAt ?? null) ??
+          (prevRow?.connected_at ?? null);
+
+        // ✅ preserve bytes when missing
+        const nextIn = raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? null;
+        const nextOut = raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? null;
+
+        const bytes_in  = (nextIn === null || nextIn === undefined) ? Number(prevRow?.bytes_in ?? 0) : Number(nextIn);
+        const bytes_out = (nextOut === null || nextOut === undefined) ? Number(prevRow?.bytes_out ?? 0) : Number(nextOut);
+
+        const session_key = raw?.session_key ?? raw?.sessionKey ?? prevRow?.session_key ?? null;
+        const connection_id = raw?.connection_id ?? raw?.id ?? prevRow?.connection_id ?? null;
+
+        const __key = this._stableKey(serverId, { session_key, connection_id }, protocol, username);
 
         return {
-          __key: idKey,
-          connection_id: raw?.connection_id ?? raw?.id ?? null,
+          __key,
+
+          session_key,
+          connection_id,
 
           server_id: Number(serverId),
-          server_name: meta.name || raw?.server_name || `Server ${serverId}`,
+          server_name: meta.name || raw?.server_name || prevRow?.server_name || `Server ${serverId}`,
 
           username,
-          client_ip:  raw?.client_ip  ?? null,
-          virtual_ip: raw?.virtual_ip ?? null,
+          client_ip:  raw?.client_ip  ?? prevRow?.client_ip  ?? null,
+          virtual_ip: raw?.virtual_ip ?? prevRow?.virtual_ip ?? null,
           protocol,
 
           connected_at,
@@ -454,18 +481,40 @@
       },
 
       _setExactList(serverId, list) {
-        const map = {};
-        const prev = this.usersByServer[serverId] || {};
+        const prevMap = this.usersByServer[serverId] || {};
         const arr = Array.isArray(list) ? list : [];
+        const nextMap = {};
 
-        arr.forEach(raw0 => {
-          const raw = typeof raw0 === 'string' ? { username: raw0 } : raw0;
-          const merged = { ...(prev[raw.username] || {}), ...raw };
-          const shaped = this._shapeRow(serverId, merged);
-          map[shaped.username + '|' + shaped.protocol] = shaped;
+        // Build lookup indexes for old rows
+        const prevBySession = new Map();
+        const prevByConnId  = new Map();
+        const prevByUserProto = new Map();
+
+        Object.values(prevMap).forEach(r => {
+          if (r.session_key) prevBySession.set(r.session_key, r);
+          if (r.connection_id !== null && r.connection_id !== undefined) prevByConnId.set(String(r.connection_id), r);
+          prevByUserProto.set(`${r.username}|${r.protocol}`, r);
         });
 
-        this.usersByServer[serverId] = map;
+        arr.forEach(raw0 => {
+          const raw = (typeof raw0 === 'string') ? { username: raw0 } : (raw0 || {});
+          const protocol = this._shapeProtocol(raw);
+          const username = String(raw?.username ?? raw?.cn ?? 'unknown');
+
+          const sk = raw?.session_key ?? raw?.sessionKey ?? null;
+          const cid = raw?.connection_id ?? raw?.id ?? null;
+
+          const prevRow =
+            (sk && prevBySession.get(sk)) ||
+            (cid !== null && cid !== undefined && prevByConnId.get(String(cid))) ||
+            prevByUserProto.get(`${username}|${protocol}`) ||
+            null;
+
+          const shaped = this._shapeRow(serverId, raw, prevRow);
+          nextMap[shaped.__key] = shaped;
+        });
+
+        this.usersByServer[serverId] = nextMap;
       },
 
       handleEvent(e) {
@@ -538,10 +587,16 @@
             'Content-Type': 'application/json',
           };
 
+          // Prefer connection_id (OpenVPN management kill). For WG you probably want session_key/public_key
           let res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
             method: 'POST',
             headers: baseHeaders,
-            body: JSON.stringify({ client_id: row.connection_id }),
+            body: JSON.stringify({
+              client_id: row.connection_id,
+              session_key: row.session_key,
+              username: row.username,
+              protocol: row.protocol
+            }),
           });
 
           if (!res.ok) {
@@ -559,7 +614,7 @@
           }
 
           const map = this.usersByServer[row.server_id] || {};
-          delete map[row.username + '|' + row.protocol];
+          delete map[row.__key];
           this.usersByServer[row.server_id] = map;
           this.totals = this.computeTotals();
 
