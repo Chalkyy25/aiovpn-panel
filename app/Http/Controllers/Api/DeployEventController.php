@@ -17,18 +17,18 @@ use Illuminate\Support\Facades\Schema;
 class DeployEventController extends Controller
 {
     // How long a connection can be "missing" from snapshots before we mark it offline.
-    // Must be >= push interval and >= WG OFFLINE_IDLE in the agent.
+    // Must be >= push interval.
     private const OFFLINE_GRACE = 300; // 5 minutes
 
     public function store(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
-            'status'   => 'required|string',
-            'message'  => 'nullable|string',
-            'ts'       => 'nullable|string',
-            'users'    => 'nullable|array',
-            'cn_list'  => 'nullable|string',
-            'clients'  => 'nullable|integer',
+            'status'  => 'required|string',
+            'message' => 'nullable|string',
+            'ts'      => 'nullable|string',
+            'users'   => 'nullable|array',
+            'cn_list' => 'nullable|string',
+            'clients' => 'nullable|integer',
         ]);
 
         $status = strtolower($data['status']);
@@ -41,31 +41,32 @@ class DeployEventController extends Controller
             return response()->json(['ok' => true]);
         }
 
-        // Normalised list: [{ username, public_key?, client_ip?, virtual_ip?, bytes_*, connected_at?, proto }]
+        $now = now();
+
+        // 1) Normalise
         $incomingAll = $this->normaliseIncoming($data);
 
-        // Filter to sane identifiers
-        $incoming = array_values(array_filter($incomingAll, function ($r) {
-            $name  = trim((string)($r['username'] ?? ''));
-            $proto = strtolower($r['proto'] ?? 'openvpn');
+        // 2) Filter garbage
+        $incoming = array_values(array_filter($incomingAll, function (array $r) {
+            $name = trim((string)($r['username'] ?? ''));
+            $p    = strtolower((string)($r['proto'] ?? 'openvpn'));
 
             if ($name === '' || strcasecmp($name, 'UNDEF') === 0 || strcasecmp($name, 'unknown') === 0) {
                 return false;
             }
 
-            if ($proto === 'openvpn') {
+            // OpenVPN usernames
+            if ($p === 'openvpn') {
                 return (bool) preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name);
             }
 
-            if ($proto === 'wireguard') {
-                // WireGuard pubkey style (agent sends pubkey)
+            // WireGuard usernames are usually public keys when you push snapshots that way
+            if ($p === 'wireguard') {
                 return (bool) preg_match('#^[A-Za-z0-9+/=]{32,80}$#', $name);
             }
 
-            return (bool) preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name);
+            return true;
         }));
-
-        $now = now();
 
         Log::channel('vpn')->debug(sprintf(
             'MGMT EVENT server=%d ts=%s incoming=%d filtered=%d [%s]',
@@ -76,7 +77,27 @@ class DeployEventController extends Controller
             implode(',', array_column($incoming, 'username'))
         ));
 
-        DB::transaction(function () use ($server, $incoming, $now) {
+        // Column presence checks (keeps this controller safe across DB versions)
+        $connHasProtocol  = Schema::hasColumn('vpn_user_connections', 'protocol');
+        $connHasClientId  = Schema::hasColumn('vpn_user_connections', 'client_id');
+        $connHasPubKey    = Schema::hasColumn('vpn_user_connections', 'public_key');
+        $connHasMgmtPort  = Schema::hasColumn('vpn_user_connections', 'mgmt_port');
+
+        $userHasWgKey     = Schema::hasColumn('vpn_users', 'wireguard_public_key');
+        $userHasLastProto = Schema::hasColumn('vpn_users', 'last_protocol');
+
+        DB::transaction(function () use (
+            $server,
+            $incoming,
+            $now,
+            $connHasProtocol,
+            $connHasClientId,
+            $connHasPubKey,
+            $connHasMgmtPort,
+            $userHasWgKey,
+            $userHasLastProto
+        ) {
+            // Split input by proto
             $openvpn   = [];
             $wireguard = [];
 
@@ -89,45 +110,47 @@ class DeployEventController extends Controller
                 }
             }
 
-            // OpenVPN map: username -> id
+            // OpenVPN map username -> id
             $ovpnNames = array_values(array_unique(array_column($openvpn, 'username')));
             $idByName  = !empty($ovpnNames)
                 ? VpnUser::whereIn('username', $ovpnNames)->pluck('id', 'username')
                 : collect();
 
-            // WireGuard map: wireguard_public_key -> id
-            // Accept either "public_key" or "username" (agent sends pubkey as both)
-            $wgKeyCandidates = [];
+            // WireGuard map wireguard_public_key -> id
+            $wgKeys = [];
             foreach ($wireguard as $c) {
-                if (!empty($c['public_key'])) {
-                    $wgKeyCandidates[] = $c['public_key'];
-                }
-                if (!empty($c['username'])) {
-                    $wgKeyCandidates[] = $c['username'];
-                }
+                if (!empty($c['public_key'])) $wgKeys[] = $c['public_key'];
+                if (!empty($c['username']))   $wgKeys[] = $c['username']; // agent may send key as username
             }
+            $wgKeys = array_values(array_unique(array_filter($wgKeys)));
 
-            $wgKeys    = array_values(array_unique(array_filter($wgKeyCandidates)));
-            $idByWgKey = (!empty($wgKeys) && Schema::hasColumn('vpn_users', 'wireguard_public_key'))
+            $idByWgKey = (!empty($wgKeys) && $userHasWgKey)
                 ? VpnUser::whereIn('wireguard_public_key', $wgKeys)->pluck('id', 'wireguard_public_key')
                 : collect();
 
-            $stillConnectedUserIds = [];
+            // We'll track exactly which connection rows were seen this cycle
+            $touchedConnectionIds = [];
 
             foreach ($incoming as $c) {
-                $username  = trim((string) ($c['username'] ?? ''));
+                $username  = trim((string)($c['username'] ?? ''));
                 $proto     = $this->normalizeProto($c['proto'] ?? null);
+
                 $publicKey = $c['public_key'] ?? null;
+                $clientId  = isset($c['client_id']) ? (int) $c['client_id'] : null;
+                $mgmtPort  = isset($c['mgmt_port']) ? (int) $c['mgmt_port'] : null;
 
                 // Resolve vpn_user_id
+                $uid = null;
+
                 if ($proto === 'WIREGUARD') {
-                    $uid = null;
-                    $key = $publicKey ?: $username; // agent: pubkey in both
+                    $key = $publicKey ?: $username;
                     if ($key && isset($idByWgKey[$key])) {
-                        $uid = $idByWgKey[$key];
+                        $uid = (int) $idByWgKey[$key];
+                        // normalize publicKey for storage
+                        $publicKey = $publicKey ?: $key;
                     }
                 } else {
-                    $uid = $idByName[$username] ?? null;
+                    $uid = isset($idByName[$username]) ? (int) $idByName[$username] : null;
                 }
 
                 if (!$uid) {
@@ -135,19 +158,34 @@ class DeployEventController extends Controller
                     continue;
                 }
 
-                $stillConnectedUserIds[] = $uid;
-
-                // Parse connected_at once (ISO or epoch or seconds-ago)
                 $connectedAtParsed = null;
                 if (!empty($c['connected_at'])) {
                     $connectedAtParsed = $this->parseConnectedAt($c['connected_at']);
                 }
 
-                /** @var VpnUserConnection $row */
-                $row = VpnUserConnection::firstOrCreate([
+                // Build a "session identity" so we DON'T merge multiple sessions into one row.
+                // - OpenVPN: client_id is the session identity
+                // - WireGuard: public_key is the identity
+                // Fallback (if columns missing): old behavior (merges by user+server)
+                $lookup = [
                     'vpn_user_id'   => $uid,
                     'vpn_server_id' => $server->id,
-                ]);
+                ];
+
+                if ($connHasProtocol) {
+                    $lookup['protocol'] = $proto; // OPENVPN / WIREGUARD
+                }
+
+                if ($proto === 'OPENVPN' && $connHasClientId && $clientId !== null) {
+                    $lookup['client_id'] = $clientId;
+                }
+
+                if ($proto === 'WIREGUARD' && $connHasPubKey && !empty($publicKey)) {
+                    $lookup['public_key'] = $publicKey;
+                }
+
+                /** @var VpnUserConnection $row */
+                $row = VpnUserConnection::firstOrNew($lookup);
 
                 $wasConnected = (bool) $row->is_connected;
 
@@ -164,7 +202,6 @@ class DeployEventController extends Controller
                 if (!empty($c['client_ip'])) {
                     $row->client_ip = $c['client_ip'];
                 }
-
                 if (!empty($c['virtual_ip'])) {
                     $row->virtual_ip = $c['virtual_ip'];
                 }
@@ -172,44 +209,45 @@ class DeployEventController extends Controller
                 if (array_key_exists('bytes_in', $c)) {
                     $row->bytes_received = (int) $c['bytes_in'];
                 }
-
                 if (array_key_exists('bytes_out', $c)) {
                     $row->bytes_sent = (int) $c['bytes_out'];
                 }
 
-                if (Schema::hasColumn('vpn_user_connections', 'protocol')) {
-                    $row->protocol = $proto; // "OPENVPN" / "WIREGUARD"
+                // Persist extra enforcement fields if columns exist
+                if ($connHasClientId && $proto === 'OPENVPN' && $clientId !== null) {
+                    $row->client_id = $clientId;
+                }
+                if ($connHasPubKey && $proto === 'WIREGUARD' && !empty($publicKey)) {
+                    $row->public_key = $publicKey;
+                }
+                if ($connHasMgmtPort && $proto === 'OPENVPN' && $mgmtPort !== null) {
+                    $row->mgmt_port = $mgmtPort;
                 }
 
                 $row->save();
+                $touchedConnectionIds[] = $row->id;
 
-                // Update vpn_users summary
+                // Update vpn_users summary (online + last ip/proto)
                 $userUpdate = [
                     'is_online' => true,
                     'last_ip'   => $row->client_ip,
                 ];
-
-                if (Schema::hasColumn('vpn_users', 'last_protocol')) {
+                if ($userHasLastProto) {
                     $userUpdate['last_protocol'] = $proto;
                 }
-
                 VpnUser::whereKey($uid)->update($userUpdate);
             }
 
-            // Disconnect users missing for longer than OFFLINE_GRACE (no flicker)
+            // Disconnect sessions missing for longer than OFFLINE_GRACE (no flicker)
             $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
 
             $toDisconnect = VpnUserConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('is_connected', true)
-                ->when(
-                    !empty($stillConnectedUserIds),
-                    fn ($q) => $q->whereNotIn('vpn_user_id', $stillConnectedUserIds)
-                )
+                ->when(!empty($touchedConnectionIds), fn ($q) => $q->whereNotIn('id', $touchedConnectionIds))
                 ->get();
 
             foreach ($toDisconnect as $row) {
-                // If row was updated recently by an agent push, keep it
                 if ($row->updated_at && $row->updated_at->gt($graceAgo)) {
                     continue;
                 }
@@ -222,6 +260,7 @@ class DeployEventController extends Controller
                         : null,
                 ]);
 
+                // Only set user offline if they have no other active sessions
                 VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
             }
 
@@ -297,19 +336,29 @@ class DeployEventController extends Controller
             }
         }
 
-        // De-duplicate by (proto, username)
+        // De-duplicate by session identity, NOT just (proto, username)
         $seen = [];
         return array_values(array_filter($out, function ($r) use (&$seen) {
             $name  = $r['username'] ?? null;
-            $proto = $this->normalizeProto($r['proto'] ?? 'openvpn');
-            if (!$name) {
-                return false;
+            $proto = strtolower((string)($r['proto'] ?? 'openvpn'));
+            if (!$name) return false;
+
+            // Prefer session key:
+            // - OpenVPN: client_id (if present)
+            // - WireGuard: public_key (or username if pubkey used as username)
+            $sid = null;
+
+            if ($proto === 'openvpn') {
+                $sid = $r['client_id'] ?? null;
+            } elseif ($proto === 'wireguard') {
+                $sid = $r['public_key'] ?? $name;
             }
-            $key = $proto . '|' . $name;
-            if (isset($seen[$key])) {
-                return false;
-            }
+
+            $key = $proto . '|' . $name . '|' . ($sid ?? 'nosid');
+
+            if (isset($seen[$key])) return false;
             $seen[$key] = true;
+
             return true;
         }));
     }
@@ -322,12 +371,14 @@ class DeployEventController extends Controller
 
         $u = (array) $u;
 
-        $proto = $this->normalizeProto($u['proto'] ?? $u['protocol'] ?? 'openvpn');
+        // Accept both "proto" and "protocol"
+        $proto = strtolower((string)($u['proto'] ?? $u['protocol'] ?? 'openvpn'));
+        $protoNorm = $this->normalizeProto($proto);
 
         $username = $u['username']
             ?? $u['cn']
             ?? $u['CommonName']
-            ?? ($proto === 'WIREGUARD'
+            ?? ($protoNorm === 'WIREGUARD'
                 ? ($u['public_key'] ?? $u['pubkey'] ?? 'unknown')
                 : 'unknown');
 
@@ -370,15 +421,23 @@ class DeployEventController extends Controller
             ?? 0
         );
 
+        // These are critical for enforcement later
+        $clientId = isset($u['client_id']) ? (int) $u['client_id'] : null;
+        $mgmtPort = isset($u['mgmt_port']) ? (int) $u['mgmt_port'] : null;
+        $pubKey   = $u['public_key'] ?? $u['pubkey'] ?? null;
+
         return [
             'username'     => (string) $username,
-            'public_key'   => $u['public_key'] ?? $u['pubkey'] ?? null,
+            'public_key'   => $pubKey,
+            'client_id'    => $clientId,
+            'mgmt_port'    => $mgmtPort,
             'client_ip'    => $clientIp ?: null,
             'virtual_ip'   => $virt ?: null,
             'connected_at' => $this->connectedAtToIso($connectedAt),
             'bytes_in'     => $bytesIn,
             'bytes_out'    => $bytesOut,
-            'proto'        => $proto,
+            // Keep proto as a simple string for filtering/dedupe
+            'proto'        => ($protoNorm === 'WIREGUARD') ? 'wireguard' : 'openvpn',
         ];
     }
 
@@ -447,8 +506,10 @@ class DeployEventController extends Controller
             ->get();
 
         $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
+        $hasClientId = Schema::hasColumn('vpn_user_connections', 'client_id');
+        $hasPubKey   = Schema::hasColumn('vpn_user_connections', 'public_key');
 
-        return $rows->map(function (VpnUserConnection $r) use ($server, $hasProtocol) {
+        return $rows->map(function (VpnUserConnection $r) use ($server, $hasProtocol, $hasClientId, $hasPubKey) {
             return [
                 'connection_id' => $r->id,
                 'username'      => optional($r->vpnUser)->username ?? 'unknown',
@@ -458,9 +519,9 @@ class DeployEventController extends Controller
                 'bytes_in'      => (int) $r->bytes_received,
                 'bytes_out'     => (int) $r->bytes_sent,
                 'server_name'   => $server->name,
-                'protocol'      => $hasProtocol && $r->protocol
-                    ? strtoupper($r->protocol)
-                    : null,
+                'protocol'      => $hasProtocol && $r->protocol ? strtoupper($r->protocol) : null,
+                'client_id'     => $hasClientId ? $r->client_id : null,
+                'public_key'    => $hasPubKey ? $r->public_key : null,
             ];
         })->values()->all();
     }
