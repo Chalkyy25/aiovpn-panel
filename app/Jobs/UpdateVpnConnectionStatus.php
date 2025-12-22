@@ -97,10 +97,18 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             $parsed  = OpenVpnStatusParser::parse($raw);
             $clients = $parsed['clients'] ?? [];
             
-            // TEMP DEBUG — REMOVE AFTER
-            if (!empty($clients)) {
-                dd($clients[0]);
-            }
+            // ✅ Tag clients with protocol + mgmt port so the panel can kick correctly
+            $isTcp = str_contains($source, 'tcp') || str_contains($source, '7506') || str_contains($source, 'mgmt:7506');
+            
+            $protocol = $isTcp ? 'openvpn_tcp' : 'openvpn_udp';
+            $mgmtPort = $isTcp ? 7506 : (int) ($server->mgmt_port ?? 7505);
+            
+            $clients = array_map(function ($c) use ($protocol, $mgmtPort) {
+                $c['protocol']  = $protocol;
+                $c['mgmt_port'] = $mgmtPort;
+                return $c;
+            }, $clients);
+            
 
             broadcast(new ServerMgmtEvent(
                 $server->id,
