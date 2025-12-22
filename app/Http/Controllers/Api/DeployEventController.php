@@ -95,27 +95,34 @@ class DeployEventController extends Controller
                 $connectedAt = !empty($c['connected_at']) ? $this->parseTime($c['connected_at']) : null;
 
                 // ✅ Upsert by server + session_key (matches your UNIQUE(vpn_server_id, session_key))
-                $row = VpnUserConnection::updateOrCreate(
-                    [
-                        'vpn_server_id' => $server->id,
-                        'session_key'   => $sessionKey,
-                    ],
-                    [
-                        'vpn_user_id'     => $uid,
-                        'protocol'        => $proto,
-                        'public_key'      => $proto === 'WIREGUARD' ? $publicKey : null,
-                        'client_id'       => $proto === 'OPENVPN' ? $clientId : null,
-                        'mgmt_port'       => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
-                        'is_connected'    => true,
-                        'disconnected_at' => null,
-                        'connected_at'    => $connectedAt ?? $now,
-                        'client_ip'       => $c['client_ip'] ?? null,
-                        'virtual_ip'      => $c['virtual_ip'] ?? null,
-                        'bytes_received'  => (int) ($c['bytes_in'] ?? 0),
-                        'bytes_sent'      => (int) ($c['bytes_out'] ?? 0),
-                    ]
-                );
+                $row = VpnUserConnection::firstOrNew([
+    'vpn_server_id' => $server->id,
+    'session_key'   => $sessionKey,
+]);
 
+$isNew = !$row->exists;
+
+$row->fill([
+    'vpn_user_id'     => $uid,
+    'protocol'        => $proto,
+    'public_key'      => $proto === 'WIREGUARD' ? $publicKey : null,
+    'client_id'       => $proto === 'OPENVPN' ? $clientId : null,
+    'mgmt_port'       => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
+    'is_connected'    => true,
+    'disconnected_at' => null,
+    'client_ip'       => $c['client_ip'] ?? null,
+    'virtual_ip'      => $c['virtual_ip'] ?? null,
+    'bytes_received'  => (int) ($c['bytes_in'] ?? 0),
+    'bytes_sent'      => (int) ($c['bytes_out'] ?? 0),
+]);
+
+// ✅ IMPORTANT: only set connected_at ONCE per session
+if ($isNew && !$row->connected_at) {
+    $row->connected_at = $connectedAt ?? $now;
+}
+
+$row->save();
+            
                 // user summary
                 $userUpdate = [
                     'is_online' => true,
