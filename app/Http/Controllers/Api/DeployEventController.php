@@ -330,23 +330,24 @@ $row->save();
     }
 
     private function enrich(VpnServer $server): array
-    {
-        return VpnUserConnection::with('vpnUser:id,username')
-            ->where('vpn_server_id', $server->id)
-            ->where('is_connected', true)
-            ->get()
-            ->map(fn ($r) => [
-                'connection_id' => $r->id,
-                'username'      => optional($r->vpnUser)->username ?? 'unknown',
-                'client_ip'     => $r->client_ip,
-                'virtual_ip'    => $r->virtual_ip,
-                'connected_at'  => optional($r->connected_at)?->toIso8601String(),
-                'bytes_in'      => (int)$r->bytes_received,
-                'bytes_out'     => (int)$r->bytes_sent,
-                'server_name'   => $server->name,
-                'protocol'      => $r->protocol,
-                'session_key'   => $r->session_key,
-                'public_key'    => $r->public_key,
-            ])->values()->all();
-    }
+{
+    return VpnUserConnection::with('vpnUser:id,username')
+        ->where('vpn_server_id', $server->id)
+        ->where('is_connected', true)
+        ->get()
+        ->map(fn ($r) => [
+            'connection_id' => $r->id,
+            'username'      => optional($r->vpnUser)->username ?? 'unknown',
+            'client_ip'     => $r->client_ip,
+            'virtual_ip'    => $r->virtual_ip,
+            'connected_at'  => optional($r->connected_at)?->toIso8601String(),
+            'seen_at'       => optional($r->updated_at)?->toIso8601String(), // ✅ add this
+            'bytes_in'      => (int)$r->bytes_received,
+            'bytes_out'     => (int)$r->bytes_sent,
+            'server_name'   => $server->name,
+            'protocol'      => $r->protocol,
+            'session_key'   => $r->session_key,
+            'public_key'    => $r->public_key,
+        ])->values()->all();
+}
 }
