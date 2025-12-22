@@ -2,9 +2,10 @@
 
 @section('content')
 <div class="max-w-lg mx-auto space-y-6">
-    <h1 class="text-xl font-bold">Create New Package</h1>
+    <h1 class="text-xl font-bold text-[var(--aio-ink)]">Create New Package</h1>
 
-    <form method="POST" action="{{ route('admin.packages.store') }}" class="aio-section space-y-4">
+    <form method="POST" action="{{ route('admin.packages.store') }}" class="aio-card">
+        <div class="aio-card-body space-y-4">
         @csrf
 
         {{-- Package Name --}}
@@ -80,6 +81,13 @@
             <a href="{{ route('admin.packages.index') }}" class="btn-secondary">Cancel</a>
             <button type="submit" class="btn">Save Package</button>
         </div>
+        </div>
     </form>
+
+    <div class="text-xs text-[var(--aio-sub)] space-y-1">
+        <p><strong>Credit Cost:</strong> Cost per month (e.g., 100 credits/month)</p>
+        <p><strong>Duration:</strong> How many months this package lasts</p>
+        <p><strong>Total Cost:</strong> Will be Credit Cost × Duration (shown in create VPN user)</p>
+    </div>
 </div>
 @endsection
