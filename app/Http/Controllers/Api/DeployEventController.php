@@ -309,5 +309,214 @@ class DeployEventController extends Controller
         };
     }
 
-    // keep your normaliseIncoming(), normaliseUserItem(), connectedAtToIso(), parseConnectedAt(), enrichFromDb() as-is
+
+    private function normaliseIncoming(array $data): array
+    {
+        $out = [];
+
+        if (!empty($data['users']) && is_array($data['users'])) {
+            foreach ($data['users'] as $u) {
+                $out[] = $this->normaliseUserItem($u);
+            }
+        } elseif (!empty($data['cn_list'])) {
+            foreach (explode(',', $data['cn_list']) as $name) {
+                $name = trim($name);
+                if ($name !== '') {
+                    $out[] = [
+                        'username' => $name,
+                        'proto'    => 'openvpn',
+                    ];
+                }
+            }
+        }
+
+        // De-duplicate by session identity, NOT just (proto, username)
+        $seen = [];
+        return array_values(array_filter($out, function ($r) use (&$seen) {
+            $name  = $r['username'] ?? null;
+            $proto = strtolower((string)($r['proto'] ?? 'openvpn'));
+            if (!$name) return false;
+
+            // Prefer session key:
+            // - OpenVPN: client_id (if present)
+            // - WireGuard: public_key (or username if pubkey used as username)
+            $sid = null;
+
+            if ($proto === 'openvpn') {
+                $sid = $r['client_id'] ?? null;
+            } elseif ($proto === 'wireguard') {
+                $sid = $r['public_key'] ?? $name;
+            }
+
+            $key = $proto . '|' . $name . '|' . ($sid ?? 'nosid');
+
+            if (isset($seen[$key])) return false;
+            $seen[$key] = true;
+
+            return true;
+        }));
+    }
+
+    private function normaliseUserItem($u): array
+    {
+        if (is_string($u)) {
+            $u = ['username' => $u];
+        }
+
+        $u = (array) $u;
+
+        // Accept both "proto" and "protocol"
+        $proto = strtolower((string)($u['proto'] ?? $u['protocol'] ?? 'openvpn'));
+        $protoNorm = $this->normalizeProto($proto);
+
+        $username = $u['username']
+            ?? $u['cn']
+            ?? $u['CommonName']
+            ?? ($protoNorm === 'WIREGUARD'
+                ? ($u['public_key'] ?? $u['pubkey'] ?? 'unknown')
+                : 'unknown');
+
+        $clientIp = $u['client_ip']
+            ?? $u['RealAddress']
+            ?? $u['real_ip']
+            ?? null;
+
+        if (is_string($clientIp) && str_contains($clientIp, ':')) {
+            $clientIp = explode(':', $clientIp, 2)[0];
+        }
+
+        $virt = $u['virtual_ip']
+            ?? $u['VirtualAddress']
+            ?? $u['virtual_address']
+            ?? null;
+
+        if (is_string($virt) && str_contains($virt, '/')) {
+            $virt = explode('/', $virt, 2)[0];
+        }
+
+        $connectedAt = $u['connected_at']
+            ?? $u['ConnectedSince']
+            ?? $u['connected_since']
+            ?? $u['Connected Since (time_t)']
+            ?? $u['connected_seconds']
+            ?? null;
+
+        $bytesIn = (int) (
+            $u['bytes_in']
+            ?? $u['BytesReceived']
+            ?? $u['bytes_received']
+            ?? 0
+        );
+
+        $bytesOut = (int) (
+            $u['bytes_out']
+            ?? $u['BytesSent']
+            ?? $u['bytes_sent']
+            ?? 0
+        );
+
+        // These are critical for enforcement later
+        $clientId = isset($u['client_id']) ? (int) $u['client_id'] : null;
+        $mgmtPort = isset($u['mgmt_port']) ? (int) $u['mgmt_port'] : null;
+        $pubKey   = $u['public_key'] ?? $u['pubkey'] ?? null;
+
+        return [
+            'username'     => (string) $username,
+            'public_key'   => $pubKey,
+            'client_id'    => $clientId,
+            'mgmt_port'    => $mgmtPort,
+            'client_ip'    => $clientIp ?: null,
+            'virtual_ip'   => $virt ?: null,
+            'connected_at' => $this->connectedAtToIso($connectedAt),
+            'bytes_in'     => $bytesIn,
+            'bytes_out'    => $bytesOut,
+            // Keep proto as a simple string for filtering/dedupe
+            'proto'        => ($protoNorm === 'WIREGUARD') ? 'wireguard' : 'openvpn',
+        ];
+    }
+
+    private function connectedAtToIso($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            if (is_numeric($value)) {
+                $n = (int) $value;
+
+                if ($n > 2_000_000_000_000) {
+                    return Carbon::createFromTimestampMs($n)->toIso8601String();
+                }
+
+                // epoch seconds
+                if ($n > 946_684_800) {
+                    return Carbon::createFromTimestamp($n)->toIso8601String();
+                }
+
+                // seconds ago
+                return now()->subSeconds($n)->toIso8601String();
+            }
+
+            return Carbon::parse((string) $value)->toIso8601String();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function parseConnectedAt($value): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        try {
+            if (is_numeric($value)) {
+                $n = (int) $value;
+
+                if ($n > 2_000_000_000_000) {
+                    return Carbon::createFromTimestampMs($n);
+                }
+
+                if ($n > 946_684_800) {
+                    return Carbon::createFromTimestamp($n);
+                }
+
+                return now()->subSeconds($n);
+            }
+
+            return Carbon::parse((string) $value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function enrichFromDb(VpnServer $server): array
+    {
+        $rows = VpnUserConnection::query()
+            ->with('vpnUser:id,username')
+            ->where('vpn_server_id', $server->id)
+            ->where('is_connected', true)
+            ->get();
+
+        $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
+        $hasClientId = Schema::hasColumn('vpn_user_connections', 'client_id');
+        $hasPubKey   = Schema::hasColumn('vpn_user_connections', 'public_key');
+
+        return $rows->map(function (VpnUserConnection $r) use ($server, $hasProtocol, $hasClientId, $hasPubKey) {
+            return [
+                'connection_id' => $r->id,
+                'username'      => optional($r->vpnUser)->username ?? 'unknown',
+                'client_ip'     => $r->client_ip,
+                'virtual_ip'    => $r->virtual_ip,
+                'connected_at'  => optional($r->connected_at)?->toIso8601String(),
+                'bytes_in'      => (int) $r->bytes_received,
+                'bytes_out'     => (int) $r->bytes_sent,
+                'server_name'   => $server->name,
+                'protocol'      => $hasProtocol && $r->protocol ? strtoupper($r->protocol) : null,
+                'client_id'     => $hasClientId ? $r->client_id : null,
+                'public_key'    => $hasPubKey ? $r->public_key : null,
+            ];
+        })->values()->all();
+    }
 }
