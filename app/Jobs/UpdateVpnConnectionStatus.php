@@ -118,13 +118,13 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             }, $clients);
 
             // Local broadcast (reverb/live UI)
-            broadcast(new ServerMgmtEvent(
-                $server->id,
-                now()->toIso8601String(),
-                $clients,
-                null,
-                $raw
-            ));
+            //broadcast(new ServerMgmtEvent(
+                //$server->id,
+                //now()->toIso8601String(),
+                //$clients,
+                //null,
+                //$raw
+            //));
 
             $usernames = array_slice(array_column($clients, 'username'), 0, 20);
 
