@@ -4,8 +4,10 @@ namespace App\Jobs;
 
 use App\Events\ServerMgmtEvent;
 use App\Models\VpnServer;
+use App\Models\WireguardPeer;
 use App\Services\OpenVpnStatusParser;
 use App\Traits\ExecutesRemoteCommands;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Collection;
@@ -34,7 +36,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     public function handle(): void
     {
         Log::channel('vpn')->info(
-            '🔄 Hybrid sync: updating VPN connection status ' .
+            '🔄 Fleet sync: updating VPN connection status ' .
             ($this->serverId ? "(server {$this->serverId})" : '(fleet)')
         );
 
@@ -55,30 +57,27 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
         foreach ($servers as $server) {
             if ($this->shouldSkipForPushAgent($server)) {
-                Log::channel('vpn')->info(
-                    "⏭ Skipping hybrid sync for {$server->name} (#{$server->id}) - uses unified push agent"
-                );
+                Log::channel('vpn')->info("⏭ Skipping {$server->name} (#{$server->id}) - uses unified push agent");
                 continue;
             }
 
             $this->syncOneServer($server);
         }
 
-        Log::channel('vpn')->info('✅ Hybrid sync completed');
+        Log::channel('vpn')->info('✅ Fleet sync completed');
     }
 
-    /* ─────────────────────────────────────────────── */
+    /* ─────────────────────────────── */
 
     protected function shouldSkipForPushAgent(VpnServer $server): bool
     {
-        // Preferred: enable per-server flag in DB when using ovpn-mgmt-push.sh
         if (property_exists($server, 'uses_unified_push') && $server->uses_unified_push) {
             return true;
         }
 
-        // Fallback: hardcode push-enabled servers here
+        // Hardcode if you must, but prefer DB flag.
         $pushServers = [
-            113, // Spain WG+OVPN node using /usr/local/bin/ovpn-mgmt-push.sh
+            113,
         ];
 
         return in_array($server->id, $pushServers, true);
@@ -87,51 +86,35 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     protected function syncOneServer(VpnServer $server): void
     {
         try {
-            [$raw, $source] = $this->fetchStatusWithSource($server);
+            // Decide path per server protocol (fallback: openvpn)
+            $proto = strtolower((string) ($server->protocol ?? 'openvpn'));
 
-            if ($raw === '') {
-                Log::channel('vpn')->warning("🟡 {$server->name}: RAW EMPTY, skipping");
-                return;
+            if (str_contains($proto, 'wire')) {
+                $clients = $this->fetchWireguardClients($server);
+            } else {
+                $clients = $this->fetchOpenVpnClients($server);
             }
-
-            $parsed  = OpenVpnStatusParser::parse($raw);
-            $clients = $parsed['clients'] ?? [];
-            
-            // ✅ Tag clients with protocol + mgmt port so the panel can kick correctly
-            $isTcp = str_contains($source, 'tcp') || str_contains($source, '7506') || str_contains($source, 'mgmt:7506');
-            
-            $protocol = $isTcp ? 'openvpn_tcp' : 'openvpn_udp';
-            $mgmtPort = $isTcp ? 7506 : (int) ($server->mgmt_port ?? 7505);
-            
-            $clients = array_map(function ($c) use ($protocol, $mgmtPort) {
-                $c['protocol']  = $protocol;
-                $c['mgmt_port'] = $mgmtPort;
-                return $c;
-            }, $clients);
-            
 
             broadcast(new ServerMgmtEvent(
                 $server->id,
                 now()->toIso8601String(),
                 $clients,
                 null,
-                $raw
+                "sync:{$proto}"
             ));
 
-            $usernames = array_column($clients, 'username');
-
             Log::channel('vpn')->debug(
-                "[sync] {$server->name} source={$source} clients=" . count($clients),
-                ['users' => $usernames]
+                "[sync] {$server->name} proto={$proto} clients=" . count($clients),
+                ['users' => array_slice(array_column($clients, 'username'), 0, 20)]
             );
 
             if ($this->verboseMgmtLog) {
                 Log::channel('vpn')->debug(sprintf(
-                    '[mgmt] ts=%s source=%s clients=%d [%s]',
+                    '[mgmt] ts=%s server=%d proto=%s clients=%d',
                     now()->toIso8601String(),
-                    $source,
-                    count($clients),
-                    implode(',', $usernames)
+                    $server->id,
+                    $proto,
+                    count($clients)
                 ));
             }
 
@@ -145,26 +128,42 @@ class UpdateVpnConnectionStatus implements ShouldQueue
         }
     }
 
-    protected function fetchStatusWithSource(VpnServer $server): array
+    /* ===================== OPENVPN ===================== */
+
+    protected function fetchOpenVpnClients(VpnServer $server): array
+    {
+        [$raw, $source] = $this->fetchOpenVpnStatusWithSource($server);
+
+        if ($raw === '') {
+            Log::channel('vpn')->warning("🟡 {$server->name}: OpenVPN RAW EMPTY, skipping");
+            return [];
+        }
+
+        $parsed  = OpenVpnStatusParser::parse($raw);
+        $clients = $parsed['clients'] ?? [];
+
+        // Tag for controller normaliser (use proto key)
+        $isTcp = str_contains($source, 'tcp') || str_contains($source, '7506') || str_contains($source, 'mgmt:7506');
+
+        $mgmtPort = $isTcp ? 7506 : (int) ($server->mgmt_port ?? 7505);
+
+        return array_map(function ($c) use ($mgmtPort, $isTcp) {
+            $c['proto']     = 'openvpn';
+            $c['mgmt_port'] = $mgmtPort;
+            $c['protocol']  = $isTcp ? 'openvpn_tcp' : 'openvpn_udp'; // optional
+            return $c;
+        }, $clients);
+    }
+
+    protected function fetchOpenVpnStatusWithSource(VpnServer $server): array
     {
         $mgmtPort = (int) ($server->mgmt_port ?? 7505);
 
-        // Check both UDP (7505) and TCP (7506) management interfaces
         $mgmtPorts = [$mgmtPort];
-        if ($mgmtPort === 7505) {
-            $mgmtPorts[] = 7506; // TCP stealth mgmt
-        }
+        if ($mgmtPort === 7505) $mgmtPorts[] = 7506;
 
-        Log::channel('vpn')->debug("🔍 {$server->name}: Starting status fetch", [
-            'mgmt_ports' => $mgmtPorts,
-            'ip'         => $server->ip_address,
-            'ssh_user'   => $server->ssh_user ?? 'root',
-        ]);
-
-        // SSH connectivity test
-        $testCmd = 'bash -lc ' . escapeshellarg('echo "SSH_TEST_OK"');
-        $sshTest = $this->executeRemoteCommand($server, $testCmd);
-
+        // SSH smoke test
+        $sshTest = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg('echo "SSH_TEST_OK"'));
         if (($sshTest['status'] ?? 1) !== 0) {
             Log::channel('vpn')->error("❌ {$server->name}: SSH connectivity failed", [
                 'exit_code' => $sshTest['status'] ?? 'unknown',
@@ -172,7 +171,6 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             return ['', 'ssh_failed'];
         }
 
-        // Prefer status files
         $statusFiles = [
             '/var/log/openvpn-status-udp.log',
             '/var/log/openvpn-status-tcp.log',
@@ -181,36 +179,17 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             '/etc/openvpn/openvpn-status.log',
         ];
 
-        Log::channel('vpn')->debug("🔍 {$server->name}: Checking " . count($statusFiles) . " status files...");
-
         foreach ($statusFiles as $path) {
-            $cmd = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
-            $res = $this->executeRemoteCommand($server, $cmd);
+            $cmd  = 'bash -lc ' . escapeshellarg("test -s {$path} && cat {$path} || echo '__NOFILE__'");
+            $res  = $this->executeRemoteCommand($server, $cmd);
             $data = trim(implode("\n", $res['output'] ?? []));
 
-            Log::channel('vpn')->debug(
-                "  ├─ {$path}: status={$res['status']}, data_len=" . strlen($data) .
-                ", has_CLIENT_LIST=" . (str_contains($data, 'CLIENT_LIST') ? 'YES' : 'NO')
-            );
-
-            if (
-                ($res['status'] ?? 1) === 0 &&
-                $data !== '' &&
-                $data !== '__NOFILE__' &&
-                str_contains($data, 'CLIENT_LIST')
-            ) {
-                Log::channel('vpn')->info(
-                    "📄 {$server->name}: using status file {$path} (" . strlen($data) . " bytes)"
-                );
+            if (($res['status'] ?? 1) === 0 && $data !== '' && $data !== '__NOFILE__' && str_contains($data, 'CLIENT_LIST')) {
                 return [$data, $path];
             }
         }
 
-        Log::channel('vpn')->warning(
-            "⚠️ {$server->name}: No valid status file found, falling back to mgmt interface"
-        );
-
-        // Fallback to mgmt ports
+        // mgmt fallback
         $fallbackResponse = null;
 
         foreach ($mgmtPorts as $port) {
@@ -219,35 +198,87 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 '(echo "status"; sleep 1; echo "quit") | nc -q 1 -w 3 127.0.0.1 ' . $port,
             ];
 
-            for ($i = 0; $i < count($mgmtCmds); $i++) {
-                $cmd = $mgmtCmds[$i];
+            foreach ($mgmtCmds as $cmd) {
                 $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
                 $out = trim(implode("\n", $res['output'] ?? []));
 
                 if (($res['status'] ?? 1) === 0 && str_contains($out, 'CLIENT_LIST')) {
-                    $clientCount = substr_count($out, 'CLIENT_LIST') - 1;
-
-                    Log::channel('vpn')->debug("📡 {$server->name}: mgmt responded on port {$port} ({$clientCount} clients, " . strlen($out) . " bytes)", [
-                        'preview' => substr($out, 0, 200) . '...',
-                    ]);
-
-                    if ($clientCount > 0) {
-                        return [$out, "mgmt:{$port}"];
-                    }
-
                     $fallbackResponse = [$out, "mgmt:{$port}"];
+                    if (substr_count($out, 'CLIENT_LIST') - 1 > 0) return $fallbackResponse;
                 }
             }
         }
 
-        if ($fallbackResponse) {
-            return $fallbackResponse;
+        return $fallbackResponse ?: ['', 'none'];
+    }
+
+    /* ===================== WIREGUARD ===================== */
+
+    protected function fetchWireguardClients(VpnServer $server): array
+    {
+        // wg dump columns:
+        // interface_pub peer_pub preshared endpoint allowed_ips latest_handshake rx tx persistent_keepalive
+        $cmd = 'bash -lc ' . escapeshellarg('wg show wg0 dump 2>/dev/null || true');
+        $res = $this->executeRemoteCommand($server, $cmd);
+
+        $lines = $res['output'] ?? [];
+        if (empty($lines)) {
+            Log::channel('vpn')->warning("🟡 {$server->name}: WireGuard dump empty");
+            return [];
         }
 
-        Log::channel('vpn')->warning("⚠️ {$server->name}: No status data found - all methods failed");
+        // Build map peer_pub -> peer row for this server
+        $peerRows = WireguardPeer::query()
+            ->where('vpn_server_id', $server->id)
+            ->get(['vpn_user_id', 'public_key'])
+            ->keyBy('public_key');
 
-        return ['', 'none'];
+        $out = [];
+        foreach ($lines as $line) {
+            $line = trim((string) $line);
+            if ($line === '') continue;
+
+            $parts = preg_split('/\s+/', $line);
+            if (!$parts || count($parts) < 8) continue;
+
+            $peerPub          = $parts[1] ?? null;
+            $endpoint         = $parts[3] ?? null;
+            $allowedIps       = $parts[4] ?? null;
+            $latestHandshake  = (int) ($parts[5] ?? 0);
+            $rx               = (int) ($parts[6] ?? 0);
+            $tx               = (int) ($parts[7] ?? 0);
+
+            if (!$peerPub || $peerPub === '(none)') continue;
+
+            // only report peers we actually know in DB
+            $peer = $peerRows->get($peerPub);
+            if (!$peer) continue;
+
+            $out[] = [
+                // IMPORTANT: controller must understand this is WG
+                'proto'        => 'wireguard',
+                // IMPORTANT: give controller the public_key so it builds session_key
+                'public_key'   => $peerPub,
+                // keep username as pubkey too (nice for debugging)
+                'username'     => $peerPub,
+
+                'vpn_user_id'  => (int) $peer->vpn_user_id, // optional hint (controller may ignore)
+                'client_ip'    => ($endpoint && $endpoint !== '(none)') ? explode(':', $endpoint, 2)[0] : null,
+                'virtual_ip'   => $allowedIps ? explode('/', $allowedIps, 2)[0] : null,
+
+                'connected_at' => $latestHandshake > 0
+                    ? Carbon::createFromTimestamp($latestHandshake)->toIso8601String()
+                    : null,
+
+                'bytes_in'     => $rx,
+                'bytes_out'    => $tx,
+            ];
+        }
+
+        return $out;
     }
+
+    /* ===================== PUSH ===================== */
 
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $clients): void
     {
@@ -261,13 +292,9 @@ class UpdateVpnConnectionStatus implements ShouldQueue
                 ])
                 ->throw();
 
-            Log::channel('vpn')->debug(
-                "[pushSnapshot] #{$serverId} sent " . count($clients) . " clients"
-            );
+            Log::channel('vpn')->debug("[pushSnapshot] #{$serverId} sent " . count($clients) . " clients");
         } catch (\Throwable $e) {
-            Log::channel('vpn')->error(
-                "❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}"
-            );
+            Log::channel('vpn')->error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
         }
     }
 }
