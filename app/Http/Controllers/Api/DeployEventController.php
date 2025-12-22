@@ -68,11 +68,13 @@ class DeployEventController extends Controller
                 $uid = null;
 
                 if ($proto === 'WIREGUARD') {
-                    $key = $publicKey ?: $username; // your agent uses pubkey in username sometimes
+                    $key = $publicKey ?: $username;   // username might already be the pubkey
+                    $publicKey = $key;                // ✅ always set it so session_key can be built
+                
                     if ($key && isset($uidByWgPub[$key])) {
                         $uid = (int) $uidByWgPub[$key];
-                        $publicKey = $publicKey ?: $key;
                     }
+}
                 } else {
                     if ($username && isset($idByOvpnName[$username])) {
                         $uid = (int) $idByOvpnName[$username];
@@ -97,10 +99,12 @@ class DeployEventController extends Controller
 
                 /** @var VpnUserConnection $row */
                 $row = VpnUserConnection::firstOrNew([
-                    'vpn_server_id' => $server->id,
-                    'session_key'   => $sessionKey,
+                  'vpn_server_id' => $server->id,
+                  'session_key'   => $sessionKey,
                 ]);
-
+                
+                $row->session_key = $sessionKey; // ✅ force set even if fillable blocks it
+                
                 // Identity
                 $row->vpn_user_id      = $uid;
                 $row->protocol         = $proto;
