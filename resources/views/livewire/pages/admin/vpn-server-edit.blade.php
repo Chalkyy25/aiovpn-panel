@@ -145,8 +145,8 @@
   </x-section-card>
 
   <div class="flex items-center justify-end gap-2">
-    <a href="{{ route('admin.servers.index') }}" class="aio-pill bg-white/10">Cancel</a>
-    <button type="submit" class="aio-pill pill-neon hover:shadow-glow">💾 Save Changes</button>
+    <x-button href="{{ route('admin.servers.index') }}" variant="secondary">Cancel</x-button>
+    <x-button type="submit" variant="primary">💾 Save Changes</x-button>
   </div>
 
 </form>

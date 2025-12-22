@@ -187,10 +187,10 @@
 
     {{-- ACTIONS --}}
     <div class="flex items-center justify-end gap-3">
-      <a href="{{ route('admin.servers.index') }}" class="btn-secondary">Cancel</a>
-      <button type="submit" class="btn">
+      <x-button href="{{ route('admin.servers.index') }}" variant="secondary">Cancel</x-button>
+      <x-button type="submit" variant="primary">
         🚀 Deploy Server
-      </button>
+      </x-button>
     </div>
   </form>
 </div>

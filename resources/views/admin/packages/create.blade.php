@@ -78,8 +78,8 @@
 
         {{-- Buttons --}}
         <div class="flex justify-end gap-2">
-            <a href="{{ route('admin.packages.index') }}" class="btn-secondary">Cancel</a>
-            <button type="submit" class="btn">Save Package</button>
+            <x-button href="{{ route('admin.packages.index') }}" variant="secondary">Cancel</x-button>
+            <x-button type="submit" variant="primary">Save Package</x-button>
         </div>
         </div>
     </form>
