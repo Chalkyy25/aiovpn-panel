@@ -16,36 +16,45 @@
       return (total || 0) + ' B';
     };
 
-    const toDate = (v) => {
-      if (!v) return null;
-      if (typeof v === 'number') return new Date(v * 1000);
-      const d = new Date(v);
-      return isNaN(d) ? null : d;
-    };
-
-    const ago = (v) => {
-      const toDate = (v) => {
-  if (!v) return null;
-
-  if (typeof v === 'number') {
-    // seconds vs ms heuristic
-    return new Date(v > 2_000_000_000_000 ? v : v * 1000);
-  }
-
-  const s = String(v);
-  if (/^\d+$/.test(s)) {
-    const n = Number(s);
-    return new Date(n > 2_000_000_000_000 ? n : n * 1000);
-  }
-
-  const d = new Date(s);
-  return isNaN(d) ? null : d;
-};
-
     const isBlank = (v) =>
       v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v));
 
     const pick = (primary, fallback) => (isBlank(primary) ? fallback : primary);
+
+    // accepts ISO string, unix seconds, unix ms, numeric string
+    const toDate = (v) => {
+      if (v === null || v === undefined || v === '') return null;
+
+      if (typeof v === 'number') {
+        return new Date(v > 2000000000000 ? v : v * 1000);
+      }
+
+      const s = String(v).trim();
+      if (!s) return null;
+
+      if (/^\d+$/.test(s)) {
+        const n = Number(s);
+        return new Date(n > 2000000000000 ? n : n * 1000);
+      }
+
+      const d = new Date(s);
+      return isNaN(d) ? null : d;
+    };
+
+    const ago = (v) => {
+      const d = toDate(v);
+      if (!d) return '—';
+
+      const diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
+      const m = Math.floor(diff / 60);
+      const h = Math.floor(m / 60);
+      const dd = Math.floor(h / 24);
+
+      if (dd) return `${dd} day${dd > 1 ? 's' : ''} ago`;
+      if (h) return `${h} hour${h > 1 ? 's' : ''} ago`;
+      if (m) return `${m} min${m > 1 ? 's' : ''} ago`;
+      return 'just now';
+    };
 
     // ---------------- component ----------------
     return {
@@ -126,7 +135,7 @@
         try {
           const res = await this.lw.call('getLiveStats');
 
-          // ✅ polling snapshot is authoritative: replace lists (prevents creeping counts)
+          // polling snapshot is authoritative
           if (res?.usersByServer) {
             for (const sid in this.serverMeta) {
               this._setExactList(Number(sid), res.usersByServer[sid] || []);
@@ -154,7 +163,6 @@
       _subscribe() {
         if (this._subscribed) return;
 
-        // listen once (don’t double-listen)
         try {
           window.Echo.private('servers.dashboard')
             .listen('.mgmt.update', (e) => this.handleEvent(e));
@@ -191,59 +199,57 @@
       },
 
       _shapeRow(serverId, raw, prevRow = null) {
-  const meta = this.serverMeta[serverId] || {};
-  const protocol = this._shapeProtocol(raw);
-  const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
+        const meta = this.serverMeta[serverId] || {};
+        const protocol = this._shapeProtocol(raw);
+        const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
 
-  const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
-  const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
+        const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
+        const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
-  const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
+        const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
+        const connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
 
-  // connected_at is still useful for “session start”, but WireGuard display should be seen_at
-  let connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
+        const bytes_in = Number(pick(
+          raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived,
+          prevRow?.bytes_in ?? 0
+        ));
 
-  const bytes_in = Number(pick(
-    raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived,
-    prevRow?.bytes_in ?? 0
-  ));
+        const bytes_out = Number(pick(
+          raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent,
+          prevRow?.bytes_out ?? 0
+        ));
 
-  const bytes_out = Number(pick(
-    raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent,
-    prevRow?.bytes_out ?? 0
-  ));
+        const __key = this._stableKey(serverId, raw, protocol, username);
 
-  const __key = this._stableKey(serverId, raw, protocol, username);
+        // WireGuard displays "last seen" (handshake). OpenVPN displays "connected at".
+        const displayTime = (protocol === 'WIREGUARD') ? seen_at : connected_at;
 
-  // ✅ WireGuard should show “last seen” (handshake), not “connected_at”
-  const displayTime = (protocol === 'WIREGUARD') ? seen_at : connected_at;
+        return {
+          __key,
+          session_key,
+          connection_id,
 
-  return {
-    __key,
-    session_key,
-    connection_id,
+          server_id: Number(serverId),
+          server_name: pick(raw?.server_name, meta.name) || `Server ${serverId}`,
 
-    server_id: Number(serverId),
-    server_name: pick(raw?.server_name, meta.name) || `Server ${serverId}`,
+          username,
+          protocol,
 
-    username,
-    protocol,
+          client_ip: pick(raw?.client_ip, prevRow?.client_ip) ?? null,
+          virtual_ip: pick(raw?.virtual_ip, prevRow?.virtual_ip) ?? null,
 
-    client_ip: pick(raw?.client_ip, prevRow?.client_ip) ?? null,
-    virtual_ip: pick(raw?.virtual_ip, prevRow?.virtual_ip) ?? null,
+          connected_at,
+          seen_at,
 
-    connected_at,
-    seen_at,
+          connected_human: ago(displayTime),
 
-    connected_human: ago(displayTime),
-
-    bytes_in,
-    bytes_out,
-    down_mb: toMB(bytes_in),
-    up_mb: toMB(bytes_out),
-    formatted_bytes: humanBytes(bytes_in, bytes_out),
-  };
-},
+          bytes_in,
+          bytes_out,
+          down_mb: toMB(bytes_in),
+          up_mb: toMB(bytes_out),
+          formatted_bytes: humanBytes(bytes_in, bytes_out),
+        };
+      },
 
       // authoritative replace (used by polling + initial seed)
       _setExactList(serverId, list) {
@@ -265,44 +271,26 @@
         this.usersByServer[serverId] = nextMap;
       },
 
-      // echo merge (incremental updates)
-      _mergeList(serverId, list) {
-        const prevMap = this.usersByServer[serverId] || {};
-        const nextMap = { ...prevMap };
-        const arr = Array.isArray(list) ? list : [];
-
-        arr.forEach((raw0) => {
-          const raw = (typeof raw0 === 'string') ? { username: raw0 } : (raw0 || {});
-          const protocol = this._shapeProtocol(raw);
-          const username = String(raw?.username ?? raw?.cn ?? 'unknown');
-
-          const key = this._stableKey(serverId, raw, protocol, username);
-          nextMap[key] = this._shapeRow(serverId, raw, prevMap[key] || null);
-        });
-
-        this.usersByServer[serverId] = nextMap;
-      },
-
       handleEvent(e) {
-  const sid = Number(e.server_id ?? e.serverId ?? 0);
-  if (!sid) return;
+        const sid = Number(e.server_id ?? e.serverId ?? 0);
+        if (!sid) return;
 
-  let list = [];
-  if (Array.isArray(e.users)) {
-    list = e.users;
-  } else if (typeof e.cn_list === 'string') {
-    list = e.cn_list
-      .split(',')
-      .map((s) => ({ username: s.trim() }))
-      .filter((x) => x.username);
-  }
+        let list = [];
+        if (Array.isArray(e.users)) {
+          list = e.users;
+        } else if (typeof e.cn_list === 'string') {
+          list = e.cn_list
+            .split(',')
+            .map((s) => ({ username: s.trim() }))
+            .filter((x) => x.username);
+        }
 
-  // ✅ Echo payload is authoritative snapshot
-  this._setExactList(sid, list);
+        // Echo payload is authoritative snapshot
+        this._setExactList(sid, list);
 
-  this._recalc();
-  this.lastUpdated = new Date().toLocaleTimeString();
-},
+        this._recalc();
+        this.lastUpdated = new Date().toLocaleTimeString();
+      },
 
       _recalc() {
         this.totals = this.computeTotals();
