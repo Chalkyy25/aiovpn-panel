@@ -151,6 +151,17 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $peers): void
     {
         try {
+            $publicKeys = array_values(array_filter(array_map(
+                fn ($p) => $p['public_key'] ?? null,
+                $peers
+            )));
+
+            Log::channel('vpn')->debug('[pushWgSnapshot payload]', [
+                'server_id'    => $serverId,
+                'peer_count'   => count($peers),
+                'public_keys'  => $publicKeys,
+            ]);
+
             Http::withToken(config('services.panel.token'))
                 ->acceptJson()
                 ->post(rtrim(config('services.panel.base'), '/') . "/api/servers/{$serverId}/wireguard-events", [

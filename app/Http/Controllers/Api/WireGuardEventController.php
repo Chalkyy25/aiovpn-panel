@@ -37,22 +37,64 @@ class WireGuardEventController extends Controller
         $now   = now();
         $peers = is_array($data['peers'] ?? null) ? $data['peers'] : [];
 
+        $receivedPublicKeys = array_values(array_filter(array_map(
+            fn ($p) => is_array($p) ? ($p['public_key'] ?? null) : null,
+            $peers
+        )));
+
+        Log::channel('vpn')->debug('[wg-events received]', [
+            'server_id'    => $server->id,
+            'peer_count'   => count($peers),
+            'public_keys'  => $receivedPublicKeys,
+        ]);
+
         Log::channel('vpn')->debug("WG MGMT EVENT server={$server->id} ts={$ts} peers=" . count($peers));
 
-        DB::transaction(function () use ($server, $peers, $now) {
+        DB::transaction(function () use ($server, $peers, $now, $receivedPublicKeys) {
             $publicKeys = array_values(array_filter(array_map(
                 fn ($p) => $p['public_key'] ?? null,
                 $peers
             )));
 
+            // DEBUG: surface duplicate peer rows per public_key (these break naive pluck() semantics).
+            if (!empty($publicKeys)) {
+                $dupes = WireguardPeer::where('vpn_server_id', $server->id)
+                    ->whereIn('public_key', $publicKeys)
+                    ->select('public_key', DB::raw('COUNT(*) as c'))
+                    ->groupBy('public_key')
+                    ->having('c', '>', 1)
+                    ->pluck('c', 'public_key')
+                    ->all();
+
+                if (!empty($dupes)) {
+                    Log::channel('vpn')->warning('[wg-events duplicates in wireguard_peers]', [
+                        'server_id'  => $server->id,
+                        'duplicates' => $dupes,
+                    ]);
+                }
+            }
+
+            // FIX: map public_key -> vpn_user_id deterministically even if duplicates exist.
+            // We pick the latest non-revoked row per public_key.
             $uidByPubKey = $publicKeys
                 ? WireguardPeer::where('vpn_server_id', $server->id)
+                    ->where('revoked', false)
                     ->whereIn('public_key', $publicKeys)
+                    ->orderByDesc('id')
+                    ->get(['id', 'public_key', 'vpn_user_id'])
+                    ->unique('public_key')
                     ->pluck('vpn_user_id', 'public_key')
                     ->all()
                 : [];
 
+            Log::channel('vpn')->debug('[wg-events mapping]', [
+                'server_id'        => $server->id,
+                'received_count'   => count($receivedPublicKeys),
+                'mapped_count'     => count($uidByPubKey),
+            ]);
+
             $touchedUserIds = [];
+            $touchedSessionKeys = [];
 
             foreach ($peers as $p) {
                 $pub = $p['public_key'] ?? null;
@@ -65,6 +107,7 @@ class WireGuardEventController extends Controller
                 }
 
                 $sessionKey = "wg:{$pub}";
+                $touchedSessionKeys[] = $sessionKey;
 
                 $seenAt = $this->extractSeenAt($p);
 
@@ -126,6 +169,11 @@ class WireGuardEventController extends Controller
 
                 $touchedUserIds[$uid] = true;
             }
+
+            Log::channel('vpn')->debug('[wg-events touchedKeys]', [
+                'server_id'    => $server->id,
+                'touchedKeys'  => $touchedSessionKeys,
+            ]);
 
             // Best-effort: if a WG user has no active connections anywhere, mark offline.
             // This uses existing central logic and avoids deleting/purging peer rows.
@@ -192,10 +240,14 @@ class WireGuardEventController extends Controller
     {
         $cutoff = now()->subSeconds(self::STALE_SECONDS);
 
+        // FIX (stability): if duplicate DB rows exist for the same public_key,
+        // only keep the newest non-revoked row per key.
         $peers = WireguardPeer::with('vpnUser:id,username')
             ->where('vpn_server_id', $server->id)
             ->where('revoked', false)
-            ->get(['id', 'vpn_user_id', 'public_key', 'ip_address', 'last_handshake_at', 'transfer_rx_bytes', 'transfer_tx_bytes']);
+            ->orderByDesc('id')
+            ->get(['id', 'vpn_user_id', 'public_key', 'ip_address', 'last_handshake_at', 'transfer_rx_bytes', 'transfer_tx_bytes'])
+            ->unique('public_key');
 
         $connByPub = VpnUserConnection::query()
             ->where('vpn_server_id', $server->id)
