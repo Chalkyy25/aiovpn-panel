@@ -1,15 +1,13 @@
 {{-- resources/views/livewire/pages/admin/vpn-dashboard.blade.php --}}
 
-{{-- Blade-only config for the Vite JS file (no logic here) --}}
+@push('scripts')
 <script>
   window.VPN_DASHBOARD_CONFIG = {
     disconnectFallbackPattern: @json(route('admin.servers.disconnect', ['server' => '__SID__'])),
     csrf: @json(csrf_token()),
   };
 </script>
-
-{{-- Load your Vite bundle (must include import './dashboard/vpn-dashboard' in resources/js/app.js) --}}
-@vite(['resources/js/app.js'])
+@endpush
 
 <div
   x-data="vpnDashboard(@this)"
