@@ -236,6 +236,7 @@ class DeployEventController extends Controller
                     'connected_at' => $u['connected_at'] ?? $u['ConnectedSince'] ?? null,
                     'bytes_in'     => (int)($u['bytes_in'] ?? $u['BytesReceived'] ?? 0),
                     'bytes_out'    => (int)($u['bytes_out'] ?? $u['BytesSent'] ?? 0),
+                     'seen_at' => $u['seen_at'] ?? $u['last_handshake'] ?? $u['lastHandshake'] ?? null,
                 ];
             }
         } elseif (!empty($data['cn_list'])) {
