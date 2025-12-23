@@ -20,19 +20,23 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
 
     public function handle(): void
     {
-        Log::channel('vpn')->info('🔄 WireGuard sync ' . ($this->serverId ? "(server {$this->serverId})" : '(fleet)'));
+        Log::channel('vpn')->info(
+            '🔄 WireGuard sync ' . ($this->serverId ? "(server {$this->serverId})" : '(fleet)')
+        );
 
+        // IMPORTANT:
+        // Your vpn_servers.protocol is NOT reliable for WG (your WG peers live on servers stored as "openvpn").
+        // So we poll all deployed servers and auto-detect WG support on the box.
         $servers = VpnServer::query()
             ->whereIn('deployment_status', ['succeeded', 'deployed'])
             ->when($this->serverId, fn ($q) => $q->whereKey($this->serverId))
-            // be tolerant of stored values
-            ->whereRaw('LOWER(protocol) LIKE ?', ['%wireguard%'])
             ->get();
 
         if ($servers->isEmpty()) {
-            Log::channel('vpn')->warning($this->serverId
-                ? "⚠️ No WireGuard server found with ID {$this->serverId}"
-                : "⚠️ No WireGuard servers found."
+            Log::channel('vpn')->warning(
+                $this->serverId
+                    ? "⚠️ No deployed server found with ID {$this->serverId}"
+                    : "⚠️ No deployed servers found."
             );
             return;
         }
@@ -47,65 +51,94 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
     protected function syncOne(VpnServer $server): void
     {
         try {
+            // 1) Quick SSH check
+            $ssh = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg('echo SSH_OK'));
+            if (($ssh['status'] ?? 1) !== 0) {
+                Log::channel('vpn')->warning("⏭ {$server->name}: SSH failed, skipping", [
+                    'status' => $ssh['status'] ?? null,
+                ]);
+                return;
+            }
+
+            // 2) Detect WG availability on the server
+            if (!$this->hasWireGuard($server)) {
+                Log::channel('vpn')->debug("⏭ {$server->name}: no WireGuard detected, skipping");
+                return;
+            }
+
+            // 3) Fetch peers
             $peers = $this->fetchPeers($server);
 
             Log::channel('vpn')->debug("[wg-sync] {$server->name} peers=" . count($peers), [
-                'sample' => array_slice(array_column($peers, 'public_key'), 0, 5),
+                'server_id' => $server->id,
+                'sample'    => array_slice(array_column($peers, 'public_key'), 0, 5),
             ]);
 
+            // 4) Push snapshot ALWAYS (even empty)
             $this->pushSnapshot($server->id, now(), $peers);
+
         } catch (\Throwable $e) {
             Log::channel('vpn')->error("❌ {$server->name}: WG sync failed – {$e->getMessage()}");
         }
     }
 
+    protected function hasWireGuard(VpnServer $server): bool
+    {
+        // Prefer configured interface if you have it, else default
+        $iface = $server->wg_interface ?? 'wg0';
+
+        // wg binary + interface exists
+        $cmd = 'bash -lc ' . escapeshellarg(
+            "command -v wg >/dev/null 2>&1 && wg show " . escapeshellarg($iface) . " >/dev/null 2>&1 && echo YES || echo NO"
+        );
+
+        $res = $this->executeRemoteCommand($server, $cmd);
+        $out = trim(($res['output'][0] ?? ''));
+
+        return ($res['status'] ?? 1) === 0 && $out === 'YES';
+    }
+
     protected function fetchPeers(VpnServer $server): array
     {
-        $interface = $server->wg_interface ?: 'wg0';
+        $iface = $server->wg_interface ?? 'wg0';
 
-        $sshTest = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg('echo SSH_TEST_OK'));
-        if (($sshTest['status'] ?? 1) !== 0) {
-            throw new \RuntimeException("SSH connectivity failed (status=" . ($sshTest['status'] ?? 'null') . ")");
-        }
-
-        $cmd = "wg show " . escapeshellarg($interface) . " dump";
-        $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
-        $lines = array_values(array_filter($res['output'] ?? [], fn ($l) => trim((string)$l) !== ''));
+        $cmd = 'bash -lc ' . escapeshellarg("wg show " . escapeshellarg($iface) . " dump");
+        $res = $this->executeRemoteCommand($server, $cmd);
 
         if (($res['status'] ?? 1) !== 0) {
             throw new \RuntimeException("wg show dump failed (status=" . ($res['status'] ?? 'null') . ")");
         }
 
-        // A successful dump can legitimately contain only the interface header (no peers).
-        if (empty($lines)) {
-            return [];
-        }
+        $lines = array_values(array_filter($res['output'] ?? [], fn ($l) => trim((string)$l) !== ''));
+        if (!$lines) return [];
 
         $peers = [];
 
         foreach ($lines as $i => $line) {
-            $line = trim((string) $line);
+            $line = rtrim((string)$line, "\r\n");
 
-            // `wg show <iface> dump` is TAB-delimited.
-            // Do not split on generic whitespace: allowed_ips can contain spaces (e.g. "a/b, c/d"),
-            // which would shift columns and corrupt handshake/bytes fields.
+            // wg dump is TAB-delimited
             $parts = explode("\t", $line);
-            if (count($parts) < 2) {
-                // Fallback for unexpected formatting
-                $parts = preg_split('/\s+/', $line);
+
+            // header line: interface_pub interface_priv listen_port fwmark
+            if ($i === 0 && count($parts) >= 4) {
+                continue;
             }
 
-            // header line usually starts with "server_pubkey server_privkey listen_port fwmark"
-            if ($i === 0 && count($parts) >= 4) continue;
+            // peer line: pub psk endpoint allowed_ips latest_handshake rx tx keepalive
+            if (count($parts) < 8) {
+                // fallback only if something truly weird happened
+                $parts = preg_split('/\s+/', trim($line));
+                if (count($parts) < 8) continue;
+            }
 
-            // peer lines: pubkey psk endpoint allowed_ips latest_handshake rx tx keepalive
-            if (count($parts) < 8) continue;
+            [$pub, $psk, $endpoint, $allowedIps, $handshakeRaw, $rx, $tx, $keepalive] = $parts;
 
-            [$pubKey, $psk, $endpoint, $allowedIps, $handshakeRaw, $rxBytes, $txBytes, $keepAlive] = $parts;
-
+            // allowed_ips can be multiple: "10.0.0.2/32,fd00::2/128" (sometimes spaces too)
             $virtualIp = null;
             if (!empty($allowedIps) && $allowedIps !== '(none)') {
-                $virtualIp = explode('/', $allowedIps, 2)[0] ?? null;
+                $first = trim(explode(',', $allowedIps, 2)[0] ?? '');
+                $virtualIp = $first !== '' ? (explode('/', $first, 2)[0] ?? null) : null;
             }
 
             $clientIp = null;
@@ -113,20 +146,23 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
                 $clientIp = explode(':', $endpoint, 2)[0] ?? null;
             }
 
-            $handshake = $this->normalizeHandshakeToSeconds($handshakeRaw);
-            $seenAtIso = $handshake > 0 ? gmdate('c', $handshake) : null;
+            $handshakeSec = $this->normalizeHandshakeToSeconds($handshakeRaw);
+            $seenAtIso = $handshakeSec > 0 ? gmdate('c', $handshakeSec) : null;
 
             $peers[] = [
-                'public_key'  => $pubKey,
+                'proto'       => 'wireguard',
+                'public_key'  => $pub,
                 'endpoint'    => $endpoint,
                 'client_ip'   => $clientIp,
                 'virtual_ip'  => $virtualIp,
-                'handshake'   => $handshake, // seconds since epoch (0 if none)
-                'seen_at'     => $seenAtIso,
-                'bytes_in'    => (int) $rxBytes,
-                'bytes_out'   => (int) $txBytes,
-                'keepalive'   => ($keepAlive === 'off') ? null : (int) $keepAlive,
-                'proto'       => 'wireguard',
+
+                // controller can use either seen_at or handshake; send both cleanly
+                'handshake'   => $handshakeSec,     // seconds epoch (0 if none)
+                'seen_at'     => $seenAtIso,         // ISO8601 or null
+
+                'bytes_in'    => (int)$rx,
+                'bytes_out'   => (int)$tx,
+                'keepalive'   => ($keepalive === 'off' || $keepalive === '') ? null : (int)$keepalive,
             ];
         }
 
@@ -135,31 +171,27 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
 
     protected function normalizeHandshakeToSeconds(string $raw): int
     {
-        // raw can be: 0, seconds (~1e9), ms (~1e12), ns (~1e18)
-        $n = (int) $raw;
+        // wg dump gives epoch in seconds (usually), but handle ms/ns if you ever feed that in.
+        $n = (int)$raw;
         if ($n <= 0) return 0;
 
-        if ($n >= 1_000_000_000_000_000) {          // ns
+        if ($n >= 1_000_000_000_000_000) { // ns
             return (int) floor($n / 1_000_000_000);
         }
-        if ($n >= 1_000_000_000_000) {              // ms
+        if ($n >= 1_000_000_000_000) { // ms
             return (int) floor($n / 1_000);
         }
-        return $n;                                   // seconds
+
+        return $n; // seconds
     }
 
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $peers): void
     {
         try {
-            $publicKeys = array_values(array_filter(array_map(
-                fn ($p) => $p['public_key'] ?? null,
-                $peers
-            )));
-
-            Log::channel('vpn')->debug('[pushWgSnapshot payload]', [
-                'server_id'    => $serverId,
-                'peer_count'   => count($peers),
-                'public_keys'  => $publicKeys,
+            Log::channel('vpn')->debug('[pushWgSnapshot]', [
+                'server_id'  => $serverId,
+                'peer_count' => count($peers),
+                'sample'     => array_slice(array_column($peers, 'public_key'), 0, 5),
             ]);
 
             Http::withToken(config('services.panel.token'))
@@ -171,7 +203,6 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
                 ])
                 ->throw();
 
-            Log::channel('vpn')->debug("[pushWgSnapshot] #{$serverId} sent " . count($peers) . " peers");
         } catch (\Throwable $e) {
             Log::channel('vpn')->error("❌ Failed to POST WG events for #{$serverId}: {$e->getMessage()}");
         }
