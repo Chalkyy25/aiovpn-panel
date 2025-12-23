@@ -192,17 +192,14 @@
         const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
         const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
-        // don’t overwrite timestamps with null
+        // Determine connected_at timestamp
         let connected_at = prevRow?.connected_at ?? null;
 
         if (protocol === 'WIREGUARD') {
-          // last-seen
-          connected_at = pick(
-            raw?.seen_at ?? raw?.seenAt ?? raw?.updated_at ?? raw?.updatedAt ?? raw?.connected_at ?? raw?.connectedAt,
-            connected_at
-          );
+          // For WireGuard: use connected_at (session start), preserve it once set
+          connected_at = pick(raw?.connected_at ?? raw?.connectedAt, connected_at);
         } else {
-          // session start
+          // For OpenVPN: use connected_at (session start)
           connected_at = pick(raw?.connected_at ?? raw?.connectedAt, connected_at);
         }
 

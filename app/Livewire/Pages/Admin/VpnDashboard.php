@@ -125,10 +125,12 @@ class VpnDashboard extends Component
     public function disconnectUser(int $serverId, string $username): void
     {
         try {
-            $resp = \Http::withToken(csrf_token())
-                ->post(route('admin.servers.disconnect', $serverId), [
-                    'username' => $username,
-                ]);
+            $resp = \Http::withHeaders([
+                'X-CSRF-TOKEN' => csrf_token(),
+                'Accept' => 'application/json',
+            ])->post(route('admin.servers.disconnect', $serverId), [
+                'username' => $username,
+            ]);
 
             $this->dispatchBrowserEvent('notify', [
                 'type'    => $resp->successful() ? 'success' : 'error',
@@ -227,6 +229,7 @@ class VpnDashboard extends Component
                 'connection_id'   => $r->id,
                 'session_key'     => $r->session_key,
                 'username'        => $uname,
+                'server_name'     => $serverMeta[$sid]['name'] ?? "Server {$sid}",
                 'client_ip'       => $r->client_ip,
                 'virtual_ip'      => $r->virtual_ip,
                 'protocol'        => $hasProtocol
