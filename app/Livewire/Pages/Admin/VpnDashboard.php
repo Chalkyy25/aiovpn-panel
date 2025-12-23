@@ -5,6 +5,7 @@ namespace App\Livewire\Pages\Admin;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
+use App\Models\WireguardPeer;
 use Carbon\Carbon;
 use Illuminate\Contracts\View\View as ViewContract;
 use Illuminate\Support\Facades\Schema;
@@ -213,8 +214,15 @@ class VpnDashboard extends Component
             $select[] = 'seen_at';
         }
 
+        // OpenVPN snapshot: only active sessions
         $rows = VpnUserConnection::query()
             ->where('is_connected', true)
+            ->when($hasProtocol, function ($q) {
+                // Never mix OpenVPN and WireGuard here.
+                $q->where(function ($qq) {
+                    $qq->whereNull('protocol')->orWhere('protocol', '!=', 'WIREGUARD');
+                });
+            })
             ->with('vpnUser:id,username')
             ->select($select)
             ->get();
@@ -250,6 +258,7 @@ class VpnDashboard extends Component
                 'seen_at'         => $seenAt?->toIso8601String(),
                 'bytes_in'        => (int) ($r->bytes_received ?? 0),
                 'bytes_out'       => (int) ($r->bytes_sent ?? 0),
+                'is_connected'    => true,
                 'formatted_bytes' => null,
                 'down_mb'         => $r->bytes_received
                     ? round($r->bytes_received / 1048576, 2)
@@ -257,6 +266,59 @@ class VpnDashboard extends Component
                 'up_mb'           => $r->bytes_sent
                     ? round($r->bytes_sent / 1048576, 2)
                     : 0.0,
+            ];
+        }
+
+        // WireGuard snapshot: always include configured peers (even if idle)
+        $wgPeers = WireguardPeer::with('vpnUser:id,username')
+            ->whereIn('vpn_server_id', array_map('intval', array_keys($serverMeta)))
+            ->where('revoked', false)
+            ->get([
+                'vpn_server_id',
+                'vpn_user_id',
+                'public_key',
+                'ip_address',
+                'last_handshake_at',
+                'transfer_rx_bytes',
+                'transfer_tx_bytes',
+            ]);
+
+        $wgConnBySession = VpnUserConnection::query()
+            ->whereIn('vpn_server_id', array_map('intval', array_keys($serverMeta)))
+            ->where('protocol', 'WIREGUARD')
+            ->get([
+                'id', 'vpn_server_id', 'session_key', 'public_key', 'client_ip', 'virtual_ip',
+                'connected_at', 'seen_at', 'bytes_received', 'bytes_sent', 'is_connected',
+            ])
+            ->keyBy(fn ($r) => (string) $r->vpn_server_id . '|' . (string) $r->session_key);
+
+        $cutoff = now()->subSeconds(180);
+
+        foreach ($wgPeers as $p) {
+            $sid = (string) $p->vpn_server_id;
+            $sessionKey = 'wg:' . $p->public_key;
+            $conn = $wgConnBySession[$sid . '|' . $sessionKey] ?? null;
+
+            $seenAt = $conn?->seen_at ?? $p->last_handshake_at;
+            $isOnline = $seenAt ? Carbon::parse($seenAt)->gte($cutoff) : false;
+
+            $usersByServer[$sid][] = [
+                'connection_id'   => $conn?->id,
+                'session_key'     => $sessionKey,
+                'username'        => $p->vpnUser?->username ?? 'unknown',
+                'server_name'     => $serverMeta[$sid]['name'] ?? "Server {$sid}",
+                'client_ip'       => $conn?->client_ip,
+                'virtual_ip'      => $conn?->virtual_ip ?? $p->ip_address,
+                'protocol'        => 'wireguard',
+                'connected_at'    => optional($conn?->connected_at)?->toIso8601String(),
+                'connected_human' => null,
+                'seen_at'         => optional($seenAt)?->toIso8601String(),
+                'bytes_in'        => (int) ($conn?->bytes_received ?? $p->transfer_rx_bytes),
+                'bytes_out'       => (int) ($conn?->bytes_sent ?? $p->transfer_tx_bytes),
+                'is_connected'    => $isOnline,
+                'formatted_bytes' => null,
+                'down_mb'         => 0.0,
+                'up_mb'           => 0.0,
             ];
         }
 
@@ -271,15 +333,20 @@ class VpnDashboard extends Component
 
         foreach ($serverMeta as $sid => $_) {
             $list = $usersByServer[$sid] ?? [];
-            if (!empty($list)) {
+
+            $onlineList = array_values(array_filter($list, fn ($u) => (bool)($u['is_connected'] ?? true)));
+
+            if (!empty($onlineList)) {
                 $activeServers++;
             }
-            foreach ($list as $u) {
+
+            foreach ($onlineList as $u) {
                 if (!empty($u['username'])) {
                     $uniqueUsers[$u['username']] = true;
                 }
             }
-            $activeConnections += count($list);
+
+            $activeConnections += count($onlineList);
         }
 
         if ($activeServers === 0) {

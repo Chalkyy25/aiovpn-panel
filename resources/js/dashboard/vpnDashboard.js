@@ -109,7 +109,8 @@
       },
 
       serverUsersCount(id) {
-        return Object.values(this.usersByServer[id] || {}).length;
+        const arr = Object.values(this.usersByServer[id] || {});
+        return arr.filter((u) => (u?.is_connected === undefined ? true : !!u.is_connected)).length;
       },
 
       activeRows() {
@@ -303,9 +304,11 @@
 
         Object.keys(this.serverMeta).forEach((sid) => {
           const arr = Object.values(this.usersByServer[sid] || {});
-          if (arr.length) activeServers++;
-          conns += arr.length;
-          arr.forEach((u) => unique.add(u.username));
+          const online = arr.filter((u) => (u?.is_connected === undefined ? true : !!u.is_connected));
+
+          if (online.length) activeServers++;
+          conns += online.length;
+          online.forEach((u) => unique.add(u.username));
         });
 
         if (activeServers === 0) activeServers = Object.keys(this.serverMeta).length;

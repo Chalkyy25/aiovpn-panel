@@ -65,16 +65,19 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
 
         $sshTest = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg('echo SSH_TEST_OK'));
         if (($sshTest['status'] ?? 1) !== 0) {
-            Log::channel('vpn')->error("❌ {$server->name}: SSH connectivity failed", ['status' => $sshTest['status'] ?? null]);
-            return [];
+            throw new \RuntimeException("SSH connectivity failed (status=" . ($sshTest['status'] ?? 'null') . ")");
         }
 
         $cmd = "wg show " . escapeshellarg($interface) . " dump";
         $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
         $lines = array_values(array_filter($res['output'] ?? [], fn ($l) => trim((string)$l) !== ''));
 
-        if (($res['status'] ?? 1) !== 0 || empty($lines)) {
-            Log::channel('vpn')->warning("⚠️ {$server->name}: wg show dump failed/empty", ['status' => $res['status'] ?? null]);
+        if (($res['status'] ?? 1) !== 0) {
+            throw new \RuntimeException("wg show dump failed (status=" . ($res['status'] ?? 'null') . ")");
+        }
+
+        // A successful dump can legitimately contain only the interface header (no peers).
+        if (empty($lines)) {
             return [];
         }
 
