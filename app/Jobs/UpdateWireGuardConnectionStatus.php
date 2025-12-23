@@ -84,7 +84,16 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
         $peers = [];
 
         foreach ($lines as $i => $line) {
-            $parts = preg_split('/\s+/', trim((string)$line));
+            $line = trim((string) $line);
+
+            // `wg show <iface> dump` is TAB-delimited.
+            // Do not split on generic whitespace: allowed_ips can contain spaces (e.g. "a/b, c/d"),
+            // which would shift columns and corrupt handshake/bytes fields.
+            $parts = explode("\t", $line);
+            if (count($parts) < 2) {
+                // Fallback for unexpected formatting
+                $parts = preg_split('/\s+/', $line);
+            }
 
             // header line usually starts with "server_pubkey server_privkey listen_port fwmark"
             if ($i === 0 && count($parts) >= 4) continue;
