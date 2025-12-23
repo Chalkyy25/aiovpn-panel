@@ -24,17 +24,23 @@
     };
 
     const ago = (v) => {
-      const d = toDate(v);
-      if (!d) return '—';
-      const diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
-      const m = Math.floor(diff / 60);
-      const h = Math.floor(m / 60);
-      const dd = Math.floor(h / 24);
-      if (dd) return `${dd} day${dd > 1 ? 's' : ''} ago`;
-      if (h) return `${h} hour${h > 1 ? 's' : ''} ago`;
-      if (m) return `${m} min${m > 1 ? 's' : ''} ago`;
-      return 'just now';
-    };
+      const toDate = (v) => {
+  if (!v) return null;
+
+  if (typeof v === 'number') {
+    // seconds vs ms heuristic
+    return new Date(v > 2_000_000_000_000 ? v : v * 1000);
+  }
+
+  const s = String(v);
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    return new Date(n > 2_000_000_000_000 ? n : n * 1000);
+  }
+
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+};
 
     const isBlank = (v) =>
       v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v));
@@ -185,60 +191,59 @@
       },
 
       _shapeRow(serverId, raw, prevRow = null) {
-        const meta = this.serverMeta[serverId] || {};
-        const protocol = this._shapeProtocol(raw);
-        const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
+  const meta = this.serverMeta[serverId] || {};
+  const protocol = this._shapeProtocol(raw);
+  const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
 
-        const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
-        const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
+  const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
+  const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
-        // Determine connected_at timestamp
-        let connected_at = prevRow?.connected_at ?? null;
+  const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
 
-        if (protocol === 'WIREGUARD') {
-          // For WireGuard: use connected_at (session start), preserve it once set
-          connected_at = pick(raw?.connected_at ?? raw?.connectedAt, connected_at);
-        } else {
-          // For OpenVPN: use connected_at (session start)
-          connected_at = pick(raw?.connected_at ?? raw?.connectedAt, connected_at);
-        }
+  // connected_at is still useful for “session start”, but WireGuard display should be seen_at
+  let connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
 
-        const bytes_in = Number(pick(
-          raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived,
-          prevRow?.bytes_in ?? 0
-        ));
+  const bytes_in = Number(pick(
+    raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived,
+    prevRow?.bytes_in ?? 0
+  ));
 
-        const bytes_out = Number(pick(
-          raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent,
-          prevRow?.bytes_out ?? 0
-        ));
+  const bytes_out = Number(pick(
+    raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent,
+    prevRow?.bytes_out ?? 0
+  ));
 
-        const __key = this._stableKey(serverId, raw, protocol, username);
+  const __key = this._stableKey(serverId, raw, protocol, username);
 
-        return {
-          __key,
-          session_key,
-          connection_id,
+  // ✅ WireGuard should show “last seen” (handshake), not “connected_at”
+  const displayTime = (protocol === 'WIREGUARD') ? seen_at : connected_at;
 
-          server_id: Number(serverId),
-          server_name: pick(raw?.server_name, meta.name) || `Server ${serverId}`,
+  return {
+    __key,
+    session_key,
+    connection_id,
 
-          username,
-          protocol,
+    server_id: Number(serverId),
+    server_name: pick(raw?.server_name, meta.name) || `Server ${serverId}`,
 
-          client_ip: pick(raw?.client_ip, prevRow?.client_ip) ?? null,
-          virtual_ip: pick(raw?.virtual_ip, prevRow?.virtual_ip) ?? null,
+    username,
+    protocol,
 
-          connected_at,
-          connected_human: ago(connected_at),
+    client_ip: pick(raw?.client_ip, prevRow?.client_ip) ?? null,
+    virtual_ip: pick(raw?.virtual_ip, prevRow?.virtual_ip) ?? null,
 
-          bytes_in,
-          bytes_out,
-          down_mb: toMB(bytes_in),
-          up_mb: toMB(bytes_out),
-          formatted_bytes: humanBytes(bytes_in, bytes_out),
-        };
-      },
+    connected_at,
+    seen_at,
+
+    connected_human: ago(displayTime),
+
+    bytes_in,
+    bytes_out,
+    down_mb: toMB(bytes_in),
+    up_mb: toMB(bytes_out),
+    formatted_bytes: humanBytes(bytes_in, bytes_out),
+  };
+},
 
       // authoritative replace (used by polling + initial seed)
       _setExactList(serverId, list) {
@@ -279,20 +284,25 @@
       },
 
       handleEvent(e) {
-        const sid = Number(e.server_id ?? e.serverId ?? 0);
-        if (!sid) return;
+  const sid = Number(e.server_id ?? e.serverId ?? 0);
+  if (!sid) return;
 
-        let list = [];
-        if (Array.isArray(e.users)) {
-          list = e.users;
-        } else if (typeof e.cn_list === 'string') {
-          list = e.cn_list.split(',').map((s) => ({ username: s.trim() })).filter((x) => x.username);
-        }
+  let list = [];
+  if (Array.isArray(e.users)) {
+    list = e.users;
+  } else if (typeof e.cn_list === 'string') {
+    list = e.cn_list
+      .split(',')
+      .map((s) => ({ username: s.trim() }))
+      .filter((x) => x.username);
+  }
 
-        this._mergeList(sid, list);
-        this._recalc();
-        this.lastUpdated = new Date().toLocaleTimeString();
-      },
+  // ✅ Echo payload is authoritative snapshot
+  this._setExactList(sid, list);
+
+  this._recalc();
+  this.lastUpdated = new Date().toLocaleTimeString();
+},
 
       _recalc() {
         this.totals = this.computeTotals();
