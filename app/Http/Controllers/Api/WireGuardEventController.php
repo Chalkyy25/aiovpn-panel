@@ -17,16 +17,15 @@ use Illuminate\Support\Facades\Schema;
 
 class WireGuardEventController extends Controller
 {
-    // If a peer hasn't been seen in this window, mark offline
-    private const STALE_SECONDS = 180; // 3 minutes
+    private const STALE_SECONDS = 180;
 
     public function store(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
-            'status'  => 'required|string',
-            'message' => 'nullable|string',
-            'ts'      => 'nullable|string',
-            'peers'   => 'nullable|array',
+            'status' => 'required|string',
+            'ts'     => 'nullable|string',
+            'message'=> 'nullable|string',
+            'peers'  => 'nullable|array',
         ]);
 
         if (strtolower($data['status']) !== 'mgmt') {
@@ -38,107 +37,85 @@ class WireGuardEventController extends Controller
         $now   = now();
         $peers = is_array($data['peers'] ?? null) ? $data['peers'] : [];
 
-        Log::channel('vpn')->debug(sprintf(
-            'WG MGMT EVENT server=%d ts=%s peers=%d',
-            $server->id,
-            $ts,
-            count($peers)
-        ));
+        Log::channel('vpn')->debug("WG MGMT EVENT server={$server->id} ts={$ts} peers=" . count($peers));
 
         DB::transaction(function () use ($server, $peers, $now) {
-            // Build pubkey -> vpn_user_id map in one query
-            $publicKeys = array_values(array_unique(array_filter(array_map(
-                fn ($p) => is_array($p) ? ($p['public_key'] ?? null) : null,
+            $publicKeys = array_values(array_filter(array_map(
+                fn ($p) => $p['public_key'] ?? null,
                 $peers
-            ))));
+            )));
 
             $uidByPubKey = $publicKeys
                 ? WireguardPeer::whereIn('public_key', $publicKeys)->pluck('vpn_user_id', 'public_key')->all()
                 : [];
 
-            $touchedSessionKeys = [];
+            $touched = [];
 
             foreach ($peers as $p) {
-                if (!is_array($p)) continue;
+                $pub = $p['public_key'] ?? null;
+                if (!$pub) continue;
 
-                $publicKey = $p['public_key'] ?? null;
-                if (!$publicKey) continue;
-
-                $uid = $uidByPubKey[$publicKey] ?? null;
+                $uid = $uidByPubKey[$pub] ?? null;
                 if (!$uid) {
-                    Log::channel('vpn')->notice("WG: unknown peer public_key={$publicKey} server={$server->id}");
+                    Log::channel('vpn')->notice("WG: unknown peer pubkey={$pub} server={$server->id}");
                     continue;
                 }
 
-                $sessionKey = "wg:{$publicKey}";
-                $touchedSessionKeys[] = $sessionKey;
+                $sessionKey = "wg:{$pub}";
+                $touched[] = $sessionKey;
 
-                // Load existing row if any
+                $handshake = (int) ($p['handshake'] ?? 0);
+                $seenAt = $handshake > 0 ? Carbon::createFromTimestamp($handshake) : null;
+
+                // “Online” means handshake recent
+                $isOnline = $seenAt && $seenAt->gte($now->copy()->subSeconds(self::STALE_SECONDS));
+
                 $row = VpnUserConnection::firstOrNew([
                     'vpn_server_id' => $server->id,
                     'session_key'   => $sessionKey,
                 ]);
 
-                // Capture previous state BEFORE we overwrite anything
-                $isNew          = !$row->exists;
-                $prevSeen       = $row->seen_at;
-                $prevWasOffline = $row->exists && (
-                    !$row->is_connected || !is_null($row->disconnected_at)
-                );
+                $wasOnline = (bool) $row->is_connected;
+                $wasStale  = $row->seen_at ? $row->seen_at->lt($now->copy()->subSeconds(self::STALE_SECONDS)) : true;
 
-                // seen_at: prefer payload -> fallback now
-                $seenAt = !empty($p['seen_at'])
-                    ? $this->parseTime($p['seen_at'])
-                    : $now;
-
-                // optional hygiene on IPs
-                $clientIp  = $this->stripPort($p['client_ip'] ?? null) ?? $row->client_ip;
-                $virtualIp = $this->stripCidr($p['virtual_ip'] ?? null) ?? $row->virtual_ip;
-
-                // bytes: keep monotonic-ish
-                $bytesIn  = (int)($p['bytes_in']  ?? $p['bytes_received'] ?? 0);
-                $bytesOut = (int)($p['bytes_out'] ?? $p['bytes_sent']     ?? 0);
-
-                // Apply new state
+                // Always update fields
                 $row->fill([
                     'vpn_user_id'     => $uid,
                     'protocol'        => 'WIREGUARD',
-                    'public_key'      => $publicKey,
-
-                    'is_connected'    => true,
-                    'disconnected_at' => null,
-
-                    'client_ip'       => $clientIp,
-                    'virtual_ip'      => $virtualIp,
-
-                    'bytes_received'  => $bytesIn,
-                    'bytes_sent'      => $bytesOut,
-
+                    'public_key'      => $pub,
+                    'client_ip'       => $p['client_ip'] ?? $row->client_ip,
+                    'virtual_ip'      => $p['virtual_ip'] ?? $row->virtual_ip,
+                    'bytes_received'  => (int) ($p['bytes_in'] ?? 0),
+                    'bytes_sent'      => (int) ($p['bytes_out'] ?? 0),
                     'seen_at'         => $seenAt,
+                    'is_connected'    => $isOnline,
+                    'disconnected_at' => $isOnline ? null : ($row->disconnected_at ?? $now),
                 ]);
 
-                // Decide if this should start a NEW session (connected_at reset)
-                $wasStale = $prevSeen && $prevSeen->lt($now->copy()->subSeconds(self::STALE_SECONDS));
-
-                if ($isNew || $prevWasOffline || $wasStale || !$row->connected_at) {
+                // Session start rules (WireGuard):
+                // - if it becomes online from offline OR was stale, start a fresh session
+                if ($isOnline && (!$wasOnline || $wasStale || !$row->connected_at)) {
                     $row->connected_at = $now;
+                }
+
+                // If going offline, set duration
+                if (!$isOnline && $wasOnline) {
+                    $row->session_duration = $row->connected_at ? $now->diffInSeconds($row->connected_at) : null;
+                    $row->disconnected_at  = $now;
                 }
 
                 $row->save();
 
-                // Update user summary
-                $userUpdate = [
-                    'is_online' => true,
-                    'last_ip'   => $row->client_ip,
-                ];
-                if (Schema::hasColumn('vpn_users', 'last_protocol')) {
-                    $userUpdate['last_protocol'] = 'WIREGUARD';
+                // update vpn_users
+                if ($isOnline) {
+                    $userUpdate = ['is_online' => true, 'last_ip' => $row->client_ip];
+                    if (Schema::hasColumn('vpn_users', 'last_protocol')) $userUpdate['last_protocol'] = 'WIREGUARD';
+                    VpnUser::whereKey($uid)->update($userUpdate);
                 }
-                VpnUser::whereKey($uid)->update($userUpdate);
             }
 
-            // Mark sessions offline if missing from payload OR too old
-            $this->disconnectStale($server->id, $touchedSessionKeys, $now);
+            // Mark missing/stale sessions offline (anything not touched this push OR stale by seen_at)
+            $this->disconnectMissingOrStale($server->id, $touched, $now);
 
             // Server aggregates
             $liveCount = VpnUserConnection::where('vpn_server_id', $server->id)
@@ -149,7 +126,6 @@ class WireGuardEventController extends Controller
             $serverUpdate = [];
             if (Schema::hasColumn('vpn_servers', 'online_users')) $serverUpdate['online_users'] = $liveCount;
             if (Schema::hasColumn('vpn_servers', 'last_sync_at')) $serverUpdate['last_sync_at'] = $now;
-
             if ($serverUpdate) $server->forceFill($serverUpdate)->saveQuietly();
         });
 
@@ -171,22 +147,18 @@ class WireGuardEventController extends Controller
         ]);
     }
 
-    private function disconnectStale(int $serverId, array $touchedSessionKeys, Carbon $now): void
+    private function disconnectMissingOrStale(int $serverId, array $touched, Carbon $now): void
     {
         $cutoff = $now->copy()->subSeconds(self::STALE_SECONDS);
 
         $q = VpnUserConnection::where('vpn_server_id', $serverId)
             ->where('protocol', 'WIREGUARD')
             ->where('is_connected', true)
-            ->where(function ($qq) use ($touchedSessionKeys, $cutoff) {
-                // missing from payload
-                if (!empty($touchedSessionKeys)) {
-                    $qq->whereNotIn('session_key', $touchedSessionKeys);
+            ->where(function ($qq) use ($touched, $cutoff) {
+                if (!empty($touched)) {
+                    $qq->whereNotIn('session_key', $touched);
                 }
-
-                // OR stale seen_at
-                $qq->orWhereNull('seen_at')
-                   ->orWhere('seen_at', '<', $cutoff);
+                $qq->orWhereNull('seen_at')->orWhere('seen_at', '<', $cutoff);
             });
 
         foreach ($q->get() as $row) {
@@ -198,42 +170,6 @@ class WireGuardEventController extends Controller
 
             VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
         }
-    }
-
-    private function parseTime($value): ?Carbon
-    {
-        if ($value === null || $value === '') return null;
-
-        try {
-            if (is_numeric($value)) {
-                $n = (int) $value;
-
-                // ms epoch
-                if ($n > 2_000_000_000_000) return Carbon::createFromTimestampMs($n);
-
-                // seconds epoch
-                if ($n > 946_684_800) return Carbon::createFromTimestamp($n);
-
-                // if someone sends "age seconds" (bad), treat as "now - age"
-                return now()->subSeconds($n);
-            }
-
-            return Carbon::parse((string) $value);
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    private function stripPort($ip): ?string
-    {
-        if (!is_string($ip) || $ip === '') return null;
-        return str_contains($ip, ':') ? explode(':', $ip, 2)[0] : $ip;
-    }
-
-    private function stripCidr($ip): ?string
-    {
-        if (!is_string($ip) || $ip === '') return null;
-        return str_contains($ip, '/') ? explode('/', $ip, 2)[0] : $ip;
     }
 
     private function enrich(VpnServer $server): array
@@ -251,9 +187,7 @@ class WireGuardEventController extends Controller
                 'client_ip'     => $r->client_ip,
                 'virtual_ip'    => $r->virtual_ip,
                 'connected_at'  => optional($r->connected_at)?->toIso8601String(),
-                'seen_at'       => $hasSeenAt
-                    ? optional($r->seen_at)?->toIso8601String()
-                    : optional($r->updated_at)?->toIso8601String(),
+                'seen_at'       => $hasSeenAt ? optional($r->seen_at)?->toIso8601String() : optional($r->updated_at)?->toIso8601String(),
                 'bytes_in'      => (int) $r->bytes_received,
                 'bytes_out'     => (int) $r->bytes_sent,
                 'server_name'   => $server->name,
