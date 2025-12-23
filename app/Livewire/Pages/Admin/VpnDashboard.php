@@ -219,7 +219,12 @@ class VpnDashboard extends Component
             ->select($select)
             ->get();
 
+        // IMPORTANT: snapshot must be explicit for every server.
+        // Missing keys are ambiguous (partial response) and can cause UI decay.
         $usersByServer = [];
+        foreach ($serverMeta as $sid => $_meta) {
+            $usersByServer[$sid] = [];
+        }
 
         foreach ($rows as $r) {
             $sid   = (string) $r->vpn_server_id;
@@ -227,6 +232,7 @@ class VpnDashboard extends Component
             $at    = $r->connected_at ? Carbon::parse($r->connected_at) : null;
             $seenAt = ($hasSeenAt && $r->seen_at) ? Carbon::parse($r->seen_at) : ($r->updated_at ? Carbon::parse($r->updated_at) : null);
 
+            // $usersByServer already has all server keys; keep defensive fallback.
             $usersByServer[$sid] ??= [];
 
             $usersByServer[$sid][] = [

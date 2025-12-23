@@ -285,7 +285,7 @@
             .filter((x) => x.username);
         }
 
-        // Echo payload is authoritative snapshot
+        // Echo payload is authoritative snapshot for that server
         this._setExactList(sid, list);
 
         this._recalc();

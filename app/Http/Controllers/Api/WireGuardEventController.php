@@ -64,8 +64,7 @@ class WireGuardEventController extends Controller
                 $sessionKey = "wg:{$pub}";
                 $touched[] = $sessionKey;
 
-                $handshake = (int) ($p['handshake'] ?? 0);
-                $seenAt = $handshake > 0 ? Carbon::createFromTimestamp($handshake) : null;
+                $seenAt = $this->extractSeenAt($p);
 
                 // “Online” means handshake recent
                 $isOnline = $seenAt && $seenAt->gte($now->copy()->subSeconds(self::STALE_SECONDS));
@@ -85,8 +84,8 @@ class WireGuardEventController extends Controller
                     'public_key'      => $pub,
                     'client_ip'       => $p['client_ip'] ?? $row->client_ip,
                     'virtual_ip'      => $p['virtual_ip'] ?? $row->virtual_ip,
-                    'bytes_received'  => (int) ($p['bytes_in'] ?? 0),
-                    'bytes_sent'      => (int) ($p['bytes_out'] ?? 0),
+                    'bytes_received'  => (int) ($p['bytes_received'] ?? ($p['bytes_in'] ?? 0)),
+                    'bytes_sent'      => (int) ($p['bytes_sent'] ?? ($p['bytes_out'] ?? 0)),
                     'seen_at'         => $seenAt,
                     'is_connected'    => $isOnline,
                     'disconnected_at' => $isOnline ? null : ($row->disconnected_at ?? $now),
@@ -195,5 +194,54 @@ class WireGuardEventController extends Controller
                 'session_key'   => $r->session_key,
                 'public_key'    => $r->public_key,
             ])->values()->all();
+    }
+
+    private function extractSeenAt(array $peer): ?Carbon
+    {
+        // Prefer explicit seen_at if provided (ISO string, unix seconds/ms/ns, etc)
+        $seen = $peer['seen_at'] ?? $peer['seenAt'] ?? null;
+        if ($seen !== null && $seen !== '') {
+            return $this->parseTime($seen);
+        }
+
+        // Fall back to handshake timestamp (unix seconds, sometimes ms/ns)
+        $raw = $peer['handshake'] ?? $peer['latest_handshake'] ?? $peer['latestHandshake'] ?? null;
+        if ($raw === null || $raw === '') return null;
+
+        $n = (int) $raw;
+        if ($n <= 0) return null;
+
+        // tolerate ms / ns
+        if ($n >= 1_000_000_000_000_000) {
+            $n = (int) floor($n / 1_000_000_000);
+        } elseif ($n >= 1_000_000_000_000) {
+            $n = (int) floor($n / 1_000);
+        }
+
+        return Carbon::createFromTimestamp($n);
+    }
+
+    private function parseTime(mixed $value): ?Carbon
+    {
+        if ($value === null) return null;
+
+        if (is_int($value) || is_float($value)) {
+            $n = (int) $value;
+            if ($n <= 0) return null;
+            return $this->extractSeenAt(['handshake' => $n]);
+        }
+
+        $s = trim((string) $value);
+        if ($s === '') return null;
+
+        if (ctype_digit($s)) {
+            return $this->extractSeenAt(['handshake' => (int) $s]);
+        }
+
+        try {
+            return Carbon::parse($s);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }
