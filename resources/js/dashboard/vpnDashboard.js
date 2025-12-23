@@ -1,12 +1,11 @@
-// resources/js/dashboard/vpn-dashboard.js
-
+// resources/js/dashboard/vpnDashboard.js
 (function () {
-  // Read config injected by Blade
   const cfg = window.VPN_DASHBOARD_CONFIG || {};
   const fallbackPattern = cfg.disconnectFallbackPattern || '';
   const fallbackUrl = (sid) => fallbackPattern.replace('__SID__', String(sid));
 
   window.vpnDashboard = function (lw) {
+    // ---------------- helpers ----------------
     const toMB = (n) => (n ? (n / (1024 * 1024)).toFixed(2) : '0.00');
 
     const humanBytes = (inb, outb) => {
@@ -42,12 +41,13 @@
 
     const pick = (primary, fallback) => (isBlank(primary) ? fallback : primary);
 
+    // ---------------- component ----------------
     return {
       lw,
       refreshing: false,
 
       serverMeta: {},
-      usersByServer: {},
+      usersByServer: {}, // { [sid]: { [key]: row } }
       totals: { online_users: 0, active_connections: 0, active_servers: 0 },
 
       selectedServerId: null,
@@ -61,11 +61,20 @@
         this.serverMeta = meta || {};
         Object.keys(this.serverMeta).forEach((sid) => (this.usersByServer[sid] = {}));
 
+        // seed snapshot (authoritative)
         if (seedUsersByServer) {
           for (const sid in seedUsersByServer) {
-            this._mergeList(Number(sid), seedUsersByServer[sid] || []);
+            this._setExactList(Number(sid), seedUsersByServer[sid] || []);
           }
         }
+
+        // load saved UI state
+        try {
+          const savedSid = localStorage.getItem('vpn.selectedServerId');
+          if (savedSid !== null && savedSid !== '') this.selectedServerId = Number(savedSid);
+          const sf = localStorage.getItem('vpn.showFilters');
+          if (sf !== null) this.showFilters = sf === '1';
+        } catch {}
 
         this._recalc();
         this.lastUpdated = new Date().toLocaleTimeString();
@@ -74,18 +83,51 @@
         this._startPolling(15000);
       },
 
+      toggleFilters() {
+        this.showFilters = !this.showFilters;
+        try { localStorage.setItem('vpn.showFilters', this.showFilters ? '1' : '0'); } catch {}
+      },
+
+      selectServer(id) {
+        this.selectedServerId = (id === null || id === '') ? null : Number(id);
+        try { localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? ''); } catch {}
+      },
+
+      serverUsersCount(id) {
+        return Object.values(this.usersByServer[id] || {}).length;
+      },
+
+      activeRows() {
+        const ids = this.selectedServerId == null
+          ? Object.keys(this.serverMeta)
+          : [String(this.selectedServerId)];
+
+        const rows = [];
+        ids.forEach((sid) => rows.push(...Object.values(this.usersByServer[sid] || {})));
+
+        rows.sort((a, b) =>
+          (a.server_name || '').localeCompare(b.server_name || '') ||
+          (a.username || '').localeCompare(b.username || '')
+        );
+
+        return rows;
+      },
+
       async refreshNow() {
         if (this.refreshing) return;
         this.refreshing = true;
 
         try {
           const res = await this.lw.call('getLiveStats');
+
+          // ✅ polling snapshot is authoritative: replace lists (prevents creeping counts)
           if (res?.usersByServer) {
             for (const sid in this.serverMeta) {
-              this._mergeList(Number(sid), res.usersByServer[sid] || []);
+              this._setExactList(Number(sid), res.usersByServer[sid] || []);
             }
             this._recalc();
           }
+
           this.lastUpdated = new Date().toLocaleTimeString();
         } catch (e) {
           console.error(e);
@@ -106,6 +148,7 @@
       _subscribe() {
         if (this._subscribed) return;
 
+        // listen once (don’t double-listen)
         try {
           window.Echo.private('servers.dashboard')
             .listen('.mgmt.update', (e) => this.handleEvent(e));
@@ -143,21 +186,23 @@
 
       _shapeRow(serverId, raw, prevRow = null) {
         const meta = this.serverMeta[serverId] || {};
-
         const protocol = this._shapeProtocol(raw);
         const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
 
         const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
         const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
+        // don’t overwrite timestamps with null
         let connected_at = prevRow?.connected_at ?? null;
 
         if (protocol === 'WIREGUARD') {
+          // last-seen
           connected_at = pick(
             raw?.seen_at ?? raw?.seenAt ?? raw?.updated_at ?? raw?.updatedAt ?? raw?.connected_at ?? raw?.connectedAt,
             connected_at
           );
         } else {
+          // session start
           connected_at = pick(raw?.connected_at ?? raw?.connectedAt, connected_at);
         }
 
@@ -198,9 +243,10 @@
         };
       },
 
-      _mergeList(serverId, list) {
+      // authoritative replace (used by polling + initial seed)
+      _setExactList(serverId, list) {
         const prevMap = this.usersByServer[serverId] || {};
-        const nextMap = { ...prevMap };
+        const nextMap = {};
         const arr = Array.isArray(list) ? list : [];
 
         arr.forEach((raw0) => {
@@ -212,6 +258,24 @@
           const prevRow = prevMap[key] || null;
 
           nextMap[key] = this._shapeRow(serverId, raw, prevRow);
+        });
+
+        this.usersByServer[serverId] = nextMap;
+      },
+
+      // echo merge (incremental updates)
+      _mergeList(serverId, list) {
+        const prevMap = this.usersByServer[serverId] || {};
+        const nextMap = { ...prevMap };
+        const arr = Array.isArray(list) ? list : [];
+
+        arr.forEach((raw0) => {
+          const raw = (typeof raw0 === 'string') ? { username: raw0 } : (raw0 || {});
+          const protocol = this._shapeProtocol(raw);
+          const username = String(raw?.username ?? raw?.cn ?? 'unknown');
+
+          const key = this._stableKey(serverId, raw, protocol, username);
+          nextMap[key] = this._shapeRow(serverId, raw, prevMap[key] || null);
         });
 
         this.usersByServer[serverId] = nextMap;
@@ -259,11 +323,11 @@
 
         try {
           const csrf = document.querySelector('meta[name=csrf-token]')?.content || cfg.csrf || '';
-          const baseHeaders = { 'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json' };
+          const headers = { 'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json' };
 
           let res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
             method: 'POST',
-            headers: baseHeaders,
+            headers,
             body: JSON.stringify({
               client_id: row.connection_id,
               session_key: row.session_key,
@@ -275,7 +339,7 @@
           if (!res.ok) {
             const res2 = await fetch(fallbackUrl(row.server_id), {
               method: 'POST',
-              headers: baseHeaders,
+              headers,
               body: JSON.stringify({ username: row.username, server_id: row.server_id }),
             });
             if (!res2.ok) throw new Error('Disconnect failed');
