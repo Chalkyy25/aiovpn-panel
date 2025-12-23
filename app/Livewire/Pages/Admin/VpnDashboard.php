@@ -122,30 +122,34 @@ class VpnDashboard extends Component
         ];
     }
 
-    public function disconnectUser(int $serverId, string $username): void
+    public function disconnectUser(int $serverId, int $connectionId, string $username): void
     {
         try {
-            $resp = \Http::withHeaders([
-                'X-CSRF-TOKEN' => csrf_token(),
-                'Accept' => 'application/json',
-            ])->post(route('admin.servers.disconnect', $serverId), [
+            $server = VpnServer::findOrFail($serverId);
+            $connection = VpnUserConnection::findOrFail($connectionId);
+            
+            // Call the disconnect controller logic
+            $controller = app(\App\Http\Controllers\VpnDisconnectController::class);
+            $request = request()->merge([
+                'client_id' => $connection->client_id,
                 'username' => $username,
+                'session_key' => $connection->session_key,
+                'protocol' => $connection->protocol,
             ]);
-
-            $this->dispatchBrowserEvent('notify', [
-                'type'    => $resp->successful() ? 'success' : 'error',
-                'message' => $resp->successful()
-                    ? "Disconnected {$username} from server #{$serverId}"
-                    : "Failed to disconnect {$username}",
+            
+            $result = $controller->disconnect($request, $server);
+            $data = $result->getData(true);
+            
+            $this->dispatch('notify', [
+                'type'    => ($data['ok'] ?? false) ? 'success' : 'error',
+                'message' => $data['message'] ?? "Attempted to disconnect {$username}",
             ]);
         } catch (\Throwable $e) {
-            $this->dispatchBrowserEvent('notify', [
+            $this->dispatch('notify', [
                 'type'    => 'error',
                 'message' => "Error disconnecting {$username}: " . $e->getMessage(),
             ]);
         }
-
-        // Livewire will re-render after action
     }
 
     /* ------------------------------- Render ------------------------------ */
