@@ -217,20 +217,27 @@ class VpnPollServer extends Command
     }
 
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $clients): void
-    {
-        try {
-            Http::withToken(config('services.panel.token'))
-                ->acceptJson()
-                ->timeout(3)
-                ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
-                    'status' => 'mgmt',
-                    'ts'     => $ts->format(DATE_ATOM),
-                    'users'  => $clients,
-                ])
-                ->throw();
-
-        } catch (\Throwable $e) {
-            Log::channel('vpn')->error("Push snapshot failed for server {$serverId}: {$e->getMessage()}");
-        }
+{
+    // CRITICAL: never send an authoritative mgmt snapshot with 0 clients.
+    // That will wipe the dashboard (authoritative replace).
+    if (count($clients) === 0) {
+        $this->line("server {$serverId}: clients=0 -> SKIP (prevent wipe)");
+        return;
     }
+
+    try {
+        Http::withToken(config('services.panel.token'))
+            ->acceptJson()
+            ->timeout(3)
+            ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
+                'status' => 'mgmt',
+                'ts'     => $ts->format(DATE_ATOM),
+                'users'  => $clients,
+            ])
+            ->throw();
+
+    } catch (\Throwable $e) {
+        Log::channel('vpn')->error("Push snapshot failed for server {$serverId}: {$e->getMessage()}");
+    }
+}
 }
