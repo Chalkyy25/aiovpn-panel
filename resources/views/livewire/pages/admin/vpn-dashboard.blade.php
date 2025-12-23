@@ -269,7 +269,6 @@
 
 </div>
 
-{{-- KEEP YOUR EXISTING SCRIPT EXACTLY AS-IS --}}
 <script>
   const vpnDisconnectFallbackPattern =
     @json(route('admin.servers.disconnect', ['server' => '__SID__']));
@@ -394,7 +393,6 @@
 
       _subscribePerServer() {
         if (this._subscribed) return;
-
         Object.keys(this.serverMeta).forEach(sid => {
           try {
             window.Echo.private(`servers.${sid}`)
@@ -402,7 +400,6 @@
               .listen('mgmt.update',   e => this.handleEvent(e));
           } catch (_) {}
         });
-
         this._subscribed = true;
       },
 
@@ -416,48 +413,45 @@
         if (protoRaw.startsWith('wire')) return 'WIREGUARD';
         if (protoRaw === 'ovpn' || protoRaw.startsWith('openvpn')) return 'OPENVPN';
         if (protoRaw) return protoRaw.toUpperCase();
-
-        // fallback detection
-        const u = (raw?.username || '').toString();
-        if (/^[A-Za-z0-9+/=]{40,}$/.test(u)) return 'WIREGUARD';
         return 'OPENVPN';
       },
 
       _stableKey(serverId, raw, protocol, username) {
-        const sessionKey = raw?.session_key ?? raw?.sessionKey ?? null;
+        const sk  = raw?.session_key ?? raw?.sessionKey ?? null;
         const cid = raw?.connection_id ?? raw?.id ?? null;
 
-        if (sessionKey) return `sk:${sessionKey}`;
+        if (sk) return `sk:${sk}`;
         if (cid !== null && cid !== undefined) return `cid:${cid}`;
         return `u:${serverId}:${username}:${protocol}`;
       },
 
-       _shapeRow(serverId, raw, prevRow = null) {
+      _shapeRow(serverId, raw, prevRow = null) {
         const meta = this.serverMeta[serverId] || {};
 
         const protocol = this._shapeProtocol(raw);
         const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
 
-        // Keep IDs (needed for stable keys + disconnect)
-        const session_key = raw?.session_key ?? raw?.sessionKey ?? prevRow?.session_key ?? null;
+        const session_key   = raw?.session_key ?? raw?.sessionKey ?? prevRow?.session_key ?? null;
         const connection_id = raw?.connection_id ?? raw?.id ?? prevRow?.connection_id ?? null;
 
-        // ✅ FIX: protocol-aware timestamp
-        let connected_at;
+        // ✅ Golden rule: NEVER overwrite with null.
+        // Prefer proper timestamps if present; otherwise keep prevRow timestamp.
+        let connected_at = prevRow?.connected_at ?? null;
+
         if (protocol === 'WIREGUARD') {
+          // for WG use seen/updated time when available (represents last-seen)
           connected_at =
             raw?.seen_at ??
             raw?.seenAt ??
             raw?.updated_at ??
             raw?.updatedAt ??
-            prevRow?.connected_at ??
-            null;
+            connected_at;
         } else {
+          // for OpenVPN use real connected_at
           connected_at =
             raw?.connected_at ??
             raw?.connectedAt ??
-            prevRow?.connected_at ??
-            null;
+            connected_at;
         }
 
         const bytes_in  = Number(raw?.bytes_in  ?? raw?.bytesIn  ?? raw?.bytes_received ?? prevRow?.bytes_in  ?? 0);
@@ -468,7 +462,6 @@
         return {
           __key,
 
-          // keep these for actions + merging
           session_key,
           connection_id,
 
@@ -476,9 +469,10 @@
           server_name: meta.name || raw?.server_name || `Server ${serverId}`,
 
           username,
+          protocol,
+
           client_ip:  raw?.client_ip  ?? prevRow?.client_ip  ?? null,
           virtual_ip: raw?.virtual_ip ?? prevRow?.virtual_ip ?? null,
-          protocol,
 
           connected_at,
           connected_human: ago(connected_at),
@@ -496,14 +490,14 @@
         const arr = Array.isArray(list) ? list : [];
         const nextMap = {};
 
-        // Build lookup indexes for old rows
+        // index prev rows so we can merge properly
         const prevBySession = new Map();
         const prevByConnId  = new Map();
         const prevByUserProto = new Map();
 
         Object.values(prevMap).forEach(r => {
-          if (r.session_key) prevBySession.set(r.session_key, r);
-          if (r.connection_id !== null && r.connection_id !== undefined) prevByConnId.set(String(r.connection_id), r);
+          if (r?.session_key) prevBySession.set(String(r.session_key), r);
+          if (r?.connection_id !== null && r?.connection_id !== undefined) prevByConnId.set(String(r.connection_id), r);
           prevByUserProto.set(`${r.username}|${r.protocol}`, r);
         });
 
@@ -512,11 +506,11 @@
           const protocol = this._shapeProtocol(raw);
           const username = String(raw?.username ?? raw?.cn ?? 'unknown');
 
-          const sk = raw?.session_key ?? raw?.sessionKey ?? null;
+          const sk  = raw?.session_key ?? raw?.sessionKey ?? null;
           const cid = raw?.connection_id ?? raw?.id ?? null;
 
           const prevRow =
-            (sk && prevBySession.get(sk)) ||
+            (sk  && prevBySession.get(String(sk))) ||
             (cid !== null && cid !== undefined && prevByConnId.get(String(cid))) ||
             prevByUserProto.get(`${username}|${protocol}`) ||
             null;
@@ -598,7 +592,6 @@
             'Content-Type': 'application/json',
           };
 
-          // Prefer connection_id (OpenVPN management kill). For WG you probably want session_key/public_key
           let res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
             method: 'POST',
             headers: baseHeaders,
