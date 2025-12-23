@@ -9,6 +9,7 @@ use App\Models\VpnUser;
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
 use App\Http\Controllers\Api\DeployEventController;
+use App\Http\Controllers\Api\WireGuardEventController;
 
 // Mobile client
 use App\Http\Controllers\MobileAuthController;
@@ -50,6 +51,10 @@ Route::middleware('auth.panel-token')->group(function () {
     // Unified realtime event ingestion (preferred)
     Route::post('/servers/{server}/events', [DeployEventController::class, 'store'])
         ->name('api.servers.events.store');
+
+    // WireGuard-specific event ingestion
+    Route::post('/servers/{server}/wireguard-events', [WireGuardEventController::class, 'store'])
+        ->name('api.servers.wireguard-events.store');
 
     // Legacy mgmt feeds (optional)
     Route::post('/servers/{server}/mgmt/push',     [DeployApiController::class, 'pushMgmt']);
