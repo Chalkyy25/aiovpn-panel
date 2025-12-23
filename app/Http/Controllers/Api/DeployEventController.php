@@ -16,13 +16,18 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * OpenVPN Event Controller
- * 
- * Handles real-time connection events from OpenVPN servers.
- * For WireGuard events, see WireGuardEventController.
+ *
+ * Single responsibility:
+ * - Ingest OpenVPN mgmt snapshots
+ * - Upsert OPENVPN connections only
+ * - Disconnect missing OPENVPN sessions only (grace window)
+ *
+ * Never reads/writes WireGuard rows.
  */
 class DeployEventController extends Controller
 {
-    private const OFFLINE_GRACE = 300; // seconds
+    /** seconds */
+    private const OFFLINE_GRACE = 300;
 
     public function store(Request $request, VpnServer $server): JsonResponse
     {
@@ -46,7 +51,7 @@ class DeployEventController extends Controller
         $incoming = $this->normalizeIncoming($data);
 
         Log::channel('vpn')->debug(sprintf(
-            'MGMT EVENT server=%d ts=%s incoming=%d [%s]',
+            'OVPN MGMT EVENT server=%d ts=%s incoming=%d [%s]',
             $server->id,
             $ts,
             count($incoming),
@@ -54,47 +59,43 @@ class DeployEventController extends Controller
         ));
 
         DB::transaction(function () use ($server, $incoming, $now) {
+            // Map usernames -> vpn_user_id (only those in payload)
+            $idByName = $this->buildUserMap($incoming);
 
-            [$idByOvpnName] = $this->buildUserMaps($incoming);
-
-            $touchedKeys = [];
+            $touched = [];
 
             foreach ($incoming as $c) {
-                $username = trim((string)($c['username'] ?? ''));
-                $clientId = isset($c['client_id']) ? (int)$c['client_id'] : null;
-                $mgmtPort = isset($c['mgmt_port']) ? (int)$c['mgmt_port'] : null;
+                $username = trim((string) ($c['username'] ?? ''));
+                $clientId = array_key_exists('client_id', $c) ? (int) $c['client_id'] : null;
+                $mgmtPort = array_key_exists('mgmt_port', $c) ? (int) $c['mgmt_port'] : null;
 
-                // Resolve user id
-                if (!$username || !isset($idByOvpnName[$username])) {
-                    Log::channel('vpn')->notice("MGMT: unknown OPENVPN user='{$username}' server={$server->id}");
+                if ($username === '' || !isset($idByName[$username])) {
+                    Log::channel('vpn')->notice("OVPN MGMT: unknown user='{$username}' server={$server->id}");
                     continue;
                 }
 
-                $uid = (int) $idByOvpnName[$username];
-
-                // Build session key
+                // OpenVPN must have an identity; without client_id we cannot form a stable session key.
                 $sessionKey = $this->sessionKey($username, $clientId, $mgmtPort);
                 if (!$sessionKey) {
-                    Log::channel('vpn')->notice("MGMT: missing session identity user='{$username}' server={$server->id}");
+                    Log::channel('vpn')->notice("OVPN MGMT: missing identity user='{$username}' server={$server->id}");
                     continue;
                 }
 
-                $touchedKeys[] = $sessionKey;
+                $uid = (int) $idByName[$username];
+                $touched[] = $sessionKey;
 
-                // Upsert connection record
+                // Upsert OPENVPN connection row
                 $row = VpnUserConnection::firstOrNew([
                     'vpn_server_id' => $server->id,
                     'session_key'   => $sessionKey,
                 ]);
-                
+
                 $isNew = !$row->exists;
-                
-                // Parse incoming connected_at
-                $incomingConnectedAt = !empty($c['connected_at']) 
-                    ? $this->parseTime($c['connected_at']) 
+
+                $incomingConnectedAt = !empty($c['connected_at'])
+                    ? $this->parseTime($c['connected_at'])
                     : null;
-                
-                // Fill fields
+
                 $row->fill([
                     'vpn_user_id'     => $uid,
                     'protocol'        => 'OPENVPN',
@@ -102,48 +103,62 @@ class DeployEventController extends Controller
                     'mgmt_port'       => $mgmtPort ?: 7505,
                     'is_connected'    => true,
                     'disconnected_at' => null,
+
                     'client_ip'       => $c['client_ip'] ?? $row->client_ip,
                     'virtual_ip'      => $c['virtual_ip'] ?? $row->virtual_ip,
-                    'bytes_received'  => array_key_exists('bytes_in', $c) ? (int)$c['bytes_in'] : (int)($row->bytes_received ?? 0),
-                    'bytes_sent'      => array_key_exists('bytes_out', $c) ? (int)$c['bytes_out'] : (int)($row->bytes_sent ?? 0),
+
+                    'bytes_received'  => array_key_exists('bytes_in', $c)
+                        ? (int) $c['bytes_in']
+                        : (int) ($row->bytes_received ?? 0),
+
+                    'bytes_sent'      => array_key_exists('bytes_out', $c)
+                        ? (int) $c['bytes_out']
+                        : (int) ($row->bytes_sent ?? 0),
+
+                    // mgmt snapshot implies "seen now"
                     'seen_at'         => $now,
                 ]);
-                
-                // Set connected_at
+
                 if ($incomingConnectedAt) {
                     $row->connected_at = $incomingConnectedAt;
                 } elseif ($isNew || !$row->connected_at) {
                     $row->connected_at = $now;
                 }
-                
+
                 $row->save();
-            
-                // Update user status
+
+                // Update user status (OPENVPN)
                 $userUpdate = [
                     'is_online' => true,
                     'last_ip'   => $row->client_ip,
                 ];
+
                 if (Schema::hasColumn('vpn_users', 'last_protocol')) {
                     $userUpdate['last_protocol'] = 'OPENVPN';
                 }
+
                 VpnUser::whereKey($uid)->update($userUpdate);
             }
 
-            // mark missing sessions offline (grace window)
-            $this->disconnectMissing($server->id, $touchedKeys, $now);
+            // Disconnect missing OPENVPN sessions only
+            $this->disconnectMissingOpenVpn($server->id, $touched, $now);
 
-            // server aggregates (guard columns)
-            $liveKnown = VpnUserConnection::where('vpn_server_id', $server->id)
+            // Aggregates (OPTIONAL: if you want total across protocols, don’t filter here)
+            $liveOpenVpn = VpnUserConnection::where('vpn_server_id', $server->id)
+                ->where('protocol', 'OPENVPN')
                 ->where('is_connected', true)
                 ->count();
 
             $serverUpdate = [];
-            if (Schema::hasColumn('vpn_servers', 'online_users')) $serverUpdate['online_users'] = $liveKnown;
+            if (Schema::hasColumn('vpn_servers', 'online_users')) $serverUpdate['online_users'] = $liveOpenVpn;
             if (Schema::hasColumn('vpn_servers', 'last_sync_at')) $serverUpdate['last_sync_at'] = $now;
-            if ($serverUpdate) $server->forceFill($serverUpdate)->saveQuietly();
+
+            if ($serverUpdate) {
+                $server->forceFill($serverUpdate)->saveQuietly();
+            }
         });
 
-        $enriched = $this->enrich($server);
+        $enriched = $this->enrichOpenVpn($server);
 
         event(new ServerMgmtEvent(
             $server->id,
@@ -161,30 +176,33 @@ class DeployEventController extends Controller
         ]);
     }
 
+    /**
+     * Normalize payload into a stable internal array.
+     */
     private function normalizeIncoming(array $data): array
     {
         $out = [];
 
         if (!empty($data['users']) && is_array($data['users'])) {
             foreach ($data['users'] as $u) {
-                $u = is_string($u) ? ['username' => $u] : (array)$u;
+                $u = is_string($u) ? ['username' => $u] : (array) $u;
 
-                $username = (string)($u['username'] ?? $u['cn'] ?? $u['CommonName'] ?? 'unknown');
+                $username = (string) ($u['username'] ?? $u['cn'] ?? $u['CommonName'] ?? 'unknown');
 
                 $out[] = [
                     'proto'        => 'openvpn',
                     'username'     => $username,
-                    'client_id'    => isset($u['client_id']) ? (int)$u['client_id'] : null,
-                    'mgmt_port'    => isset($u['mgmt_port']) ? (int)$u['mgmt_port'] : null,
+                    'client_id'    => isset($u['client_id']) ? (int) $u['client_id'] : null,
+                    'mgmt_port'    => isset($u['mgmt_port']) ? (int) $u['mgmt_port'] : null,
                     'client_ip'    => $this->stripPort($u['client_ip'] ?? $u['RealAddress'] ?? null),
                     'virtual_ip'   => $this->stripCidr($u['virtual_ip'] ?? $u['VirtualAddress'] ?? null),
                     'connected_at' => $u['connected_at'] ?? $u['ConnectedSince'] ?? null,
-                    'bytes_in'     => (int)($u['bytes_in'] ?? $u['BytesReceived'] ?? 0),
-                    'bytes_out'    => (int)($u['bytes_out'] ?? $u['BytesSent'] ?? 0),
+                    'bytes_in'     => (int) ($u['bytes_in'] ?? $u['BytesReceived'] ?? 0),
+                    'bytes_out'    => (int) ($u['bytes_out'] ?? $u['BytesSent'] ?? 0),
                 ];
             }
         } elseif (!empty($data['cn_list'])) {
-            foreach (explode(',', (string)$data['cn_list']) as $name) {
+            foreach (explode(',', (string) $data['cn_list']) as $name) {
                 $name = trim($name);
                 if ($name !== '') {
                     $out[] = ['proto' => 'openvpn', 'username' => $name, 'client_id' => -1];
@@ -192,51 +210,49 @@ class DeployEventController extends Controller
             }
         }
 
-        // dedupe and validate
+        // Dedupe + validate
         $seen = [];
         return array_values(array_filter($out, function ($r) use (&$seen) {
-            $name = trim((string)($r['username'] ?? ''));
+            $name = trim((string) ($r['username'] ?? ''));
 
             if ($name === '' || strcasecmp($name, 'unknown') === 0 || strcasecmp($name, 'UNDEF') === 0) {
                 return false;
             }
 
+            // allow only simple usernames
             if (!preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name)) return false;
-            
-            $k = "ovpn|{$name}|" . ($r['client_id'] ?? 'nocid');
 
+            $k = "ovpn|{$name}|" . ($r['client_id'] ?? 'nocid');
             if (isset($seen[$k])) return false;
+
             $seen[$k] = true;
             return true;
         }));
     }
 
-    private function buildUserMaps(array $incoming): array
+    private function buildUserMap(array $incoming): array
     {
-        $ovpnNames = array_values(array_unique(array_filter(
-            array_column($incoming, 'username')
-        )));
+        $names = array_values(array_unique(array_filter(array_column($incoming, 'username'))));
 
-        $idByOvpnName = $ovpnNames
-            ? VpnUser::whereIn('username', $ovpnNames)->pluck('id', 'username')->all()
+        return $names
+            ? VpnUser::whereIn('username', $names)->pluck('id', 'username')->all()
             : [];
-
-        return [$idByOvpnName];
     }
 
     private function sessionKey(string $username, ?int $clientId, ?int $mgmtPort): ?string
     {
-        // OpenVPN needs a client_id (from status parser)
         if ($clientId === null) return null;
         $mp = $mgmtPort ?: 7505;
         return "ovpn:{$mp}:{$clientId}:{$username}";
     }
 
-    private function disconnectMissing(int $serverId, array $touchedSessionKeys, Carbon $now): void
+    /**
+     * CRITICAL: disconnect OPENVPN only. Never touch WireGuard rows.
+     */
+    private function disconnectMissingOpenVpn(int $serverId, array $touchedSessionKeys, Carbon $now): void
     {
         $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
 
-        // Disconnect OpenVPN sessions not in current payload (with grace period)
         $q = VpnUserConnection::where('vpn_server_id', $serverId)
             ->where('protocol', 'OPENVPN')
             ->where('is_connected', true);
@@ -246,7 +262,10 @@ class DeployEventController extends Controller
         }
 
         foreach ($q->get() as $row) {
-            if ($row->updated_at && $row->updated_at->gt($graceAgo)) continue;
+            // Only disconnect if it's been missing long enough
+            if ($row->updated_at && $row->updated_at->gt($graceAgo)) {
+                continue;
+            }
 
             $row->update([
                 'is_connected'     => false,
@@ -258,20 +277,18 @@ class DeployEventController extends Controller
         }
     }
 
-
-
     private function parseTime($value): ?Carbon
     {
         if ($value === null || $value === '') return null;
 
         try {
             if (is_numeric($value)) {
-                $n = (int)$value;
+                $n = (int) $value;
                 if ($n > 2_000_000_000_000) return Carbon::createFromTimestampMs($n);
                 if ($n > 946_684_800) return Carbon::createFromTimestamp($n);
                 return now()->subSeconds($n);
             }
-            return Carbon::parse((string)$value);
+            return Carbon::parse((string) $value);
         } catch (\Throwable) {
             return null;
         }
@@ -289,7 +306,10 @@ class DeployEventController extends Controller
         return str_contains($ip, '/') ? explode('/', $ip, 2)[0] : $ip;
     }
 
-    private function enrich(VpnServer $server): array
+    /**
+     * Broadcast OPENVPN-only snapshot.
+     */
+    private function enrichOpenVpn(VpnServer $server): array
     {
         $hasSeenAt = Schema::hasColumn('vpn_user_connections', 'seen_at');
 
@@ -304,11 +324,11 @@ class DeployEventController extends Controller
                 'client_ip'     => $r->client_ip,
                 'virtual_ip'    => $r->virtual_ip,
                 'connected_at'  => optional($r->connected_at)?->toIso8601String(),
-                'seen_at'       => $hasSeenAt 
+                'seen_at'       => $hasSeenAt
                     ? optional($r->seen_at)?->toIso8601String()
                     : optional($r->updated_at)?->toIso8601String(),
-                'bytes_in'      => (int)$r->bytes_received,
-                'bytes_out'     => (int)$r->bytes_sent,
+                'bytes_in'      => (int) $r->bytes_received,
+                'bytes_out'     => (int) $r->bytes_sent,
                 'server_name'   => $server->name,
                 'protocol'      => 'OPENVPN',
                 'session_key'   => $r->session_key,
