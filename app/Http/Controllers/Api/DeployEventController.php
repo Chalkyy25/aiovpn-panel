@@ -95,33 +95,58 @@ class DeployEventController extends Controller
                 $connectedAt = !empty($c['connected_at']) ? $this->parseTime($c['connected_at']) : null;
 
                 // ✅ Upsert by server + session_key (matches your UNIQUE(vpn_server_id, session_key))
+                // ✅ Upsert by server + session_key (matches UNIQUE(vpn_server_id, session_key))
                 $row = VpnUserConnection::firstOrNew([
-    'vpn_server_id' => $server->id,
-    'session_key'   => $sessionKey,
-]);
-
-$isNew = !$row->exists;
-
-$row->fill([
-    'vpn_user_id'     => $uid,
-    'protocol'        => $proto,
-    'public_key'      => $proto === 'WIREGUARD' ? $publicKey : null,
-    'client_id'       => $proto === 'OPENVPN' ? $clientId : null,
-    'mgmt_port'       => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
-    'is_connected'    => true,
-    'disconnected_at' => null,
-    'client_ip'       => $c['client_ip'] ?? null,
-    'virtual_ip'      => $c['virtual_ip'] ?? null,
-    'bytes_received'  => (int) ($c['bytes_in'] ?? 0),
-    'bytes_sent'      => (int) ($c['bytes_out'] ?? 0),
-]);
-
-// ✅ IMPORTANT: only set connected_at ONCE per session
-if ($isNew && !$row->connected_at) {
-    $row->connected_at = $connectedAt ?? $now;
-}
-
-$row->save();
+                    'vpn_server_id' => $server->id,
+                    'session_key'   => $sessionKey,
+                ]);
+                
+                $isNew = !$row->exists;
+                
+                // Parse incoming "connected_at" if present
+                $incomingConnectedAt = !empty($c['connected_at'])
+                    ? $this->parseTime($c['connected_at'])
+                    : null;
+                
+                // ✅ Always bump "seen_at" on every mgmt push (this stops UI flicker)
+                $row->fill([
+                    'vpn_user_id'     => $uid,
+                    'protocol'        => $proto,
+                    'public_key'      => $proto === 'WIREGUARD' ? $publicKey : null,
+                    'client_id'       => $proto === 'OPENVPN' ? $clientId : null,
+                    'mgmt_port'       => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
+                
+                    'is_connected'    => true,
+                    'disconnected_at' => null,
+                
+                    // preserve if missing
+                    'client_ip'       => $c['client_ip'] ?? $row->client_ip,
+                    'virtual_ip'      => $c['virtual_ip'] ?? $row->virtual_ip,
+                
+                    // preserve if missing
+                    'bytes_received'  => array_key_exists('bytes_in', $c)  ? (int)$c['bytes_in']  : (int)($row->bytes_received ?? 0),
+                    'bytes_sent'      => array_key_exists('bytes_out', $c) ? (int)$c['bytes_out'] : (int)($row->bytes_sent ?? 0),
+                
+                    // 🔥 add this column (migration below)
+                    'seen_at'         => $now,
+                ]);
+                
+                // ✅ connected_at rules
+                if ($proto === 'OPENVPN') {
+                    // If mgmt gave a real connected time, use it.
+                    if ($incomingConnectedAt) {
+                        $row->connected_at = $incomingConnectedAt;
+                    } elseif (!$row->connected_at) {
+                        $row->connected_at = $now;
+                    }
+                } else { // WIREGUARD
+                    // WireGuard doesn't have a true session-start; set once only.
+                    if ($isNew && !$row->connected_at) {
+                        $row->connected_at = $now;
+                    }
+                }
+                
+                $row->save();
             
                 // user summary
                 $userUpdate = [
