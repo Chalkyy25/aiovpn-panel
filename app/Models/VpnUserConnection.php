@@ -20,6 +20,7 @@ class VpnUserConnection extends Model
     protected $casts = [
         'is_connected'     => 'boolean',
         'connected_at'     => 'datetime',
+        'seen_at'          => 'datetime',
         'disconnected_at'  => 'datetime',
         'session_duration' => 'integer',
         'bytes_received'   => 'integer',

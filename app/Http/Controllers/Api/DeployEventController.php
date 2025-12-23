@@ -169,7 +169,7 @@ class DeployEventController extends Controller
 
             $serverUpdate = [];
             if (Schema::hasColumn('vpn_servers', 'online_users')) $serverUpdate['online_users'] = $liveKnown;
-            if (Schema::hasColumn('vpn_servers', 'last_mgmt_at')) $serverUpdate['last_mgmt_at'] = $now;
+            if (Schema::hasColumn('vpn_servers', 'last_sync_at')) $serverUpdate['last_sync_at'] = $now;
             if ($serverUpdate) $server->forceFill($serverUpdate)->saveQuietly();
         });
 
@@ -356,6 +356,8 @@ class DeployEventController extends Controller
 
     private function enrich(VpnServer $server): array
 {
+    $hasSeenAt = Schema::hasColumn('vpn_user_connections', 'seen_at');
+
     return VpnUserConnection::with('vpnUser:id,username')
         ->where('vpn_server_id', $server->id)
         ->where('is_connected', true)
@@ -366,7 +368,9 @@ class DeployEventController extends Controller
             'client_ip'     => $r->client_ip,
             'virtual_ip'    => $r->virtual_ip,
             'connected_at'  => optional($r->connected_at)?->toIso8601String(),
-            'seen_at'       => optional($r->updated_at)?->toIso8601String(), // ✅ add this
+            'seen_at'       => $hasSeenAt 
+                ? optional($r->seen_at)?->toIso8601String()
+                : optional($r->updated_at)?->toIso8601String(),
             'bytes_in'      => (int)$r->bytes_received,
             'bytes_out'     => (int)$r->bytes_sent,
             'server_name'   => $server->name,

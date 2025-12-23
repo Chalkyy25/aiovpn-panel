@@ -13,22 +13,8 @@
   x-data="vpnDashboard(@this)"
   x-init="
     init(
-      @js($servers->mapWithKeys(fn($s)=>[$s->id=>['id'=>$s->id,'name'=>$s->name]])),
-      @js(
-        $activeConnections->groupBy('vpn_server_id')->map(
-          fn($g)=>$g->map(fn($c)=>[
-            'connection_id'=>$c->id,
-            'username'=>optional($c->vpnUser)->username ?? 'unknown',
-            'client_ip'=>$c->client_ip,
-            'virtual_ip'=>$c->virtual_ip,
-            'protocol'=>$c->protocol ?? null,
-            'connected_at'=>optional($c->connected_at)?->toIso8601String(),
-            'bytes_in'=>(int) $c->bytes_received,
-            'bytes_out'=>(int) $c->bytes_sent,
-            'server_name'=>optional($c->vpnServer)->name,
-          ])->values()
-        )->toArray()
-      )
+      @js($serverMeta),
+      @js($seedUsersByServer)
     )
   "
   class="space-y-6"

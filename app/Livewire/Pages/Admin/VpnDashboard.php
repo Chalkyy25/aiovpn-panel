@@ -185,20 +185,26 @@ class VpnDashboard extends Component
         }
 
         $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
+        $hasSeenAt = Schema::hasColumn('vpn_user_connections', 'seen_at');
 
         $select = [
             'id',
             'vpn_user_id',
             'vpn_server_id',
+            'session_key',
             'client_ip',
             'virtual_ip',
             'bytes_received',
             'bytes_sent',
             'connected_at',
+            'updated_at',
         ];
         
         if ($hasProtocol) {
             $select[] = 'protocol';
+        }
+        if ($hasSeenAt) {
+            $select[] = 'seen_at';
         }
 
         $rows = VpnUserConnection::query()
@@ -213,18 +219,24 @@ class VpnDashboard extends Component
             $sid   = (string) $r->vpn_server_id;
             $uname = $r->vpnUser?->username ?? 'unknown';
             $at    = $r->connected_at ? Carbon::parse($r->connected_at) : null;
+            $seenAt = ($hasSeenAt && $r->seen_at) ? Carbon::parse($r->seen_at) : ($r->updated_at ? Carbon::parse($r->updated_at) : null);
 
             $usersByServer[$sid] ??= [];
 
             $usersByServer[$sid][] = [
+                'connection_id'   => $r->id,
+                'session_key'     => $r->session_key,
                 'username'        => $uname,
                 'client_ip'       => $r->client_ip,
                 'virtual_ip'      => $r->virtual_ip,
                 'protocol'        => $hasProtocol
                     ? ($r->protocol ?: 'openvpn')
                     : 'openvpn',
+                'connected_at'    => $at?->toIso8601String(),
                 'connected_human' => $at?->diffForHumans(),
-                'connected_fmt'   => $at?->toIso8601String(),
+                'seen_at'         => $seenAt?->toIso8601String(),
+                'bytes_in'        => (int) ($r->bytes_received ?? 0),
+                'bytes_out'       => (int) ($r->bytes_sent ?? 0),
                 'formatted_bytes' => null,
                 'down_mb'         => $r->bytes_received
                     ? round($r->bytes_received / 1048576, 2)

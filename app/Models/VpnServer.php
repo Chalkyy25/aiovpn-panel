@@ -46,6 +46,8 @@ class VpnServer extends Model
         'status',
         'status_log_path',
         'deploy_key_id',
+        'online_users',
+        'last_sync_at',
 
         // Location & metadata
         'location',
@@ -86,6 +88,7 @@ class VpnServer extends Model
         'wg_port'        => 'integer',
         'port'           => 'integer',
         'mgmt_port'      => 'integer',
+        'online_users'   => 'integer',
         'protocol'       => 'string',
         'transport'      => 'string',
         'tags'           => 'array',
