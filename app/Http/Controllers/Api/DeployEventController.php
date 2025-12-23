@@ -97,38 +97,44 @@ class DeployEventController extends Controller
                 // ✅ Upsert by server + session_key (matches your UNIQUE(vpn_server_id, session_key))
                 // ✅ Upsert by server + session_key (matches UNIQUE(vpn_server_id, session_key))
                 $row = VpnUserConnection::firstOrNew([
-                    'vpn_server_id' => $server->id,
-                    'session_key'   => $sessionKey,
+                  'vpn_server_id' => $server->id,
+                  'session_key'   => $sessionKey,
                 ]);
                 
                 $isNew = !$row->exists;
                 
-                // Parse incoming "connected_at" if present
-                $incomingConnectedAt = !empty($c['connected_at'])
-                    ? $this->parseTime($c['connected_at'])
-                    : null;
+                // ✅ capture BEFORE overwriting
+                $prevSeen = $row->seen_at;
+                $prevConnectedAt = $row->connected_at;
+                $prevIsConnected = (bool) $row->is_connected;
+                $prevDisconnectedAt = $row->disconnected_at;
                 
-                // ✅ Always bump "seen_at" on every mgmt push (this stops UI flicker)
+                // Parse incoming
+                $incomingConnectedAt = !empty($c['connected_at']) ? $this->parseTime($c['connected_at']) : null;
+                
+                // ✅ use incoming seen_at if you have it, otherwise now
+                $incomingSeenAt = !empty($c['seen_at']) ? $this->parseTime($c['seen_at']) : $now;
+                if (!$incomingSeenAt) $incomingSeenAt = $now;
+                
+                // fill common fields
                 $row->fill([
-                    'vpn_user_id'     => $uid,
-                    'protocol'        => $proto,
-                    'public_key'      => $proto === 'WIREGUARD' ? $publicKey : null,
-                    'client_id'       => $proto === 'OPENVPN' ? $clientId : null,
-                    'mgmt_port'       => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
+                  'vpn_user_id'     => $uid,
+                  'protocol'        => $proto,
+                  'public_key'      => $proto === 'WIREGUARD' ? $publicKey : null,
+                  'client_id'       => $proto === 'OPENVPN' ? $clientId : null,
+                  'mgmt_port'       => $proto === 'OPENVPN' ? ($mgmtPort ?: 7505) : null,
                 
-                    'is_connected'    => true,
-                    'disconnected_at' => null,
+                  'is_connected'    => true,
+                  'disconnected_at' => null,
                 
-                    // preserve if missing
-                    'client_ip'       => $c['client_ip'] ?? $row->client_ip,
-                    'virtual_ip'      => $c['virtual_ip'] ?? $row->virtual_ip,
+                  'client_ip'       => $c['client_ip'] ?? $row->client_ip,
+                  'virtual_ip'      => $c['virtual_ip'] ?? $row->virtual_ip,
                 
-                    // preserve if missing
-                    'bytes_received'  => array_key_exists('bytes_in', $c)  ? (int)$c['bytes_in']  : (int)($row->bytes_received ?? 0),
-                    'bytes_sent'      => array_key_exists('bytes_out', $c) ? (int)$c['bytes_out'] : (int)($row->bytes_sent ?? 0),
+                  'bytes_received'  => array_key_exists('bytes_in', $c)  ? (int)$c['bytes_in']  : (int)($row->bytes_received ?? 0),
+                  'bytes_sent'      => array_key_exists('bytes_out', $c) ? (int)$c['bytes_out'] : (int)($row->bytes_sent ?? 0),
                 
-                    // 🔥 add this column (migration below)
-                    'seen_at'         => $now,
+                  // ✅ set seen_at at the end from incomingSeenAt
+                  'seen_at'         => $incomingSeenAt,
                 ]);
                 
                 // ✅ connected_at rules
