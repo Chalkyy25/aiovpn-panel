@@ -136,12 +136,12 @@ class DeployEventController extends Controller
                     // If mgmt gave a real connected time, use it.
                     if ($incomingConnectedAt) {
                         $row->connected_at = $incomingConnectedAt;
-                    } elseif (!$row->connected_at) {
+                    } elseif ($isNew || !$row->connected_at) {
                         $row->connected_at = $now;
                     }
                 } else { // WIREGUARD
-                    // WireGuard doesn't have a true session-start; set once only.
-                    if ($isNew && !$row->connected_at) {
+                    // WireGuard: set on first creation, or if reconnecting from disconnected state
+                    if ($isNew || !$row->connected_at) {
                         $row->connected_at = $now;
                     }
                 }
