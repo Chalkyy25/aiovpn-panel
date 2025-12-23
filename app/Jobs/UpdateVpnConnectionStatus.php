@@ -230,20 +230,27 @@ class UpdateVpnConnectionStatus implements ShouldQueue
     /* ===================== PUSH ===================== */
 
     protected function pushSnapshot(int $serverId, \DateTimeInterface $ts, array $clients): void
-    {
-        try {
-            Http::withToken(config('services.panel.token'))
-                ->acceptJson()
-                ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
-                    'status' => 'mgmt',
-                    'ts'     => $ts->format(DATE_ATOM),
-                    'users'  => $clients,
-                ])
-                ->throw();
-
-            Log::channel('vpn')->debug("[pushSnapshot] #{$serverId} sent " . count($clients) . " clients");
-        } catch (\Throwable $e) {
-            Log::channel('vpn')->error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
-        }
+{
+    // CRITICAL: never send an authoritative mgmt snapshot with 0 clients.
+    // That will wipe the dashboard (authoritative replace).
+    if (count($clients) === 0) {
+        Log::channel('vpn')->debug("[pushSnapshot] #{$serverId} clients=0 -> SKIP (prevent wipe)");
+        return;
     }
+
+    try {
+        Http::withToken(config('services.panel.token'))
+            ->acceptJson()
+            ->post(config('services.panel.base') . "/api/servers/{$serverId}/events", [
+                'status' => 'mgmt',
+                'ts'     => $ts->format(DATE_ATOM),
+                'users'  => $clients,
+            ])
+            ->throw();
+
+        Log::channel('vpn')->debug("[pushSnapshot] #{$serverId} sent " . count($clients) . " clients");
+    } catch (\Throwable $e) {
+        Log::channel('vpn')->error("❌ Failed to POST /api/servers/{$serverId}/events: {$e->getMessage()}");
+    }
+}
 }
