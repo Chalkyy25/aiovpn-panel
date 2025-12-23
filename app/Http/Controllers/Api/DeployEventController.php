@@ -140,10 +140,24 @@ class DeployEventController extends Controller
                         $row->connected_at = $now;
                     }
                 } else { // WIREGUARD
-                    // WireGuard: set on first creation, or if reconnecting from disconnected state
-                    if ($isNew || !$row->connected_at) {
+                    // ✅ WireGuard: detect stale sessions and start fresh
+                    $staleMinutes = 3;
+                    $prevSeen = $row->seen_at;
+                    $wasStale = $prevSeen && $prevSeen->lt($now->copy()->subMinutes($staleMinutes));
+                    
+                    // Start a NEW session if:
+                    // - Never had connected_at, OR
+                    // - Was stale (not seen in 3+ minutes), OR
+                    // - Was marked disconnected
+                    if (
+                        !$row->connected_at ||
+                        $wasStale ||
+                        !$row->is_connected ||
+                        $row->disconnected_at
+                    ) {
                         $row->connected_at = $now;
                     }
+                    // Otherwise preserve existing connected_at
                 }
                 
                 $row->save();
@@ -297,6 +311,7 @@ class DeployEventController extends Controller
     {
         $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
 
+        // ✅ Disconnect sessions not in current payload (grace period for OpenVPN)
         $q = VpnUserConnection::where('vpn_server_id', $serverId)
             ->where('is_connected', true);
 
@@ -315,6 +330,27 @@ class DeployEventController extends Controller
 
             VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
         }
+
+        // ✅ Additional cleanup for stale WireGuard connections (based on seen_at)
+        $cutoff = $now->copy()->subMinutes(3);
+        
+        VpnUserConnection::where('protocol', 'WIREGUARD')
+            ->where('vpn_server_id', $serverId)
+            ->where('is_connected', true)
+            ->where(function($q) use ($cutoff) {
+                $q->whereNull('seen_at')
+                  ->orWhere('seen_at', '<', $cutoff);
+            })
+            ->get()
+            ->each(function ($row) use ($now) {
+                $row->update([
+                    'is_connected'     => false,
+                    'disconnected_at'  => $now,
+                    'session_duration' => $row->connected_at ? $now->diffInSeconds($row->connected_at) : null,
+                ]);
+                
+                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
+            });
     }
 
     private function proto(?string $v): string
