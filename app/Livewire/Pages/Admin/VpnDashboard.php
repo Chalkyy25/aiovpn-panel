@@ -227,11 +227,6 @@ class VpnDashboard extends Component
             $at    = $r->connected_at ? Carbon::parse($r->connected_at) : null;
             $seenAt = ($hasSeenAt && $r->seen_at) ? Carbon::parse($r->seen_at) : ($r->updated_at ? Carbon::parse($r->updated_at) : null);
 
-            // Debug: log if connected_at is old
-            if ($at && $at->lt(now()->subHours(1))) {
-                \Log::channel('vpn')->warning("Old connected_at for {$uname}: " . $at->toIso8601String() . " (seen: " . ($seenAt?->toIso8601String() ?? 'null') . ")");
-            }
-
             $usersByServer[$sid] ??= [];
 
             $usersByServer[$sid][] = [
