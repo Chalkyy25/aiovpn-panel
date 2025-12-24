@@ -309,16 +309,19 @@ class DeployEventController extends Controller
     /**
      * Broadcast OPENVPN-only snapshot.
      */
-    private function enrichOpenVpn(VpnServer $server): array
-    {
-        $hasSeenAt = Schema::hasColumn('vpn_user_connections', 'seen_at');
+    private function enrich(VpnServer $server): array
+{
+    $hasSeenAt = Schema::hasColumn('vpn_user_connections', 'seen_at');
 
-        return VpnUserConnection::with('vpnUser:id,username')
-            ->where('vpn_server_id', $server->id)
-            ->where('protocol', 'OPENVPN')
-            ->where('is_connected', true)
-            ->get()
-            ->map(fn ($r) => [
+    return VpnUserConnection::with('vpnUser:id,username')
+        ->where('vpn_server_id', $server->id)
+        ->where('is_connected', true)
+        ->whereIn('protocol', ['OPENVPN', 'WIREGUARD']) // ✅ critical
+        ->get()
+        ->map(function ($r) use ($server, $hasSeenAt) {
+            $proto = strtoupper((string) $r->protocol);
+
+            return [
                 'connection_id' => $r->id,
                 'username'      => optional($r->vpnUser)->username ?? 'unknown',
                 'client_ip'     => $r->client_ip,
@@ -330,10 +333,14 @@ class DeployEventController extends Controller
                 'bytes_in'      => (int) $r->bytes_received,
                 'bytes_out'     => (int) $r->bytes_sent,
                 'server_name'   => $server->name,
-                'protocol'      => 'OPENVPN',
+                'protocol'      => $proto,
                 'session_key'   => $r->session_key,
                 'client_id'     => $r->client_id,
                 'mgmt_port'     => $r->mgmt_port,
-            ])->values()->all();
-    }
+                'public_key'    => $r->public_key, // ✅ helps WG rows
+            ];
+        })
+        ->values()
+        ->all();
+}
 }
