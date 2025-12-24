@@ -158,7 +158,7 @@ class DeployEventController extends Controller
             }
         });
 
-        $enriched = $this->enrichOpenVpn($server);
+        $enriched = $this->enrich($server); // combined snapshot from DB
 
         event(new ServerMgmtEvent(
             $server->id,
@@ -316,7 +316,7 @@ class DeployEventController extends Controller
     return VpnUserConnection::with('vpnUser:id,username')
         ->where('vpn_server_id', $server->id)
         ->where('is_connected', true)
-        ->whereIn('protocol', ['OPENVPN', 'WIREGUARD']) // ✅ critical
+        ->whereIn('protocol', ['OPENVPN', 'WIREGUARD']) // ✅ combined snapshot
         ->get()
         ->map(function ($r) use ($server, $hasSeenAt) {
             $proto = strtoupper((string) $r->protocol);
@@ -337,10 +337,9 @@ class DeployEventController extends Controller
                 'session_key'   => $r->session_key,
                 'client_id'     => $r->client_id,
                 'mgmt_port'     => $r->mgmt_port,
-                'public_key'    => $r->public_key, // ✅ helps WG rows
+                'public_key'    => $r->public_key,
             ];
         })
         ->values()
         ->all();
-}
 }
