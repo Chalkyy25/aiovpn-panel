@@ -491,7 +491,7 @@ cat >/usr/local/bin/ovpn-mgmt-push.sh <<'AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load and export config for Python
+# Load env
 if [ -f /etc/default/ovpn-status-push ]; then
   set -a
   . /etc/default/ovpn-status-push
@@ -502,25 +502,35 @@ fi
 : "${PANEL_TOKEN:?PANEL_TOKEN missing}"
 : "${SERVER_ID:?SERVER_ID missing}"
 
-post() {
+post_json() {
+  local path="$1"
   curl -fsS -X POST \
     -H "Authorization: Bearer ${PANEL_TOKEN}" \
     -H "Content-Type: application/json" \
     --data-raw "$(cat)" \
-    "${PANEL_URL%/}/api/servers/${SERVER_ID}/events" >/dev/null || true
+    "${PANEL_URL%/}${path}" >/dev/null || true
 }
 
-json="$(
-python3 <<'PY'
-import os, sys, csv, json, datetime, subprocess, time
+python3 <<'PY' | while IFS= read -r line; do
+  kind="${line%%|*}"
+  json="${line#*|}"
 
-PANEL_URL    = os.environ["PANEL_URL"]
-PANEL_TOKEN  = os.environ["PANEL_TOKEN"]
-SERVER_ID    = os.environ["SERVER_ID"]
-MGMT_PORT    = os.environ.get("MGMT_PORT", "7505")
-MGMT_TCP_PORT= os.environ.get("MGMT_TCP_PORT", "7506")
+  [ -n "${json:-}" ] || continue
+  [ "${json}" != "${line}" ] || continue
 
-def parse_ovpn_status(txt, proto_hint=None):
+  if [ "$kind" = "OVPN" ]; then
+    printf '%s\n' "$json" | post_json "/api/servers/${SERVER_ID}/events"
+  elif [ "$kind" = "WG" ]; then
+    printf '%s\n' "$json" | post_json "/api/servers/${SERVER_ID}/wireguard-events"
+  fi
+done
+PY
+import os, csv, json, datetime, subprocess, time
+
+MGMT_PORT     = os.environ.get("MGMT_PORT", "7505")
+MGMT_TCP_PORT = os.environ.get("MGMT_TCP_PORT", "7506")
+
+def parse_ovpn_status(txt, mgmt_port, proto_hint=None):
     clients, virt = {}, {}
     hCL, hRT = {}, {}
 
@@ -549,18 +559,22 @@ def parse_ovpn_status(txt, proto_hint=None):
             real_ip = real.split(":")[0] if real else None
 
             def toint(x):
-                try:
-                    return int(x)
-                except Exception:
-                    return 0
+                try: return int(x)
+                except: return 0
 
-            clients[cn] = {
+            client_id = toint(col("Client ID", "0")) or None
+            connected_at = toint(col("Connected Since (time_t)", "0")) or 0
+
+            # KEY: stable identity for OpenVPN
+            clients[(cn, client_id)] = {
                 "username": cn,
                 "client_ip": real_ip,
                 "virtual_ip": None,
-                "bytes_received": toint(col("Bytes Received", "0")),
-                "bytes_sent": toint(col("Bytes Sent", "0")),
-                "connected_at": toint(col("Connected Since (time_t)", "0")),
+                "bytes_in": toint(col("Bytes Received", "0")),
+                "bytes_out": toint(col("Bytes Sent", "0")),
+                "connected_at": connected_at if connected_at > 0 else None,
+                "client_id": client_id,
+                "mgmt_port": int(mgmt_port),
                 "proto": proto_hint or "openvpn",
             }
 
@@ -568,17 +582,16 @@ def parse_ovpn_status(txt, proto_hint=None):
             def col(h, d=""):
                 i = hRT.get(h)
                 return row[i] if i is not None and i < len(row) else d
-            virt[col("Common Name", "")] = col("Virtual Address") or None
+            virt[(col("Common Name", ""), int(col("Client ID","0") or 0) or None)] = col("Virtual Address") or None
 
-    for cn, ip in virt.items():
-        if cn in clients and ip:
-            # strip mask if present
-            clients[cn]["virtual_ip"] = ip.split("/", 1)[0]
+    for (cn, cid), ip in virt.items():
+        if (cn, cid) in clients and ip:
+            clients[(cn, cid)]["virtual_ip"] = ip.split("/", 1)[0]
 
     return list(clients.values())
 
 def collect_ovpn():
-    chunks = []
+    out_clients = []
     for port, hint in ((MGMT_PORT, "openvpn-udp"), (MGMT_TCP_PORT, "openvpn-tcp")):
         try:
             out = subprocess.check_output(
@@ -589,12 +602,8 @@ def collect_ovpn():
             continue
 
         if "CLIENT_LIST" in out:
-            chunks.append((out, hint))
-
-    clients = []
-    for txt, hint in chunks:
-        clients.extend(parse_ovpn_status(txt, proto_hint=hint))
-    return clients
+            out_clients.extend(parse_ovpn_status(out, port, proto_hint=hint))
+    return out_clients
 
 def collect_wg():
     try:
@@ -607,9 +616,6 @@ def collect_wg():
         return []
 
     peers = []
-    now = int(time.time())
-    OFFLINE_IDLE = 300  # 5 minutes of no handshake = offline
-
     for line in lines[1:]:
         parts = line.split("\t")
         if len(parts) < 8:
@@ -622,14 +628,6 @@ def collect_wg():
         except Exception:
             hs = 0
 
-        # must have at least one handshake
-        if hs <= 0:
-            continue
-
-        # drop only if truly idle for a long time
-        if now - hs > OFFLINE_IDLE:
-            continue
-
         client_ip = None
         if endpoint and endpoint != "(none)" and ":" in endpoint:
             client_ip = endpoint.rsplit(":", 1)[0]
@@ -641,49 +639,44 @@ def collect_wg():
                 virt_ip = first.split("/", 1)[0]
 
         def toint(x):
-            try:
-                return int(x)
-            except Exception:
-                return 0
+            try: return int(x)
+            except: return 0
 
+        # IMPORTANT: WG payload is peers[], identity is public_key (NOT username)
         peers.append({
-            "username": pub,
             "public_key": pub,
+            "endpoint": endpoint,
             "client_ip": client_ip,
             "virtual_ip": virt_ip,
-            "bytes_received": toint(rx_raw),
-            "bytes_sent": toint(tx_raw),
-            "connected_at": hs,
+            "handshake": hs,      # epoch seconds (0 if none)
+            "bytes_in": toint(rx_raw),
+            "bytes_out": toint(tx_raw),
             "proto": "wireguard",
         })
 
     return peers
 
-ovpn_clients = collect_ovpn()
-wg_clients   = collect_wg()
-all_clients  = ovpn_clients + wg_clients
+ts = datetime.datetime.utcnow().isoformat() + "Z"
 
-payload = {
+ovpn_users = collect_ovpn()
+wg_peers   = collect_wg()
+
+ovpn_payload = {
     "status": "mgmt",
-    "ts": datetime.datetime.utcnow().isoformat() + "Z",
-    "clients": len(all_clients),
-    "users": all_clients,
+    "ts": ts,
+    "users": ovpn_users,
+    "clients": len(ovpn_users),
 }
 
-print(json.dumps(payload, separators=(",", ":")))
+wg_payload = {
+    "status": "mgmt",
+    "ts": ts,
+    "peers": wg_peers,
+}
+
+print("OVPN|" + json.dumps(ovpn_payload, separators=(",", ":")))
+print("WG|" + json.dumps(wg_payload, separators=(",", ":")))
 PY
-)"
-
-# if python failed or empty, bail quietly
-if [ -z "${json:-}" ]; then
-  exit 0
-fi
-
-# echo for manual debugging if run by hand
-printf '%s\n' "$json"
-
-# send to panel
-printf '%s\n' "$json" | post
 AGENT
 
 chmod 0755 /usr/local/bin/ovpn-mgmt-push.sh
