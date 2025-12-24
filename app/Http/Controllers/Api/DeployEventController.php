@@ -343,3 +343,4 @@ class DeployEventController extends Controller
         ->values()
         ->all();
 }
+}
