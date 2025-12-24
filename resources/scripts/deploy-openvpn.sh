@@ -502,29 +502,19 @@ fi
 : "${PANEL_TOKEN:?PANEL_TOKEN missing}"
 : "${SERVER_ID:?SERVER_ID missing}"
 
+MGMT_PORT="${MGMT_PORT:-7505}"
+MGMT_TCP_PORT="${MGMT_TCP_PORT:-7506}"
+
 post_json() {
   local path="$1"
   curl -fsS -X POST \
     -H "Authorization: Bearer ${PANEL_TOKEN}" \
     -H "Content-Type: application/json" \
-    --data-raw "$(cat)" \
-    "${PANEL_URL%/}${path}" >/dev/null || true
+    --data-binary @- \
+    "${PANEL_URL%/}${path}" >/dev/null
 }
 
-python3 <<'PY' | while IFS= read -r line; do
-  kind="${line%%|*}"
-  json="${line#*|}"
-
-  [ -n "${json:-}" ] || continue
-  [ "${json}" != "${line}" ] || continue
-
-  if [ "$kind" = "OVPN" ]; then
-    printf '%s\n' "$json" | post_json "/api/servers/${SERVER_ID}/events"
-  elif [ "$kind" = "WG" ]; then
-    printf '%s\n' "$json" | post_json "/api/servers/${SERVER_ID}/wireguard-events"
-  fi
-done
-PY
+python3 - <<'PY' | while IFS=$'\t' read -r kind json; do
 import os, csv, json, datetime, subprocess, time
 
 MGMT_PORT     = os.environ.get("MGMT_PORT", "7505")
@@ -560,47 +550,49 @@ def parse_ovpn_status(txt, mgmt_port, proto_hint=None):
 
             def toint(x):
                 try: return int(x)
-                except: return 0
+                except Exception: return 0
 
-            client_id = toint(col("Client ID", "0")) or None
-            connected_at = toint(col("Connected Since (time_t)", "0")) or 0
+            # IMPORTANT: include client_id + mgmt_port so OpenVPN session keys are stable
+            cid = col("Client ID", "")
+            try:
+                cid = int(cid)
+            except Exception:
+                cid = None
 
-            # KEY: stable identity for OpenVPN
-            clients[(cn, client_id)] = {
+            clients[cn] = {
                 "username": cn,
+                "client_id": cid,
+                "mgmt_port": int(mgmt_port),
                 "client_ip": real_ip,
                 "virtual_ip": None,
                 "bytes_in": toint(col("Bytes Received", "0")),
                 "bytes_out": toint(col("Bytes Sent", "0")),
-                "connected_at": connected_at if connected_at > 0 else None,
-                "client_id": client_id,
-                "mgmt_port": int(mgmt_port),
-                "proto": proto_hint or "openvpn",
+                "connected_at": toint(col("Connected Since (time_t)", "0")),
             }
 
         elif tag == "ROUTING_TABLE":
             def col(h, d=""):
                 i = hRT.get(h)
                 return row[i] if i is not None and i < len(row) else d
-            virt[(col("Common Name", ""), int(col("Client ID","0") or 0) or None)] = col("Virtual Address") or None
+            virt[col("Common Name", "")] = col("Virtual Address") or None
 
-    for (cn, cid), ip in virt.items():
-        if (cn, cid) in clients and ip:
-            clients[(cn, cid)]["virtual_ip"] = ip.split("/", 1)[0]
+    for cn, ip in virt.items():
+        if cn in clients and ip:
+            clients[cn]["virtual_ip"] = ip.split("/", 1)[0]
 
-    return list(clients.values())
+    # drop rows with no client_id (your controller refuses them)
+    return [c for c in clients.values() if c.get("client_id") is not None]
 
 def collect_ovpn():
     out_clients = []
-    for port, hint in ((MGMT_PORT, "openvpn-udp"), (MGMT_TCP_PORT, "openvpn-tcp")):
+    for port, hint in ((MGMT_PORT, "udp"), (MGMT_TCP_PORT, "tcp")):
         try:
             out = subprocess.check_output(
                 ["bash", "-lc", f'printf "status 3\\nquit\\n" | nc -w 2 127.0.0.1 {port} || true'],
-                text=True,
+                text=True
             )
         except Exception:
             continue
-
         if "CLIENT_LIST" in out:
             out_clients.extend(parse_ovpn_status(out, port, proto_hint=hint))
     return out_clients
@@ -611,7 +603,7 @@ def collect_wg():
     except Exception:
         return []
 
-    lines = [l.strip() for l in dump.splitlines() if l.strip()]
+    lines = [l for l in dump.splitlines() if l.strip()]
     if len(lines) <= 1:
         return []
 
@@ -621,7 +613,7 @@ def collect_wg():
         if len(parts) < 8:
             continue
 
-        pub, _psk, endpoint, allowed, hs_raw, rx_raw, tx_raw, _keep = parts[:8]
+        pub, _psk, endpoint, allowed, hs_raw, rx_raw, tx_raw, keep = parts[:8]
 
         try:
             hs = int(hs_raw)
@@ -629,54 +621,56 @@ def collect_wg():
             hs = 0
 
         client_ip = None
-        if endpoint and endpoint != "(none)" and ":" in endpoint:
-            client_ip = endpoint.rsplit(":", 1)[0]
+        if endpoint and endpoint != "(none)":
+            client_ip = endpoint.rsplit(":", 1)[0] if ":" in endpoint else endpoint
 
-        virt_ip = None
+        virtual_ip = None
         if allowed and allowed not in ("", "(none)"):
             first = allowed.split(",")[0].strip()
             if first:
-                virt_ip = first.split("/", 1)[0]
+                virtual_ip = first.split("/", 1)[0]
 
         def toint(x):
             try: return int(x)
-            except: return 0
+            except Exception: return 0
 
-        # IMPORTANT: WG payload is peers[], identity is public_key (NOT username)
         peers.append({
             "public_key": pub,
             "endpoint": endpoint,
             "client_ip": client_ip,
-            "virtual_ip": virt_ip,
-            "handshake": hs,      # epoch seconds (0 if none)
+            "virtual_ip": virtual_ip,
+            "handshake": hs,               # epoch seconds
+            "seen_at": None,               # controller will derive from handshake if needed
             "bytes_in": toint(rx_raw),
             "bytes_out": toint(tx_raw),
-            "proto": "wireguard",
+            "keepalive": None if keep in ("off","") else toint(keep),
         })
 
     return peers
 
-ts = datetime.datetime.utcnow().isoformat() + "Z"
+now = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 ovpn_users = collect_ovpn()
 wg_peers   = collect_wg()
 
-ovpn_payload = {
-    "status": "mgmt",
-    "ts": ts,
+print("OVPN\t" + json.dumps({
+    "status":"mgmt",
+    "ts": now,
     "users": ovpn_users,
-    "clients": len(ovpn_users),
-}
+}, separators=(",",":")))
 
-wg_payload = {
-    "status": "mgmt",
-    "ts": ts,
+print("WG\t" + json.dumps({
+    "status":"mgmt",
+    "ts": now,
     "peers": wg_peers,
-}
-
-print("OVPN|" + json.dumps(ovpn_payload, separators=(",", ":")))
-print("WG|" + json.dumps(wg_payload, separators=(",", ":")))
+}, separators=(",",":")))
 PY
+  if [ "$kind" = "OVPN" ]; then
+    printf '%s' "$json" | post_json "/api/servers/${SERVER_ID}/events" || true
+  elif [ "$kind" = "WG" ]; then
+    printf '%s' "$json" | post_json "/api/servers/${SERVER_ID}/wireguard-events" || true
+  fi
+done
 AGENT
 
 chmod 0755 /usr/local/bin/ovpn-mgmt-push.sh
