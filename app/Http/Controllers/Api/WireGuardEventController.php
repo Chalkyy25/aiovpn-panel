@@ -180,7 +180,13 @@ class WireGuardEventController extends Controller
 
         // Broadcast combined snapshot from DB (your dashboard can filter by protocol)
         $enriched = $this->enrich($server);
-
+        
+        Log::channel('vpn')->debug('[wg-events broadcast sample]', [
+            'server_id' => $server->id,
+            'count'     => count($enriched),
+            'top'       => $enriched[0] ?? null,
+        ]);
+        
         event(new ServerMgmtEvent(
             $server->id,
             $ts,
@@ -225,47 +231,54 @@ class WireGuardEventController extends Controller
     }
 
     private function enrich(VpnServer $server): array
-    {
-        $cutoff = now()->subSeconds(self::STALE_SECONDS);
+{
+    $cutoff = now()->subSeconds(self::STALE_SECONDS);
 
-        // Authoritative peers for this server (configured peers)
-        $peers = WireguardPeer::with('vpnUser:id,username')
-            ->where('vpn_server_id', $server->id)
-            ->where('revoked', false)
-            ->orderByDesc('id')
-            ->get(['id', 'vpn_user_id', 'public_key', 'ip_address', 'last_handshake_at', 'transfer_rx_bytes', 'transfer_tx_bytes'])
-            ->unique('public_key');
+    // authoritative peers on this server only
+    $peers = WireguardPeer::with('vpnUser:id,username')
+        ->where('vpn_server_id', $server->id)
+        ->where('revoked', false)
+        ->orderByDesc('id')
+        ->get(['id','vpn_user_id','public_key','ip_address','last_handshake_at','transfer_rx_bytes','transfer_tx_bytes'])
+        ->unique('public_key')
+        ->values();
 
-        // Connection rows keyed by pubkey (this server only)
-        $connByPub = VpnUserConnection::query()
-            ->where('vpn_server_id', $server->id)
-            ->where('protocol', 'WIREGUARD')
-            ->get(['id', 'public_key', 'session_key', 'client_ip', 'virtual_ip', 'connected_at', 'seen_at', 'bytes_received', 'bytes_sent', 'is_connected'])
-            ->keyBy(fn ($r) => (string) $r->public_key);
+    $connByPub = VpnUserConnection::query()
+        ->where('vpn_server_id', $server->id)
+        ->where('protocol', 'WIREGUARD')
+        ->get(['id','public_key','session_key','client_ip','virtual_ip','connected_at','seen_at','bytes_received','bytes_sent','is_connected'])
+        ->keyBy(fn ($r) => (string) $r->public_key);
 
-        return $peers->map(function ($p) use ($server, $connByPub, $cutoff) {
-            $conn = $connByPub[(string) $p->public_key] ?? null;
+    $rows = $peers->map(function ($p) use ($server, $connByPub, $cutoff) {
+        $conn = $connByPub[(string) $p->public_key] ?? null;
 
-            $seenAt = $conn?->seen_at ?? $p->last_handshake_at;
-            $isOnline = $seenAt ? $seenAt->gte($cutoff) : false;
+        $seenAt = $conn?->seen_at ?? $p->last_handshake_at;
+        $isOnline = $seenAt ? $seenAt->gte($cutoff) : false;
 
-            return [
-                'connection_id' => $conn?->id,
-                'username'      => optional($p->vpnUser)->username ?? 'unknown',
-                'client_ip'     => $conn?->client_ip,
-                'virtual_ip'    => $conn?->virtual_ip ?? $p->ip_address,
-                'connected_at'  => optional($conn?->connected_at)?->toIso8601String(),
-                'seen_at'       => optional($seenAt)?->toIso8601String(),
-                'bytes_in'      => (int) ($conn?->bytes_received ?? $p->transfer_rx_bytes),
-                'bytes_out'     => (int) ($conn?->bytes_sent ?? $p->transfer_tx_bytes),
-                'server_name'   => $server->name,
-                'protocol'      => 'WIREGUARD',
-                'session_key'   => $conn?->session_key ?? ("wg:{$server->id}:" . $p->public_key),
-                'public_key'    => $p->public_key,
-                'is_connected'  => $isOnline,
-            ];
-        })->values()->all();
-    }
+        return [
+            'connection_id' => $conn?->id,
+            'username'      => optional($p->vpnUser)->username ?? 'unknown',
+            'client_ip'     => $conn?->client_ip,
+            'virtual_ip'    => $conn?->virtual_ip ?? $p->ip_address,
+            'connected_at'  => optional($conn?->connected_at)?->toIso8601String(),
+            'seen_at'       => optional($seenAt)?->toIso8601String(),
+            'bytes_in'      => (int) ($conn?->bytes_received ?? $p->transfer_rx_bytes),
+            'bytes_out'     => (int) ($conn?->bytes_sent ?? $p->transfer_tx_bytes),
+            'server_name'   => $server->name,
+            'protocol'      => 'WIREGUARD',
+            'session_key'   => $conn?->session_key ?? ('wg:' . $p->public_key),
+            'public_key'    => $p->public_key,
+            'is_connected'  => $isOnline,
+        ];
+    })->values();
+
+    // ✅ Sort so enriched[0] is always the most relevant peer
+    return $rows
+        ->sortByDesc(fn ($r) => (int) ($r['is_connected'] ?? 0))
+        ->sortByDesc(fn ($r) => $r['seen_at'] ?? '')
+        ->values()
+        ->all();
+}
 
     private function isOnline(?Carbon $seenAt, Carbon $now): bool
     {
