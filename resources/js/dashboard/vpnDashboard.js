@@ -56,6 +56,16 @@
       return 'just now';
     };
 
+    const safeObj = (raw) => {
+      if (!raw) return null;
+      if (typeof raw === 'string') {
+        const u = raw.trim();
+        return u ? { username: u } : null;
+      }
+      if (typeof raw !== 'object') return null;
+      return raw;
+    };
+
     // ---------------- component ----------------
     return {
       lw,
@@ -100,12 +110,16 @@
 
       toggleFilters() {
         this.showFilters = !this.showFilters;
-        try { localStorage.setItem('vpn.showFilters', this.showFilters ? '1' : '0'); } catch {}
+        try {
+          localStorage.setItem('vpn.showFilters', this.showFilters ? '1' : '0');
+        } catch {}
       },
 
       selectServer(id) {
-        this.selectedServerId = (id === null || id === '') ? null : Number(id);
-        try { localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? ''); } catch {}
+        this.selectedServerId = id === null || id === '' ? null : Number(id);
+        try {
+          localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? '');
+        } catch {}
       },
 
       serverUsersCount(id) {
@@ -114,19 +128,28 @@
       },
 
       activeRows() {
-        const ids = this.selectedServerId == null
-          ? Object.keys(this.serverMeta)
-          : [String(this.selectedServerId)];
+        const ids =
+          this.selectedServerId == null
+            ? Object.keys(this.serverMeta)
+            : [String(this.selectedServerId)];
 
         const rows = [];
-        ids.forEach((sid) => rows.push(...Object.values(this.usersByServer[sid] || {})));
+        ids.forEach((sid) => {
+          const map = this.usersByServer[sid] || {};
+          rows.push(...Object.values(map));
+        });
 
-        rows.sort((a, b) =>
-          (a.server_name || '').localeCompare(b.server_name || '') ||
-          (a.username || '').localeCompare(b.username || '')
+        // If a row ever lacks __key, it's a bug. Filter it out to protect Alpine.
+        const filtered = rows.filter((r) => r && typeof r === 'object' && !isBlank(r.__key));
+
+        filtered.sort(
+          (a, b) =>
+            (a.server_name || '').localeCompare(b.server_name || '') ||
+            (a.username || '').localeCompare(b.username || '') ||
+            (a.__key || '').localeCompare(b.__key || '')
         );
 
-        return rows;
+        return filtered;
       },
 
       async refreshNow() {
@@ -155,9 +178,15 @@
       _waitForEcho() {
         return new Promise((resolve) => {
           const t = setInterval(() => {
-            if (window.Echo) { clearInterval(t); resolve(); }
+            if (window.Echo) {
+              clearInterval(t);
+              resolve();
+            }
           }, 150);
-          setTimeout(() => { clearInterval(t); resolve(); }, 3000);
+          setTimeout(() => {
+            clearInterval(t);
+            resolve();
+          }, 3000);
         });
       },
 
@@ -165,14 +194,12 @@
         if (this._subscribed) return;
 
         try {
-          window.Echo.private('servers.dashboard')
-            .listen('.mgmt.update', (e) => this.handleEvent(e));
+          window.Echo.private('servers.dashboard').listen('.mgmt.update', (e) => this.handleEvent(e));
         } catch (_) {}
 
         Object.keys(this.serverMeta).forEach((sid) => {
           try {
-            window.Echo.private(`servers.${sid}`)
-              .listen('.mgmt.update', (e) => this.handleEvent(e));
+            window.Echo.private(`servers.${sid}`).listen('.mgmt.update', (e) => this.handleEvent(e));
           } catch (_) {}
         });
 
@@ -191,15 +218,17 @@
         return p ? p.toUpperCase() : 'OPENVPN';
       },
 
-      _stableKey(serverId, raw, protocol, username) {
+      // base key (may collide if provider doesn't send connection/session id)
+      _baseKey(serverId, raw, protocol, username) {
         const sk = raw?.session_key ?? raw?.sessionKey ?? null;
         const cid = raw?.connection_id ?? raw?.id ?? null;
-        if (!isBlank(sk)) return `sk:${sk}`;
-        if (!isBlank(cid)) return `cid:${cid}`;
-        return `u:${serverId}:${username}:${protocol}`;
+
+        if (!isBlank(sk)) return `sk:${String(sk)}`;          // sk:wg:...
+        if (!isBlank(cid)) return `cid:${String(cid)}`;       // cid:123
+        return `u:${serverId}:${username}:${protocol}`;       // fallback
       },
 
-      _shapeRow(serverId, raw, prevRow = null) {
+      _shapeRow(serverId, raw, prevRow, forcedKey) {
         const meta = this.serverMeta[serverId] || {};
         const protocol = this._shapeProtocol(raw);
         const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
@@ -210,23 +239,25 @@
         const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
         const connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
 
-        const bytes_in = Number(pick(
-          raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived,
-          prevRow?.bytes_in ?? 0
-        ));
+        const bytes_in = Number(
+          pick(
+            raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived,
+            prevRow?.bytes_in ?? 0
+          )
+        );
 
-        const bytes_out = Number(pick(
-          raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent,
-          prevRow?.bytes_out ?? 0
-        ));
-
-        const __key = this._stableKey(serverId, raw, protocol, username);
+        const bytes_out = Number(
+          pick(
+            raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent,
+            prevRow?.bytes_out ?? 0
+          )
+        );
 
         // WireGuard displays "last seen" (handshake). OpenVPN displays "connected at".
-        const displayTime = (protocol === 'WIREGUARD') ? seen_at : connected_at;
+        const displayTime = protocol === 'WIREGUARD' ? seen_at : connected_at;
 
         return {
-          __key,
+          __key: forcedKey,               // IMPORTANT: use the exact key we computed
           session_key,
           connection_id,
 
@@ -249,6 +280,9 @@
           down_mb: toMB(bytes_in),
           up_mb: toMB(bytes_out),
           formatted_bytes: humanBytes(bytes_in, bytes_out),
+
+          // if your backend ever sends it, keep it. otherwise undefined -> treated as online in your totals
+          is_connected: pick(raw?.is_connected, prevRow?.is_connected),
         };
       },
 
@@ -258,32 +292,50 @@
         const nextMap = {};
         const arr = Array.isArray(list) ? list : [];
 
-        arr.forEach((raw0) => {
-          const raw = (typeof raw0 === 'string') ? { username: raw0 } : (raw0 || {});
+        // Track collisions in THIS snapshot so keys are unique even if payload is messy
+        const seenKeys = new Map(); // baseKey -> count
+
+        for (const raw0 of arr) {
+          const raw = safeObj(raw0);
+          if (!raw) continue;
+
           const protocol = this._shapeProtocol(raw);
           const username = String(raw?.username ?? raw?.cn ?? 'unknown');
 
-          const key = this._stableKey(serverId, raw, protocol, username);
-          const prevRow = prevMap[key] || null;
+          const baseKey = this._baseKey(serverId, raw, protocol, username);
 
-          nextMap[key] = this._shapeRow(serverId, raw, prevRow);
-        });
+          const n = (seenKeys.get(baseKey) || 0) + 1;
+          seenKeys.set(baseKey, n);
+
+          // If duplicates exist, suffix them deterministically
+          const finalKey = n === 1 ? baseKey : `${baseKey}#${n}`;
+
+          // Prev row match: try exact, else try baseKey (in case suffix count changed)
+          const prevRow = prevMap[finalKey] || prevMap[baseKey] || null;
+
+          nextMap[finalKey] = this._shapeRow(serverId, raw, prevRow, finalKey);
+        }
 
         this.usersByServer[serverId] = nextMap;
       },
 
       handleEvent(e) {
-        const sid = Number(e.server_id ?? e.serverId ?? 0);
+        const sid = Number(e?.server_id ?? e?.serverId ?? 0);
         if (!sid) return;
 
         let list = [];
-        if (Array.isArray(e.users)) {
+
+        if (Array.isArray(e?.users)) {
           list = e.users;
-        } else if (typeof e.cn_list === 'string') {
+        } else if (typeof e?.cn_list === 'string') {
           list = e.cn_list
             .split(',')
-            .map((s) => ({ username: s.trim() }))
-            .filter((x) => x.username);
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((u) => ({ username: u }));
+        } else if (Array.isArray(e?.connections)) {
+          // optional support if you ever switch payload shape
+          list = e.connections;
         }
 
         // Echo payload is authoritative snapshot for that server
@@ -317,6 +369,7 @@
       },
 
       async disconnect(row) {
+        if (!row || isBlank(row.__key)) return;
         if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
         try {
