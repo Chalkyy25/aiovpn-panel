@@ -83,7 +83,9 @@ class VpnUserConnection extends Model
     public function computedSessionKey(): ?string
     {
         if ($this->isWireguard()) {
-            return $this->public_key ? "wg:{$this->public_key}" : null;
+            return ($this->public_key && $this->vpn_server_id)
+            ? "wg:{$this->vpn_server_id}:{$this->public_key}"
+            : null;
         }
 
         if ($this->isOpenvpn()) {
