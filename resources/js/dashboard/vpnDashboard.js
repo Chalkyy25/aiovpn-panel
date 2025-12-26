@@ -128,29 +128,26 @@
       },
 
       activeRows() {
-        const ids =
-          this.selectedServerId == null
-            ? Object.keys(this.serverMeta)
-            : [String(this.selectedServerId)];
+  const serverIds = this.selectedServerId == null
+    ? Object.keys(this.serverMeta)
+    : [String(this.selectedServerId)];
 
-        const rows = [];
-        ids.forEach((sid) => {
-          const map = this.usersByServer[sid] || {};
-          rows.push(...Object.values(map));
-        });
+  const rows = [];
+  serverIds.forEach(sid => {
+    const map = this.usersByServer[sid] || {};
+    rows.push(...Object.values(map));
+  });
 
-        // If a row ever lacks __key, it's a bug. Filter it out to protect Alpine.
-        const filtered = rows.filter((r) => r && typeof r === 'object' && !isBlank(r.__key));
-
-        filtered.sort(
-          (a, b) =>
-            (a.server_name || '').localeCompare(b.server_name || '') ||
-            (a.username || '').localeCompare(b.username || '') ||
-            (a.__key || '').localeCompare(b.__key || '')
-        );
-
-        return filtered;
-      },
+  return rows
+    .filter(r => r && typeof r === 'object' && !h(r.__key))
+    // ✅ ONLY CONNECTED (treat undefined as true for legacy)
+    .filter(r => (r.is_connected === undefined ? true : !!r.is_connected))
+    .sort((a, b) =>
+      (a.server_name || '').localeCompare(b.server_name || '') ||
+      (a.username || '').localeCompare(b.username || '') ||
+      (a.__key || '').localeCompare(b.__key || '')
+    );
+}
 
       async refreshNow() {
         if (this.refreshing) return;
