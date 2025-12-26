@@ -10,7 +10,7 @@
 @endpush
 
 <div
-  x-data="vpnDashboard(@this)"
+  x-data="vpnDashboard(window.Livewire.find('{{ $this->getId() }}'))"
   x-init="
     init(
       @js($serverMeta),
