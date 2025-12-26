@@ -127,27 +127,28 @@
         return arr.filter((u) => (u?.is_connected === undefined ? true : !!u.is_connected)).length;
       },
 
-      activeRows() {
-  const serverIds = this.selectedServerId == null
-    ? Object.keys(this.serverMeta)
-    : [String(this.selectedServerId)];
+            activeRows() {
+        const serverIds =
+          this.selectedServerId == null
+            ? Object.keys(this.serverMeta)
+            : [String(this.selectedServerId)];
 
-  const rows = [];
-  serverIds.forEach(sid => {
-    const map = this.usersByServer[sid] || {};
-    rows.push(...Object.values(map));
-  });
+        const rows = [];
+        serverIds.forEach((sid) => {
+          const map = this.usersByServer[sid] || {};
+          rows.push(...Object.values(map));
+        });
 
-  return rows
-    .filter(r => r && typeof r === 'object' && !h(r.__key))
-    // ✅ ONLY CONNECTED (treat undefined as true for legacy)
-    .filter(r => (r.is_connected === undefined ? true : !!r.is_connected))
-    .sort((a, b) =>
-      (a.server_name || '').localeCompare(b.server_name || '') ||
-      (a.username || '').localeCompare(b.username || '') ||
-      (a.__key || '').localeCompare(b.__key || '')
-    );
-}
+        return rows
+          .filter((r) => r && typeof r === 'object' && !isBlank(r.__key))
+          .filter((r) => (r.is_connected === undefined ? true : !!r.is_connected))
+          .sort(
+            (a, b) =>
+              (a.server_name || '').localeCompare(b.server_name || '') ||
+              (a.username || '').localeCompare(b.username || '') ||
+              (a.__key || '').localeCompare(b.__key || '')
+          );
+      },
 
       async refreshNow() {
         if (this.refreshing) return;
