@@ -266,7 +266,7 @@ class WireGuardEventController extends Controller
             'bytes_out'     => (int) ($conn?->bytes_sent ?? $p->transfer_tx_bytes),
             'server_name'   => $server->name,
             'protocol'      => 'WIREGUARD',
-            'session_key'   => $conn?->session_key ?? ('wg:' . $p->public_key),
+            'session_key'   => "wg:{$server->id}:{$p->public_key}",
             'public_key'    => $p->public_key,
             'is_connected'  => $isOnline,
         ];
