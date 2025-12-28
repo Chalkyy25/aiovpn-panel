@@ -21,7 +21,7 @@ class WireGuardEventController extends Controller
      * A peer is considered "online" if its last handshake is within this window.
      * Keep this >= your poll interval * 2 to avoid flapping.
      */
-    private const STALE_SECONDS = 15;
+    private const STALE_SECONDS = 180;
 
     public function store(Request $request, VpnServer $server): JsonResponse
     {
