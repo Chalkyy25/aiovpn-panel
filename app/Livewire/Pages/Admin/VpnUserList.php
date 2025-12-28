@@ -44,8 +44,8 @@ class VpnUserList extends Component
 
         $user->delete();
 
-        Log::info("🗑️ Deleted VPN user {$username} with auto-cleanup");
-        session()->flash('message', "User {$username} deleted successfully.");
+        Log::info("🗑️ Deleted VPN user $username with auto-cleanup");
+        session()->flash('message', "User $username deleted successfully.");
 
         $this->resetPage();
     }
@@ -84,6 +84,7 @@ class VpnUserList extends Component
     public function generateWireGuard(int $id): void
     {
         $user = VpnUser::with('vpnServers')->findOrFail($id);
+        /** @var VpnUser $user */
 
         if ($user->vpnServers->isEmpty()) {
             session()->flash('message', "User {$user->username} is not associated with any servers.");
@@ -97,6 +98,11 @@ class VpnUserList extends Component
 
         /** @var WireGuardService $wg */
         $wg = app(WireGuardService::class);
+
+        // Extra runtime safety (and helps some IDEs): ensure we pass a concrete VpnUser
+        if (! $user instanceof \App\Models\VpnUser) {
+            throw new \InvalidArgumentException('Expected instance of App\\Models\\VpnUser for WireGuard peer creation.');
+        }
 
         foreach ($user->vpnServers as $server) {
             if (! $server->supportsWireGuard()) {
@@ -125,6 +131,7 @@ class VpnUserList extends Component
     public function forceRemoveWireGuardPeer(int $id): void
     {
         $user = VpnUser::with('vpnServers')->findOrFail($id);
+        /** @var VpnUser $user */
 
         if (blank($user->wireguard_public_key)) {
             session()->flash('message', "User {$user->username} has no WireGuard public key.");
@@ -180,17 +187,21 @@ class VpnUserList extends Component
     public function render(): Factory|Application|View|\Illuminate\View\View|\Illuminate\Contracts\Foundation\Application
     {
         $users = VpnUser::with([
-                'vpnServers:id,name',
-                'activeConnections:id,vpn_user_id,connected_at',
-                'connections:id,vpn_user_id,disconnected_at,is_connected',
-            ])
+            'vpnServers:id,name',
+            'activeConnections:id,vpn_user_id,connected_at',
+            'connections:id,vpn_user_id,disconnected_at,is_connected',
+        ])
             ->when($this->search, fn ($q) =>
-                $q->where('username', 'like', '%'.$this->search.'%')
+            $q->where('username', 'like', '%'.$this->search.'%')
             )
             ->orderBy('is_online', 'desc')
             ->orderBy('id', 'desc')
             ->paginate(20);
 
-        return view('livewire.pages.admin.vpn-user-list', compact('users'));
+        return view('livewire.pages.admin.vpn-user-list', compact('users'))
+            ->layoutData([
+                'heading'    => 'VPN Users',
+                'subheading' => 'Manage and search VPN users', // optional
+            ]);
     }
 }

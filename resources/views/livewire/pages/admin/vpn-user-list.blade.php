@@ -21,10 +21,6 @@
 
   {{-- Header --}}
   <div class="flex items-center justify-between gap-3">
-    <div>
-      <h2 class="text-xl font-semibold text-[var(--aio-ink)]">VPN Users</h2>
-      <p class="text-sm text-[var(--aio-sub)]">Manage credentials, servers and expiry.</p>
-    </div>
 
     <x-button :href="route('admin.vpn-users.create')" variant="primary" size="sm" class="gap-2">
       <span class="text-base leading-none">＋</span>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\VpnServer;
+use App\Models\VpnUser;
 use App\Services\WireGuardService;
 use Illuminate\Http\Request;
 
@@ -47,7 +48,7 @@ class WireGuardConfigController extends Controller
      */
     public function config(Request $request)
     {
-        $user = $request->user();
+        $authUser = $request->user();
         $serverId = (int) $request->query('server_id');
 
         if (!$serverId) {
@@ -60,8 +61,41 @@ class WireGuardConfigController extends Controller
             return response()->json(['error' => 'Server has no WireGuard enabled'], 422);
         }
 
+        // Resolve the authenticated principal to a concrete VpnUser model.
+        // This is future-proof to work whether the request is authenticated as
+        // a VpnUser (client app) or as a different User type (e.g., admin).
+        $vpnUser = null;
+
+        if ($authUser instanceof VpnUser) {
+            $vpnUser = $authUser;
+        } else {
+            // Try explicit username from query first (if provided by client)
+            $username = (string) $request->query('username', '');
+
+            if ($username !== '') {
+                $vpnUser = VpnUser::where('username', $username)->first();
+            }
+
+            // Fallbacks: try common mappings from the authenticated user
+            if (!$vpnUser && method_exists($authUser, 'vpnUser')) {
+                // Relation on the auth model
+                $vpnUser = $authUser->vpnUser; // may be null
+            }
+
+            if (!$vpnUser && property_exists($authUser, 'username') && !empty($authUser->username)) {
+                $vpnUser = VpnUser::where('username', $authUser->username)->first();
+            }
+        }
+
+        if (!$vpnUser instanceof VpnUser) {
+            return response()->json([
+                'error' => 'Unable to resolve VPN user for this request',
+                'hint'  => 'Authenticate as a VpnUser or provide ?username=...',
+            ], 422);
+        }
+
         // Ensure peer exists (or create + push it)
-        $peer = $this->wg->ensurePeerForUser($server, $user);
+        $peer = $this->wg->ensurePeerForUser($server, $vpnUser);
 
         $config = $this->wg->buildClientConfig($server, $peer);
 
