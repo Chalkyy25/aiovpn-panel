@@ -139,7 +139,7 @@ class ServerShow extends Component
         }
     }
 
-    public function deleteServer()
+    public function deleteServer($name”)
     {
         $name = $this->vpnServer->name;
         $this->vpnServer->delete();
@@ -175,6 +175,8 @@ class ServerShow extends Component
 
     public function render()
     {
-        return view('livewire.pages.admin.server-show');
+        return view('livewire.pages.admin.server-show')
+            ->layoutData(['heading' => 'Edit Server']);
+
     }
 }
