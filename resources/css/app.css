@@ -14,8 +14,8 @@
   --aio-bg:      #334155;
   --aio-card:    #f8fafc;
   --aio-ink:     #1F2937;
-  --aio-header:  #1e293b;
-  --aio-sub:     #64748b;
+  --aio-header:  #f1f5f9;
+  --aio-sub:     #94a3b8;
 
   --aio-border:  rgba(0,0,0,.15);
   --aio-soft:    rgba(0,0,0,.05);
@@ -99,16 +99,16 @@
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
     border-top: 3px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35), 
+    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35),
                 0 10px 15px -8px rgba(0, 0, 0, 0.28),
                 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  
+
   .aio-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4),
                 0 18px 30px -12px rgba(0, 0, 0, 0.32),
                 0 40px 80px -16px rgba(0, 0, 0, 0.3);
   }
@@ -137,16 +137,16 @@
     background: var(--aio-card) !important;
     border-color: var(--aio-border) !important;
     border-top: 3px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35), 
+    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35),
                 0 10px 15px -8px rgba(0, 0, 0, 0.28),
                 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     transform: translateY(0);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  
+
   .aio-section:hover {
     transform: translateY(-5px);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4),
                 0 18px 30px -12px rgba(0, 0, 0, 0.32),
                 0 40px 80px -16px rgba(0, 0, 0, 0.3);
   }
@@ -267,7 +267,7 @@
     background: var(--aio-card);
     border-color: var(--aio-border);
     border-top: 3px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35), 
+    box-shadow: 0 14px 35px -8px rgba(0, 0, 0, 0.35),
                 0 10px 15px -8px rgba(0, 0, 0, 0.28),
                 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
@@ -275,7 +275,7 @@
   .pill-card:hover {
     transform: translateY(-8px);
     background: var(--aio-card);
-    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.45), 
+    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.45),
                 0 20px 35px -12px rgba(0, 0, 0, 0.35),
                 0 50px 90px -20px rgba(0, 0, 0, 0.32);
   }
