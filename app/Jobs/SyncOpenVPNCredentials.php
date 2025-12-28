@@ -156,15 +156,15 @@ class SyncOpenVPNCredentials implements ShouldQueue
         }
 
         $process = new Process([
-            'scp',
-            '-i', $keyPath,
-            '-o', 'StrictHostKeyChecking=no',
-            '-o', 'UserKnownHostsFile=/dev/null',
-            '-o', 'ConnectTimeout=15',
-            '-o', 'BatchMode=yes',
-            $localPath,
-            "{$user}@{$ip}:{$remotePath}",
-        ]);
+  'ssh',
+  '-i', $keyPath,
+  '-o', 'StrictHostKeyChecking=no',
+  '-o', 'UserKnownHostsFile=/dev/null',
+  '-o', 'ConnectTimeout=15',
+  '-o', 'BatchMode=yes',
+  "{$user}@{$ip}",
+  'sh', '-lc', $remoteCmd,
+]);
 
         $process->setTimeout(45);
         $process->run();
