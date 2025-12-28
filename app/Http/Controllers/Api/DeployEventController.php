@@ -212,13 +212,13 @@ class DeployEventController extends Controller
         ->where('is_connected', true)
         ->when(!empty($touchedSessionKeys), fn ($q) => $q->whereNotIn('session_key', $touchedSessionKeys))
         ->where(function ($q) use ($graceAgo) {
-            // ✅ seen_at is the correct “alive” signal
-            $q->whereNull('seen_at')->orWhere('seen_at', '<', $graceAgo);
+            $q->whereNull('seen_at')
+              ->orWhere('seen_at', '<', $graceAgo);
         })
         ->update([
-            'is_connected'    => false,
-            'disconnected_at' => $now,
-            // session_duration can be computed later if you really need it
+            'is_connected'     => false,
+            'disconnected_at'  => $now,
+            'session_duration' => DB::raw("IF(connected_at IS NULL, NULL, TIMESTAMPDIFF(SECOND, connected_at, '{$now->toDateTimeString()}'))"),
         ]);
 }
 
