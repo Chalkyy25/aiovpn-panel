@@ -130,6 +130,13 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
 
     private function ssh(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
     {
+        // IMPORTANT:
+        // When passing an array to Symfony Process, ssh will not preserve argument boundaries
+        // for the remote command. If we pass ['sh','-lc', $remoteCmd] the remote side may see
+        // `sh -lc mkdir` with the rest as positional args, breaking commands like `mkdir -p .. && ...`.
+        // Fix: wrap the entire remote command as a single argument to `sh -lc`.
+        $wrapped = 'sh -lc ' . escapeshellarg($remoteCmd);
+
         $process = new Process([
             'ssh',
             '-i', $keyPath,
@@ -138,7 +145,7 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
             '-o', 'ConnectTimeout=15',
             '-o', 'BatchMode=yes',
             "{$user}@{$ip}",
-            'sh', '-lc', $remoteCmd,   // ✅ correct: separate args
+            $wrapped,
         ]);
 
         $process->setTimeout(45);
