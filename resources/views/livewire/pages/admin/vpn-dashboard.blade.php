@@ -23,7 +23,7 @@
   {{-- HEADER --}}
   <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
     <div class="min-w-0">
-      <h1 class="text-2xl font-bold text-[var(--aio-header)] truncate">VPN Dashboard</h1>
+      <h1 class="aio-header text-2xl font-bold text-[var(--aio-header)] truncate">VPN Dashboard</h1>
       <p class="text-sm text-[var(--aio-header)]">Live overview of users, servers & connections</p>
     </div>
 
@@ -41,7 +41,7 @@
 
       <div class="text-xs text-[var(--aio-sub)] text-right">
         <span class="hidden sm:inline">Updated</span>
-        <span class="font-medium text-[var(--aio-ink)]" x-text="lastUpdated"></span>
+        <span class="font-medium text-[var(--aio-header)]" x-text="lastUpdated"></span>
       </div>
     </div>
   </div>

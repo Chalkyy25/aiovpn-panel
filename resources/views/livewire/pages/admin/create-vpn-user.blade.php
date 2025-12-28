@@ -4,7 +4,7 @@
 
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="text-2xl font-semibold text-[var(--aio-ink)]">Create VPN User</h1>
+            <h1 class="aio-header text-2xl font-semibold text-[var(--aio-ink)]">Create VPN User</h1>
             <p class="text-sm text-[var(--aio-sub)]">Username, package and server assignment.</p>
         </div>
     </div>
@@ -34,7 +34,7 @@
                         <label class="block text-xs font-medium text-[var(--aio-sub)] mb-1">Package</label>
                         <select wire:model.live="packageId" class="form-select w-full">
                             @foreach($packages as $p)
-                                @php 
+                                @php
                                     $dev = (int) $p->max_connections;
                                     $months = (int) $p->duration_months;
                                     $totalCredits = $months * (int)$p->price_credits;
