@@ -20,8 +20,10 @@ class SyncOpenVPNCredentials implements ShouldQueue
     public int $timeout = 180;
     public int $tries   = 5;
 
+    /** Backoff in seconds (Laravel 10+ supports array backoff) */
     public array $backoff = [10, 30, 60, 120, 240];
 
+    /** Only store the id to avoid serializing a model snapshot */
     public function __construct(public int $vpnServerId) {}
 
     public function handle(): void
@@ -36,7 +38,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
         $name    = (string) $server->name;
         $sshUser = 'root';
 
-        // NOTE: if you have per-server DeployKeys, wire this into your DeployKey system.
+        // Global default key (adjust if you store per-server key paths)
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         if (!is_readable($sshKey)) {
             throw new RuntimeException("[OpenVPN] SSH key not readable at: {$sshKey}");
@@ -73,15 +75,15 @@ class SyncOpenVPNCredentials implements ShouldQueue
         file_put_contents($tmpFile, $content);
 
         try {
-            // Ensure auth dir exists + permissions
+            // Ensure auth directory and permissions
             $this->ssh($ip, $sshUser, $sshKey, "mkdir -p {$remoteDir} && chmod 700 {$remoteDir}", "Create auth dir");
 
-            // Upload atomically
+            // Upload file atomically
             $remoteTmp = "{$remoteFile}.tmp";
             $this->scp($ip, $sshUser, $sshKey, $tmpFile, $remoteTmp, "Upload psw-file tmp");
             $this->ssh($ip, $sshUser, $sshKey, "chmod 600 {$remoteTmp} && mv -f {$remoteTmp} {$remoteFile}", "Install psw-file atomically");
 
-            // Restart OpenVPN
+            // Restart services
             $this->ssh($ip, $sshUser, $sshKey, "systemctl restart openvpn-server@server", "Restart OpenVPN UDP");
             $this->ssh(
                 $ip,
@@ -102,10 +104,14 @@ class SyncOpenVPNCredentials implements ShouldQueue
         }
     }
 
+    /**
+     * SSH: pass ONE remote string after user@host.
+     * This avoids sh -lc argument splitting that caused "mkdir: missing operand".
+     */
     private function ssh(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
     {
-        // IMPORTANT: do NOT escapeshellarg($remoteCmd) here.
-        // Process args are already safely separated.
+        $remote = 'sh -lc ' . escapeshellarg($remoteCmd);
+
         $process = new Process([
             'ssh',
             '-i', $keyPath,
@@ -114,7 +120,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
             '-o', 'ConnectTimeout=15',
             '-o', 'BatchMode=yes',
             "{$user}@{$ip}",
-            'sh', '-lc', $remoteCmd,
+            $remote,
         ]);
 
         $process->setTimeout(45);
@@ -137,6 +143,9 @@ class SyncOpenVPNCredentials implements ShouldQueue
         ]);
     }
 
+    /**
+     * SCP: real file upload.
+     */
     private function scp(string $ip, string $user, string $keyPath, string $localPath, string $remotePath, string $label): void
     {
         if (!is_readable($localPath)) {
