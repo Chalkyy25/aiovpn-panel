@@ -23,13 +23,7 @@
     @php $heading = 'VPN Monitor'; @endphp
     @extends('layouts.app', ['heading' => $heading, 'subheading' => 'Live overview of users, servers & connections'])
 
-  {{-- HEADER --}}
-  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-    <div class="min-w-0">
-      <h1 class="text-2xl font-bold text-[var(--aio-header)] truncate">VPN Dashboard</h1>
-      <p class="text-sm text-[var(--aio-header)]">Live overview of users, servers & connections</p>
-    </div>
-
+    @section('content')
     <div class="flex items-center gap-3 shrink-0">
       <x-button
         type="button"
@@ -260,7 +254,6 @@
       <div x-show="activeRows().length===0" x-cloak class="p-6 text-center text-[var(--aio-sub)]">
         No active connections
       </div>
+        @endsection
     </div>
   </div>
-
-</div>
