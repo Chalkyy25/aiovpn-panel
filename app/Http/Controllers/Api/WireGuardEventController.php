@@ -67,6 +67,7 @@ class WireGuardEventController extends Controller
                 : [];
 
             $touchedSessionKeys = [];
+            // NOTE: Do not track per-user online state here to avoid vpn_users deadlocks
             $touchedUserIds = [];
 
             foreach ($peers as $p) {
@@ -140,23 +141,13 @@ class WireGuardEventController extends Controller
                         'transfer_tx_bytes' => $bytesOut,
                     ]);
 
-                // Update vpn_users "is_online" (only set true when online; offline handled via central method below)
-                if ($isOnline) {
-                    $userUpdate = ['is_online' => true, 'last_ip' => $row->client_ip];
-                    if (Schema::hasColumn('vpn_users', 'last_protocol')) {
-                        $userUpdate['last_protocol'] = 'WIREGUARD';
-                    }
-                    VpnUser::whereKey((int)$uid)->update($userUpdate);
-                }
+                // Intentionally skip updating vpn_users to avoid deadlocks during event ingestion
             }
 
             // ✅ Critical: mark WG sessions OFFLINE that are missing from snapshot or stale
             $this->disconnectMissingOrStale($server->id, $touchedSessionKeys, $now);
 
-            // Best-effort: recompute user online flags safely after updates
-            foreach (array_keys($touchedUserIds) as $uid) {
-                VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections((int) $uid);
-            }
+            // Intentionally skip recomputing vpn_users.is_online here
 
             // Server aggregates (WG only)
             $wgLive = VpnUserConnection::query()
@@ -180,13 +171,13 @@ class WireGuardEventController extends Controller
 
         // Broadcast combined snapshot from DB (your dashboard can filter by protocol)
         $enriched = $this->enrich($server);
-        
+
         Log::channel('vpn')->debug('[wg-events broadcast sample]', [
             'server_id' => $server->id,
             'count'     => count($enriched),
             'top'       => $enriched[0] ?? null,
         ]);
-        
+
         event(new ServerMgmtEvent(
             $server->id,
             $ts,
@@ -225,8 +216,7 @@ class WireGuardEventController extends Controller
                 'disconnected_at'  => $now,
                 'session_duration' => $row->connected_at ? $now->diffInSeconds($row->connected_at) : null,
             ]);
-
-            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections((int) $row->vpn_user_id);
+            // Do not propagate user online/offline to vpn_users from ingestion path
         }
     }
 

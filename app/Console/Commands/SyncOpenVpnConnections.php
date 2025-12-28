@@ -74,7 +74,7 @@ class SyncOpenVpnConnections extends Command
 
                     if (!$dry) {
                         $conn->save();
-                        VpnUser::where('id', $vpnUserId)->update(['is_online' => true]);
+                        // Skip updating vpn_users here to avoid deadlocks during ingestion
                     }
                 }
 
@@ -91,7 +91,7 @@ class SyncOpenVpnConnections extends Command
                 foreach ($stales as $row) {
                     if (!$dry) {
                         $row->update(['is_connected' => false, 'disconnected_at' => now()]);
-                        VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
+                        // Do not recompute vpn_users.is_online from ingestion path
                     }
                 }
 

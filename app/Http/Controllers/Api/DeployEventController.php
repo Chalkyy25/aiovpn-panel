@@ -102,15 +102,7 @@ class DeployEventController extends Controller
                 }
 
                 $row->save();
-
-                $userUpdate = [
-                    'is_online' => true,
-                    'last_ip'   => $row->client_ip,
-                ];
-                if (Schema::hasColumn('vpn_users', 'last_protocol')) {
-                    $userUpdate['last_protocol'] = 'OPENVPN';
-                }
-                VpnUser::whereKey($uid)->update($userUpdate);
+                // Intentionally skip updating vpn_users to avoid deadlocks during event ingestion
             }
 
             // IMPORTANT: ONLY OpenVPN rows
@@ -229,8 +221,7 @@ class DeployEventController extends Controller
                 'disconnected_at'  => $now,
                 'session_duration' => $row->connected_at ? $now->diffInSeconds($row->connected_at) : null,
             ]);
-
-            VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($row->vpn_user_id);
+            // Do not propagate user online/offline to vpn_users from ingestion path
         }
     }
 
