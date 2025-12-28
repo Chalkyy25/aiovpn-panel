@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\VpnServer;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -13,7 +14,7 @@ use RuntimeException;
 use Symfony\Component\Process\Process;
 use Throwable;
 
-class SyncOpenVPNCredentials implements ShouldQueue
+class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessing
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -22,6 +23,14 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
     /** Backoff in seconds (Laravel 10+ supports array backoff) */
     public array $backoff = [10, 30, 60, 120, 240];
+
+    /** Prevent duplicate sync jobs per server (seconds) */
+    public int $uniqueFor = 300;
+
+    public function uniqueId(): string
+    {
+        return 'sync-ovpn-creds:' . $this->vpnServerId;
+    }
 
     /** Only store the id to avoid serializing a model snapshot */
     public function __construct(public int $vpnServerId) {}
@@ -38,7 +47,6 @@ class SyncOpenVPNCredentials implements ShouldQueue
         $name    = (string) $server->name;
         $sshUser = 'root';
 
-        // Global default key (adjust if you store per-server key paths)
         $sshKey = storage_path('app/ssh_keys/id_rsa');
         if (!is_readable($sshKey)) {
             throw new RuntimeException("[OpenVPN] SSH key not readable at: {$sshKey}");
@@ -46,7 +54,9 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
         $remoteDir  = '/etc/openvpn/auth';
         $remoteFile = "{$remoteDir}/psw-file";
-        $tmpFile    = storage_path("app/openvpn/psw-{$server->id}.txt");
+
+        // local tmp
+        $tmpFile = storage_path("app/openvpn/psw-{$server->id}.txt");
 
         Log::info("[OpenVPN] Sync start", [
             'server_id' => $server->id,
@@ -74,17 +84,24 @@ class SyncOpenVPNCredentials implements ShouldQueue
         @mkdir(dirname($tmpFile), 0700, true);
         file_put_contents($tmpFile, $content);
 
+        // IMPORTANT: unique remote tmp file to avoid race collisions
+        $remoteTmp = "{$remoteFile}.tmp." . bin2hex(random_bytes(6));
+
         try {
-            // Ensure auth directory and permissions
             $this->ssh($ip, $sshUser, $sshKey, "mkdir -p {$remoteDir} && chmod 700 {$remoteDir}", "Create auth dir");
 
-            // Upload file atomically
-            $remoteTmp = "{$remoteFile}.tmp";
             $this->scp($ip, $sshUser, $sshKey, $tmpFile, $remoteTmp, "Upload psw-file tmp");
-            $this->ssh($ip, $sshUser, $sshKey, "chmod 600 {$remoteTmp} && mv -f {$remoteTmp} {$remoteFile}", "Install psw-file atomically");
 
-            // Restart services
+            $this->ssh(
+                $ip,
+                $sshUser,
+                $sshKey,
+                "chmod 600 {$remoteTmp} && mv -f {$remoteTmp} {$remoteFile}",
+                "Install psw-file atomically"
+            );
+
             $this->ssh($ip, $sshUser, $sshKey, "systemctl restart openvpn-server@server", "Restart OpenVPN UDP");
+
             $this->ssh(
                 $ip,
                 $sshUser,
@@ -101,17 +118,18 @@ class SyncOpenVPNCredentials implements ShouldQueue
             ]);
         } finally {
             @unlink($tmpFile);
+
+            // try to clean any orphan tmp (best-effort)
+            try {
+                $this->ssh($ip, $sshUser, $sshKey, "rm -f {$remoteFile}.tmp.* 2>/dev/null || true", "Cleanup tmp (best-effort)");
+            } catch (\Throwable) {
+                // ignore
+            }
         }
     }
 
-    /**
-     * SSH: pass ONE remote string after user@host.
-     * This avoids sh -lc argument splitting that caused "mkdir: missing operand".
-     */
     private function ssh(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
     {
-        $remote = 'sh -lc ' . escapeshellarg($remoteCmd);
-
         $process = new Process([
             'ssh',
             '-i', $keyPath,
@@ -120,7 +138,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
             '-o', 'ConnectTimeout=15',
             '-o', 'BatchMode=yes',
             "{$user}@{$ip}",
-            $remote,
+            'sh', '-lc', $remoteCmd,   // ✅ correct: separate args
         ]);
 
         $process->setTimeout(45);
@@ -143,9 +161,6 @@ class SyncOpenVPNCredentials implements ShouldQueue
         ]);
     }
 
-    /**
-     * SCP: real file upload.
-     */
     private function scp(string $ip, string $user, string $keyPath, string $localPath, string $remotePath, string $label): void
     {
         if (!is_readable($localPath)) {
