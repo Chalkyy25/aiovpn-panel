@@ -504,7 +504,7 @@ BASH;
             }
         }
 
-        $fp = @shell_exec(sprintf('ssh-keygen -lf %s 2:/dev/null', escapeshellarg($pubPath))) ?: '';
+        $fp = @shell_exec(sprintf('ssh-keygen -lf %s 2>/dev/null', escapeshellarg($pubPath))) ?: '';
         $fp = trim($fp);
         $this->lastKeyFingerprint = $fp ?: null;
 
