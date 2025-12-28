@@ -61,8 +61,8 @@ class DeployEventController extends Controller
                     continue;
                 }
 
-                $sessionKey = $this->sessionKey($username, $clientId, $mgmtPort);
-                if (!$sessionKey) {
+                $sessionKey = $this->sessionKey($server->id, $username, $clientId, $mgmtPort);
+                    if (!$sessionKey) {
                     Log::channel('vpn')->notice("OVPN MGMT: missing identity user='{$username}' server={$server->id}");
                     continue;
                 }
@@ -194,36 +194,35 @@ class DeployEventController extends Controller
         return $names ? VpnUser::whereIn('username', $names)->pluck('id', 'username')->all() : [];
     }
 
-    private function sessionKey(string $username, ?int $clientId, ?int $mgmtPort): ?string
-    {
-        if ($clientId === null) return null;
-        $mp = $mgmtPort ?: 7505;
-        return "ovpn:{$mp}:{$clientId}:{$username}";
-    }
+    private function sessionKey(int $serverId, string $username, ?int $clientId, ?int $mgmtPort): ?string
+{
+    if ($clientId === null) return null;
+
+    $mp = $mgmtPort ?: 7505;
+
+    // ✅ server-scoped session identity (future-proof)
+    return "ovpn:{$serverId}:{$mp}:{$clientId}:{$username}";
+}
 
     private function disconnectMissingOpenVpn(int $serverId, array $touchedSessionKeys, Carbon $now): void
-    {
-        $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
+{
+    $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
 
-        $q = VpnUserConnection::where('vpn_server_id', $serverId)
-            ->where('protocol', 'OPENVPN')
-            ->where('is_connected', true);
-
-        if (!empty($touchedSessionKeys)) {
-            $q->whereNotIn('session_key', $touchedSessionKeys);
-        }
-
-        foreach ($q->get() as $row) {
-            if ($row->updated_at && $row->updated_at->gt($graceAgo)) continue;
-
-            $row->update([
-                'is_connected'     => false,
-                'disconnected_at'  => $now,
-                'session_duration' => $row->connected_at ? $now->diffInSeconds($row->connected_at) : null,
-            ]);
-            // Do not propagate user online/offline to vpn_users from ingestion path
-        }
-    }
+    VpnUserConnection::query()
+        ->where('vpn_server_id', $serverId)
+        ->where('protocol', 'OPENVPN')
+        ->where('is_connected', true)
+        ->when(!empty($touchedSessionKeys), fn ($q) => $q->whereNotIn('session_key', $touchedSessionKeys))
+        ->where(function ($q) use ($graceAgo) {
+            // ✅ seen_at is the correct “alive” signal
+            $q->whereNull('seen_at')->orWhere('seen_at', '<', $graceAgo);
+        })
+        ->update([
+            'is_connected'    => false,
+            'disconnected_at' => $now,
+            // session_duration can be computed later if you really need it
+        ]);
+}
 
     /**
      * READ-ONLY combined snapshot for the dashboard.
