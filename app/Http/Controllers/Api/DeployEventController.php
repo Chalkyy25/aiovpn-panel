@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
 
 class DeployEventController extends Controller
 {
-    private const OFFLINE_GRACE = 300; // seconds
+    private const OFFLINE_GRACE = 15; // seconds
 
     public function store(Request $request, VpnServer $server): JsonResponse
     {
