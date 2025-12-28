@@ -61,7 +61,7 @@ class DeployEventController extends Controller
                     continue;
                 }
 
-                $sessionKey = $this->sessionKey($server->id, $username, $clientId, $mgmtPort);
+                $sessionKey = $this->sessionKey($server, $username, $clientId, $mgmtPort);
                     if (!$sessionKey) {
                     Log::channel('vpn')->notice("OVPN MGMT: missing identity user='{$username}' server={$server->id}");
                     continue;
@@ -194,14 +194,12 @@ class DeployEventController extends Controller
         return $names ? VpnUser::whereIn('username', $names)->pluck('id', 'username')->all() : [];
     }
 
-    private function sessionKey(int $serverId, string $username, ?int $clientId, ?int $mgmtPort): ?string
+    private function sessionKey(VpnServer $server, string $username, ?int $clientId, ?int $mgmtPort): ?string
 {
     if ($clientId === null) return null;
-
     $mp = $mgmtPort ?: 7505;
 
-    // ✅ server-scoped session identity (future-proof)
-    return "ovpn:{$serverId}:{$mp}:{$clientId}:{$username}";
+    return "ovpn:{$server->id}:{$mp}:{$clientId}:{$username}";
 }
 
     private function disconnectMissingOpenVpn(int $serverId, array $touchedSessionKeys, Carbon $now): void
