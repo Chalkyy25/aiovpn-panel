@@ -85,7 +85,13 @@ class SyncOpenVPNCredentials implements ShouldQueue
 
             // Restart services
             $this->ssh($ip, $sshUser, $sshKey, "systemctl restart openvpn-server@server", "Restart OpenVPN UDP");
-            $this->ssh($ip, $sshUser, $sshKey, "systemctl is-enabled openvpn-server@server-tcp >/dev/null 2>&1 && systemctl restart openvpn-server@server-tcp || true", "Restart OpenVPN TCP (if enabled)");
+            $this->ssh(
+                $ip,
+                $sshUser,
+                $sshKey,
+                "systemctl is-enabled openvpn-server@server-tcp >/dev/null 2>&1 && systemctl restart openvpn-server@server-tcp || true",
+                "Restart OpenVPN TCP (if enabled)"
+            );
 
             Log::info("[OpenVPN] Sync complete", [
                 'server_id' => $server->id,
@@ -99,10 +105,13 @@ class SyncOpenVPNCredentials implements ShouldQueue
     }
 
     /**
-     * Run a remote command via SSH. Uses sh -lc so "&&" works.
+     * SSH: pass ONE remote string after user@host.
+     * This avoids sh -lc argument splitting that caused "mkdir: missing operand".
      */
     private function ssh(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
     {
+        $remote = 'sh -lc ' . escapeshellarg($remoteCmd);
+
         $process = new Process([
             'ssh',
             '-i', $keyPath,
@@ -111,7 +120,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
             '-o', 'ConnectTimeout=15',
             '-o', 'BatchMode=yes',
             "{$user}@{$ip}",
-            'sh', '-lc', $remoteCmd,
+            $remote,
         ]);
 
         $process->setTimeout(45);
@@ -135,7 +144,7 @@ class SyncOpenVPNCredentials implements ShouldQueue
     }
 
     /**
-     * Upload a local file to remote path via SCP.
+     * SCP: real file upload.
      */
     private function scp(string $ip, string $user, string $keyPath, string $localPath, string $remotePath, string $label): void
     {
