@@ -6,6 +6,11 @@
 
   window.vpnDashboard = function (lw) {
     // ---------------- helpers ----------------
+    const isBlank = (v) =>
+      v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v));
+
+    const pick = (primary, fallback) => (isBlank(primary) ? fallback : primary);
+
     const toMB = (n) => (n ? (n / (1024 * 1024)).toFixed(2) : '0.00');
 
     const humanBytes = (inb, outb) => {
@@ -16,18 +21,11 @@
       return (total || 0) + ' B';
     };
 
-    const isBlank = (v) =>
-      v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v));
-
-    const pick = (primary, fallback) => (isBlank(primary) ? fallback : primary);
-
     // accepts ISO string, unix seconds, unix ms, numeric string
     const toDate = (v) => {
       if (v === null || v === undefined || v === '') return null;
 
-      if (typeof v === 'number') {
-        return new Date(v > 2000000000000 ? v : v * 1000);
-      }
+      if (typeof v === 'number') return new Date(v > 2000000000000 ? v : v * 1000);
 
       const s = String(v).trim();
       if (!s) return null;
@@ -41,21 +39,6 @@
       return isNaN(d) ? null : d;
     };
 
-    const ago = (v) => {
-      const d = toDate(v);
-      if (!d) return '—';
-
-      const diff = Math.max(0, (Date.now() - d.getTime()) / 1000);
-      const m = Math.floor(diff / 60);
-      const h = Math.floor(m / 60);
-      const dd = Math.floor(h / 24);
-
-      if (dd) return `${dd} day${dd > 1 ? 's' : ''} ago`;
-      if (h) return `${h} hour${h > 1 ? 's' : ''} ago`;
-      if (m) return `${m} min${m > 1 ? 's' : ''} ago`;
-      return 'just now';
-    };
-
     const safeObj = (raw) => {
       if (!raw) return null;
       if (typeof raw === 'string') {
@@ -64,6 +47,22 @@
       }
       if (typeof raw !== 'object') return null;
       return raw;
+    };
+
+    // "time ago" formatter (needs nowMs passed in)
+    const agoFrom = (nowMs, v) => {
+      const d = toDate(v);
+      if (!d) return '—';
+
+      const diff = Math.max(0, (nowMs - d.getTime()) / 1000);
+      const m = Math.floor(diff / 60);
+      const h = Math.floor(m / 60);
+      const dd = Math.floor(h / 24);
+
+      if (dd) return `${dd} day${dd > 1 ? 's' : ''} ago`;
+      if (h) return `${h} hour${h > 1 ? 's' : ''} ago`;
+      if (m) return `${m} min${m > 1 ? 's' : ''} ago`;
+      return 'just now';
     };
 
     // ---------------- component ----------------
@@ -77,7 +76,11 @@
 
       selectedServerId: null,
       showFilters: false,
-      lastUpdated: new Date().toLocaleTimeString(),
+
+      // UI clock + “last updated”
+      nowTick: Date.now(),
+      lastUpdatedAt: null, // ISO or ms
+      _nowTimer: null,
 
       _pollTimer: null,
       _subscribed: false,
@@ -101,8 +104,14 @@
           if (sf !== null) this.showFilters = sf === '1';
         } catch {}
 
+        // start UI ticker (this is what makes "2 min ago" update smoothly)
+        if (this._nowTimer) clearInterval(this._nowTimer);
+        this._nowTimer = setInterval(() => {
+          this.nowTick = Date.now();
+        }, 1000);
+
         this._recalc();
-        this.lastUpdated = new Date().toLocaleTimeString();
+        this.lastUpdatedAt = Date.now();
 
         this._waitForEcho().then(() => this._subscribe());
         this._startPolling(15000);
@@ -122,12 +131,33 @@
         } catch {}
       },
 
+      // Use in Blade: x-text="rowAgo(row)"
+      rowAgo(row) {
+        const protocol = row?.protocol;
+        const base =
+          protocol === 'WIREGUARD'
+            ? pick(row?.first_seen_at, row?.seen_at) // stable “connected since-ish”
+            : row?.connected_at; // OpenVPN actual connect time
+
+        return agoFrom(this.nowTick, base);
+      },
+
+      // Optional: if you still want "last handshake ago" for WG:
+      rowHandshakeAgo(row) {
+        return agoFrom(this.nowTick, row?.seen_at);
+      },
+
+      // Optional: for header "last updated"
+      lastUpdatedHuman() {
+        return agoFrom(this.nowTick, this.lastUpdatedAt);
+      },
+
       serverUsersCount(id) {
         const arr = Object.values(this.usersByServer[id] || {});
         return arr.filter((u) => (u?.is_connected === undefined ? true : !!u.is_connected)).length;
       },
 
-            activeRows() {
+      activeRows() {
         const serverIds =
           this.selectedServerId == null
             ? Object.keys(this.serverMeta)
@@ -157,7 +187,6 @@
         try {
           const res = await this.lw.call('getLiveStats');
 
-          // polling snapshot is authoritative
           if (res?.usersByServer) {
             for (const sid in this.serverMeta) {
               this._setExactList(Number(sid), res.usersByServer[sid] || []);
@@ -165,7 +194,7 @@
             this._recalc();
           }
 
-          this.lastUpdated = new Date().toLocaleTimeString();
+          this.lastUpdatedAt = Date.now();
         } catch (e) {
           console.error(e);
         } finally {
@@ -216,14 +245,35 @@
         return p ? p.toUpperCase() : 'OPENVPN';
       },
 
-      // base key (may collide if provider doesn't send connection/session id)
       _baseKey(serverId, raw, protocol, username) {
         const sk = raw?.session_key ?? raw?.sessionKey ?? null;
         const cid = raw?.connection_id ?? raw?.id ?? null;
 
-        if (!isBlank(sk)) return `sk:${String(sk)}`;          // sk:wg:...
-        if (!isBlank(cid)) return `cid:${String(cid)}`;       // cid:123
-        return `u:${serverId}:${username}:${protocol}`;       // fallback
+        if (!isBlank(sk)) return `sk:${String(sk)}`;
+        if (!isBlank(cid)) return `cid:${String(cid)}`;
+        return `u:${serverId}:${username}:${protocol}`;
+      },
+
+      // Protect against overwriting a stable connected_at with a bogus "now"
+      _stableConnectedAt(newVal, prevVal) {
+        const dNew = toDate(newVal);
+        const dPrev = toDate(prevVal);
+
+        // If we don't have a previous value, accept new if valid.
+        if (!dPrev) return dNew ? newVal : prevVal;
+
+        // If new is invalid, keep prev.
+        if (!dNew) return prevVal;
+
+        // If backend keeps sending "now-ish" (within 10s) while prev is older, keep prev.
+        const nowMs = Date.now();
+        const newIsNowish = (nowMs - dNew.getTime()) < 10_000;
+        const prevIsOlder = dPrev.getTime() < dNew.getTime() - 10_000;
+
+        if (newIsNowish && prevIsOlder) return prevVal;
+
+        // Otherwise accept new (backend really changed it)
+        return newVal;
       },
 
       _shapeRow(serverId, raw, prevRow, forcedKey) {
@@ -235,7 +285,20 @@
         const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
         const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
-        const connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
+
+        // OpenVPN: should be real "connected since" from backend
+        const connected_at_in = raw?.connected_at ?? raw?.connectedAt;
+        const connected_at_prev = prevRow?.connected_at ?? null;
+        const connected_at = this._stableConnectedAt(
+          pick(connected_at_in, connected_at_prev),
+          connected_at_prev
+        );
+
+        // WireGuard: track a stable first_seen_at (never resets)
+        const first_seen_at =
+          protocol === 'WIREGUARD'
+            ? pick(prevRow?.first_seen_at, seen_at)
+            : null;
 
         const bytes_in = Number(
           pick(
@@ -251,11 +314,8 @@
           )
         );
 
-        // WireGuard displays "last seen" (handshake). OpenVPN displays "connected at".
-        const displayTime = protocol === 'WIREGUARD' ? seen_at : connected_at;
-
         return {
-          __key: forcedKey,               // IMPORTANT: use the exact key we computed
+          __key: forcedKey,
           session_key,
           connection_id,
 
@@ -270,8 +330,7 @@
 
           connected_at,
           seen_at,
-
-          connected_human: ago(displayTime),
+          first_seen_at,
 
           bytes_in,
           bytes_out,
@@ -279,19 +338,16 @@
           up_mb: toMB(bytes_out),
           formatted_bytes: humanBytes(bytes_in, bytes_out),
 
-          // if your backend ever sends it, keep it. otherwise undefined -> treated as online in your totals
           is_connected: pick(raw?.is_connected, prevRow?.is_connected),
         };
       },
 
-      // authoritative replace (used by polling + initial seed)
       _setExactList(serverId, list) {
         const prevMap = this.usersByServer[serverId] || {};
         const nextMap = {};
         const arr = Array.isArray(list) ? list : [];
 
-        // Track collisions in THIS snapshot so keys are unique even if payload is messy
-        const seenKeys = new Map(); // baseKey -> count
+        const seenKeys = new Map();
 
         for (const raw0 of arr) {
           const raw = safeObj(raw0);
@@ -305,10 +361,8 @@
           const n = (seenKeys.get(baseKey) || 0) + 1;
           seenKeys.set(baseKey, n);
 
-          // If duplicates exist, suffix them deterministically
           const finalKey = n === 1 ? baseKey : `${baseKey}#${n}`;
 
-          // Prev row match: try exact, else try baseKey (in case suffix count changed)
           const prevRow = prevMap[finalKey] || prevMap[baseKey] || null;
 
           nextMap[finalKey] = this._shapeRow(serverId, raw, prevRow, finalKey);
@@ -332,15 +386,14 @@
             .filter(Boolean)
             .map((u) => ({ username: u }));
         } else if (Array.isArray(e?.connections)) {
-          // optional support if you ever switch payload shape
           list = e.connections;
         }
 
-        // Echo payload is authoritative snapshot for that server
         this._setExactList(sid, list);
-
         this._recalc();
-        this.lastUpdated = new Date().toLocaleTimeString();
+
+        // IMPORTANT: this is a UI timestamp, not per-user connection time
+        this.lastUpdatedAt = Date.now();
       },
 
       _recalc() {
