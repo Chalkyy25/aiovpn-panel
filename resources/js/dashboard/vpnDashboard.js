@@ -25,14 +25,16 @@
     const toDate = (v) => {
       if (v === null || v === undefined || v === '') return null;
 
-      if (typeof v === 'number') return new Date(v > 2000000000000 ? v : v * 1000);
+      // Detect milliseconds vs seconds. Current epoch in ms is ~1.7e12, so
+      // treat >= 1e12 as milliseconds, otherwise as seconds.
+      if (typeof v === 'number') return new Date(v >= 1000000000000 ? v : v * 1000);
 
       const s = String(v).trim();
       if (!s) return null;
 
       if (/^\d+$/.test(s)) {
         const n = Number(s);
-        return new Date(n > 2000000000000 ? n : n * 1000);
+        return new Date(n >= 1000000000000 ? n : n * 1000);
       }
 
       const d = new Date(s);
@@ -438,13 +440,18 @@
             }),
           });
 
-          if (!res.ok) {
+          let ok = res.ok;
+          if (!ok) {
             const res2 = await fetch(fallbackUrl(row.server_id), {
               method: 'POST',
               headers,
               body: JSON.stringify({ username: row.username, server_id: row.server_id }),
             });
-            if (!res2.ok) throw new Error('Disconnect failed');
+            ok = res2.ok;
+          }
+          if (!ok) {
+            alert('Error disconnecting user.\n\nDisconnect failed');
+            return;
           }
 
           const map = this.usersByServer[row.server_id] || {};
