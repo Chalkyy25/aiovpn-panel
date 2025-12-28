@@ -3,117 +3,192 @@
 namespace App\Jobs;
 
 use App\Models\VpnServer;
-use Exception;
 use Illuminate\Bus\Queueable;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
+use Symfony\Component\Process\Process;
 use Throwable;
 
 class SyncOpenVPNCredentials implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected VpnServer $vpnServer;
+    public int $timeout = 180;
+    public int $tries   = 5;
 
-    public function __construct(VpnServer $vpnServer)
+    /** Backoff in seconds (Laravel 10+ supports array backoff) */
+    public array $backoff = [10, 30, 60, 120, 240];
+
+    /** Only store the id to avoid serializing a model snapshot */
+    public function __construct(public int $vpnServerId) {}
+
+    public function handle(): void
     {
-        $this->vpnServer = $vpnServer;
+        $server = VpnServer::query()->find($this->vpnServerId);
+        if (!$server) {
+            // Server deleted? Job becomes a no-op.
+            Log::warning("[OpenVPN] Sync skipped: server id={$this->vpnServerId} not found.");
+            return;
+        }
+
+        $ip      = (string) $server->ip_address;
+        $name    = (string) $server->name;
+        $sshUser = 'root';
+
+        // Your global default key (keep this unless you store per-server key paths)
+        $sshKey = storage_path('app/ssh_keys/id_rsa');
+        if (!is_readable($sshKey)) {
+            throw new RuntimeException("[OpenVPN] SSH key not readable at: {$sshKey}");
+        }
+
+        $remoteDir  = '/etc/openvpn/auth';
+        $remoteFile = "{$remoteDir}/psw-file";
+        $tmpFile    = storage_path("app/openvpn/psw-{$server->id}.txt");
+
+        Log::info("[OpenVPN] Sync start", [
+            'server_id' => $server->id,
+            'name'      => $name,
+            'ip'        => $ip,
+        ]);
+
+        // Pull only what we need (avoid loading huge models)
+        $users = $server->vpnUsers()
+            ->where('is_active', true)
+            ->get(['username', 'plain_password']);
+
+        if ($users->isEmpty()) {
+            Log::warning("[OpenVPN] Sync skipped: no active users", [
+                'server_id' => $server->id,
+                'name'      => $name,
+            ]);
+            return;
+        }
+
+        // Build credentials file (username password per line)
+        $content = $users
+            ->map(fn ($u) => trim((string) $u->username) . ' ' . trim((string) $u->plain_password))
+            ->filter(fn ($line) => $line !== '' && strpos($line, ' ') !== false)
+            ->implode("\n") . "\n";
+
+        // Ensure local temp dir exists
+        @mkdir(dirname($tmpFile), 0700, true);
+
+        file_put_contents($tmpFile, $content);
+
+        try {
+            // Ensure auth directory and permissions
+            $this->ssh($ip, $sshUser, $sshKey, "mkdir -p {$remoteDir} && chmod 700 {$remoteDir}", "Create auth dir");
+
+            // Upload file atomically:
+            // 1) upload to temp
+            // 2) chmod
+            // 3) mv over the real file
+            $remoteTmp = "{$remoteFile}.tmp";
+            $this->scp($ip, $sshUser, $sshKey, $tmpFile, $remoteTmp, "Upload psw-file tmp");
+            $this->ssh($ip, $sshUser, $sshKey, "chmod 600 {$remoteTmp} && mv -f {$remoteTmp} {$remoteFile}", "Install psw-file atomically");
+
+            // Restart OpenVPN services
+            // Keep both lines: UDP unit + optional TCP unit
+            $this->ssh($ip, $sshUser, $sshKey, "systemctl restart openvpn-server@server", "Restart OpenVPN UDP");
+            $this->ssh($ip, $sshUser, $sshKey, "systemctl is-enabled openvpn-server@server-tcp >/dev/null 2>&1 && systemctl restart openvpn-server@server-tcp || true", "Restart OpenVPN TCP (if enabled)");
+
+            Log::info("[OpenVPN] Sync complete", [
+                'server_id' => $server->id,
+                'name'      => $name,
+                'ip'        => $ip,
+                'users'     => $users->count(),
+            ]);
+        } finally {
+            // Always cleanup local temp
+            @unlink($tmpFile);
+        }
     }
 
     /**
-     * @throws Exception
+     * SSH runner using Symfony Process (safer than raw exec).
      */
-    public function handle(): void
+    private function ssh(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
     {
-        try {
-            $server = VpnServer::findOrFail($this->vpnServer->id);
+        // Use bash -lc to keep quoting predictable
+        $process = new Process([
+            'ssh',
+            '-i', $keyPath,
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
+            '-o', 'ConnectTimeout=15',
+            '-o', 'BatchMode=yes',
+            "{$user}@{$ip}",
+            'bash', '-lc', $remoteCmd,
+        ]);
 
-            Log::info("🔍 [OpenVPN] Retrieved server: " . json_encode([
-                'id' => $server->id,
-                'name' => $server->name,
-                'ip' => $server->ip_address
-            ]));
+        $process->setTimeout(45);
+        $process->run();
 
-            $ip = $server->ip_address;
-            $sshKey = storage_path('app/ssh_keys/id_rsa');
-            $sshUser = 'root';
-            $remoteDir = '/etc/openvpn/auth';
-            $remoteFile = "$remoteDir/psw-file";
-
-            Log::info("🔄 [OpenVPN] Syncing credentials to $server->name ($ip)");
-
-            $users = $server->vpnUsers()->where('is_active', true)->get();
-            Log::info("👥 [OpenVPN] Found {$users->count()} active user(s) for $server->name");
-
-            if ($users->isEmpty()) {
-                Log::warning("⚠️ [OpenVPN] No users found for $server->name. Skipping.");
-                return;
-            }
-
-            // 🔐 Create credentials content
-            $lines = $users->map(fn($u) => "$u->username $u->plain_password")->toArray();
-            $content = implode("\n", $lines) . "\n";
-
-            $tmpFile = storage_path("app/psw-$server->id.txt");
-            file_put_contents($tmpFile, $content);
-            Log::info("📄 [OpenVPN] Temporary psw-file created: $tmpFile");
-
-            // 🔧 Ensure /auth dir exists
-            $this->runSsh("mkdir -p $remoteDir && chmod 700 $remoteDir", $ip, $sshKey, $sshUser, "Create auth dir");
-
-            // 🚀 Upload psw-file
-            $this->runScp($tmpFile, $remoteFile, $ip, $sshKey, $sshUser);
-
-            // 🔒 Set remote file permissions
-            $this->runSsh("chmod 600 $remoteFile", $ip, $sshKey, $sshUser, "Set file permissions");
-
-            // 🔁 Restart OpenVPN services (both UDP and TCP if present)
-            $this->runSsh("systemctl restart openvpn-server@server", $ip, $sshKey, $sshUser, "Restart OpenVPN UDP");
-            $this->runSsh("systemctl is-enabled openvpn-server@server-tcp && systemctl restart openvpn-server@server-tcp || true", $ip, $sshKey, $sshUser, "Restart OpenVPN TCP");
-
-            // 🧹 Cleanup
-            @unlink($tmpFile);
-            Log::info("🧼 [OpenVPN] Temp file deleted. Sync complete for $server->name");
-
-        } catch (Exception $e) {
-            Log::error("❌ [OpenVPN] Error in sync job: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
-            throw $e;
+        if (!$process->isSuccessful()) {
+            Log::error("[OpenVPN] SSH failed: {$label}", [
+                'ip'        => $ip,
+                'exit_code' => $process->getExitCode(),
+                'stdout'    => $process->getOutput(),
+                'stderr'    => $process->getErrorOutput(),
+                'cmd'       => $remoteCmd,
+            ]);
+            throw new RuntimeException("[OpenVPN] SSH failed: {$label}");
         }
+
+        Log::info("[OpenVPN] SSH ok: {$label}", [
+            'ip'     => $ip,
+            'stdout' => trim($process->getOutput()),
+        ]);
     }
 
-    private function runSsh(string $command, string $ip, string $sshKey, string $sshUser, string $label): void
+    /**
+     * SCP runner using Symfony Process (safer than raw exec).
+     */
+    private function scp(string $ip, string $user, string $keyPath, string $localPath, string $remotePath, string $label): void
     {
-        $fullCmd = "ssh -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $sshUser@$ip '$command'";
-        exec($fullCmd, $output, $status);
-
-        if ($status !== 0) {
-            Log::error("❌ [OpenVPN] $label failed on $ip: " . implode("\n", $output));
-            throw new RuntimeException("SSH command failed: $label");
-        } else {
-            Log::info("✅ [OpenVPN] $label success on $ip");
+        if (!is_readable($localPath)) {
+            throw new RuntimeException("[OpenVPN] Local file missing/unreadable: {$localPath}");
         }
+
+        $process = new Process([
+            'scp',
+            '-i', $keyPath,
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
+            '-o', 'ConnectTimeout=15',
+            '-o', 'BatchMode=yes',
+            $localPath,
+            "{$user}@{$ip}:{$remotePath}",
+        ]);
+
+        $process->setTimeout(45);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            Log::error("[OpenVPN] SCP failed: {$label}", [
+                'ip'        => $ip,
+                'exit_code' => $process->getExitCode(),
+                'stdout'    => $process->getOutput(),
+                'stderr'    => $process->getErrorOutput(),
+            ]);
+            throw new RuntimeException("[OpenVPN] SCP failed: {$label}");
+        }
+
+        Log::info("[OpenVPN] SCP ok: {$label}", [
+            'ip' => $ip,
+        ]);
     }
 
-    private function runScp(string $localPath, string $remotePath, string $ip, string $sshKey, string $sshUser): void
+    public function failed(Throwable $e): void
     {
-        $cmd = "scp -i $sshKey -o StrictHostKeyChecking=no -o ConnectTimeout=30 $localPath $sshUser@$ip:$remotePath";
-        exec($cmd, $output, $status);
-
-        if ($status !== 0) {
-            Log::error("❌ [OpenVPN] SCP failed to $ip: " . implode("\n", $output));
-            throw new RuntimeException("SCP command failed");
-        } else {
-            Log::info("📦 [OpenVPN] psw-file uploaded to $ip");
-        }
-    }
-
-    public function failed(Throwable $exception): void
-    {
-        Log::error("💥 [OpenVPN] Job failed for server {$this->vpnServer->name}: " . $exception->getMessage());
+        Log::error("[OpenVPN] Job failed", [
+            'server_id' => $this->vpnServerId,
+            'error'     => $e->getMessage(),
+        ]);
     }
 }
