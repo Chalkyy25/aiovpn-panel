@@ -121,6 +121,9 @@ class VpnServerList extends Component
 
     public function render(): View
     {
-        return view('livewire.pages.admin.vpn-server-list');
+        return view('livewire.pages.admin.vpn-server-list')
+        ->layoutData([
+        'heading'    => 'VPN Server List',
+    ]);
     }
 }

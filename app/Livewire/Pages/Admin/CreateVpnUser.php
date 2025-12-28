@@ -66,7 +66,9 @@ class CreateVpnUser extends Component
 
         return view('livewire.pages.admin.create-vpn-user', [
             'servers'  => $this->servers,
-            'packages' => $this->packages,
+            'packages' => $this->packages,])
+            ->layoutData([
+                'heading'    => 'VPN Create Vpn User',
         ]);
     }
 

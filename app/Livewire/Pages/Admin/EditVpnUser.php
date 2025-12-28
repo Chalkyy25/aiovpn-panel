@@ -151,7 +151,9 @@ class EditVpnUser extends Component
     {
         return view('livewire.pages.admin.edit-vpn-user', [
             'servers'  => VpnServer::orderBy('name')->get(),
-            'packages' => Package::orderBy('price_credits')->get(),
+            'packages' => Package::orderBy('price_credits')->get(),])
+            ->layoutData([
+                'heading'    => 'Edit VPN User',
         ]);
     }
 }

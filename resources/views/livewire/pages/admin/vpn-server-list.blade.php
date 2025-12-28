@@ -9,10 +9,6 @@
 
   {{-- Header --}}
   <div class="flex items-center justify-between gap-3">
-    <div>
-      <h2 class="text-xl font-semibold text-[var(--aio-ink)]">VPN Servers</h2>
-      <p class="text-sm text-[var(--aio-sub)]">Manage nodes, protocols and live status.</p>
-    </div>
 
     <x-button :href="route('admin.servers.create')" variant="primary" size="sm">
       + Add Server

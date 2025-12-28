@@ -7,6 +7,7 @@ use Illuminate\Contracts\View\View as ViewContract;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
 #[Layout('layouts.app')]
@@ -19,7 +20,7 @@ class AppBuilds extends Component
     public bool $mandatory = false;
     public ?string $release_notes = null;
 
-    /** @var \Livewire\Features\SupportFileUploads\TemporaryUploadedFile|null */
+    /** @var TemporaryUploadedFile|null */
     public $apk = null;
 
     public function rules(): array
@@ -153,7 +154,9 @@ public function deleteBuild(int $buildId): void
     {
         return view('livewire.pages.admin.app-builds', [
             'latestBuild'  => $this->latestBuild,
-            'buildHistory' => $this->buildHistory,
+            'buildHistory' => $this->buildHistory,])
+            ->layoutData([
+                'heading'    => 'Upgrade App',
         ]);
     }
 }

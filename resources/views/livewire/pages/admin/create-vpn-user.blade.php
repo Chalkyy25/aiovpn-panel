@@ -3,11 +3,6 @@
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
     <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-semibold text-[var(--aio-ink)]">Create VPN User</h1>
-            <p class="text-sm text-[var(--aio-sub)]">Username, package and server assignment.</p>
-        </div>
-    </div>
 
     <form wire:submit.prevent="save" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -133,4 +128,5 @@
 
         </div>
     </form>
+</div>
 </div>
