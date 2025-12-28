@@ -177,6 +177,8 @@ class VpnDashboard extends Component
             'serverMeta'             => $serverMeta,
             'seedUsersByServer'      => $usersByServer,
             'seedTotals'             => $seedTotals,
+            'heading'                => 'VPN Monitor',
+            'subheading'             => 'Real-time VPN user connections and statistics',
         ]);
     }
 
