@@ -20,6 +20,9 @@
   class="space-y-6"
 >
 
+  {{-- HEADER --}}
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+
     <div class="flex items-center gap-3 shrink-0">
       <x-button
         type="button"
@@ -252,3 +255,5 @@
       </div>
     </div>
   </div>
+
+</div>
