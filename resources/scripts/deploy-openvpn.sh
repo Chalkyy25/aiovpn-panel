@@ -544,7 +544,10 @@ def parse_ovpn_status(txt, mgmt_port, proto_hint=None):
     clients, virt = {}, {}
     hCL, hRT = {}, {}
 
-    for row in csv.reader(txt.splitlines()):
+    for row in csv.reader(
+        [l for l in txt.splitlines() if l and not l.startswith(">")],
+        delimiter="\t"
+        ):
         if not row:
             continue
         tag = row[0]
