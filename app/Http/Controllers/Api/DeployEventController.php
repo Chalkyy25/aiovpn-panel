@@ -15,7 +15,11 @@ use Illuminate\Support\Facades\Log;
 
 class DeployEventController extends Controller
 {
-    private const OFFLINE_GRACE = 15; // seconds
+    /**
+     * OpenVPN sessions can momentarily disappear between polls.
+     * Keep this comfortably above your poll interval to avoid flapping.
+     */
+    private const OFFLINE_GRACE_SECONDS = 45;
 
     public function store(Request $request, VpnServer $server): JsonResponse
     {
@@ -28,6 +32,7 @@ class DeployEventController extends Controller
             'clients' => 'nullable|integer',
         ]);
 
+        // Only handle mgmt snapshots
         if (strtolower($data['status']) !== 'mgmt') {
             return response()->json(['ok' => true]);
         }
@@ -38,41 +43,59 @@ class DeployEventController extends Controller
 
         $incoming = $this->normalizeIncoming($data);
 
-        Log::channel('vpn')->debug(sprintf(
-            'OVPN MGMT EVENT server=%d ts=%s incoming=%d [%s]',
-            $server->id,
-            $ts,
-            count($incoming),
-            implode(',', array_slice(array_column($incoming, 'username'), 0, 50))
-        ));
+        Log::channel('vpn')->debug('OVPN MGMT EVENT', [
+            'server_id'   => $server->id,
+            'ts'          => $ts,
+            'incoming'    => count($incoming),
+            'user_sample' => array_slice(array_column($incoming, 'username'), 0, 50),
+            'first'       => $incoming[0] ?? null,
+        ]);
 
         DB::transaction(function () use ($server, $incoming, $now) {
 
             // Map username => vpn_user_id
             $names = array_values(array_unique(array_filter(array_column($incoming, 'username'))));
+
             $idByName = $names
-                ? VpnUser::query()->whereIn('username', $names)->pluck('id', 'username')->all()
+                ? VpnUser::query()
+                    ->whereIn('username', $names)
+                    ->pluck('id', 'username')
+                    ->all()
                 : [];
 
-            $touched = [];
+            $touchedSessionKeys = [];
 
             foreach ($incoming as $c) {
                 $username = trim((string)($c['username'] ?? ''));
                 if ($username === '' || !isset($idByName[$username])) {
+                    if ($username !== '') {
+                        Log::channel('vpn')->notice('OVPN MGMT: unknown username', [
+                            'server_id' => $server->id,
+                            'username'  => $username,
+                        ]);
+                    }
                     continue;
                 }
 
-                $clientId = isset($c['client_id']) ? (int)$c['client_id'] : null;
-                $mgmtPort = isset($c['mgmt_port']) ? (int)$c['mgmt_port'] : 7505;
+                $clientId = array_key_exists('client_id', $c) ? (int)$c['client_id'] : null;
+                $mgmtPort = array_key_exists('mgmt_port', $c) ? (int)$c['mgmt_port'] : 7505;
 
-                // You MUST have a stable identity. Client ID is best.
-                if ($clientId === null) {
-                    // If your feed can’t provide client_id, we need to change the feed.
+                // Best identity is client_id. If missing, fall back to "0" so you still track the user.
+                // NOTE: this cannot distinguish multiple simultaneous sessions for same username without client_id.
+                $clientIdForKey = $clientId ?? 0;
+
+                $sessionKey = "ovpn:{$server->id}:{$mgmtPort}:{$clientIdForKey}:{$username}";
+                if ($sessionKey === '' || $sessionKey === null) {
+                    Log::channel('vpn')->error('OVPN MGMT: empty session_key', [
+                        'server_id' => $server->id,
+                        'username'  => $username,
+                        'client_id' => $clientId,
+                        'mgmt_port' => $mgmtPort,
+                    ]);
                     continue;
                 }
 
-                $sessionKey = "ovpn:{$server->id}:{$mgmtPort}:{$clientId}:{$username}";
-                $touched[] = $sessionKey;
+                $touchedSessionKeys[] = $sessionKey;
 
                 $row = VpnConnection::firstOrNew([
                     'vpn_server_id' => $server->id,
@@ -85,11 +108,16 @@ class DeployEventController extends Controller
                     'vpn_user_id'     => (int)$idByName[$username],
                     'protocol'        => 'OPENVPN',
                     'wg_public_key'   => null,
-                    'client_ip'       => $c['client_ip'] ?? $row->client_ip,
+
+                    'client_ip'       => $c['client_ip']  ?? $row->client_ip,
                     'virtual_ip'      => $c['virtual_ip'] ?? $row->virtual_ip,
-                    'endpoint'        => $c['endpoint'] ?? null, // optional if you have it
-                    'bytes_in'        => array_key_exists('bytes_in', $c) ? (int)$c['bytes_in'] : (int)$row->bytes_in,
-                    'bytes_out'       => array_key_exists('bytes_out', $c) ? (int)$c['bytes_out'] : (int)$row->bytes_out,
+
+                    // If your feed ever provides endpoint, keep it. Otherwise leave existing.
+                    'endpoint'        => $c['endpoint'] ?? $row->endpoint,
+
+                    'bytes_in'        => array_key_exists('bytes_in',  $c) ? (int)$c['bytes_in']  : (int)($row->bytes_in  ?? 0),
+                    'bytes_out'       => array_key_exists('bytes_out', $c) ? (int)$c['bytes_out'] : (int)($row->bytes_out ?? 0),
+
                     'last_seen_at'    => $now,
                     'is_active'       => 1,
                     'disconnected_at' => null,
@@ -105,7 +133,20 @@ class DeployEventController extends Controller
             }
 
             // mark missing OpenVPN sessions inactive
-            $this->disconnectMissingOpenVpn($server->id, $touched, $now);
+            $this->disconnectMissingOpenVpn($server->id, $touchedSessionKeys, $now);
+
+            // optional: keep server aggregates fresh (won't break anything if columns exist)
+            $live = VpnConnection::query()
+                ->where('vpn_server_id', $server->id)
+                ->where('protocol', 'OPENVPN')
+                ->where('is_active', 1)
+                ->count();
+
+            $server->forceFill([
+                'online_users' => $live,
+                'last_sync_at' => $now,
+                'last_mgmt_at' => $now,
+            ])->saveQuietly();
         });
 
         // Broadcast snapshot from DB
@@ -129,7 +170,7 @@ class DeployEventController extends Controller
 
     private function disconnectMissingOpenVpn(int $serverId, array $touchedSessionKeys, Carbon $now): void
     {
-        $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE);
+        $graceAgo = $now->copy()->subSeconds(self::OFFLINE_GRACE_SECONDS);
 
         VpnConnection::query()
             ->where('vpn_server_id', $serverId)
@@ -138,7 +179,7 @@ class DeployEventController extends Controller
             ->when(!empty($touchedSessionKeys), fn($q) => $q->whereNotIn('session_key', $touchedSessionKeys))
             ->where(function ($q) use ($graceAgo) {
                 $q->whereNull('last_seen_at')
-                  ->orWhere('last_seen_at', '<', $graceAgo);
+                    ->orWhere('last_seen_at', '<', $graceAgo);
             })
             ->update([
                 'is_active'       => 0,
@@ -164,9 +205,9 @@ class DeployEventController extends Controller
                 'bytes_in'      => (int)$r->bytes_in,
                 'bytes_out'     => (int)$r->bytes_out,
                 'server_name'   => $server->name,
-                'protocol'      => strtoupper($r->protocol),
+                'protocol'      => 'OPENVPN',
                 'session_key'   => $r->session_key,
-                'public_key'    => $r->wg_public_key,
+                'public_key'    => null,
                 'is_active'     => (bool)$r->is_active,
             ])
             ->values()
@@ -185,39 +226,67 @@ class DeployEventController extends Controller
 
                 $out[] = [
                     'username'     => $username,
-                    'client_id'    => isset($u['client_id']) ? (int)$u['client_id'] : null,
-                    'mgmt_port'    => isset($u['mgmt_port']) ? (int)$u['mgmt_port'] : null,
+                    'client_id'    => array_key_exists('client_id', $u) ? (int)$u['client_id'] : null,
+                    'mgmt_port'    => array_key_exists('mgmt_port', $u) ? (int)$u['mgmt_port'] : null,
                     'client_ip'    => $this->stripPort($u['client_ip'] ?? $u['RealAddress'] ?? null),
                     'virtual_ip'   => $this->stripCidr($u['virtual_ip'] ?? $u['VirtualAddress'] ?? null),
                     'connected_at' => $u['connected_at'] ?? $u['ConnectedSince'] ?? null,
                     'bytes_in'     => (int)($u['bytes_in'] ?? $u['BytesReceived'] ?? 0),
                     'bytes_out'    => (int)($u['bytes_out'] ?? $u['BytesSent'] ?? 0),
+
+                    // Optional if you ever add it upstream
+                    'endpoint'     => $u['endpoint'] ?? null,
                 ];
             }
         } elseif (!empty($data['cn_list'])) {
             foreach (explode(',', (string)$data['cn_list']) as $name) {
                 $name = trim($name);
-                if ($name !== '') $out[] = ['username' => $name, 'client_id' => -1];
+                if ($name !== '') {
+                    $out[] = ['username' => $name, 'client_id' => null];
+                }
             }
         }
 
-        return array_values(array_filter($out, function ($r) {
+        // de-dupe by (username, client_id, mgmt_port) so you don't touch same session twice
+        $seen = [];
+        $filtered = [];
+
+        foreach ($out as $r) {
             $name = trim((string)($r['username'] ?? ''));
-            if ($name === '' || strcasecmp($name, 'unknown') === 0 || strcasecmp($name, 'UNDEF') === 0) return false;
-            return (bool)preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name);
-        }));
+            if ($name === '' || strcasecmp($name, 'unknown') === 0 || strcasecmp($name, 'UNDEF') === 0) continue;
+            if (!preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name)) continue;
+
+            $cid = array_key_exists('client_id', $r) && $r['client_id'] !== null ? (string)$r['client_id'] : 'nocid';
+            $mp  = array_key_exists('mgmt_port', $r) && $r['mgmt_port'] !== null ? (string)$r['mgmt_port'] : 'nomp';
+            $k   = "ovpn|{$name}|{$cid}|{$mp}";
+
+            if (isset($seen[$k])) continue;
+            $seen[$k] = true;
+
+            $filtered[] = $r;
+        }
+
+        return array_values($filtered);
     }
 
     private function parseTime($value): ?Carbon
     {
         if ($value === null || $value === '') return null;
+
         try {
             if (is_numeric($value)) {
                 $n = (int)$value;
+
+                // ms epoch
                 if ($n > 2_000_000_000_000) return Carbon::createFromTimestampMs($n);
+
+                // sec epoch
                 if ($n > 946_684_800) return Carbon::createFromTimestamp($n);
+
+                // treat small number as "seconds ago"
                 return now()->subSeconds($n);
             }
+
             return Carbon::parse((string)$value);
         } catch (\Throwable) {
             return null;
