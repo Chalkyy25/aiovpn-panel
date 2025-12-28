@@ -21,6 +21,7 @@
 >
 
     @php $heading = 'VPN Monitor'; @endphp
+    @extends('layouts.app', ['heading' => $heading, 'subheading' => 'Live overview of users, servers & connections'])
 
   {{-- HEADER --}}
   <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
