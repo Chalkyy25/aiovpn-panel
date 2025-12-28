@@ -1,5 +1,5 @@
 <div class="max-w-7xl mx-auto p-6">
-    <h1 class="aio-header text-2xl font-semibold mb-4 text-[var(--aio-ink)]">Manage Reseller Credits</h1>
+    <h1 class="text-2xl font-semibold mb-4 text-[var(--aio-ink)]">Manage Reseller Credits</h1>
 
     @if (session('ok'))
         <div class="mb-4 rounded border border-green-700 bg-green-900/40 text-green-100 px-4 py-2">

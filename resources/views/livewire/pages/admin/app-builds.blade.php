@@ -41,7 +41,7 @@
   {{-- HEADER --}}
   <div class="flex items-end justify-between">
     <div>
-      <h1 class="aio-header text-2xl font-bold text-[var(--aio-ink)]">Upgrade App</h1>
+      <h1 class="text-2xl font-bold text-[var(--aio-ink)]">Upgrade App</h1>
       <p class="text-sm text-[var(--aio-sub)]">
         Upload a new APK. Devices will detect it via
         <span class="font-medium text-[var(--aio-ink)]">/api/app/latest</span>.

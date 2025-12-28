@@ -4,7 +4,7 @@
 
     <div class="flex items-center justify-between">
         <div>
-            <h1 class="aio-header text-2xl font-semibold text-[var(--aio-ink)]">Create VPN User</h1>
+            <h1 class="text-2xl font-semibold text-[var(--aio-ink)]">Create VPN User</h1>
             <p class="text-sm text-[var(--aio-sub)]">Username, package and server assignment.</p>
         </div>
     </div>

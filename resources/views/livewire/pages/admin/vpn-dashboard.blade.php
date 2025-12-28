@@ -20,10 +20,12 @@
   class="space-y-6"
 >
 
+    @php $heading = 'VPN Monitor'; @endphp
+
   {{-- HEADER --}}
   <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
     <div class="min-w-0">
-      <h1 class="aio-header text-2xl font-bold text-[var(--aio-header)] truncate">VPN Dashboard</h1>
+      <h1 class="text-2xl font-bold text-[var(--aio-header)] truncate">VPN Dashboard</h1>
       <p class="text-sm text-[var(--aio-header)]">Live overview of users, servers & connections</p>
     </div>
 
