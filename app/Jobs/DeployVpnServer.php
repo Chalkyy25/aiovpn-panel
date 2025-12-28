@@ -306,7 +306,7 @@ BASH;
                 @exec($sshCmdBase . ' ' . escapeshellarg('/usr/local/bin/ovpn-status-push.sh || true'));
 
                 // OpenVPN user/pass sync
-                SyncOpenVPNCredentials::dispatch($this->vpnServer);
+                SyncOpenVPNCredentials::dispatch($this->vpnServer->id);
 
                 // WireGuard peers + user keys
                 if (config('services.wireguard.resync_on_deploy', true)) {
