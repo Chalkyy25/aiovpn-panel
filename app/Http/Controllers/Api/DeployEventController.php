@@ -31,6 +31,11 @@ class DeployEventController extends Controller
             'cn_list' => 'nullable|string',
             'clients' => 'nullable|integer',
         ]);
+        
+        Log::channel('vpn')->debug('OVPN RAW PAYLOAD', [
+    'server_id' => $server->id,
+    'data'      => $data,
+]);
 
         // Only handle mgmt snapshots
         if (strtolower($data['status']) !== 'mgmt') {
