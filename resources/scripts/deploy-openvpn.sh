@@ -28,6 +28,8 @@ WG_SUBNET="${WG_SUBNET:-10.66.66.0/24}"
 WG_SRV_IP="${WG_SRV_IP:-10.66.66.1/24}"
 WG_PORT="${WG_PORT:-51820}"
 WG_ENDPOINT_HOST="${WG_ENDPOINT_HOST:-}"
+# WireGuard keepalive (applied to all peers on redeploy)
+WG_DEFAULT_KEEPALIVE="${WG_DEFAULT_KEEPALIVE:-25}"   # 25 recommended, 0 disables
 
 # OpenVPN (fallback)
 OVPN_SUBNET="${OVPN_SUBNET:-10.8.0.0/24}"
@@ -169,6 +171,24 @@ for i in {1..30}; do
   sleep 0.5
 done
 [[ $ok_iface -eq 1 ]] || fail "WireGuard (wg0) failed to start"
+# ===== Apply persistent keepalive to all peers (fix flapping / NAT idle) =====
+apply_wg_keepalive() {
+  local ka="$WG_DEFAULT_KEEPALIVE"
+  [[ "$ka" != "0" ]] || { logchunk "[WG] keepalive disabled"; return 0; }
+
+  logchunk "[WG] Applying persistent keepalive=${ka}s to all peers (runtime)"
+  wg show wg0 peers | while read -r peer; do
+    [[ -n "$peer" ]] || continue
+    wg set wg0 peer "$peer" persistent-keepalive "$ka" || true
+  done
+
+  # Persist it to /etc/wireguard/wg0.conf (since SaveConfig=true)
+  logchunk "[WG] Saving wg0 runtime config to /etc/wireguard/wg0.conf"
+  wg-quick save wg0 || true
+
+  logchunk "[WG] Keepalive applied + saved"
+}
+apply_wg_keepalive
 
 iptables -C INPUT -p udp --dport "$WG_PORT" -j ACCEPT 2>/dev/null || iptables -A INPUT -p udp --dport "$WG_PORT" -j ACCEPT
 iptables-save >/etc/iptables/rules.v4 || true
