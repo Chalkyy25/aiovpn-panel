@@ -2,11 +2,13 @@
 (function () {
   const cfg = window.VPN_DASHBOARD_CONFIG || {};
   const fallbackPattern = cfg.disconnectFallbackPattern || '';
+  const csrfFromCfg = cfg.csrf || '';
+
   const fallbackUrl = (sid) => fallbackPattern.replace('__SID__', String(sid));
 
   // ✅ WireGuard staleness window (seconds)
   // Keep this high to prevent false-offline on idle peers.
-  const WG_STALE_SECONDS = Number(cfg.wgStaleSeconds || 240); // 4 minutes default
+  const WG_STALE_SECONDS = Number(cfg.wgStaleSeconds || 240);
 
   window.vpnDashboard = function (lw) {
     // ---------------- helpers ----------------
@@ -27,7 +29,7 @@
 
     // accepts ISO string, unix seconds, unix ms, numeric string
     const toDate = (v) => {
-      if (v === null || v === undefined || v === '') return null;
+      if (isBlank(v)) return null;
 
       if (typeof v === 'number') return new Date(v >= 1000000000000 ? v : v * 1000);
 
@@ -43,17 +45,20 @@
       return isNaN(d) ? null : d;
     };
 
+    const tsToMs = (ts) => {
+      const d = toDate(ts);
+      return d ? d.getTime() : null;
+    };
+
     const safeObj = (raw) => {
       if (!raw) return null;
       if (typeof raw === 'string') {
         const u = raw.trim();
         return u ? { username: u } : null;
       }
-      if (typeof raw !== 'object') return null;
-      return raw;
+      return typeof raw === 'object' ? raw : null;
     };
 
-    // "time ago" formatter (needs nowMs passed in)
     const agoFrom = (nowMs, v) => {
       const d = toDate(v);
       if (!d) return '—';
@@ -69,11 +74,6 @@
       return 'just now';
     };
 
-    const tsToMs = (ts) => {
-      const d = toDate(ts);
-      return d ? d.getTime() : null;
-    };
-
     // ---------------- component ----------------
     return {
       lw,
@@ -86,19 +86,27 @@
       selectedServerId: null,
       showFilters: false,
 
-      // ✅ UI clock
+      // ✅ UI clock (drives "x min ago")
       nowTick: Date.now(),
       _nowTimer: null,
 
-      // ✅ REAL last event time (do NOT reset on init/filter/poll/reconnect)
-      lastEventAt: null, // epoch ms or null
+      // ✅ REAL last event time (epoch ms). Only updated by real Echo events.
+      lastEventAt: null,
 
       _pollTimer: null,
       _subscribed: false,
 
+      // ✅ THIS FIXES YOUR BLADE: x-text="lastUpdated"
+      get lastUpdated() {
+        if (!this.lastEventAt) return '—';
+        return agoFrom(this.nowTick, this.lastEventAt);
+      },
+
       init(meta, seedUsersByServer) {
         this.serverMeta = meta || {};
-        Object.keys(this.serverMeta).forEach((sid) => (this.usersByServer[sid] = {}));
+        for (const sid of Object.keys(this.serverMeta)) {
+          this.usersByServer[sid] = {};
+        }
 
         // seed snapshot (authoritative)
         if (seedUsersByServer) {
@@ -115,16 +123,13 @@
           if (sf !== null) this.showFilters = sf === '1';
         } catch {}
 
-        // ✅ start UI ticker (only drives labels like "2 min ago")
+        // start UI ticker (only affects time labels)
         if (this._nowTimer) clearInterval(this._nowTimer);
-        this._nowTimer = setInterval(() => {
-          this.nowTick = Date.now();
-        }, 1000);
+        this._nowTimer = setInterval(() => (this.nowTick = Date.now()), 1000);
 
         this._recalc();
 
-        // ⚠️ DO NOT set lastEventAt here. It must reflect real events only.
-
+        // DO NOT set lastEventAt here (only real events)
         this._waitForEcho().then(() => this._subscribe());
         this._startPolling(15000);
       },
@@ -143,7 +148,7 @@
         } catch {}
       },
 
-      // ✅ per-row label (OpenVPN shows connected_at, WG shows first_seen_at)
+      // OpenVPN shows connected_at; WG shows first_seen_at (fallback seen_at)
       rowAgo(row) {
         const protocol = row?.protocol;
         const base =
@@ -154,15 +159,8 @@
         return agoFrom(this.nowTick, base);
       },
 
-      // Optional: last handshake/seen ago (WG)
       rowHandshakeAgo(row) {
         return agoFrom(this.nowTick, row?.seen_at);
-      },
-
-      // ✅ header: last update based on REAL event time, not UI refresh
-      lastUpdatedHuman() {
-        if (!this.lastEventAt) return '—';
-        return agoFrom(this.nowTick, this.lastEventAt);
       },
 
       serverUsersCount(id) {
@@ -172,15 +170,13 @@
 
       activeRows() {
         const serverIds =
-          this.selectedServerId == null
-            ? Object.keys(this.serverMeta)
-            : [String(this.selectedServerId)];
+          this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
 
         const rows = [];
-        serverIds.forEach((sid) => {
+        for (const sid of serverIds) {
           const map = this.usersByServer[sid] || {};
           rows.push(...Object.values(map));
-        });
+        }
 
         return rows
           .filter((r) => r && typeof r === 'object' && !isBlank(r.__key))
@@ -207,7 +203,7 @@
             this._recalc();
           }
 
-          // ⚠️ DO NOT set lastEventAt here. Polling is not a “real event”.
+          // DO NOT set lastEventAt here (poll != event)
         } catch (e) {
           console.error(e);
         } finally {
@@ -223,6 +219,7 @@
               resolve();
             }
           }, 150);
+
           setTimeout(() => {
             clearInterval(t);
             resolve();
@@ -233,17 +230,15 @@
       _subscribe() {
         if (this._subscribed) return;
 
-        // ⚠️ DO NOT set lastEventAt on subscribe/reconnect
-
         try {
           window.Echo.private('servers.dashboard').listen('.mgmt.update', (e) => this.handleEvent(e));
         } catch (_) {}
 
-        Object.keys(this.serverMeta).forEach((sid) => {
+        for (const sid of Object.keys(this.serverMeta)) {
           try {
             window.Echo.private(`servers.${sid}`).listen('.mgmt.update', (e) => this.handleEvent(e));
           } catch (_) {}
-        });
+        }
 
         this._subscribed = true;
       },
@@ -269,7 +264,6 @@
         return `u:${serverId}:${username}:${protocol}`;
       },
 
-      // ✅ WG online/offline from seen_at (handshake-derived) with a sane stale window
       _wireguardIsConnected(nowMs, seenAt) {
         const d = toDate(seenAt);
         if (!d) return false;
@@ -286,11 +280,10 @@
         if (!dNew) return prevVal;
 
         const nowMs = Date.now();
-        const newIsNowish = (nowMs - dNew.getTime()) < 10_000;
+        const newIsNowish = nowMs - dNew.getTime() < 10_000;
         const prevIsOlder = dPrev.getTime() < dNew.getTime() - 10_000;
 
         if (newIsNowish && prevIsOlder) return prevVal;
-
         return newVal;
       },
 
@@ -304,7 +297,6 @@
 
         const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
 
-        // OpenVPN: should be real "connected since"
         const connected_at_in = raw?.connected_at ?? raw?.connectedAt;
         const connected_at_prev = prevRow?.connected_at ?? null;
         const connected_at = this._stableConnectedAt(
@@ -330,15 +322,11 @@
           )
         );
 
-        // ✅ derive is_connected if not provided
         let is_connected = pick(raw?.is_connected, prevRow?.is_connected);
         if (is_connected === undefined || is_connected === null) {
-          if (protocol === 'WIREGUARD') {
-            is_connected = this._wireguardIsConnected(this.nowTick, seen_at);
-          } else {
-            // OpenVPN events are snapshots: if row exists in list, it's connected.
-            is_connected = true;
-          }
+          is_connected = protocol === 'WIREGUARD'
+            ? this._wireguardIsConnected(this.nowTick, seen_at)
+            : true;
         }
 
         return {
@@ -372,8 +360,8 @@
       _setExactList(serverId, list) {
         const prevMap = this.usersByServer[serverId] || {};
         const nextMap = {};
-        const arr = Array.isArray(list) ? list : [];
 
+        const arr = Array.isArray(list) ? list : [];
         const seenKeys = new Map();
 
         for (const raw0 of arr) {
@@ -389,7 +377,6 @@
           seenKeys.set(baseKey, n);
 
           const finalKey = n === 1 ? baseKey : `${baseKey}#${n}`;
-
           const prevRow = prevMap[finalKey] || prevMap[baseKey] || null;
 
           nextMap[finalKey] = this._shapeRow(serverId, raw, prevRow, finalKey);
@@ -419,16 +406,9 @@
         this._setExactList(sid, list);
         this._recalc();
 
-        // ✅ ONLY update lastEventAt from REAL event timestamp if present
-        const eventMs = tsToMs(e?.ts);
-        if (eventMs) {
-          // monotonic protection (ignore older events)
-          if (!this.lastEventAt || eventMs >= this.lastEventAt) this.lastEventAt = eventMs;
-        } else {
-          // if no ts, still count as real event
-          const nowMs = Date.now();
-          if (!this.lastEventAt || nowMs >= this.lastEventAt) this.lastEventAt = nowMs;
-        }
+        // ✅ only update lastEventAt on real events
+        const eventMs = tsToMs(e?.ts) ?? Date.now();
+        if (!this.lastEventAt || eventMs >= this.lastEventAt) this.lastEventAt = eventMs;
       },
 
       _recalc() {
@@ -440,18 +420,22 @@
         let conns = 0;
         let activeServers = 0;
 
-        Object.keys(this.serverMeta).forEach((sid) => {
+        for (const sid of Object.keys(this.serverMeta)) {
           const arr = Object.values(this.usersByServer[sid] || {});
           const online = arr.filter((u) => (u?.is_connected === undefined ? true : !!u.is_connected));
 
           if (online.length) activeServers++;
           conns += online.length;
-          online.forEach((u) => unique.add(u.username));
-        });
+          for (const u of online) unique.add(u.username);
+        }
 
         if (activeServers === 0) activeServers = Object.keys(this.serverMeta).length;
 
-        return { online_users: unique.size, active_connections: conns, active_servers: activeServers };
+        return {
+          online_users: unique.size,
+          active_connections: conns,
+          active_servers: activeServers,
+        };
       },
 
       async disconnect(row) {
@@ -459,7 +443,11 @@
         if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
         try {
-          const csrf = document.querySelector('meta[name=csrf-token]')?.content || cfg.csrf || '';
+          const csrf =
+            document.querySelector('meta[name=csrf-token]')?.content ||
+            csrfFromCfg ||
+            '';
+
           const headers = { 'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json' };
 
           let res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
@@ -474,6 +462,7 @@
           });
 
           let ok = res.ok;
+
           if (!ok) {
             const res2 = await fetch(fallbackUrl(row.server_id), {
               method: 'POST',
@@ -482,6 +471,7 @@
             });
             ok = res2.ok;
           }
+
           if (!ok) {
             alert('Error disconnecting user.\n\nDisconnect failed');
             return;
