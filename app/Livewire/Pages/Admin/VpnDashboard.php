@@ -125,15 +125,19 @@ class VpnDashboard extends Component
      * This now pulls from Redis snapshots (single source of truth for dashboard tiles + lists).
      */
     public function getLiveStats(): array
-    {
-        $this->skipRender(); // ✅ prevents DOM morph / Alpine reset
-    
-        return [
-            'usersByServer' => $this->seedUsersByServer(), // whatever you already return
-            'serverMeta'    => $this->serverMeta,
-            'ts'            => now()->toIso8601String(),
-        ];
-    }
+{
+    $this->skipRender(); // prevents DOM morphing / Alpine reset
+
+    [$serverMeta, $usersByServer] = $this->buildSnapshot();
+    $totals = $this->computeTotals($serverMeta, $usersByServer);
+
+    return [
+        'serverMeta'    => $serverMeta,
+        'usersByServer' => $usersByServer,
+        'totals'        => $totals,
+        'ts'            => now()->toIso8601String(),
+    ];
+}
 
     public function disconnectUser(int $serverId, int $connectionId, string $username): void
     {
