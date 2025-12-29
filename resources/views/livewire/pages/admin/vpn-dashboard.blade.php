@@ -9,14 +9,11 @@
 </script>
 @endpush
 
+
 <div
+  wire:ignore.self
   x-data="vpnDashboard(window.Livewire.find('{{ $this->getId() }}'))"
-  x-init="
-    init(
-      @js($serverMeta),
-      @js($seedUsersByServer)
-    )
-  "
+  x-init="init(@js($serverMeta), @js($seedUsersByServer))"
   class="space-y-6"
 >
 
