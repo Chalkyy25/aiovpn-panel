@@ -4,6 +4,10 @@
   const fallbackPattern = cfg.disconnectFallbackPattern || '';
   const fallbackUrl = (sid) => fallbackPattern.replace('__SID__', String(sid));
 
+  // ✅ WireGuard staleness window (seconds)
+  // Keep this high to prevent false-offline on idle peers.
+  const WG_STALE_SECONDS = Number(cfg.wgStaleSeconds || 240); // 4 minutes default
+
   window.vpnDashboard = function (lw) {
     // ---------------- helpers ----------------
     const isBlank = (v) =>
@@ -25,8 +29,6 @@
     const toDate = (v) => {
       if (v === null || v === undefined || v === '') return null;
 
-      // Detect milliseconds vs seconds. Current epoch in ms is ~1.7e12, so
-      // treat >= 1e12 as milliseconds, otherwise as seconds.
       if (typeof v === 'number') return new Date(v >= 1000000000000 ? v : v * 1000);
 
       const s = String(v).trim();
@@ -67,6 +69,11 @@
       return 'just now';
     };
 
+    const tsToMs = (ts) => {
+      const d = toDate(ts);
+      return d ? d.getTime() : null;
+    };
+
     // ---------------- component ----------------
     return {
       lw,
@@ -79,10 +86,12 @@
       selectedServerId: null,
       showFilters: false,
 
-      // UI clock + “last updated”
+      // ✅ UI clock
       nowTick: Date.now(),
-      lastUpdatedAt: null, // ISO or ms
       _nowTimer: null,
+
+      // ✅ REAL last event time (do NOT reset on init/filter/poll/reconnect)
+      lastEventAt: null, // epoch ms or null
 
       _pollTimer: null,
       _subscribed: false,
@@ -106,14 +115,15 @@
           if (sf !== null) this.showFilters = sf === '1';
         } catch {}
 
-        // start UI ticker (this is what makes "2 min ago" update smoothly)
+        // ✅ start UI ticker (only drives labels like "2 min ago")
         if (this._nowTimer) clearInterval(this._nowTimer);
         this._nowTimer = setInterval(() => {
           this.nowTick = Date.now();
         }, 1000);
 
         this._recalc();
-        this.lastUpdatedAt = Date.now();
+
+        // ⚠️ DO NOT set lastEventAt here. It must reflect real events only.
 
         this._waitForEcho().then(() => this._subscribe());
         this._startPolling(15000);
@@ -133,25 +143,26 @@
         } catch {}
       },
 
-      // Use in Blade: x-text="rowAgo(row)"
+      // ✅ per-row label (OpenVPN shows connected_at, WG shows first_seen_at)
       rowAgo(row) {
         const protocol = row?.protocol;
         const base =
           protocol === 'WIREGUARD'
-            ? pick(row?.first_seen_at, row?.seen_at) // stable “connected since-ish”
-            : row?.connected_at; // OpenVPN actual connect time
+            ? pick(row?.first_seen_at, row?.seen_at)
+            : row?.connected_at;
 
         return agoFrom(this.nowTick, base);
       },
 
-      // Optional: if you still want "last handshake ago" for WG:
+      // Optional: last handshake/seen ago (WG)
       rowHandshakeAgo(row) {
         return agoFrom(this.nowTick, row?.seen_at);
       },
 
-      // Optional: for header "last updated"
+      // ✅ header: last update based on REAL event time, not UI refresh
       lastUpdatedHuman() {
-        return agoFrom(this.nowTick, this.lastUpdatedAt);
+        if (!this.lastEventAt) return '—';
+        return agoFrom(this.nowTick, this.lastEventAt);
       },
 
       serverUsersCount(id) {
@@ -196,7 +207,7 @@
             this._recalc();
           }
 
-          this.lastUpdatedAt = Date.now();
+          // ⚠️ DO NOT set lastEventAt here. Polling is not a “real event”.
         } catch (e) {
           console.error(e);
         } finally {
@@ -221,6 +232,8 @@
 
       _subscribe() {
         if (this._subscribed) return;
+
+        // ⚠️ DO NOT set lastEventAt on subscribe/reconnect
 
         try {
           window.Echo.private('servers.dashboard').listen('.mgmt.update', (e) => this.handleEvent(e));
@@ -256,25 +269,28 @@
         return `u:${serverId}:${username}:${protocol}`;
       },
 
+      // ✅ WG online/offline from seen_at (handshake-derived) with a sane stale window
+      _wireguardIsConnected(nowMs, seenAt) {
+        const d = toDate(seenAt);
+        if (!d) return false;
+        const diffSec = Math.max(0, (nowMs - d.getTime()) / 1000);
+        return diffSec <= WG_STALE_SECONDS;
+      },
+
       // Protect against overwriting a stable connected_at with a bogus "now"
       _stableConnectedAt(newVal, prevVal) {
         const dNew = toDate(newVal);
         const dPrev = toDate(prevVal);
 
-        // If we don't have a previous value, accept new if valid.
         if (!dPrev) return dNew ? newVal : prevVal;
-
-        // If new is invalid, keep prev.
         if (!dNew) return prevVal;
 
-        // If backend keeps sending "now-ish" (within 10s) while prev is older, keep prev.
         const nowMs = Date.now();
         const newIsNowish = (nowMs - dNew.getTime()) < 10_000;
         const prevIsOlder = dPrev.getTime() < dNew.getTime() - 10_000;
 
         if (newIsNowish && prevIsOlder) return prevVal;
 
-        // Otherwise accept new (backend really changed it)
         return newVal;
       },
 
@@ -288,7 +304,7 @@
 
         const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
 
-        // OpenVPN: should be real "connected since" from backend
+        // OpenVPN: should be real "connected since"
         const connected_at_in = raw?.connected_at ?? raw?.connectedAt;
         const connected_at_prev = prevRow?.connected_at ?? null;
         const connected_at = this._stableConnectedAt(
@@ -296,11 +312,9 @@
           connected_at_prev
         );
 
-        // WireGuard: track a stable first_seen_at (never resets)
+        // WireGuard: stable first_seen_at never resets once set
         const first_seen_at =
-          protocol === 'WIREGUARD'
-            ? pick(prevRow?.first_seen_at, seen_at)
-            : null;
+          protocol === 'WIREGUARD' ? pick(prevRow?.first_seen_at, seen_at) : null;
 
         const bytes_in = Number(
           pick(
@@ -315,6 +329,17 @@
             prevRow?.bytes_out ?? 0
           )
         );
+
+        // ✅ derive is_connected if not provided
+        let is_connected = pick(raw?.is_connected, prevRow?.is_connected);
+        if (is_connected === undefined || is_connected === null) {
+          if (protocol === 'WIREGUARD') {
+            is_connected = this._wireguardIsConnected(this.nowTick, seen_at);
+          } else {
+            // OpenVPN events are snapshots: if row exists in list, it's connected.
+            is_connected = true;
+          }
+        }
 
         return {
           __key: forcedKey,
@@ -340,7 +365,7 @@
           up_mb: toMB(bytes_out),
           formatted_bytes: humanBytes(bytes_in, bytes_out),
 
-          is_connected: pick(raw?.is_connected, prevRow?.is_connected),
+          is_connected: !!is_connected,
         };
       },
 
@@ -394,8 +419,16 @@
         this._setExactList(sid, list);
         this._recalc();
 
-        // IMPORTANT: this is a UI timestamp, not per-user connection time
-        this.lastUpdatedAt = Date.now();
+        // ✅ ONLY update lastEventAt from REAL event timestamp if present
+        const eventMs = tsToMs(e?.ts);
+        if (eventMs) {
+          // monotonic protection (ignore older events)
+          if (!this.lastEventAt || eventMs >= this.lastEventAt) this.lastEventAt = eventMs;
+        } else {
+          // if no ts, still count as real event
+          const nowMs = Date.now();
+          if (!this.lastEventAt || nowMs >= this.lastEventAt) this.lastEventAt = nowMs;
+        }
       },
 
       _recalc() {
