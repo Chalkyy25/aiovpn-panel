@@ -8,11 +8,42 @@
   const WG_STALE_SECONDS = Number(cfg.wgStaleSeconds || 240);
 
   window.vpnDashboard = function (lw) {
-    // ---------------- helpers ----------------
+    // ---------- helpers ----------
     const isBlank = (v) =>
       v === null || v === undefined || v === "" || (typeof v === "number" && Number.isNaN(v));
 
     const pick = (a, b) => (isBlank(a) ? b : a);
+
+    const toDate = (v) => {
+      if (isBlank(v)) return null;
+      if (typeof v === "number") return new Date(v >= 1_000_000_000_000 ? v : v * 1000);
+      const s = String(v).trim();
+      if (!s) return null;
+      if (/^\d+$/.test(s)) {
+        const n = Number(s);
+        return new Date(n >= 1_000_000_000_000 ? n : n * 1000);
+      }
+      const d = new Date(s);
+      return isNaN(d) ? null : d;
+    };
+
+    const agoFrom = (nowMs, v) => {
+      const d = toDate(v);
+      if (!d) return "—";
+      const diff = Math.max(0, (nowMs - d.getTime()) / 1000);
+      const m = Math.floor(diff / 60);
+      const h = Math.floor(m / 60);
+      const dd = Math.floor(h / 24);
+      if (dd) return `${dd} day${dd > 1 ? "s" : ""} ago`;
+      if (h) return `${h} hour${h > 1 ? "s" : ""} ago`;
+      if (m) return `${m} min${m > 1 ? "s" : ""} ago`;
+      return "just now";
+    };
+
+    const tsToMs = (ts) => {
+      const d = toDate(ts);
+      return d ? d.getTime() : null;
+    };
 
     const toMB = (n) => (n ? (n / (1024 * 1024)).toFixed(2) : "0.00");
 
@@ -24,26 +55,19 @@
       return (total || 0) + " B";
     };
 
-    const toDate = (v) => {
-      if (isBlank(v)) return null;
-
-      if (typeof v === "number") return new Date(v >= 1_000_000_000_000 ? v : v * 1000);
-
-      const s = String(v).trim();
-      if (!s) return null;
-
-      if (/^\d+$/.test(s)) {
-        const n = Number(s);
-        return new Date(n >= 1_000_000_000_000 ? n : n * 1000);
-      }
-
-      const d = new Date(s);
-      return isNaN(d) ? null : d;
+    const normalizeProtocol = (val) => {
+      if (isBlank(val)) return null;
+      const p = String(val).toLowerCase();
+      if (p.startsWith("wire")) return "WIREGUARD";
+      if (p === "ovpn" || p.startsWith("openvpn")) return "OPENVPN";
+      return p.toUpperCase();
     };
 
-    const tsToMs = (ts) => {
-      const d = toDate(ts);
-      return d ? d.getTime() : null;
+    const wgIsConnected = (nowMs, seenAt) => {
+      const d = toDate(seenAt);
+      if (!d) return false;
+      const diffSec = Math.max(0, (nowMs - d.getTime()) / 1000);
+      return diffSec <= WG_STALE_SECONDS;
     };
 
     const safeObj = (raw) => {
@@ -55,43 +79,22 @@
       return typeof raw === "object" ? raw : null;
     };
 
-    const agoFrom = (nowMs, v) => {
-      const d = toDate(v);
-      if (!d) return "—";
-
-      const diff = Math.max(0, (nowMs - d.getTime()) / 1000);
-      const m = Math.floor(diff / 60);
-      const h = Math.floor(m / 60);
-      const dd = Math.floor(h / 24);
-
-      if (dd) return `${dd} day${dd > 1 ? "s" : ""} ago`;
-      if (h) return `${h} hour${h > 1 ? "s" : ""} ago`;
-      if (m) return `${m} min${m > 1 ? "s" : ""} ago`;
-      return "just now";
+    const keyFor = (serverId, raw, username) => {
+      const sk = raw?.session_key ?? raw?.sessionKey;
+      if (!isBlank(sk)) return `sk:${sk}`;
+      const cid = raw?.connection_id ?? raw?.id;
+      if (!isBlank(cid)) return `cid:${cid}`;
+      return `u:${serverId}:${username}`;
     };
 
-    const normalizeProtocol = (val) => {
-      if (isBlank(val)) return null;
-      const p = String(val).toLowerCase();
-      if (p.startsWith("wire")) return "WIREGUARD";
-      if (p === "ovpn" || p.startsWith("openvpn")) return "OPENVPN";
-      return p.toUpperCase();
-    };
-
-    const wireguardIsConnected = (nowMs, seenAt) => {
-      const d = toDate(seenAt);
-      if (!d) return false;
-      const diffSec = Math.max(0, (nowMs - d.getTime()) / 1000);
-      return diffSec <= WG_STALE_SECONDS;
-    };
-
-    // ---------------- component ----------------
+    // ---------- component ----------
     return {
       lw,
       refreshing: false,
 
       serverMeta: {},
       usersByServer: {},
+
       totals: { online_users: 0, active_connections: 0, active_servers: 0 },
 
       selectedServerId: null,
@@ -111,32 +114,26 @@
 
       init(meta, seedUsersByServer) {
         this.serverMeta = meta || {};
-        for (const sid of Object.keys(this.serverMeta)) {
-          this.usersByServer[sid] = {};
-        }
+        for (const sid of Object.keys(this.serverMeta)) this.usersByServer[sid] = {};
 
-        // seed snapshot (this is allowed)
+        // seed initial snapshot
         if (seedUsersByServer) {
           for (const sid in seedUsersByServer) {
             this._setExactList(Number(sid), seedUsersByServer[sid] || []);
           }
         }
 
-        // restore state
         try {
           const savedSid = localStorage.getItem("vpn.selectedServerId");
           if (savedSid !== null && savedSid !== "") this.selectedServerId = Number(savedSid);
-
           const sf = localStorage.getItem("vpn.showFilters");
           if (sf !== null) this.showFilters = sf === "1";
         } catch {}
 
-        // start UI clock
         if (this._nowTimer) clearInterval(this._nowTimer);
         this._nowTimer = setInterval(() => (this.nowTick = Date.now()), 1000);
 
         this._recalc();
-
         this._waitForEcho().then(() => this._subscribe());
         this._startPolling(15000);
       },
@@ -165,9 +162,7 @@
           this.selectedServerId == null ? Object.keys(this.serverMeta) : [String(this.selectedServerId)];
 
         const rows = [];
-        for (const sid of serverIds) {
-          rows.push(...Object.values(this.usersByServer[sid] || {}));
-        }
+        for (const sid of serverIds) rows.push(...Object.values(this.usersByServer[sid] || {}));
 
         return rows
           .filter((r) => r && typeof r === "object" && !isBlank(r.__key))
@@ -180,14 +175,22 @@
           );
       },
 
-      // ✅ Polling: totals only. Do NOT mutate usersByServer.
       async refreshNow() {
         if (this.refreshing) return;
         this.refreshing = true;
 
         try {
+          // This is fine ONLY if Livewire does NOT re-render (skipRender + wire:ignore.self)
           const res = await this.lw.call("getLiveStats");
-          if (res?.totals) this.totals = res.totals;
+
+          if (res?.usersByServer) {
+            for (const sid in this.serverMeta) {
+              this._setExactList(Number(sid), res.usersByServer[sid] || []);
+            }
+            this._recalc();
+          }
+
+          // do not touch lastEventAt here (only real events)
         } catch (e) {
           console.error(e);
         } finally {
@@ -203,7 +206,6 @@
               resolve();
             }
           }, 150);
-
           setTimeout(() => {
             clearInterval(t);
             resolve();
@@ -232,16 +234,6 @@
         this._pollTimer = setInterval(() => this.refreshNow(), ms);
       },
 
-      _keyFor(serverId, raw, username) {
-        const sk = raw?.session_key ?? raw?.sessionKey ?? null;
-        if (!isBlank(sk)) return `sk:${String(sk)}`;
-
-        const cid = raw?.connection_id ?? raw?.id ?? null;
-        if (!isBlank(cid)) return `cid:${String(cid)}`;
-
-        return `u:${serverId}:${username}`;
-      },
-
       _shapeRow(serverId, raw, prevRow, forcedKey) {
         const meta = this.serverMeta[serverId] || {};
         const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? "unknown");
@@ -249,15 +241,16 @@
         const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
         const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
-        // ✅ protocol only comes from payload; if missing keep prev; if still missing => UNKNOWN
-        const protocol = normalizeProtocol(raw?.protocol ?? raw?.proto) ?? prevRow?.protocol ?? "UNKNOWN";
+        // ✅ keep previous protocol if missing
+        const protocol = normalizeProtocol(raw?.protocol ?? raw?.proto) ?? prevRow?.protocol ?? null;
 
         const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
         const connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
 
-        // WG: stable first_seen_at
         const first_seen_at =
-          protocol === "WIREGUARD" ? pick(prevRow?.first_seen_at, seen_at) : prevRow?.first_seen_at ?? null;
+          protocol === "WIREGUARD"
+            ? pick(prevRow?.first_seen_at, seen_at)
+            : (prevRow?.first_seen_at ?? null);
 
         const bytes_in = Number(
           pick(raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived, prevRow?.bytes_in ?? 0)
@@ -271,7 +264,7 @@
 
         let is_connected = pick(raw?.is_connected, prevRow?.is_connected);
         if (is_connected === undefined || is_connected === null) {
-          is_connected = protocol === "WIREGUARD" ? wireguardIsConnected(this.nowTick, seen_at) : true;
+          is_connected = protocol === "WIREGUARD" ? wgIsConnected(this.nowTick, seen_at) : true;
         }
 
         return {
@@ -306,16 +299,16 @@
       _setExactList(serverId, list) {
         const prevMap = this.usersByServer[serverId] || {};
         const nextMap = {};
-        const arr = Array.isArray(list) ? list : [];
 
+        const arr = Array.isArray(list) ? list : [];
         for (const raw0 of arr) {
           const raw = safeObj(raw0);
           if (!raw) continue;
 
           const username = String(raw?.username ?? raw?.cn ?? "unknown");
-          const key = this._keyFor(serverId, raw, username);
-          const prevRow = prevMap[key] || null;
+          const key = keyFor(serverId, raw, username);
 
+          const prevRow = prevMap[key] || null;
           nextMap[key] = this._shapeRow(serverId, raw, prevRow, key);
         }
 
@@ -327,11 +320,10 @@
         if (!sid) return;
 
         let list = [];
-
         if (Array.isArray(e?.users)) {
           list = e.users;
         } else if (typeof e?.cn_list === "string") {
-          // cn_list cannot carry protocol/timestamps; keep protocol UNKNOWN (or prev if exists)
+          // cn_list does NOT include protocol -> keep previous protocol, don’t invent one
           list = e.cn_list
             .split(",")
             .map((s) => s.trim())
@@ -360,7 +352,6 @@
         for (const sid of Object.keys(this.serverMeta)) {
           const arr = Object.values(this.usersByServer[sid] || {});
           const online = arr.filter((u) => (u?.is_connected === undefined ? true : !!u.is_connected));
-
           if (online.length) activeServers++;
           conns += online.length;
           for (const u of online) unique.add(u.username);
@@ -380,7 +371,7 @@
         if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
         try {
-          const csrf = document.querySelector('meta[name="csrf-token"]')?.content || csrfFromCfg || "";
+          const csrf = document.querySelector("meta[name=csrf-token]")?.content || csrfFromCfg || "";
           const headers = { "X-CSRF-TOKEN": csrf, "Content-Type": "application/json" };
 
           let res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
