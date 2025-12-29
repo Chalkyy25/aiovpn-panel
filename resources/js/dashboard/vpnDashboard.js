@@ -5,7 +5,6 @@
   const csrfFromCfg = cfg.csrf || '';
   const fallbackUrl = (sid) => fallbackPattern.replace('__SID__', String(sid));
 
-  // ✅ WireGuard staleness window (seconds)
   const WG_STALE_SECONDS = Number(cfg.wgStaleSeconds || 240);
 
   window.vpnDashboard = function (lw) {
@@ -13,7 +12,7 @@
     const isBlank = (v) =>
       v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v));
 
-    const pick = (primary, fallback) => (isBlank(primary) ? fallback : primary);
+    const pick = (a, b) => (isBlank(a) ? b : a);
 
     const toMB = (n) => (n ? (n / (1024 * 1024)).toFixed(2) : '0.00');
 
@@ -25,18 +24,17 @@
       return (total || 0) + ' B';
     };
 
-    // accepts ISO string, unix seconds, unix ms, numeric string
     const toDate = (v) => {
       if (isBlank(v)) return null;
 
-      if (typeof v === 'number') return new Date(v >= 1000000000000 ? v : v * 1000);
+      if (typeof v === 'number') return new Date(v >= 1_000_000_000_000 ? v : v * 1000);
 
       const s = String(v).trim();
       if (!s) return null;
 
       if (/^\d+$/.test(s)) {
         const n = Number(s);
-        return new Date(n >= 1000000000000 ? n : n * 1000);
+        return new Date(n >= 1_000_000_000_000 ? n : n * 1000);
       }
 
       const d = new Date(s);
@@ -72,25 +70,37 @@
       return 'just now';
     };
 
+    const normalizeProtocol = (val) => {
+      if (isBlank(val)) return null;
+      const p = String(val).toLowerCase();
+      if (p.startsWith('wire')) return 'WIREGUARD';
+      if (p === 'ovpn' || p.startsWith('openvpn')) return 'OPENVPN';
+      return p.toUpperCase();
+    };
+
+    const wireguardIsConnected = (nowMs, seenAt) => {
+      const d = toDate(seenAt);
+      if (!d) return false;
+      const diffSec = Math.max(0, (nowMs - d.getTime()) / 1000);
+      return diffSec <= WG_STALE_SECONDS;
+    };
+
     // ---------------- component ----------------
     return {
       lw,
       refreshing: false,
 
       serverMeta: {},
-      usersByServer: {}, // { [sid]: { [key]: row } }
+      usersByServer: {},
       totals: { online_users: 0, active_connections: 0, active_servers: 0 },
 
       selectedServerId: null,
       showFilters: false,
 
-      // UI ticker
       nowTick: Date.now(),
       _nowTimer: null,
 
-      // last real event timestamp
       lastEventAt: null,
-
       _pollTimer: null,
       _subscribed: false,
 
@@ -105,23 +115,19 @@
           this.usersByServer[sid] = {};
         }
 
-        // seed snapshot
         if (seedUsersByServer) {
           for (const sid in seedUsersByServer) {
             this._setExactList(Number(sid), seedUsersByServer[sid] || []);
           }
         }
 
-        // restore state
         try {
           const savedSid = localStorage.getItem('vpn.selectedServerId');
           if (savedSid !== null && savedSid !== '') this.selectedServerId = Number(savedSid);
-
           const sf = localStorage.getItem('vpn.showFilters');
           if (sf !== null) this.showFilters = sf === '1';
         } catch {}
 
-        // start clock
         if (this._nowTimer) clearInterval(this._nowTimer);
         this._nowTimer = setInterval(() => (this.nowTick = Date.now()), 1000);
 
@@ -145,21 +151,6 @@
         } catch {}
       },
 
-      // For "Connected" display
-      rowAgo(row) {
-        const protocol = row?.protocol;
-        const base =
-          protocol === 'WIREGUARD'
-            ? pick(row?.first_seen_at, row?.seen_at)
-            : row?.connected_at;
-
-        return agoFrom(this.nowTick, base);
-      },
-
-      rowHandshakeAgo(row) {
-        return agoFrom(this.nowTick, row?.seen_at);
-      },
-
       serverUsersCount(id) {
         const arr = Object.values(this.usersByServer[id] || {});
         return arr.filter((u) => (u?.is_connected === undefined ? true : !!u.is_connected)).length;
@@ -171,8 +162,7 @@
 
         const rows = [];
         for (const sid of serverIds) {
-          const map = this.usersByServer[sid] || {};
-          rows.push(...Object.values(map));
+          rows.push(...Object.values(this.usersByServer[sid] || {}));
         }
 
         return rows
@@ -192,7 +182,6 @@
 
         try {
           const res = await this.lw.call('getLiveStats');
-
           if (res?.usersByServer) {
             for (const sid in this.serverMeta) {
               this._setExactList(Number(sid), res.usersByServer[sid] || []);
@@ -243,75 +232,31 @@
         this._pollTimer = setInterval(() => this.refreshNow(), ms);
       },
 
-      _shapeProtocol(raw, prevRow) {
-        const incoming = raw?.protocol ?? raw?.proto ?? null;
-
-        // ✅ If missing, keep prev protocol. Otherwise DO NOT guess.
-        if (incoming === null || incoming === undefined || String(incoming).trim() === '') {
-          if (prevRow?.protocol) return String(prevRow.protocol).toUpperCase();
-          return null; // <-- important (prevents WG => OVPN flip)
-        }
-
-        const p = String(incoming).toLowerCase();
-        if (p.startsWith('wire')) return 'WIREGUARD';
-        if (p === 'ovpn' || p.startsWith('openvpn')) return 'OPENVPN';
-        return p.toUpperCase();
-      },
-
-      _baseKey(serverId, raw, protocol, username) {
+      _keyFor(serverId, raw, username) {
         const sk = raw?.session_key ?? raw?.sessionKey ?? null;
-        const cid = raw?.connection_id ?? raw?.id ?? null;
-
         if (!isBlank(sk)) return `sk:${String(sk)}`;
+
+        const cid = raw?.connection_id ?? raw?.id ?? null;
         if (!isBlank(cid)) return `cid:${String(cid)}`;
 
-        // protocol can be null -> use "UNKNOWN" but stable
-        const p = protocol || 'UNKNOWN';
-        return `u:${serverId}:${username}:${p}`;
+        return `u:${serverId}:${username}`;
       },
 
-      _wireguardIsConnected(nowMs, seenAt) {
-        const d = toDate(seenAt);
-        if (!d) return false;
-        const diffSec = Math.max(0, (nowMs - d.getTime()) / 1000);
-        return diffSec <= WG_STALE_SECONDS;
-      },
-
-      _stableConnectedAt(newVal, prevVal) {
-        const dNew = toDate(newVal);
-        const dPrev = toDate(prevVal);
-
-        if (!dPrev) return dNew ? newVal : prevVal;
-        if (!dNew) return prevVal;
-
-        const nowMs = Date.now();
-        const newIsNowish = nowMs - dNew.getTime() < 10_000;
-        const prevIsOlder = dPrev.getTime() < dNew.getTime() - 10_000;
-
-        if (newIsNowish && prevIsOlder) return prevVal;
-        return newVal;
-      },
-
-      _shapeRow(serverId, raw, prevRow, forcedKey, forcedProtocol) {
+      _shapeRow(serverId, raw, prevRow, forcedKey) {
         const meta = this.serverMeta[serverId] || {};
-        const protocol = forcedProtocol || this._shapeProtocol(raw, prevRow) || prevRow?.protocol || 'OPENVPN';
         const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
 
         const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
         const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
+        const protocol = normalizeProtocol(raw?.protocol ?? raw?.proto) ?? prevRow?.protocol ?? null;
+
         const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
+        const connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
 
-        const connected_at_in = raw?.connected_at ?? raw?.connectedAt;
-        const connected_at_prev = prevRow?.connected_at ?? null;
-        const connected_at = this._stableConnectedAt(
-          pick(connected_at_in, connected_at_prev),
-          connected_at_prev
-        );
-
-        const first_seen_at = protocol === 'WIREGUARD'
-          ? pick(prevRow?.first_seen_at, seen_at)
-          : null;
+        // WG: stable first_seen_at
+        const first_seen_at =
+          protocol === 'WIREGUARD' ? pick(prevRow?.first_seen_at, seen_at) : prevRow?.first_seen_at ?? null;
 
         const bytes_in = Number(
           pick(
@@ -327,19 +272,15 @@
           )
         );
 
+        // stable connected label (protocol-agnostic)
+        const connectedBase = pick(pick(connected_at, first_seen_at), seen_at);
+        const connected_human = agoFrom(this.nowTick, connectedBase);
+
         let is_connected = pick(raw?.is_connected, prevRow?.is_connected);
         if (is_connected === undefined || is_connected === null) {
-          is_connected = protocol === 'WIREGUARD'
-            ? this._wireguardIsConnected(this.nowTick, seen_at)
-            : true;
+          if (protocol === 'WIREGUARD') is_connected = wireguardIsConnected(this.nowTick, seen_at);
+          else is_connected = true;
         }
-
-        const connected_human = (() => {
-          const base = protocol === 'WIREGUARD'
-            ? (first_seen_at ?? seen_at ?? connected_at)
-            : (connected_at ?? seen_at);
-          return agoFrom(this.nowTick, base);
-        })();
 
         return {
           __key: forcedKey,
@@ -370,48 +311,21 @@
         };
       },
 
-      _findPrevRow(serverId, raw, prevMap, username) {
-        // ✅ strongest identifiers first
-        const sk = raw?.session_key ?? raw?.sessionKey ?? null;
-        if (!isBlank(sk) && prevMap[`sk:${String(sk)}`]) return prevMap[`sk:${String(sk)}`];
-
-        const cid = raw?.connection_id ?? raw?.id ?? null;
-        if (!isBlank(cid) && prevMap[`cid:${String(cid)}`]) return prevMap[`cid:${String(cid)}`];
-
-        // fallback: find by username on that server
-        for (const k in prevMap) {
-          const r = prevMap[k];
-          if (r?.server_id === Number(serverId) && r?.username === username) return r;
-        }
-        return null;
-      },
-
       _setExactList(serverId, list) {
         const prevMap = this.usersByServer[serverId] || {};
         const nextMap = {};
 
         const arr = Array.isArray(list) ? list : [];
-        const seenKeys = new Map();
 
         for (const raw0 of arr) {
           const raw = safeObj(raw0);
           if (!raw) continue;
 
           const username = String(raw?.username ?? raw?.cn ?? 'unknown');
+          const key = this._keyFor(serverId, raw, username);
+          const prevRow = prevMap[key] || null;
 
-          // ✅ recover prevRow BEFORE deciding protocol/key
-          const prevRow = this._findPrevRow(serverId, raw, prevMap, username);
-
-          const protocol = this._shapeProtocol(raw, prevRow) || prevRow?.protocol || 'OPENVPN';
-          const baseKey = this._baseKey(serverId, raw, protocol, username);
-
-          const n = (seenKeys.get(baseKey) || 0) + 1;
-          seenKeys.set(baseKey, n);
-
-          const finalKey = n === 1 ? baseKey : `${baseKey}#${n}`;
-
-          // if key changed, still keep the same prevRow we found
-          nextMap[finalKey] = this._shapeRow(serverId, raw, prevRow, finalKey, protocol);
+          nextMap[key] = this._shapeRow(serverId, raw, prevRow, key);
         }
 
         this.usersByServer[serverId] = nextMap;
@@ -422,15 +336,15 @@
         if (!sid) return;
 
         let list = [];
-
         if (Array.isArray(e?.users)) {
           list = e.users;
         } else if (typeof e?.cn_list === 'string') {
+          // cn_list is NOT enough to infer protocol -> mark protocol null
           list = e.cn_list
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean)
-            .map((u) => ({ username: u, protocol: e?.protocol ?? null }));
+            .map((u) => ({ username: u, protocol: null }));
         } else if (Array.isArray(e?.connections)) {
           list = e.connections;
         }
@@ -508,6 +422,7 @@
             return;
           }
 
+          // optimistic UI remove
           const map = this.usersByServer[row.server_id] || {};
           delete map[row.__key];
           this.usersByServer[row.server_id] = map;
