@@ -1,33 +1,33 @@
 // resources/js/dashboard/vpnDashboard.js
 (function () {
   const cfg = window.VPN_DASHBOARD_CONFIG || {};
-  const fallbackPattern = cfg.disconnectFallbackPattern || '';
-  const csrfFromCfg = cfg.csrf || '';
-  const fallbackUrl = (sid) => fallbackPattern.replace('__SID__', String(sid));
+  const fallbackPattern = cfg.disconnectFallbackPattern || "";
+  const csrfFromCfg = cfg.csrf || "";
+  const fallbackUrl = (sid) => fallbackPattern.replace("__SID__", String(sid));
 
   const WG_STALE_SECONDS = Number(cfg.wgStaleSeconds || 240);
 
   window.vpnDashboard = function (lw) {
     // ---------------- helpers ----------------
     const isBlank = (v) =>
-      v === null || v === undefined || v === '' || (typeof v === 'number' && Number.isNaN(v));
+      v === null || v === undefined || v === "" || (typeof v === "number" && Number.isNaN(v));
 
     const pick = (a, b) => (isBlank(a) ? b : a);
 
-    const toMB = (n) => (n ? (n / (1024 * 1024)).toFixed(2) : '0.00');
+    const toMB = (n) => (n ? (n / (1024 * 1024)).toFixed(2) : "0.00");
 
     const humanBytes = (inb, outb) => {
       const total = (inb || 0) + (outb || 0);
-      if (total >= 1024 ** 3) return (total / 1024 ** 3).toFixed(2) + ' GB';
-      if (total >= 1024 ** 2) return (total / 1024 ** 2).toFixed(2) + ' MB';
-      if (total >= 1024) return (total / 1024).toFixed(2) + ' KB';
-      return (total || 0) + ' B';
+      if (total >= 1024 ** 3) return (total / 1024 ** 3).toFixed(2) + " GB";
+      if (total >= 1024 ** 2) return (total / 1024 ** 2).toFixed(2) + " MB";
+      if (total >= 1024) return (total / 1024).toFixed(2) + " KB";
+      return (total || 0) + " B";
     };
 
     const toDate = (v) => {
       if (isBlank(v)) return null;
 
-      if (typeof v === 'number') return new Date(v >= 1_000_000_000_000 ? v : v * 1000);
+      if (typeof v === "number") return new Date(v >= 1_000_000_000_000 ? v : v * 1000);
 
       const s = String(v).trim();
       if (!s) return null;
@@ -48,33 +48,33 @@
 
     const safeObj = (raw) => {
       if (!raw) return null;
-      if (typeof raw === 'string') {
+      if (typeof raw === "string") {
         const u = raw.trim();
         return u ? { username: u } : null;
       }
-      return typeof raw === 'object' ? raw : null;
+      return typeof raw === "object" ? raw : null;
     };
 
     const agoFrom = (nowMs, v) => {
       const d = toDate(v);
-      if (!d) return '—';
+      if (!d) return "—";
 
       const diff = Math.max(0, (nowMs - d.getTime()) / 1000);
       const m = Math.floor(diff / 60);
       const h = Math.floor(m / 60);
       const dd = Math.floor(h / 24);
 
-      if (dd) return `${dd} day${dd > 1 ? 's' : ''} ago`;
-      if (h) return `${h} hour${h > 1 ? 's' : ''} ago`;
-      if (m) return `${m} min${m > 1 ? 's' : ''} ago`;
-      return 'just now';
+      if (dd) return `${dd} day${dd > 1 ? "s" : ""} ago`;
+      if (h) return `${h} hour${h > 1 ? "s" : ""} ago`;
+      if (m) return `${m} min${m > 1 ? "s" : ""} ago`;
+      return "just now";
     };
 
     const normalizeProtocol = (val) => {
       if (isBlank(val)) return null;
       const p = String(val).toLowerCase();
-      if (p.startsWith('wire')) return 'WIREGUARD';
-      if (p === 'ovpn' || p.startsWith('openvpn')) return 'OPENVPN';
+      if (p.startsWith("wire")) return "WIREGUARD";
+      if (p === "ovpn" || p.startsWith("openvpn")) return "OPENVPN";
       return p.toUpperCase();
     };
 
@@ -105,7 +105,7 @@
       _subscribed: false,
 
       get lastUpdated() {
-        if (!this.lastEventAt) return '—';
+        if (!this.lastEventAt) return "—";
         return agoFrom(this.nowTick, this.lastEventAt);
       },
 
@@ -115,19 +115,23 @@
           this.usersByServer[sid] = {};
         }
 
+        // seed snapshot (this is allowed)
         if (seedUsersByServer) {
           for (const sid in seedUsersByServer) {
             this._setExactList(Number(sid), seedUsersByServer[sid] || []);
           }
         }
 
+        // restore state
         try {
-          const savedSid = localStorage.getItem('vpn.selectedServerId');
-          if (savedSid !== null && savedSid !== '') this.selectedServerId = Number(savedSid);
-          const sf = localStorage.getItem('vpn.showFilters');
-          if (sf !== null) this.showFilters = sf === '1';
+          const savedSid = localStorage.getItem("vpn.selectedServerId");
+          if (savedSid !== null && savedSid !== "") this.selectedServerId = Number(savedSid);
+
+          const sf = localStorage.getItem("vpn.showFilters");
+          if (sf !== null) this.showFilters = sf === "1";
         } catch {}
 
+        // start UI clock
         if (this._nowTimer) clearInterval(this._nowTimer);
         this._nowTimer = setInterval(() => (this.nowTick = Date.now()), 1000);
 
@@ -140,14 +144,14 @@
       toggleFilters() {
         this.showFilters = !this.showFilters;
         try {
-          localStorage.setItem('vpn.showFilters', this.showFilters ? '1' : '0');
+          localStorage.setItem("vpn.showFilters", this.showFilters ? "1" : "0");
         } catch {}
       },
 
       selectServer(id) {
-        this.selectedServerId = id === null || id === '' ? null : Number(id);
+        this.selectedServerId = id === null || id === "" ? null : Number(id);
         try {
-          localStorage.setItem('vpn.selectedServerId', this.selectedServerId ?? '');
+          localStorage.setItem("vpn.selectedServerId", this.selectedServerId ?? "");
         } catch {}
       },
 
@@ -166,28 +170,24 @@
         }
 
         return rows
-          .filter((r) => r && typeof r === 'object' && !isBlank(r.__key))
+          .filter((r) => r && typeof r === "object" && !isBlank(r.__key))
           .filter((r) => (r.is_connected === undefined ? true : !!r.is_connected))
           .sort(
             (a, b) =>
-              (a.server_name || '').localeCompare(b.server_name || '') ||
-              (a.username || '').localeCompare(b.username || '') ||
-              (a.__key || '').localeCompare(b.__key || '')
+              (a.server_name || "").localeCompare(b.server_name || "") ||
+              (a.username || "").localeCompare(b.username || "") ||
+              (a.__key || "").localeCompare(b.__key || "")
           );
       },
 
+      // ✅ Polling: totals only. Do NOT mutate usersByServer.
       async refreshNow() {
         if (this.refreshing) return;
         this.refreshing = true;
 
         try {
-          const res = await this.lw.call('getLiveStats');
-          if (res?.usersByServer) {
-            for (const sid in this.serverMeta) {
-              this._setExactList(Number(sid), res.usersByServer[sid] || []);
-            }
-            this._recalc();
-          }
+          const res = await this.lw.call("getLiveStats");
+          if (res?.totals) this.totals = res.totals;
         } catch (e) {
           console.error(e);
         } finally {
@@ -215,12 +215,12 @@
         if (this._subscribed) return;
 
         try {
-          window.Echo.private('servers.dashboard').listen('.mgmt.update', (e) => this.handleEvent(e));
+          window.Echo.private("servers.dashboard").listen(".mgmt.update", (e) => this.handleEvent(e));
         } catch (_) {}
 
         for (const sid of Object.keys(this.serverMeta)) {
           try {
-            window.Echo.private(`servers.${sid}`).listen('.mgmt.update', (e) => this.handleEvent(e));
+            window.Echo.private(`servers.${sid}`).listen(".mgmt.update", (e) => this.handleEvent(e));
           } catch (_) {}
         }
 
@@ -244,42 +244,34 @@
 
       _shapeRow(serverId, raw, prevRow, forcedKey) {
         const meta = this.serverMeta[serverId] || {};
-        const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? 'unknown');
+        const username = String(raw?.username ?? raw?.cn ?? prevRow?.username ?? "unknown");
 
         const session_key = pick(raw?.session_key ?? raw?.sessionKey, prevRow?.session_key);
         const connection_id = pick(raw?.connection_id ?? raw?.id, prevRow?.connection_id);
 
-        const protocol = normalizeProtocol(raw?.protocol ?? raw?.proto) ?? prevRow?.protocol ?? null;
+        // ✅ protocol only comes from payload; if missing keep prev; if still missing => UNKNOWN
+        const protocol = normalizeProtocol(raw?.protocol ?? raw?.proto) ?? prevRow?.protocol ?? "UNKNOWN";
 
         const seen_at = pick(raw?.seen_at ?? raw?.seenAt, prevRow?.seen_at ?? null);
         const connected_at = pick(raw?.connected_at ?? raw?.connectedAt, prevRow?.connected_at ?? null);
 
         // WG: stable first_seen_at
         const first_seen_at =
-          protocol === 'WIREGUARD' ? pick(prevRow?.first_seen_at, seen_at) : prevRow?.first_seen_at ?? null;
+          protocol === "WIREGUARD" ? pick(prevRow?.first_seen_at, seen_at) : prevRow?.first_seen_at ?? null;
 
         const bytes_in = Number(
-          pick(
-            raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived,
-            prevRow?.bytes_in ?? 0
-          )
+          pick(raw?.bytes_in ?? raw?.bytesIn ?? raw?.bytes_received ?? raw?.bytesReceived, prevRow?.bytes_in ?? 0)
         );
-
         const bytes_out = Number(
-          pick(
-            raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent,
-            prevRow?.bytes_out ?? 0
-          )
+          pick(raw?.bytes_out ?? raw?.bytesOut ?? raw?.bytes_sent ?? raw?.bytesSent, prevRow?.bytes_out ?? 0)
         );
 
-        // stable connected label (protocol-agnostic)
         const connectedBase = pick(pick(connected_at, first_seen_at), seen_at);
         const connected_human = agoFrom(this.nowTick, connectedBase);
 
         let is_connected = pick(raw?.is_connected, prevRow?.is_connected);
         if (is_connected === undefined || is_connected === null) {
-          if (protocol === 'WIREGUARD') is_connected = wireguardIsConnected(this.nowTick, seen_at);
-          else is_connected = true;
+          is_connected = protocol === "WIREGUARD" ? wireguardIsConnected(this.nowTick, seen_at) : true;
         }
 
         return {
@@ -314,14 +306,13 @@
       _setExactList(serverId, list) {
         const prevMap = this.usersByServer[serverId] || {};
         const nextMap = {};
-
         const arr = Array.isArray(list) ? list : [];
 
         for (const raw0 of arr) {
           const raw = safeObj(raw0);
           if (!raw) continue;
 
-          const username = String(raw?.username ?? raw?.cn ?? 'unknown');
+          const username = String(raw?.username ?? raw?.cn ?? "unknown");
           const key = this._keyFor(serverId, raw, username);
           const prevRow = prevMap[key] || null;
 
@@ -336,15 +327,16 @@
         if (!sid) return;
 
         let list = [];
+
         if (Array.isArray(e?.users)) {
           list = e.users;
-        } else if (typeof e?.cn_list === 'string') {
-          // cn_list is NOT enough to infer protocol -> mark protocol null
+        } else if (typeof e?.cn_list === "string") {
+          // cn_list cannot carry protocol/timestamps; keep protocol UNKNOWN (or prev if exists)
           list = e.cn_list
-            .split(',')
+            .split(",")
             .map((s) => s.trim())
             .filter(Boolean)
-            .map((u) => ({ username: u, protocol: null }));
+            .map((u) => ({ username: u }));
         } else if (Array.isArray(e?.connections)) {
           list = e.connections;
         }
@@ -388,15 +380,11 @@
         if (!confirm(`Disconnect ${row.username} from ${row.server_name}?`)) return;
 
         try {
-          const csrf =
-            document.querySelector('meta[name=csrf-token]')?.content ||
-            csrfFromCfg ||
-            '';
-
-          const headers = { 'X-CSRF-TOKEN': csrf, 'Content-Type': 'application/json' };
+          const csrf = document.querySelector('meta[name="csrf-token"]')?.content || csrfFromCfg || "";
+          const headers = { "X-CSRF-TOKEN": csrf, "Content-Type": "application/json" };
 
           let res = await fetch(`/admin/servers/${row.server_id}/disconnect`, {
-            method: 'POST',
+            method: "POST",
             headers,
             body: JSON.stringify({
               client_id: row.connection_id,
@@ -410,7 +398,7 @@
 
           if (!ok) {
             const res2 = await fetch(fallbackUrl(row.server_id), {
-              method: 'POST',
+              method: "POST",
               headers,
               body: JSON.stringify({ username: row.username, server_id: row.server_id }),
             });
@@ -418,11 +406,10 @@
           }
 
           if (!ok) {
-            alert('Error disconnecting user.\n\nDisconnect failed');
+            alert("Error disconnecting user.\n\nDisconnect failed");
             return;
           }
 
-          // optimistic UI remove
           const map = this.usersByServer[row.server_id] || {};
           delete map[row.__key];
           this.usersByServer[row.server_id] = map;
@@ -431,7 +418,7 @@
           alert(`Disconnected ${row.username}`);
         } catch (e) {
           console.error(e);
-          alert('Error disconnecting user.\n\n' + (e.message || 'Unknown issue'));
+          alert("Error disconnecting user.\n\n" + (e.message || "Unknown issue"));
         }
       },
     };
