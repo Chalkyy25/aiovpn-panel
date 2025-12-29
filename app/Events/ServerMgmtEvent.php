@@ -14,29 +14,32 @@ class ServerMgmtEvent implements ShouldBroadcastNow
     public int $serverId;
     public string $ts;
 
-    /** rich rows: [{ username, protocol, session_key?, connection_id?, client_ip?, virtual_ip?, connected_at?, seen_at?, bytes_in?, bytes_out?, server_name? }] */
+    /** event-level protocol: OPENVPN | WIREGUARD | null */
+    public ?string $protocol = null;
+
+    /** rich rows */
     public array $users = [];
 
     public int $clients = 0;
     public string $cnList = '';
     public string $raw = '';
 
-    /** who sent it: wg-agent | ovpn-mgmt | sync-job | disconnect | unknown */
+    /** wg-agent | ovpn-mgmt | sync-job | disconnect | unknown */
     public string $source = 'unknown';
 
-    /**
-     * Always pass fully built $users.
-     */
     public function __construct(
         int $serverId,
         string $ts,
         array $users = [],
         ?string $cnList = null,
         ?string $raw = null,
-        ?string $source = null
+        ?string $source = null,
+        ?string $protocol = null,   // ✅ add
     ) {
         $this->serverId = $serverId;
         $this->ts       = $ts;
+
+        $this->protocol = $protocol ? strtoupper($protocol) : null; // ✅ add
 
         // Normalize users + force protocol casing if present
         $this->users = array_values(array_map(function ($u) {
@@ -76,6 +79,7 @@ class ServerMgmtEvent implements ShouldBroadcastNow
         return [
             'server_id' => $this->serverId,
             'ts'        => $this->ts,
+            'protocol'  => $this->protocol, // ✅ add
             'clients'   => $this->clients,
             'cn_list'   => $this->cnList,
             'users'     => $this->users,
