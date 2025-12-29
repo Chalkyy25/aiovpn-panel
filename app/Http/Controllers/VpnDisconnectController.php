@@ -64,28 +64,7 @@ class VpnDisconnectController extends Controller
         } catch (\Throwable $e) {
             Log::channel('vpn')->warning('DB disconnect mark failed', ['error' => $e->getMessage()]);
         }
-
-        // Build fresh active list from DB and broadcast so the UI updates instantly
-        try {
-            $active = VpnUserConnection::with('vpnUser')
-                ->where('vpn_server_id', $server->id)
-                ->where('is_connected', true)
-                ->get()
-                ->map(fn ($c) => [
-                    'username'        => optional($c->vpnUser)->username ?? 'unknown',
-                    'client_ip'       => $c->client_ip,
-                    'virtual_ip'      => $c->virtual_ip,
-                    'connected_at'    => optional($c->connected_at)?->toIso8601String(),
-                    'bytes_received'  => (int)$c->bytes_received,
-                    'bytes_sent'      => (int)$c->bytes_sent,
-                    'connection_id'   => $c->id,                 // panel connection id
-                    'server_name'     => $server->name,
-                ])
-                ->values()->all();
-
-        } catch (\Throwable $e) {
-            Log::channel('vpn')->warning('Broadcast after disconnect failed', ['error' => $e->getMessage()]);
-        }
+        
 
         return response()->json([
             'ok'        => (bool)$killed,
