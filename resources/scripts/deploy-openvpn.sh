@@ -535,90 +535,101 @@ post_json() {
 }
 
 python3 - <<'PY' | while IFS=$'\t' read -r kind json; do
-import os, csv, json, datetime, subprocess, time
+import os, json, datetime, subprocess
 
-MGMT_PORT     = os.environ.get("MGMT_PORT", "7505")
-MGMT_TCP_PORT = os.environ.get("MGMT_TCP_PORT", "7506")
+# OpenVPN status files (these are the source of truth on your box)
+UDP_STATUS = os.environ.get("OVPN_UDP_STATUS", "/var/log/openvpn-status-udp.log")
+TCP_STATUS = os.environ.get("OVPN_TCP_STATUS", "/var/log/openvpn-status-tcp.log")
 
-def parse_ovpn_status(txt, mgmt_port, proto_hint=None):
-    clients, virt = {}, {}
-    hCL, hRT = {}, {}
+def parse_status_file(path, mgmt_port):
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = [l.rstrip("\n") for l in f if l.strip()]
+    except Exception:
+        return []
 
-    for row in csv.reader(
-        [l for l in txt.splitlines() if l and not l.startswith(">")],
-        delimiter="\t"
-        ):
-        if not row:
+    header = None
+    routing = {}
+    clients = []
+
+    in_client = False
+    in_route = False
+
+    for line in lines:
+        parts = line.split("\t")
+        tag = parts[0]
+
+        # Identify headers
+        if tag == "HEADER" and len(parts) >= 3:
+            if parts[1] == "CLIENT_LIST":
+                header = parts
+                in_client = True
+                in_route = False
+            elif parts[1] == "ROUTING_TABLE":
+                in_route = True
+                in_client = False
             continue
-        tag = row[0]
 
-        if tag == "HEADER" and len(row) > 2:
-            if row[1] == "CLIENT_LIST":
-                hCL = {n: i for i, n in enumerate(row)}
-            elif row[1] == "ROUTING_TABLE":
-                hRT = {n: i for i, n in enumerate(row)}
-            continue
+        # Parse CLIENT_LIST rows using header map
+        if tag == "CLIENT_LIST" and header and in_client:
+            h = {name: i for i, name in enumerate(header)}
+            def col(name, default=""):
+                i = h.get(name)
+                return parts[i] if i is not None and i < len(parts) else default
 
-        if tag == "CLIENT_LIST":
-            def col(h, d=""):
-                i = hCL.get(h)
-                return row[i] if i is not None and i < len(row) else d
-
-            cn = col("Common Name") or col("Username")
-            if not cn:
+            username = col("Username") or col("Common Name")
+            if not username:
                 continue
 
-            real = col("Real Address") or ""
+            real = col("Real Address", "")
             real_ip = real.split(":")[0] if real else None
+
+            cid_raw = col("Client ID", "")
+            try:
+                cid = int(cid_raw)
+            except Exception:
+                cid = None
 
             def toint(x):
                 try: return int(x)
                 except Exception: return 0
 
-            # IMPORTANT: include client_id + mgmt_port so OpenVPN session keys are stable
-            cid = col("Client ID", "")
-            try:
-                cid = int(cid)
-            except Exception:
-                cid = None
-
-            clients[cn] = {
-                "username": cn,
+            clients.append({
+                "username": username,
                 "client_id": cid,
-                "mgmt_port": int(mgmt_port),
+                "mgmt_port": int(mgmt_port),  # keep stable session keys on panel side
                 "client_ip": real_ip,
-                "virtual_ip": None,
+                "virtual_ip": None,           # filled from ROUTING_TABLE below
                 "bytes_in": toint(col("Bytes Received", "0")),
                 "bytes_out": toint(col("Bytes Sent", "0")),
                 "connected_at": toint(col("Connected Since (time_t)", "0")),
-            }
+            })
+            continue
 
-        elif tag == "ROUTING_TABLE":
-            def col(h, d=""):
-                i = hRT.get(h)
-                return row[i] if i is not None and i < len(row) else d
-            virt[col("Common Name", "")] = col("Virtual Address") or None
+        # Parse ROUTING_TABLE rows (Virtual Address + Common Name)
+        if tag == "ROUTING_TABLE" and in_route:
+            # ROUTING_TABLE  Virtual Address  Common Name  Real Address  Last Ref ...
+            if len(parts) >= 3:
+                virt = parts[1]
+                cn = parts[2]
+                if cn and virt:
+                    routing[cn] = virt.split("/", 1)[0]
+            continue
 
-    for cn, ip in virt.items():
-        if cn in clients and ip:
-            clients[cn]["virtual_ip"] = ip.split("/", 1)[0]
+    # Attach virtual_ip to each client
+    for c in clients:
+        u = c["username"]
+        if u in routing:
+            c["virtual_ip"] = routing[u]
 
-    # drop rows with no client_id (your controller refuses them)
-    return [c for c in clients.values() if c.get("client_id") is not None]
+    # Your controller refuses null client_id, so drop them
+    return [c for c in clients if c.get("client_id") is not None]
 
 def collect_ovpn():
-    out_clients = []
-    for port, hint in ((MGMT_PORT, "udp"), (MGMT_TCP_PORT, "tcp")):
-        try:
-            out = subprocess.check_output(
-                ["bash", "-lc", f'printf "status 3\\nquit\\n" | nc -w 2 127.0.0.1 {port} || true'],
-                text=True
-            )
-        except Exception:
-            continue
-        if "CLIENT_LIST" in out:
-            out_clients.extend(parse_ovpn_status(out, port, proto_hint=hint))
-    return out_clients
+    out = []
+    out.extend(parse_status_file(UDP_STATUS, 7505))
+    out.extend(parse_status_file(TCP_STATUS, 7506))
+    return out
 
 def collect_wg():
     try:
@@ -663,7 +674,7 @@ def collect_wg():
             "client_ip": client_ip,
             "virtual_ip": virtual_ip,
             "handshake": hs,               # epoch seconds
-            "seen_at": None,               # controller will derive from handshake if needed
+            "seen_at": None,               # controller can derive from handshake if needed
             "bytes_in": toint(rx_raw),
             "bytes_out": toint(tx_raw),
             "keepalive": None if keep in ("off","") else toint(keep),
@@ -677,13 +688,13 @@ ovpn_users = collect_ovpn()
 wg_peers   = collect_wg()
 
 print("OVPN\t" + json.dumps({
-    "status":"mgmt",
+    "status": "mgmt",
     "ts": now,
     "users": ovpn_users,
 }, separators=(",",":")))
 
 print("WG\t" + json.dumps({
-    "status":"mgmt",
+    "status": "mgmt",
     "ts": now,
     "peers": wg_peers,
 }, separators=(",",":")))
