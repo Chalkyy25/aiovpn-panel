@@ -208,7 +208,7 @@ class WireGuardEventController extends Controller
             ->orderByDesc('last_seen_at')
             ->limit(500)
             ->get()
-            -->map(fn ($r) => [
+            ->map(fn ($r) => [
     'connection_id'   => $r->id,
     'username'        => optional($r->vpnUser)->username ?? 'unknown',
     'client_ip'       => $r->client_ip,
