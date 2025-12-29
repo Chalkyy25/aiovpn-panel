@@ -535,208 +535,98 @@ post_json() {
 }
 
 python3 - <<'PY' | while IFS=$'\t' read -r kind json; do
-import os, re, csv, json, datetime, subprocess
+import os, json, datetime, subprocess
 
 MGMT_PORT     = int(os.environ.get("MGMT_PORT", "7505"))
 MGMT_TCP_PORT = int(os.environ.get("MGMT_TCP_PORT", "7506"))
 
-UDP_STATUS_PATH = os.environ.get("OVPN_STATUS_UDP", "/var/log/openvpn-status-udp.log")
-TCP_STATUS_PATH = os.environ.get("OVPN_STATUS_TCP", "/var/log/openvpn-status-tcp.log")
+def mgmt_out(port:int) -> str:
+    # CRLF matters for mgmt
+    cmd = f'( printf "status 3\\r\\n"; sleep 0.2; printf "quit\\r\\n" ) | nc -w 3 127.0.0.1 {port} || true'
+    return subprocess.check_output(["bash","-lc",cmd], text=True)
 
 def toint(x, default=0):
     try:
-        return int(str(x).strip())
+        return int(x)
     except Exception:
         return default
 
-def read_file(path):
-    try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
-    except Exception:
-        return ""
+def parse_status3(txt:str, mgmt_port:int):
+    clients = {}
+    virtmap = {}
 
-def parse_tab_status(txt, mgmt_port):
-    # management "status 3" output (tab-delimited)
-    lines = [l for l in txt.splitlines() if l.strip() and not l.startswith(">")]
-    hCL, hRT = {}, {}
-    clients, virt = {}, {}
-
-    for row in csv.reader(lines, delimiter="\t"):
-        if not row:
+    for line in txt.splitlines():
+        if not line or line.startswith(">"):
             continue
-        tag = row[0]
+        line = line.rstrip("\r")
 
-        if tag == "HEADER" and len(row) > 2:
-            if row[1] == "CLIENT_LIST":
-                hCL = {n: i for i, n in enumerate(row)}
-            elif row[1] == "ROUTING_TABLE":
-                hRT = {n: i for i, n in enumerate(row)}
-            continue
-
-        if tag == "CLIENT_LIST":
-            def col(name, default=""):
-                i = hCL.get(name)
-                return row[i] if i is not None and i < len(row) else default
-
-            cn = col("Common Name") or col("Username")
-            if not cn:
+        if line.startswith("CLIENT_LIST\t"):
+            p = line.split("\t")
+            # Expected indices for status 3:
+            # 0 tag
+            # 1 Common Name
+            # 2 Real Address
+            # 3 Virtual Address
+            # 4 Virtual IPv6 Address (may be empty)
+            # 5 Bytes Received
+            # 6 Bytes Sent
+            # 7 Connected Since (string)
+            # 8 Connected Since (time_t) epoch
+            # 9 Username
+            # 10 Client ID
+            if len(p) < 11:
                 continue
 
-            real = col("Real Address") or ""
-            real_ip = real.split(":")[0] if real else None
+            common = p[1].strip()
+            real   = p[2].strip()
+            virt   = p[3].strip() if p[3].strip() else None
+            user   = (p[9].strip() or common)
 
-            cid = col("Client ID", "")
-            try:
-                cid = int(cid)
-            except Exception:
-                cid = None
+            cid = toint(p[10].strip(), default=None)
             if cid is None:
                 continue
 
-            clients[cn] = {
-                "username": cn,
+            real_ip = real.split(":", 1)[0] if real else None
+
+            clients[user] = {
+                "username": user,
                 "client_id": cid,
                 "mgmt_port": int(mgmt_port),
                 "client_ip": real_ip,
-                "virtual_ip": None,
-                "bytes_in": toint(col("Bytes Received", "0")),
-                "bytes_out": toint(col("Bytes Sent", "0")),
-                "connected_at": toint(col("Connected Since (time_t)", "0")),
+                "virtual_ip": virt,
+                "bytes_in":  toint(p[5].strip(), 0),
+                "bytes_out": toint(p[6].strip(), 0),
+                "connected_at": toint(p[8].strip(), 0),
             }
 
-        elif tag == "ROUTING_TABLE":
-            def col(name, default=""):
-                i = hRT.get(name)
-                return row[i] if i is not None and i < len(row) else default
-            cname = col("Common Name", "")
-            vip   = col("Virtual Address") or None
-            if cname:
-                virt[cname] = vip
+        elif line.startswith("ROUTING_TABLE\t"):
+            p = line.split("\t")
+            # 0 tag
+            # 1 Virtual Address
+            # 2 Common Name
+            # 3 Real Address
+            if len(p) < 4:
+                continue
+            vaddr = p[1].strip()
+            cname = p[2].strip()
+            if cname and vaddr:
+                virtmap[cname] = vaddr.split("/",1)[0]
 
-    for cname, vip in virt.items():
-        if cname in clients and vip:
-            clients[cname]["virtual_ip"] = vip.split("/", 1)[0]
+    # If mgmt doesn't put virtual addr on CLIENT_LIST (rare), fill from routing table by Common Name
+    # Only if we can match by Common Name == username (common when using auth-user-pass)
+    for k, v in list(clients.items()):
+        if not v.get("virtual_ip") and k in virtmap:
+            v["virtual_ip"] = virtmap[k]
 
     return list(clients.values())
-
-def split_cols_2plus(line):
-    # OpenVPN status files are aligned with 2+ spaces between columns
-    return [p for p in re.split(r"\s{2,}", line.strip()) if p]
-
-def parse_space_status(txt, mgmt_port):
-    # /var/log/openvpn-status-*.log style
-    lines = [l.rstrip("\r\n") for l in txt.splitlines() if l.strip()]
-    hCL, hRT = {}, {}
-    clients, virt = {}, {}
-
-    for l in lines:
-        cols = split_cols_2plus(l)
-
-        # HEADER lines look like:
-        # HEADER  CLIENT_LIST  Common Name  Real Address  Virtual Address ...
-        if cols and cols[0] == "HEADER" and len(cols) >= 3:
-            if cols[1] == "CLIENT_LIST":
-                # map column name -> index in this cols list
-                # data rows start at cols[0] == CLIENT_LIST, so indexes align
-                hCL = {name: i for i, name in enumerate(cols)}
-            elif cols[1] == "ROUTING_TABLE":
-                hRT = {name: i for i, name in enumerate(cols)}
-            continue
-
-        if not cols:
-            continue
-
-        if cols[0] == "CLIENT_LIST" and hCL:
-            def col(name, default=""):
-                i = hCL.get(name)
-                return cols[i] if i is not None and i < len(cols) else default
-
-            cn = col("Common Name") or col("Username")
-            if not cn:
-                continue
-
-            real = col("Real Address") or ""
-            real_ip = real.split(":")[0] if real else None
-
-            cid = col("Client ID", "")
-            try:
-                cid = int(cid)
-            except Exception:
-                cid = None
-            if cid is None:
-                continue
-
-            clients[cn] = {
-                "username": cn,
-                "client_id": cid,
-                "mgmt_port": int(mgmt_port),
-                "client_ip": real_ip,
-                "virtual_ip": (col("Virtual Address") or None),
-                "bytes_in": toint(col("Bytes Received", "0")),
-                "bytes_out": toint(col("Bytes Sent", "0")),
-                "connected_at": toint(col("Connected Since (time_t)", "0")),
-            }
-
-        elif cols[0] == "ROUTING_TABLE" and hRT:
-            def col(name, default=""):
-                i = hRT.get(name)
-                return cols[i] if i is not None and i < len(cols) else default
-            cname = col("Common Name", "")
-            vip   = col("Virtual Address") or None
-            if cname:
-                virt[cname] = vip
-
-    # if routing table present, prefer it for virtual_ip
-    for cname, vip in virt.items():
-        if cname in clients and vip:
-            clients[cname]["virtual_ip"] = vip.split("/", 1)[0]
-
-    # normalize virtual_ip
-    for c in clients.values():
-        if c.get("virtual_ip"):
-            c["virtual_ip"] = c["virtual_ip"].split("/", 1)[0]
-
-    return list(clients.values())
-
-def parse_status(txt, mgmt_port):
-    if any("\t" in l for l in txt.splitlines()):
-        return parse_tab_status(txt, mgmt_port)
-    return parse_space_status(txt, mgmt_port)
 
 def collect_ovpn():
     out = []
-
-    # Prefer status files (your configs explicitly write these)
-    udp_txt = read_file(UDP_STATUS_PATH)
-    if udp_txt:
-        out.extend(parse_status(udp_txt, MGMT_PORT))
-
-    tcp_txt = read_file(TCP_STATUS_PATH)
-    if tcp_txt:
-        out.extend(parse_status(tcp_txt, MGMT_TCP_PORT))
-
-    # Fallback to mgmt ports
-    if not out:
-        for port, mp in ((MGMT_PORT, MGMT_PORT), (MGMT_TCP_PORT, MGMT_TCP_PORT)):
-            try:
-                cmd = f'( printf "status 3\\r\\n"; sleep 0.2; printf "quit\\r\\n" ) | nc -w 2 127.0.0.1 {port} || true'
-                mgmt = subprocess.check_output(["bash", "-lc", cmd], text=True)
-                out.extend(parse_status(mgmt, mp))
-            except Exception:
-                pass
-
-    # De-dupe
-    seen = set()
-    uniq = []
-    for c in out:
-        key = (c.get("username"), c.get("client_id"), c.get("mgmt_port"))
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append(c)
-
-    return uniq
+    for port in (MGMT_PORT, MGMT_TCP_PORT):
+        txt = mgmt_out(port)
+        if "CLIENT_LIST\t" in txt:
+            out.extend(parse_status3(txt, port))
+    return out
 
 def collect_wg():
     try:
@@ -753,6 +643,7 @@ def collect_wg():
         parts = line.split("\t")
         if len(parts) < 8:
             continue
+
         pub, _psk, endpoint, allowed, hs_raw, rx_raw, tx_raw, keep = parts[:8]
 
         hs = toint(hs_raw, 0)
@@ -774,7 +665,7 @@ def collect_wg():
             "virtual_ip": virtual_ip,
             "handshake": hs,
             "seen_at": None,
-            "bytes_in": toint(rx_raw, 0),
+            "bytes_in":  toint(rx_raw, 0),
             "bytes_out": toint(tx_raw, 0),
             "keepalive": None if keep in ("off","") else toint(keep, 0),
         })
@@ -786,8 +677,8 @@ now = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 ovpn_users = collect_ovpn()
 wg_peers   = collect_wg()
 
-print("OVPN\t" + json.dumps({"status":"mgmt","ts": now,"users": ovpn_users}, separators=(",",":")))
-print("WG\t"   + json.dumps({"status":"mgmt","ts": now,"peers": wg_peers}, separators=(",",":")))
+print("OVPN\t" + json.dumps({"status":"mgmt","ts":now,"users":ovpn_users}, separators=(",",":")))
+print("WG\t"   + json.dumps({"status":"mgmt","ts":now,"peers":wg_peers},     separators=(",",":")))
 PY
   if [ "$kind" = "OVPN" ]; then
     printf '%s' "$json" | post_json "/api/servers/${SERVER_ID}/events" || true
