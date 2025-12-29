@@ -31,13 +31,12 @@ class DeployEventController extends Controller
             'cn_list' => 'nullable|string',
             'clients' => 'nullable|integer',
         ]);
-        
-        Log::channel('vpn')->debug('OVPN RAW PAYLOAD', [
-    'server_id' => $server->id,
-    'data'      => $data,
-]);
 
-        // Only handle mgmt snapshots
+        Log::channel('vpn')->debug('OVPN RAW PAYLOAD', [
+            'server_id' => $server->id,
+            'data'      => $data,
+        ]);
+
         if (strtolower($data['status']) !== 'mgmt') {
             return response()->json(['ok' => true]);
         }
@@ -82,23 +81,19 @@ class DeployEventController extends Controller
                     continue;
                 }
 
-                $clientId = array_key_exists('client_id', $c) ? (int)$c['client_id'] : null;
-                $mgmtPort = array_key_exists('mgmt_port', $c) ? (int)$c['mgmt_port'] : 7505;
+                $mgmtPort = array_key_exists('mgmt_port', $c) && $c['mgmt_port']
+                    ? (int)$c['mgmt_port']
+                    : 7505;
 
-                // Best identity is client_id. If missing, fall back to "0" so you still track the user.
-                // NOTE: this cannot distinguish multiple simultaneous sessions for same username without client_id.
-                $clientIdForKey = $clientId ?? 0;
+                // ✅ Stable per-session discriminator:
+                // Prefer virtual_ip (best), else fall back to client_ip, else "novip"
+                $vip = trim((string)($c['virtual_ip'] ?? ''));
+                $cip = trim((string)($c['client_ip'] ?? ''));
 
-                $sessionKey = "ovpn:{$server->id}:{$mgmtPort}:{$clientIdForKey}:{$username}";
-                if ($sessionKey === '' || $sessionKey === null) {
-                    Log::channel('vpn')->error('OVPN MGMT: empty session_key', [
-                        'server_id' => $server->id,
-                        'username'  => $username,
-                        'client_id' => $clientId,
-                        'mgmt_port' => $mgmtPort,
-                    ]);
-                    continue;
-                }
+                $stableSessionId = $vip !== '' ? $vip : ($cip !== '' ? $cip : 'novip');
+
+                // ✅ Correct stable session key (NO client_id)
+                $sessionKey = "ovpn:{$server->id}:{$mgmtPort}:{$username}:{$stableSessionId}";
 
                 $touchedSessionKeys[] = $sessionKey;
 
@@ -114,10 +109,9 @@ class DeployEventController extends Controller
                     'protocol'        => 'OPENVPN',
                     'wg_public_key'   => null,
 
-                    'client_ip'       => $c['client_ip']  ?? $row->client_ip,
-                    'virtual_ip'      => $c['virtual_ip'] ?? $row->virtual_ip,
+                    'client_ip'       => $cip !== '' ? $cip : $row->client_ip,
+                    'virtual_ip'      => $vip !== '' ? $vip : $row->virtual_ip,
 
-                    // If your feed ever provides endpoint, keep it. Otherwise leave existing.
                     'endpoint'        => $c['endpoint'] ?? $row->endpoint,
 
                     'bytes_in'        => array_key_exists('bytes_in',  $c) ? (int)$c['bytes_in']  : (int)($row->bytes_in  ?? 0),
@@ -140,7 +134,6 @@ class DeployEventController extends Controller
             // mark missing OpenVPN sessions inactive
             $this->disconnectMissingOpenVpn($server->id, $touchedSessionKeys, $now);
 
-            // optional: keep server aggregates fresh (won't break anything if columns exist)
             $live = VpnConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('protocol', 'OPENVPN')
@@ -154,7 +147,6 @@ class DeployEventController extends Controller
             ])->saveQuietly();
         });
 
-        // Broadcast snapshot from DB
         $snapshot = $this->snapshot($server);
 
         event(new ServerMgmtEvent(
@@ -184,7 +176,7 @@ class DeployEventController extends Controller
             ->when(!empty($touchedSessionKeys), fn($q) => $q->whereNotIn('session_key', $touchedSessionKeys))
             ->where(function ($q) use ($graceAgo) {
                 $q->whereNull('last_seen_at')
-                    ->orWhere('last_seen_at', '<', $graceAgo);
+                  ->orWhere('last_seen_at', '<', $graceAgo);
             })
             ->update([
                 'is_active'       => 0,
@@ -231,15 +223,12 @@ class DeployEventController extends Controller
 
                 $out[] = [
                     'username'     => $username,
-                    'client_id'    => array_key_exists('client_id', $u) ? (int)$u['client_id'] : null,
                     'mgmt_port'    => array_key_exists('mgmt_port', $u) ? (int)$u['mgmt_port'] : null,
                     'client_ip'    => $this->stripPort($u['client_ip'] ?? $u['RealAddress'] ?? null),
                     'virtual_ip'   => $this->stripCidr($u['virtual_ip'] ?? $u['VirtualAddress'] ?? null),
                     'connected_at' => $u['connected_at'] ?? $u['ConnectedSince'] ?? null,
                     'bytes_in'     => (int)($u['bytes_in'] ?? $u['BytesReceived'] ?? 0),
                     'bytes_out'    => (int)($u['bytes_out'] ?? $u['BytesSent'] ?? 0),
-
-                    // Optional if you ever add it upstream
                     'endpoint'     => $u['endpoint'] ?? null,
                 ];
             }
@@ -247,23 +236,28 @@ class DeployEventController extends Controller
             foreach (explode(',', (string)$data['cn_list']) as $name) {
                 $name = trim($name);
                 if ($name !== '') {
-                    $out[] = ['username' => $name, 'client_id' => null];
+                    $out[] = ['username' => $name, 'mgmt_port' => null];
                 }
             }
         }
 
-        // de-dupe by (username, client_id, mgmt_port) so you don't touch same session twice
+        // de-dupe by (username, mgmt_port, virtual_ip/client_ip)
         $seen = [];
         $filtered = [];
 
         foreach ($out as $r) {
             $name = trim((string)($r['username'] ?? ''));
             if ($name === '' || strcasecmp($name, 'unknown') === 0 || strcasecmp($name, 'UNDEF') === 0) continue;
-            if (!preg_match('/^[A-Za-z0-9._-]{3,64}$/', $name)) continue;
 
-            $cid = array_key_exists('client_id', $r) && $r['client_id'] !== null ? (string)$r['client_id'] : 'nocid';
+            // loosen validation: allow your usernames; don't accidentally drop legit ones
+            if (strlen($name) < 1 || strlen($name) > 128) continue;
+
             $mp  = array_key_exists('mgmt_port', $r) && $r['mgmt_port'] !== null ? (string)$r['mgmt_port'] : 'nomp';
-            $k   = "ovpn|{$name}|{$cid}|{$mp}";
+            $vip = trim((string)($r['virtual_ip'] ?? ''));
+            $cip = trim((string)($r['client_ip'] ?? ''));
+
+            $sid = $vip !== '' ? $vip : ($cip !== '' ? $cip : 'novip');
+            $k   = "ovpn|{$name}|{$mp}|{$sid}";
 
             if (isset($seen[$k])) continue;
             $seen[$k] = true;
@@ -282,13 +276,9 @@ class DeployEventController extends Controller
             if (is_numeric($value)) {
                 $n = (int)$value;
 
-                // ms epoch
                 if ($n > 2_000_000_000_000) return Carbon::createFromTimestampMs($n);
-
-                // sec epoch
                 if ($n > 946_684_800) return Carbon::createFromTimestamp($n);
 
-                // treat small number as "seconds ago"
                 return now()->subSeconds($n);
             }
 
