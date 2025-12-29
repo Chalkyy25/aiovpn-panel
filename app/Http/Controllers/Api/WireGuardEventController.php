@@ -160,7 +160,9 @@ class WireGuardEventController extends Controller
             $ts,
             $snapshot,
             implode(',', array_column($snapshot, 'username')),
-            $raw
+            $raw,
+            'wg-agent',
+            'WIREGUARD'
         ));
 
         return response()->json([
