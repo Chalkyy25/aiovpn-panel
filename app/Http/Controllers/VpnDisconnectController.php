@@ -5,22 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
-use App\Events\ServerMgmtEvent;
 use App\Traits\ExecutesRemoteCommands;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Http\JsonResponse;
 
 class VpnDisconnectController extends Controller
 {
     use ExecutesRemoteCommands;
 
-    /**
-     * Disconnect a client using OpenVPN management interface.
-     * Accepts either:
-     *  - client_id (mgmt CID), or
-     *  - username (CN) and we’ll resolve the mgmt CID first.
-     */
     public function disconnect(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
@@ -41,12 +34,13 @@ class VpnDisconnectController extends Controller
             $cid = $this->resolveCidByCn($server, $mgmtPort, $cn);
         }
 
-        // Attempt the mgmt kill if we have a CID
         $killed = false;
         $cmdOut = [];
+
         if ($cid !== null) {
             $cmd = sprintf('echo -e "kill %d\nquit\n" | nc -w 5 127.0.0.1 %d', $cid, $mgmtPort);
             $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
+
             $killed = (($res['status'] ?? 1) === 0);
             $cmdOut = $res;
 
@@ -58,17 +52,17 @@ class VpnDisconnectController extends Controller
             Log::channel('vpn')->warning("⚠️ No CID resolved for CN={$cn} on {$server->name}");
         }
 
-        // Best-effort DB mark + cleanup
+        // Best-effort DB mark
         try {
             $this->markDisconnectedInDb($server, $cid, $cn);
         } catch (\Throwable $e) {
             Log::channel('vpn')->warning('DB disconnect mark failed', ['error' => $e->getMessage()]);
         }
-        
 
+        // NOTE: No broadcasting here. One broadcaster owns mgmt.update (poller / wg-events).
         return response()->json([
-            'ok'        => (bool)$killed,
-            'message'   => ($killed ? 'Disconnected ' : 'Tried to disconnect ') . ($cn ?? ('#'.$cid)),
+            'ok'        => (bool) $killed,
+            'message'   => ($killed ? 'Disconnected ' : 'Tried to disconnect ') . ($cn ?? ('#' . $cid)),
             'server_id' => $server->id,
             'client_id' => $cid,
             'username'  => $cn,
@@ -77,13 +71,8 @@ class VpnDisconnectController extends Controller
         ]);
     }
 
-    /**
-     * Resolve mgmt client id (CID) for a given common-name (CN) using "status 2".
-     */
     protected function resolveCidByCn(VpnServer $server, int $mgmtPort, string $cn): ?int
     {
-        // Ask mgmt for status 2, parse CLIENT_LIST lines:
-        // Format: CLIENT_LIST,<CN>,<RealIP>,<VPNIP>,<bytes_rx>,<bytes_tx>,<since>,<...,CID>
         $script = <<<BASH
 set -e
 out=$(echo -e "status 2\nquit\n" | nc -w 5 127.0.0.1 {$mgmtPort} || true)
@@ -92,23 +81,23 @@ echo "$out" | awk -F',' -v cn="{$this->escAwk($cn)}" '
   END { if (!found) exit 1 }
 '
 BASH;
+
         $res = $this->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($script));
         if (($res['status'] ?? 1) === 0) {
             $val = trim(implode("\n", $res['output'] ?? []));
-            if ($val !== '' && ctype_digit($val)) return (int)$val;
+            if ($val !== '' && ctype_digit($val)) return (int) $val;
         }
+
         return null;
     }
 
-    /**
-     * Mark the connection disconnected in the DB (best effort).
-     */
     protected function markDisconnectedInDb(VpnServer $server, ?int $cid, ?string $cn): void
     {
-        $q = VpnUserConnection::query()->where('vpn_server_id', $server->id)->where('is_connected', true);
+        $q = VpnUserConnection::query()
+            ->where('vpn_server_id', $server->id)
+            ->where('is_connected', true);
 
         if ($cid !== null) {
-            // If panel uses its own connection row id, this will match; otherwise no-op.
             $q->where('id', $cid);
         } elseif ($cn) {
             $uid = VpnUser::where('username', $cn)->value('id');
@@ -116,6 +105,7 @@ BASH;
         }
 
         $conn = $q->first();
+
         if ($conn) {
             $conn->is_connected     = false;
             $conn->disconnected_at  = now();
@@ -126,7 +116,6 @@ BASH;
         }
     }
 
-    /** Escape for awk -v cn="..." */
     private function escAwk(string $s): string
     {
         return str_replace(['\\', '"'], ['\\\\', '\\"'], $s);
