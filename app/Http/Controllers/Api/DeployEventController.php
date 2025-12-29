@@ -154,7 +154,9 @@ class DeployEventController extends Controller
             $ts,
             $snapshot,
             implode(',', array_column($snapshot, 'username')),
-            $raw
+            $raw,
+            'ovpn-mgmt',
+            'OPENVPN'
         ));
 
         return response()->json([
