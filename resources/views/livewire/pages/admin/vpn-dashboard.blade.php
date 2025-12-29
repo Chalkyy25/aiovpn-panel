@@ -212,7 +212,7 @@
 
               <div class="mt-2">
                 <x-badge tone="slate" size="sm">
-                  <span x-text="(row.protocol || 'OPENVPN').toUpperCase()"></span>
+                  <span x-text="(row.protocol || 'UNKNOWN').toUpperCase()"></span>
                 </x-badge>
               </div>
             </div>
