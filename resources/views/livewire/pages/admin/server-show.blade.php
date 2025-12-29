@@ -1,7 +1,7 @@
 @php use Illuminate\Support\Str; @endphp
 
 <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
-    <h2 class="text-xl font-semibold text-[var(--aio-ink)]">
+    <h2 class="text-xl font-semibold text-[var(--aio-header)]">
         Server Status: {{ $vpnServer->name }}
     </h2>
     <div class="flex flex-wrap gap-2">
@@ -67,7 +67,7 @@
 <div wire:poll.3s="refresh" class="aio-card p-4 sm:p-6 mb-6">
     <h3 class="text-lg font-bold mb-4">Deployment Logs</h3>
     <div id="deploy-log"
-         style="max-height: 300px; overflow-y: auto; background: #0b0f1a; color: var(--aio-ink); font-family: monospace; padding: 1em; border-radius: 8px;"
+         style="max-height: 300px; overflow-y: auto; background: #0b0f1a; color: var(--aio-sub); font-family: monospace; padding: 1em; border-radius: 8px;"
          class="overflow-x-auto text-xs">
         @foreach($this->filteredLog as $entry)
             <div class="{{ $entry['color'] }}">{{ $entry['text'] }}</div>
@@ -88,7 +88,7 @@
 <div class="aio-card p-4 sm:p-6">
     <h3 class="text-lg font-bold mb-4">Live Monitoring</h3>
     <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-        
+
         {{-- Uptime --}}
         <div class="aio-card p-3">
             <span class="text-[var(--aio-cya)]">🕒</span>

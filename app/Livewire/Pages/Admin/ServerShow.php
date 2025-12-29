@@ -81,13 +81,18 @@ class ServerShow extends Component
                 base_path('storage/ssh_keys/id_rsa'),
             ];
 
-            $keyPath = collect($possiblePaths)->first(fn($path) => is_file($path));
+            $keyPath = collect($possiblePaths)->first(fn ($path) => is_string($path) && is_file($path));
 
-            if (!$keyPath) {
+            if (!is_string($keyPath) || $keyPath === '') {
                 throw new RuntimeException('SSH private key not found.');
             }
 
-            $key = PublicKeyLoader::load(file_get_contents($keyPath));
+            $keyContents = @file_get_contents($keyPath);
+            if ($keyContents === false) {
+                throw new RuntimeException("Failed to read SSH private key: {$keyPath}");
+            }
+
+            $key = PublicKeyLoader::load($keyContents);
 
             if (!$ssh->login($user, $key)) {
                 throw new RuntimeException('SSH login failed (key)');
@@ -139,12 +144,14 @@ class ServerShow extends Component
         }
     }
 
-    public function deleteServer($name”)
+    public function deleteServer()
     {
         $name = $this->vpnServer->name;
         $this->vpnServer->delete();
 
-        session()->flash('status', "🗑️ Server “$name” deleted.");
+        // Safe interpolation with straight quotes
+        session()->flash('status', "🗑️ Server \"{$name}\" deleted.");
+
         return redirect()->route('admin.servers.index');
     }
 
@@ -176,7 +183,7 @@ class ServerShow extends Component
     public function render()
     {
         return view('livewire.pages.admin.server-show')
-            ->layoutData(['heading' => 'Edit Server']);
+            ->layoutData(['heading' => 'Server Details']);
 
     }
 }
