@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\VpnConnection;
 use App\Models\VpnServer;
 use App\Models\WireguardPeer;
+use App\Services\MgmtSnapshotStore;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class WireGuardEventController extends Controller
      * WireGuard peers can be "connected" but idle (no handshake for a while).
      * Use 180–300s unless you enforce PersistentKeepalive on clients.
      */
-    private const STALE_SECONDS = 240; // ✅ 4 minutes (recommended)
+    private const STALE_SECONDS = 240; // 4 minutes
 
     public function store(Request $request, VpnServer $server): JsonResponse
     {
@@ -30,6 +31,7 @@ class WireGuardEventController extends Controller
             'peers'   => 'nullable|array',
         ]);
 
+        // Ignore non-mgmt payloads
         if (strtolower($data['status']) !== 'mgmt') {
             return response()->json(['ok' => true]);
         }
@@ -51,8 +53,6 @@ class WireGuardEventController extends Controller
         ]);
 
         DB::transaction(function () use ($server, $peers, $publicKeys, $now) {
-
-            // pubkey -> vpn_user_id
             $uidByPub = $publicKeys
                 ? WireguardPeer::query()
                     ->where('vpn_server_id', $server->id)
@@ -62,7 +62,7 @@ class WireGuardEventController extends Controller
                     ->all()
                 : [];
 
-            $touched = [];
+            $touchedSessionKeys = [];
 
             foreach ($peers as $p) {
                 if (!is_array($p)) continue;
@@ -74,10 +74,9 @@ class WireGuardEventController extends Controller
                 if (!$uid) continue;
 
                 $sessionKey = "wg:{$server->id}:{$pub}";
-                $touched[] = $sessionKey;
+                $touchedSessionKeys[] = $sessionKey;
 
-                // ✅ seenAt derived from handshake epoch (or explicit seen_at if provided)
-                $seenAt = $this->extractSeenAt($p);
+                $seenAt   = $this->extractSeenAt($p);
                 $isOnline = $this->isOnline($seenAt, $now);
 
                 $row = VpnConnection::firstOrNew([
@@ -85,12 +84,12 @@ class WireGuardEventController extends Controller
                     'session_key'   => $sessionKey,
                 ]);
 
-                $wasOnline = (bool) $row->is_active;
+                $wasOnline = (bool)($row->is_active ?? false);
 
-                $bytesIn  = (int)($p['bytes_received'] ?? $p['bytes_in'] ?? 0);
+                $bytesIn  = (int)($p['bytes_received'] ?? $p['bytes_in']  ?? 0);
                 $bytesOut = (int)($p['bytes_sent']     ?? $p['bytes_out'] ?? 0);
 
-                // ✅ if we don't have a seenAt (no handshake), treat as offline and don't clobber last_seen_at
+                // If there's no handshake time, don't clobber last_seen_at
                 $lastSeen = $seenAt ?: $row->last_seen_at;
 
                 $row->fill([
@@ -110,14 +109,14 @@ class WireGuardEventController extends Controller
                     'disconnected_at' => $isOnline ? null : ($wasOnline ? $now : $row->disconnected_at),
                 ]);
 
-                // ✅ only set connected_at when we transition offline -> online (or first create)
+                // Only set connected_at when offline->online (or first create)
                 if ($isOnline && (!$row->exists || !$row->connected_at || !$wasOnline)) {
                     $row->connected_at = $now;
                 }
 
                 $row->save();
 
-                // Optional peer stats mirror
+                // Mirror into peer table (optional)
                 WireguardPeer::query()
                     ->where('vpn_server_id', $server->id)
                     ->where('public_key', $pub)
@@ -128,10 +127,10 @@ class WireGuardEventController extends Controller
                     ]);
             }
 
-            // ✅ Mark any DB sessions not present in this snapshot as offline (with grace)
-            $this->disconnectMissingOrStale($server->id, $touched, $now);
+            // Mark missing/stale sessions offline
+            $this->disconnectMissingOrStale($server->id, $touchedSessionKeys, $now);
 
-            // Optional server aggregates
+            // Update server aggregate counters
             $live = VpnConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('protocol', 'WIREGUARD')
@@ -145,8 +144,17 @@ class WireGuardEventController extends Controller
             ])->saveQuietly();
         });
 
+        // Build snapshot (what UI consumes)
         $snapshot = $this->snapshot($server);
 
+        // ✅ WRITE SNAPSHOT TO REDIS (this is what your VpnDashboard now reads)
+        /** @var \App\Services\MgmtSnapshotStore $store */
+        $store = app(MgmtSnapshotStore::class);
+
+        // IMPORTANT: rename put() if your store uses set()/store()/write()
+        $store->put($server->id, $ts, $snapshot);
+
+        // ✅ Broadcast (optional, but keeps live UI instant)
         event(new ServerMgmtEvent(
             $server->id,
             $ts,
@@ -159,7 +167,6 @@ class WireGuardEventController extends Controller
             'ok'        => true,
             'server_id' => $server->id,
             'peers'     => count($snapshot),
-            'users'     => $snapshot,
         ]);
     }
 
@@ -172,8 +179,6 @@ class WireGuardEventController extends Controller
             ->where('protocol', 'WIREGUARD')
             ->where('is_active', 1)
             ->where(function ($qq) use ($touchedSessionKeys, $cutoff) {
-                // ✅ explicit grouping:
-                // offline if (missing from snapshot) OR (no last_seen) OR (last_seen too old)
                 if (!empty($touchedSessionKeys)) {
                     $qq->whereNotIn('session_key', $touchedSessionKeys)
                        ->orWhereNull('last_seen_at')
@@ -190,10 +195,15 @@ class WireGuardEventController extends Controller
         ]);
     }
 
+    /**
+     * Snapshot rows MUST match what Alpine expects.
+     * Key point: use is_connected (not is_active) so frontend doesn't need special cases.
+     */
     private function snapshot(VpnServer $server): array
     {
         return VpnConnection::with('vpnUser:id,username')
             ->where('vpn_server_id', $server->id)
+            ->where('protocol', 'WIREGUARD')
             ->where('is_active', 1)
             ->orderByDesc('last_seen_at')
             ->limit(500)
@@ -211,7 +221,9 @@ class WireGuardEventController extends Controller
                 'protocol'      => 'WIREGUARD',
                 'session_key'   => $r->session_key,
                 'public_key'    => $r->wg_public_key,
-                'is_active'     => (bool) $r->is_active,
+
+                // ✅ frontend expects this
+                'is_connected'  => true,
             ])
             ->values()
             ->all();
@@ -225,10 +237,11 @@ class WireGuardEventController extends Controller
 
     private function extractSeenAt(array $peer): ?Carbon
     {
-        // if agent ever sends seen_at explicitly, respect it
+        // Respect explicit seen_at if agent sends it
         $seen = $peer['seen_at'] ?? $peer['seenAt'] ?? null;
         if ($seen !== null && $seen !== '') return $this->parseTime($seen);
 
+        // Else derive from handshake epoch
         $raw = $peer['handshake'] ?? $peer['latest_handshake'] ?? $peer['latestHandshake'] ?? null;
         if ($raw === null || $raw === '') return null;
 
@@ -236,8 +249,11 @@ class WireGuardEventController extends Controller
         if ($n <= 0) return null;
 
         // ns/ms tolerance
-        if ($n >= 1_000_000_000_000_000) $n = (int) floor($n / 1_000_000_000);
-        elseif ($n >= 1_000_000_000_000) $n = (int) floor($n / 1_000);
+        if ($n >= 1_000_000_000_000_000) {
+            $n = (int) floor($n / 1_000_000_000);
+        } elseif ($n >= 1_000_000_000_000) {
+            $n = (int) floor($n / 1_000);
+        }
 
         return Carbon::createFromTimestamp($n);
     }
