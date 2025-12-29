@@ -5,9 +5,8 @@ namespace App\Livewire\Pages\Admin;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\VpnUserConnection;
-use Carbon\Carbon;
+use App\Services\MgmtSnapshotStore;
 use Illuminate\Contracts\View\View as ViewContract;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -46,7 +45,7 @@ class VpnDashboard extends Component
 
     public function getActiveConnectionsProperty()
     {
-        // This is the old table view data (fine to keep)
+        // Legacy table view data (DB truth). Keep this DB-based.
         $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
 
         $select = [
@@ -64,10 +63,7 @@ class VpnDashboard extends Component
             'public_key',
         ];
 
-        if (!$hasProtocol) {
-            // if protocol column doesn't exist, leave it out
-            $select = array_values(array_filter($select, fn ($c) => $c !== 'protocol'));
-        } else {
+        if ($hasProtocol) {
             $select[] = 'protocol';
         }
 
@@ -88,12 +84,16 @@ class VpnDashboard extends Component
 
     public function getTotalOnlineUsersProperty(): int
     {
-        return (int) VpnUser::query()->where('is_online', true)->count();
+        return (int) VpnUser::query()
+            ->where('is_online', true)
+            ->count();
     }
 
     public function getTotalActiveConnectionsProperty(): int
     {
-        return (int) VpnUserConnection::query()->where('is_connected', true)->count();
+        return (int) VpnUserConnection::query()
+            ->where('is_connected', true)
+            ->count();
     }
 
     public function getRecentlyDisconnectedProperty()
@@ -120,6 +120,10 @@ class VpnDashboard extends Component
 
     /* -------------------------- Livewire endpoints ----------------------- */
 
+    /**
+     * Poll endpoint used by Alpine.
+     * This now pulls from Redis snapshots (single source of truth for dashboard tiles + lists).
+     */
     public function getLiveStats(): array
     {
         [$serverMeta, $usersByServer] = $this->buildSnapshot();
@@ -139,11 +143,11 @@ class VpnDashboard extends Component
 
             $controller = app(\App\Http\Controllers\VpnDisconnectController::class);
             $request = request()->merge([
-                'client_id'    => $connection->client_id,
-                'username'     => $username,
-                'session_key'  => $connection->session_key,
-                'protocol'     => $connection->protocol,
-                'public_key'   => $connection->public_key,
+                'client_id'   => $connection->client_id,
+                'username'    => $username,
+                'session_key' => $connection->session_key,
+                'protocol'    => $connection->protocol,
+                'public_key'  => $connection->public_key,
             ]);
 
             $result = $controller->disconnect($request, $server);
@@ -174,9 +178,11 @@ class VpnDashboard extends Component
             'totalOnlineUsers'       => $this->totalOnlineUsers,
             'totalActiveConnections' => $this->totalActiveConnections,
             'recentlyDisconnected'   => $this->recentlyDisconnected,
-            'serverMeta'             => $serverMeta,
-            'seedUsersByServer'      => $usersByServer,
-            'seedTotals'             => $seedTotals,
+
+            // Alpine seeds
+            'serverMeta'        => $serverMeta,
+            'seedUsersByServer' => $usersByServer,
+            'seedTotals'        => $seedTotals,
         ])->layoutData([
             'heading'    => 'VPN Monitor',
             'subheading' => 'Live overview of users, servers & connections',
@@ -186,14 +192,13 @@ class VpnDashboard extends Component
     /* --------------------------- Helper methods -------------------------- */
 
     /**
-     * Snapshot = TRUTH ONLY:
-     * - only rows in vpn_user_connections where is_connected=1
-     * - grouped by vpn_server_id
-     * - username joined from vpn_users
+     * Dashboard snapshot source of truth:
+     * - serverMeta from DB (names + ids)
+     * - usersByServer from Redis snapshots (MgmtSnapshotStore)
      *
      * Returns:
-     *  - serverMeta: id => ['name' => string]
-     *  - usersByServer: id => [ rows... ]
+     *  - serverMeta: [id => ['name' => string]]
+     *  - usersByServer: [id => [rows...]]
      */
     private function buildSnapshot(): array
     {
@@ -217,75 +222,15 @@ class VpnDashboard extends Component
             return [$serverMeta, $usersByServer];
         }
 
-        $serverIds = array_map('intval', array_keys($serverMeta));
+        /** @var \App\Services\MgmtSnapshotStore $store */
+        $store = app(MgmtSnapshotStore::class);
 
-        $hasProtocol = Schema::hasColumn('vpn_user_connections', 'protocol');
-        $hasSeenAt   = Schema::hasColumn('vpn_user_connections', 'seen_at');
+        // Pull snapshot from Redis (single source of truth for dashboard list/tiles)
+        foreach (array_keys($serverMeta) as $sid) {
+            $snap = $store->get((int) $sid);
 
-        // Pull ONLY active connections (truth)
-        $rows = DB::table('vpn_user_connections as vuc')
-            ->join('vpn_users as vu', 'vu.id', '=', 'vuc.vpn_user_id')
-            ->whereIn('vuc.vpn_server_id', $serverIds)
-            ->where('vuc.is_connected', 1)
-            ->select([
-                'vuc.id',
-                'vuc.vpn_server_id',
-                'vu.username',
-                'vuc.client_ip',
-                'vuc.virtual_ip',
-                'vuc.connected_at',
-                'vuc.updated_at',
-                'vuc.bytes_received',
-                'vuc.bytes_sent',
-                'vuc.session_key',
-                'vuc.client_id',
-                'vuc.public_key',
-                $hasProtocol ? 'vuc.protocol' : DB::raw("NULL as protocol"),
-                $hasSeenAt ? 'vuc.seen_at' : DB::raw("NULL as seen_at"),
-            ])
-            ->orderByDesc($hasSeenAt ? 'vuc.seen_at' : 'vuc.updated_at')
-            ->orderByDesc('vuc.connected_at')
-            ->get();
-
-        foreach ($rows as $r) {
-            $sid = (string) $r->vpn_server_id;
-            if (!isset($usersByServer[$sid])) {
-                // should not happen, but never leak into wrong buckets
-                $usersByServer[$sid] = [];
-            }
-
-            $proto = $hasProtocol && $r->protocol !== null && $r->protocol !== ''
-                ? strtolower((string) $r->protocol)
-                : 'openvpn';
-
-            // pick "last seen" best-effort
-            $seenAt = $r->seen_at ?: $r->updated_at ?: $r->connected_at;
-            $seen = $seenAt ? Carbon::parse($seenAt) : null;
-
-            // Stable, per-row unique IDs for frontend
-            // - OpenVPN: prefer client_id if present, else DB row id
-            // - WireGuard: session_key usually contains wg:... already; still keep ids
-            $connectionId = $r->client_id ?? (int) $r->id;
-
-            $usersByServer[$sid][] = [
-                'connection_id'   => (int) $connectionId,
-                'session_key'     => $r->session_key ?: null,
-                'username'        => $r->username ?: 'unknown',
-                'server_name'     => $serverMeta[$sid]['name'] ?? "Server {$sid}",
-                'client_ip'       => $r->client_ip,
-                'virtual_ip'      => $r->virtual_ip,
-                'protocol'        => $proto,
-                'connected_at'    => $r->connected_at ? Carbon::parse($r->connected_at)->toIso8601String() : null,
-                'connected_human' => $seen ? $seen->diffForHumans() : '—',
-                'seen_at'         => $seen ? $seen->toIso8601String() : null,
-                'bytes_in'        => (int) ($r->bytes_received ?? 0),
-                'bytes_out'       => (int) ($r->bytes_sent ?? 0),
-                'is_connected'    => true,
-                'formatted_bytes' => null,
-                'down_mb'         => $r->bytes_received ? round($r->bytes_received / 1048576, 2) : 0.0,
-                'up_mb'           => $r->bytes_sent ? round($r->bytes_sent / 1048576, 2) : 0.0,
-                'public_key'      => $r->public_key ?? null,
-            ];
+            // Expected shape: ['ts' => ..., 'users' => [...]]
+            $usersByServer[$sid] = $snap['users'] ?? [];
         }
 
         return [$serverMeta, $usersByServer];
@@ -300,8 +245,11 @@ class VpnDashboard extends Component
         foreach ($serverMeta as $sid => $_) {
             $list = $usersByServer[$sid] ?? [];
 
-            // all rows in snapshot are active; still keep the guard
-            $onlineList = array_values(array_filter($list, fn ($u) => (bool)($u['is_connected'] ?? false)));
+            // Treat missing is_connected as true (snapshot rows are "active")
+            $onlineList = array_values(array_filter(
+                $list,
+                fn ($u) => ($u['is_connected'] ?? true) === true
+            ));
 
             if (!empty($onlineList)) {
                 $activeServers++;
