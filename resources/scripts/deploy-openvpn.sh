@@ -543,166 +543,11 @@ MGMT_TCP_PORT = int(os.environ.get("MGMT_TCP_PORT", "7506"))
 UDP_STATUS_PATH = os.environ.get("OVPN_STATUS_UDP", "/var/log/openvpn-status-udp.log")
 TCP_STATUS_PATH = os.environ.get("OVPN_STATUS_TCP", "/var/log/openvpn-status-tcp.log")
 
-def toint(x, d=0):
+def toint(x, default=0):
     try:
         return int(str(x).strip())
     except Exception:
-        return d
-
-def parse_status_text(txt, mgmt_port):
-    """
-    Supports BOTH:
-      - management 'status 3' output (tab-delimited)
-      - /var/log/openvpn-status-*.log (often space-aligned)
-    Returns list of client dicts.
-    """
-    lines = [l.rstrip("\r\n") for l in txt.splitlines() if l.strip() and not l.startswith(">")]
-    if not lines:
-        return []
-
-    # If it looks tab-delimited, use CSV(tab)
-    if any("\t" in l for l in lines):
-        hCL, hRT = {}, {}
-        clients, virt = {}, {}
-
-        for row in csv.reader(lines, delimiter="\t"):
-            if not row:
-                continue
-            tag = row[0]
-
-            if tag == "HEADER" and len(row) > 2:
-                if row[1] == "CLIENT_LIST":
-                    hCL = {n: i for i, n in enumerate(row)}
-                elif row[1] == "ROUTING_TABLE":
-                    hRT = {n: i for i, n in enumerate(row)}
-                continue
-
-            if tag == "CLIENT_LIST":
-                def col(name, default=""):
-                    i = hCL.get(name)
-                    return row[i] if i is not None and i < len(row) else default
-
-                cn = col("Common Name") or col("Username")
-                if not cn:
-                    continue
-
-                real = col("Real Address") or ""
-                real_ip = real.split(":")[0] if real else None
-
-                cid = col("Client ID", "")
-                cid = toint(cid, d=None)
-                if cid is None:
-                    continue
-
-                clients[cn] = {
-                    "username": cn,
-                    "client_id": cid,
-                    "mgmt_port": int(mgmt_port),
-                    "client_ip": real_ip,
-                    "virtual_ip": None,
-                    "bytes_in": toint(col("Bytes Received", "0")),
-                    "bytes_out": toint(col("Bytes Sent", "0")),
-                    "connected_at": toint(col("Connected Since (time_t)", "0")),
-                }
-
-            elif tag == "ROUTING_TABLE":
-                def col(name, default=""):
-                    i = hRT.get(name)
-                    return row[i] if i is not None and i < len(row) else default
-
-                cn = col("Common Name", "")
-                va = col("Virtual Address") or None
-                if cn:
-                    virt[cn] = va
-
-        for cn, ip in virt.items():
-            if cn in clients and ip:
-                clients[cn]["virtual_ip"] = ip.split("/", 1)[0]
-
-        return list(clients.values())
-
-    # Otherwise: space-aligned file (like your /var/log/openvpn-status-udp.log example)
-    # Example line:
-    # CLIENT_LIST     aiotest 31.94.56.27:61813       10.8.0.4  ...  BytesReceived BytesSent ... ConnectedSince ... ConnectedTimeT Username ClientID ...
-    clients = []
-    for l in lines:
-        if not l.startswith("CLIENT_LIST"):
-            continue
-
-        # split on runs of whitespace
-        parts = re.split(r"\s+", l.strip())
-        # Minimum expected:
-        # 0 CLIENT_LIST
-        # 1 CommonName
-        # 2 RealAddress
-        # 3 VirtualAddress
-        # ... then bytes rx/tx and connected time_t near end
-        if len(parts) < 8:
-            continue
-
-        common = parts[1]
-        real   = parts[2]
-        virtip = parts[3]
-
-        real_ip = real.split(":")[0] if ":" in real else real
-
-        # bytes and time_t positions vary a bit between builds, so detect by scanning from the end:
-        # OpenVPN status v2 typically ends with: Username, ClientID, PeerID, Cipher
-        # We'll try to find ClientID as an int near the end, and ConnectedSince(time_t) as an int before that.
-        ints = [(i, toint(parts[i], d=None)) for i in range(len(parts))]
-
-        # find a plausible client_id near the end (0..999999)
-        client_id = None
-        for i in range(len(parts)-1, -1, -1):
-            v = toint(parts[i], d=None)
-            if v is not None and 0 <= v <= 999999:
-                # heuristic: this is Client ID if the token before it isn't a date piece
-                client_id = v
-                break
-
-        # find connected_since_time_t (10 digits-ish) somewhere
-        connected_at = 0
-        for i in range(len(parts)-1, -1, -1):
-            v = toint(parts[i], d=None)
-            if v is not None and v > 1_000_000_000:  # epoch-ish
-                connected_at = v
-                break
-
-        # find bytes rx/tx by picking the last two "smallish" ints before epoch
-        bytes_in = 0
-        bytes_out = 0
-        candidates = []
-        for i, v in ints:
-            if v is None:
-                continue
-            if 0 <= v <= 10**12:  # bytes range
-                candidates.append((i, v))
-        # pick two closest candidates that appear before the epoch index
-        epoch_idx = None
-        for i, v in ints:
-            if v is not None and v == connected_at:
-                epoch_idx = i
-                break
-        if epoch_idx is not None:
-            pre = [v for (i, v) in candidates if i < epoch_idx]
-            if len(pre) >= 2:
-                bytes_in, bytes_out = pre[-2], pre[-1]
-
-        if client_id is None:
-            continue
-
-        clients.append({
-            "username": common,
-            "client_id": client_id,
-            "mgmt_port": int(mgmt_port),
-            "client_ip": real_ip,
-            "virtual_ip": virtip.split("/", 1)[0] if virtip else None,
-            "bytes_in": bytes_in,
-            "bytes_out": bytes_out,
-            "connected_at": connected_at,
-        })
-
-    return clients
+        return default
 
 def read_file(path):
     try:
@@ -711,29 +556,177 @@ def read_file(path):
     except Exception:
         return ""
 
+def parse_tab_status(txt, mgmt_port):
+    # management "status 3" output (tab-delimited)
+    lines = [l for l in txt.splitlines() if l.strip() and not l.startswith(">")]
+    hCL, hRT = {}, {}
+    clients, virt = {}, {}
+
+    for row in csv.reader(lines, delimiter="\t"):
+        if not row:
+            continue
+        tag = row[0]
+
+        if tag == "HEADER" and len(row) > 2:
+            if row[1] == "CLIENT_LIST":
+                hCL = {n: i for i, n in enumerate(row)}
+            elif row[1] == "ROUTING_TABLE":
+                hRT = {n: i for i, n in enumerate(row)}
+            continue
+
+        if tag == "CLIENT_LIST":
+            def col(name, default=""):
+                i = hCL.get(name)
+                return row[i] if i is not None and i < len(row) else default
+
+            cn = col("Common Name") or col("Username")
+            if not cn:
+                continue
+
+            real = col("Real Address") or ""
+            real_ip = real.split(":")[0] if real else None
+
+            cid = col("Client ID", "")
+            try:
+                cid = int(cid)
+            except Exception:
+                cid = None
+            if cid is None:
+                continue
+
+            clients[cn] = {
+                "username": cn,
+                "client_id": cid,
+                "mgmt_port": int(mgmt_port),
+                "client_ip": real_ip,
+                "virtual_ip": None,
+                "bytes_in": toint(col("Bytes Received", "0")),
+                "bytes_out": toint(col("Bytes Sent", "0")),
+                "connected_at": toint(col("Connected Since (time_t)", "0")),
+            }
+
+        elif tag == "ROUTING_TABLE":
+            def col(name, default=""):
+                i = hRT.get(name)
+                return row[i] if i is not None and i < len(row) else default
+            cname = col("Common Name", "")
+            vip   = col("Virtual Address") or None
+            if cname:
+                virt[cname] = vip
+
+    for cname, vip in virt.items():
+        if cname in clients and vip:
+            clients[cname]["virtual_ip"] = vip.split("/", 1)[0]
+
+    return list(clients.values())
+
+def split_cols_2plus(line):
+    # OpenVPN status files are aligned with 2+ spaces between columns
+    return [p for p in re.split(r"\s{2,}", line.strip()) if p]
+
+def parse_space_status(txt, mgmt_port):
+    # /var/log/openvpn-status-*.log style
+    lines = [l.rstrip("\r\n") for l in txt.splitlines() if l.strip()]
+    hCL, hRT = {}, {}
+    clients, virt = {}, {}
+
+    for l in lines:
+        cols = split_cols_2plus(l)
+
+        # HEADER lines look like:
+        # HEADER  CLIENT_LIST  Common Name  Real Address  Virtual Address ...
+        if cols and cols[0] == "HEADER" and len(cols) >= 3:
+            if cols[1] == "CLIENT_LIST":
+                # map column name -> index in this cols list
+                # data rows start at cols[0] == CLIENT_LIST, so indexes align
+                hCL = {name: i for i, name in enumerate(cols)}
+            elif cols[1] == "ROUTING_TABLE":
+                hRT = {name: i for i, name in enumerate(cols)}
+            continue
+
+        if not cols:
+            continue
+
+        if cols[0] == "CLIENT_LIST" and hCL:
+            def col(name, default=""):
+                i = hCL.get(name)
+                return cols[i] if i is not None and i < len(cols) else default
+
+            cn = col("Common Name") or col("Username")
+            if not cn:
+                continue
+
+            real = col("Real Address") or ""
+            real_ip = real.split(":")[0] if real else None
+
+            cid = col("Client ID", "")
+            try:
+                cid = int(cid)
+            except Exception:
+                cid = None
+            if cid is None:
+                continue
+
+            clients[cn] = {
+                "username": cn,
+                "client_id": cid,
+                "mgmt_port": int(mgmt_port),
+                "client_ip": real_ip,
+                "virtual_ip": (col("Virtual Address") or None),
+                "bytes_in": toint(col("Bytes Received", "0")),
+                "bytes_out": toint(col("Bytes Sent", "0")),
+                "connected_at": toint(col("Connected Since (time_t)", "0")),
+            }
+
+        elif cols[0] == "ROUTING_TABLE" and hRT:
+            def col(name, default=""):
+                i = hRT.get(name)
+                return cols[i] if i is not None and i < len(cols) else default
+            cname = col("Common Name", "")
+            vip   = col("Virtual Address") or None
+            if cname:
+                virt[cname] = vip
+
+    # if routing table present, prefer it for virtual_ip
+    for cname, vip in virt.items():
+        if cname in clients and vip:
+            clients[cname]["virtual_ip"] = vip.split("/", 1)[0]
+
+    # normalize virtual_ip
+    for c in clients.values():
+        if c.get("virtual_ip"):
+            c["virtual_ip"] = c["virtual_ip"].split("/", 1)[0]
+
+    return list(clients.values())
+
+def parse_status(txt, mgmt_port):
+    if any("\t" in l for l in txt.splitlines()):
+        return parse_tab_status(txt, mgmt_port)
+    return parse_space_status(txt, mgmt_port)
+
 def collect_ovpn():
     out = []
 
-    # Prefer status files (these exist on your box and actually contain clients)
+    # Prefer status files (your configs explicitly write these)
     udp_txt = read_file(UDP_STATUS_PATH)
     if udp_txt:
-        out.extend(parse_status_text(udp_txt, MGMT_PORT))
+        out.extend(parse_status(udp_txt, MGMT_PORT))
 
     tcp_txt = read_file(TCP_STATUS_PATH)
     if tcp_txt:
-        out.extend(parse_status_text(tcp_txt, MGMT_TCP_PORT))
+        out.extend(parse_status(tcp_txt, MGMT_TCP_PORT))
 
-    # Fallback to mgmt if files missing/empty
+    # Fallback to mgmt ports
     if not out:
         for port, mp in ((MGMT_PORT, MGMT_PORT), (MGMT_TCP_PORT, MGMT_TCP_PORT)):
             try:
                 cmd = f'( printf "status 3\\r\\n"; sleep 0.2; printf "quit\\r\\n" ) | nc -w 2 127.0.0.1 {port} || true'
                 mgmt = subprocess.check_output(["bash", "-lc", cmd], text=True)
+                out.extend(parse_status(mgmt, mp))
             except Exception:
-                continue
-            out.extend(parse_status_text(mgmt, mp))
+                pass
 
-    # De-dupe by (username, client_id, mgmt_port)
+    # De-dupe
     seen = set()
     uniq = []
     for c in out:
@@ -742,6 +735,7 @@ def collect_ovpn():
             continue
         seen.add(key)
         uniq.append(c)
+
     return uniq
 
 def collect_wg():
@@ -762,6 +756,7 @@ def collect_wg():
         pub, _psk, endpoint, allowed, hs_raw, rx_raw, tx_raw, keep = parts[:8]
 
         hs = toint(hs_raw, 0)
+
         client_ip = None
         if endpoint and endpoint != "(none)":
             client_ip = endpoint.rsplit(":", 1)[0] if ":" in endpoint else endpoint
