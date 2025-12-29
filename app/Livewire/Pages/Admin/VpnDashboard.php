@@ -126,12 +126,12 @@ class VpnDashboard extends Component
      */
     public function getLiveStats(): array
     {
-        [$serverMeta, $usersByServer] = $this->buildSnapshot();
-        $totals = $this->computeTotals($serverMeta, $usersByServer);
-
+        $this->skipRender(); // ✅ prevents DOM morph / Alpine reset
+    
         return [
-            'usersByServer' => $usersByServer,
-            'totals'        => $totals,
+            'usersByServer' => $this->seedUsersByServer(), // whatever you already return
+            'serverMeta'    => $this->serverMeta,
+            'ts'            => now()->toIso8601String(),
         ];
     }
 
