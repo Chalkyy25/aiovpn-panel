@@ -14,33 +14,50 @@ class ServerMgmtEvent implements ShouldBroadcastNow
     public int $serverId;
     public string $ts;
 
-    /** rich rows: [{ username, client_ip, virtual_ip, connected_at, bytes_in, bytes_out, server_name? }] */
+    /** rich rows: [{ username, protocol, session_key?, connection_id?, client_ip?, virtual_ip?, connected_at?, seen_at?, bytes_in?, bytes_out?, server_name? }] */
     public array $users = [];
 
     public int $clients = 0;
     public string $cnList = '';
     public string $raw = '';
 
+    /** who sent it: wg-agent | ovpn-mgmt | sync-job | disconnect | unknown */
+    public string $source = 'unknown';
+
     /**
-     * Pass a fully built $users array. We keep clients/cnList for display/logging.
+     * Always pass fully built $users.
      */
     public function __construct(
         int $serverId,
         string $ts,
         array $users = [],
         ?string $cnList = null,
-        ?string $raw = null
+        ?string $raw = null,
+        ?string $source = null
     ) {
         $this->serverId = $serverId;
         $this->ts       = $ts;
 
-        $this->users   = array_values($users);
+        // Normalize users + force protocol casing if present
+        $this->users = array_values(array_map(function ($u) {
+            if (!is_array($u)) return [];
+            if (isset($u['protocol']) && is_string($u['protocol'])) {
+                $u['protocol'] = strtoupper($u['protocol']);
+            }
+            return $u;
+        }, $users));
+
         $this->clients = count($this->users);
-        $this->cnList  = $cnList ?? implode(',', array_column($this->users, 'username'));
-        $this->raw     = (string) ($raw ?? '');
+
+        $this->cnList = $cnList ?? implode(',', array_values(array_filter(array_map(
+            fn ($u) => is_array($u) ? ($u['username'] ?? null) : null,
+            $this->users
+        ))));
+
+        $this->raw    = (string) ($raw ?? '');
+        $this->source = $source ? (string) $source : 'unknown';
     }
 
-    /** broadcast to fleet + per-server */
     public function broadcastOn(): array
     {
         return [
@@ -63,6 +80,7 @@ class ServerMgmtEvent implements ShouldBroadcastNow
             'cn_list'   => $this->cnList,
             'users'     => $this->users,
             'raw'       => $this->raw,
+            'source'    => $this->source,
         ];
     }
 }
