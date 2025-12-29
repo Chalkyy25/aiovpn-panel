@@ -204,13 +204,17 @@ BASH;
      * Broadcast a snapshot using rich users payload (UI supports both shapes).
      */
     private function broadcastUsers(int $serverId, array $users): void
-    {
-        //broadcast(new ServerMgmtEvent(
-            //$serverId,
-            //now()->toIso8601String(),
-            //$users,      // ← array payload (preferred, gives Virtual IP, Connected since, Data transfer)
-           // null,
-           // 'sync-job'
-       // ));
-    }
+{
+    $ts = now()->toIso8601String();
+
+    app(\App\Services\MgmtSnapshotStore::class)->put($serverId, $ts, $users);
+
+    broadcast(new \App\Events\ServerMgmtEvent(
+        $serverId,
+        $ts,
+        $users,
+        null,
+        'sync-job'
+    ));
+}
 }
