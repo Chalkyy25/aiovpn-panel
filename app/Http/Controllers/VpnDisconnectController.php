@@ -83,13 +83,6 @@ class VpnDisconnectController extends Controller
                 ])
                 ->values()->all();
 
-            broadcast(new ServerMgmtEvent(
-                $server->id,
-                now()->toAtomString(),
-                $active,
-                implode(',', array_column($active, 'username')),
-                'panel.disconnect'
-            ))->toOthers();
         } catch (\Throwable $e) {
             Log::channel('vpn')->warning('Broadcast after disconnect failed', ['error' => $e->getMessage()]);
         }
