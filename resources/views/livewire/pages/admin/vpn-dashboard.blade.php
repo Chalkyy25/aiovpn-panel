@@ -37,7 +37,7 @@
 
       <div class="text-xs text-[var(--aio-sub)] text-right">
         <span class="hidden sm:inline">Updated</span>
-        <span class="font-medium text-[var(--aio-header)]" x-text="lastUpdatedHuman()"></span>
+        <span class="font-medium text-[var(--aio-header)]" x-text="lastUpdated"></span>
       </div>
     </div>
   </div>
