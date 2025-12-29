@@ -208,23 +208,29 @@ class WireGuardEventController extends Controller
             ->orderByDesc('last_seen_at')
             ->limit(500)
             ->get()
-            ->map(fn ($r) => [
-                'connection_id' => $r->id,
-                'username'      => optional($r->vpnUser)->username ?? 'unknown',
-                'client_ip'     => $r->client_ip,
-                'virtual_ip'    => $r->virtual_ip,
-                'connected_at'  => optional($r->connected_at)?->toIso8601String(),
-                'seen_at'       => optional($r->last_seen_at)?->toIso8601String(),
-                'bytes_in'      => (int) $r->bytes_in,
-                'bytes_out'     => (int) $r->bytes_out,
-                'server_name'   => $server->name,
-                'protocol'      => 'WIREGUARD',
-                'session_key'   => $r->session_key,
-                'public_key'    => $r->wg_public_key,
+            -->map(fn ($r) => [
+    'connection_id'   => $r->id,
+    'username'        => optional($r->vpnUser)->username ?? 'unknown',
+    'client_ip'       => $r->client_ip,
+    'virtual_ip'      => $r->virtual_ip,
 
-                // ✅ frontend expects this
-                'is_connected'  => true,
-            ])
+    // 👇 ISO timestamp (still useful)
+    'connected_at'    => optional($r->connected_at)?->toIso8601String(),
+
+    // 👇 THIS FIXES THE DASH
+    'connected_human' => $r->connected_at
+        ? Carbon::parse($r->connected_at)->diffForHumans()
+        : '—',
+
+    'seen_at'         => optional($r->last_seen_at)?->toIso8601String(),
+    'bytes_in'        => (int) $r->bytes_in,
+    'bytes_out'       => (int) $r->bytes_out,
+    'server_name'     => $server->name,
+    'protocol'        => 'WIREGUARD',
+    'session_key'     => $r->session_key,
+    'public_key'      => $r->wg_public_key,
+    'is_connected'    => (bool) $r->is_active,
+])
             ->values()
             ->all();
     }
