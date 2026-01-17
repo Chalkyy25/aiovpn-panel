@@ -156,7 +156,8 @@ cat >/etc/wireguard/wg0.conf <<WG
 PrivateKey = $WG_PRIV
 Address = $WG_SRV_IP
 ListenPort = $WG_PORT
-SaveConfig = true
+MTU = 1380
+SaveConfig = false
 WG
 chmod 600 /etc/wireguard/wg0.conf
 systemctl daemon-reload
@@ -172,6 +173,7 @@ for i in {1..30}; do
 done
 [[ $ok_iface -eq 1 ]] || fail "WireGuard (wg0) failed to start"
 # ===== Apply persistent keepalive to all peers (fix flapping / NAT idle) =====
+# ===== Apply persistent keepalive to all peers (runtime only) =====
 apply_wg_keepalive() {
   local ka="$WG_DEFAULT_KEEPALIVE"
   [[ "$ka" != "0" ]] || { logchunk "[WG] keepalive disabled"; return 0; }
@@ -182,11 +184,7 @@ apply_wg_keepalive() {
     wg set wg0 peer "$peer" persistent-keepalive "$ka" || true
   done
 
-  # Persist it to /etc/wireguard/wg0.conf (since SaveConfig=true)
-  logchunk "[WG] Saving wg0 runtime config to /etc/wireguard/wg0.conf"
-  wg-quick save wg0 || true
-
-  logchunk "[WG] Keepalive applied + saved"
+  logchunk "[WG] Keepalive applied (runtime only; not saving config)"
 }
 apply_wg_keepalive
 
@@ -374,7 +372,7 @@ rcvbuf 0
 push "sndbuf 0"
 push "rcvbuf 0"
 tun-mtu 1500
-mssfix 1450
+mssfix 1360
 explicit-exit-notify 3
 CONF
 
@@ -443,7 +441,7 @@ rcvbuf 0
 push "sndbuf 0"
 push "rcvbuf 0"
 tun-mtu 1500
-mssfix 1450
+mssfix 1360
 CONF
   chmod 0644 "$TCP_CONF"
 
