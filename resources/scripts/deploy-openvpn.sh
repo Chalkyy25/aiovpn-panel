@@ -119,10 +119,39 @@ DEF_IFACE="$(ip -4 route show default | awk '/default/ {print $5; exit}')" ; DEF
 ### ===== Enable IP forwarding & tune sockets =====
 logchunk "Enable IPv4 forwarding & tune sockets"
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
-echo 'net.ipv4.ip_forward=1' >/etc/sysctl.d/99-aiovpn.conf
-echo 'net.core.rmem_max=2500000' >> /etc/sysctl.d/99-aiovpn.conf
-echo 'net.core.wmem_max=2500000' >> /etc/sysctl.d/99-aiovpn.conf
-sysctl --system >/dev/null
+cat >/etc/sysctl.d/99-aiovpn.conf <<'EOF'
+net.ipv4.ip_forward=1
+net.core.rmem_max=2500000
+net.core.wmem_max=2500000
+EOF
+sysctl --system >/dev/null || true
+
+### ===== FIX #1: Conntrack tuning (global, safe) =====
+logchunk "Tune conntrack (nf_conntrack_max/buckets)"
+cat >/etc/sysctl.d/99-conntrack.conf <<'EOF'
+net.netfilter.nf_conntrack_max = 262144
+net.netfilter.nf_conntrack_buckets = 65536
+EOF
+modprobe nf_conntrack 2>/dev/null || true
+sysctl --system >/dev/null || true
+
+# Buckets sometimes won't take effect at runtime; ensure it applies on next boot
+CT_BUCKETS="$(cat /proc/sys/net/netfilter/nf_conntrack_buckets 2>/dev/null || echo 0)"
+if [ "$CT_BUCKETS" -lt 65536 ]; then
+  logchunk "Conntrack buckets currently ${CT_BUCKETS} (<65536). Setting module hashsize=65536 for next boot"
+  cat >/etc/modprobe.d/nf_conntrack.conf <<'EOF'
+options nf_conntrack hashsize=65536
+EOF
+fi
+
+### ===== FIX #2: Sysctl noise clean override (optional) =====
+# This does NOT affect functionality; it just sets sane defaults and helps avoid pointless confusion.
+logchunk "Sysctl clean override (accept_source_route/promote_secondaries defaults)"
+cat >/etc/sysctl.d/10-aiovpn-sysctl-clean.conf <<'EOF'
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.conf.default.promote_secondaries = 1
+EOF
+sysctl --system >/dev/null || true
 
 ### ===== Detect endpoints =====
 if [[ -z "$WG_ENDPOINT_HOST" ]]; then
@@ -172,7 +201,7 @@ for i in {1..30}; do
   sleep 0.5
 done
 [[ $ok_iface -eq 1 ]] || fail "WireGuard (wg0) failed to start"
-# ===== Apply persistent keepalive to all peers (fix flapping / NAT idle) =====
+
 # ===== Apply persistent keepalive to all peers (runtime only) =====
 apply_wg_keepalive() {
   local ka="$WG_DEFAULT_KEEPALIVE"
@@ -483,12 +512,8 @@ if [[ "$ENABLE_TCP_STEALTH" = "1" ]]; then
 fi
 
 # 3) Strict FORWARD rules: only VPN <-> WAN
-
-# WireGuard: wg0 -> WAN and return
 iptables -A FORWARD -i wg0 -o "$DEF_IFACE" -j ACCEPT
 iptables -A FORWARD -i "$DEF_IFACE" -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-
-# OpenVPN: tun0 -> WAN and return
 iptables -A FORWARD -i tun0 -o "$DEF_IFACE" -j ACCEPT
 iptables -A FORWARD -i "$DEF_IFACE" -o tun0 -m state --state RELATED,ESTABLISHED -j ACCEPT
 
@@ -509,7 +534,6 @@ cat >/usr/local/bin/ovpn-mgmt-push.sh <<'AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load env
 if [ -f /etc/default/ovpn-status-push ]; then
   set -a
   . /etc/default/ovpn-status-push
@@ -539,7 +563,6 @@ MGMT_PORT     = int(os.environ.get("MGMT_PORT", "7505"))
 MGMT_TCP_PORT = int(os.environ.get("MGMT_TCP_PORT", "7506"))
 
 def mgmt_out(port:int) -> str:
-    # CRLF matters for mgmt
     cmd = f'( printf "status 3\\r\\n"; sleep 0.2; printf "quit\\r\\n" ) | nc -w 3 127.0.0.1 {port} || true'
     return subprocess.check_output(["bash","-lc",cmd], text=True)
 
@@ -560,18 +583,6 @@ def parse_status3(txt:str, mgmt_port:int):
 
         if line.startswith("CLIENT_LIST\t"):
             p = line.split("\t")
-            # Expected indices for status 3:
-            # 0 tag
-            # 1 Common Name
-            # 2 Real Address
-            # 3 Virtual Address
-            # 4 Virtual IPv6 Address (may be empty)
-            # 5 Bytes Received
-            # 6 Bytes Sent
-            # 7 Connected Since (string)
-            # 8 Connected Since (time_t) epoch
-            # 9 Username
-            # 10 Client ID
             if len(p) < 11:
                 continue
 
@@ -599,10 +610,6 @@ def parse_status3(txt:str, mgmt_port:int):
 
         elif line.startswith("ROUTING_TABLE\t"):
             p = line.split("\t")
-            # 0 tag
-            # 1 Virtual Address
-            # 2 Common Name
-            # 3 Real Address
             if len(p) < 4:
                 continue
             vaddr = p[1].strip()
@@ -610,8 +617,6 @@ def parse_status3(txt:str, mgmt_port:int):
             if cname and vaddr:
                 virtmap[cname] = vaddr.split("/",1)[0]
 
-    # If mgmt doesn't put virtual addr on CLIENT_LIST (rare), fill from routing table by Common Name
-    # Only if we can match by Common Name == username (common when using auth-user-pass)
     for k, v in list(clients.items()):
         if not v.get("virtual_ip") and k in virtmap:
             v["virtual_ip"] = virtmap[k]
@@ -643,7 +648,6 @@ def collect_wg():
             continue
 
         pub, _psk, endpoint, allowed, hs_raw, rx_raw, tx_raw, keep = parts[:8]
-
         hs = toint(hs_raw, 0)
 
         client_ip = None
@@ -671,7 +675,6 @@ def collect_wg():
     return peers
 
 now = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-
 ovpn_users = collect_ovpn()
 wg_peers   = collect_wg()
 
@@ -685,10 +688,8 @@ PY
   fi
 done
 AGENT
-
 chmod 0755 /usr/local/bin/ovpn-mgmt-push.sh
 
-# Environment for status agent
 cat >/etc/default/ovpn-status-push <<ENV
 PANEL_URL="$PANEL_URL"
 PANEL_TOKEN="$PANEL_TOKEN"
@@ -697,7 +698,6 @@ MGMT_PORT="${MGMT_PORT}"
 MGMT_TCP_PORT="${MGMT_TCP_PORT}"
 ENV
 
-# Systemd service (oneshot)
 cat >/etc/systemd/system/ovpn-mgmt-push.service <<'SVC'
 [Unit]
 Description=Push unified VPN (WG+OVPN) status to panel
@@ -709,7 +709,6 @@ EnvironmentFile=-/etc/default/ovpn-status-push
 ExecStart=/usr/local/bin/ovpn-mgmt-push.sh
 SVC
 
-# Systemd timer (periodic)
 cat >/etc/systemd/system/ovpn-mgmt-push.timer <<TIM
 [Unit]
 Description=Push unified VPN (WG+OVPN) status every ${STATUS_PUSH_INTERVAL}
@@ -722,7 +721,6 @@ Unit=ovpn-mgmt-push.service
 WantedBy=timers.target
 TIM
 
-# Remove any client-connect/disconnect hooks that might break auth
 for conf in /etc/openvpn/server/server.conf /etc/openvpn/server/server-tcp.conf; do
   [[ -f "$conf" ]] || continue
   sed -i '/^client-connect\|^client-disconnect/d' "$conf"
@@ -731,16 +729,13 @@ done
 systemctl daemon-reload
 systemctl enable --now ovpn-mgmt-push.timer
 
-### ===== Mirror OVPN auth back to panel (optional) =====
 panel POST "/api/servers/$SERVER_ID/authfile" --file /etc/openvpn/auth/psw-file >/dev/null || true
 
-### ===== Emit client profiles =====
 GEN_DIR="/root/clients"
 mkdir -p "$GEN_DIR"
 CA_CONTENT="$(cat /etc/openvpn/ca.crt)"
 TA_CONTENT="$(cat /etc/openvpn/ta.key)"
 
-# UDP profile
 cat > "${GEN_DIR}/aio-udp${OVPN_PORT}.ovpn" <<OVPN
 client
 dev tun
@@ -765,7 +760,6 @@ ${CA_CONTENT}
 </ca>
 OVPN
 
-# TCP profile (if enabled)
 if [[ "${ENABLE_TCP_STEALTH}" = "1" ]]; then
 cat > "${GEN_DIR}/aio-tcp${TCP_PORT}.ovpn" <<OVPN
 client
@@ -798,7 +792,6 @@ ${CA_CONTENT}
 OVPN
 fi
 
-# Unified profile (TCP+UDP)
 cat > "${GEN_DIR}/aio-unified.ovpn" <<OVPN
 client
 dev tun
@@ -829,9 +822,6 @@ ${CA_CONTENT}
 </ca>
 OVPN
 
-### ===== Final facts =====
-
-# Decide what DNS to advertise to panel (private WG DNS if enabled)
 DNS_FACT="$WG_DNS_IP"
 if [[ "$ENABLE_PRIVATE_DNS" != "1" ]]; then
   DNS_FACT="$DNS1"
@@ -842,15 +832,11 @@ panel POST "/api/servers/$SERVER_ID/deploy/facts" --json \
    \"vpn_port\": $OVPN_PORT,
    $(json_kv proto "wireguard+openvpn-stealth"),
    \"ip_forward\": 1,
-
-   # Public endpoint + WG facts used by WireGuardConfigController
    $(json_kv public_ip "$WG_ENDPOINT_HOST"),
    $(json_kv wg_public_key "$WG_PUB"),
    \"wg_port\": $WG_PORT,
    $(json_kv wg_subnet "$WG_SUBNET"),
    $(json_kv dns "$DNS_FACT"),
-
-   # Optional extra metadata (controller will ignore unknown keys)
    \"mgmt_port\": $MGMT_PORT,
    \"mgmt_tcp_port\": $MGMT_TCP_PORT,
    $(json_kv ovpn_endpoint_host "$OVPN_ENDPOINT_HOST"),
