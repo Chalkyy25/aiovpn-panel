@@ -87,7 +87,7 @@ class WireGuardService
         $allowedIps = $peer->allowed_ips ?: ($peer->ip_address . '/32');
 
         $cmd = sprintf(
-            'sudo wg set %s peer %s allowed-ips %s && sudo wg-quick save %s',
+            'sudo wg set %s peer %s allowed-ips %s',
             escapeshellarg($interface),
             escapeshellarg($peer->public_key),
             escapeshellarg($allowedIps),
