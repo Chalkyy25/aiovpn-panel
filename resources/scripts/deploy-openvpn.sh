@@ -186,7 +186,7 @@ PrivateKey = $WG_PRIV
 Address = $WG_SRV_IP
 ListenPort = $WG_PORT
 MTU = 1380
-SaveConfig = false
+SaveConfig = true
 WG
 chmod 600 /etc/wireguard/wg0.conf
 systemctl daemon-reload
