@@ -133,7 +133,6 @@ fi
 wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32"
 
 # Persist peers (SaveConfig=true)
-wg-quick save "\$IFACE" >/dev/null 2>&1 || true
 echo "OK"
 BASH;
     }
