@@ -14,6 +14,8 @@ use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\GenericStealthConfigController;
 use App\Http\Controllers\WireGuardConfigController;
 
+use App\Http\Controllers\Api\GateV2Controller;
+
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\AppUpdateController;
 use App\Models\VpnUser;
@@ -56,11 +58,14 @@ Route::prefix('servers/{server}')
         Route::post('/authfile', [DeployApiController::class, 'uploadAuthFile']);
     });
 
+Route::post('/gate/v2/auth', [GateV2Controller::class, 'auth']);
+
 /* =======================
 | MOBILE CLIENT
 ======================= */
 
 Route::post('/auth/login', [MobileAuthController::class, 'login']);
+
 
 Route::prefix('stealth')->group(function () {
     Route::get('/servers',           [GenericStealthConfigController::class, 'servers']);
