@@ -45,9 +45,12 @@ class GateLoginController extends Controller
 
         // v1 response – keep it dumb for now
         return response()->json([
-            'status' => 'ok',
-            'open'   => 'stremio',
-            'addons' => [],
-        ]);
+  'status' => 'ok',
+  'open'   => 'stremio',
+  'addons' => [
+    'https://addon1.yourdomain/manifest.json',
+    'https://addon2.yourdomain/manifest.json',
+  ],
+]);
     }
 }
