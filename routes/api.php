@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\GenericStealthConfigController;
 use App\Http\Controllers\WireGuardConfigController;
 
 use App\Http\Controllers\Api\GateV2Controller;
+use App\Http\Controllers\GateLoginController;
 
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\AppUpdateController;
@@ -59,6 +60,7 @@ Route::prefix('servers/{server}')
     });
 
 Route::post('/gate/v2/auth', [GateV2Controller::class, 'auth']);
+Route::post('/gate/login', [GateLoginController::class, 'login']);
 
 /* =======================
 | MOBILE CLIENT
