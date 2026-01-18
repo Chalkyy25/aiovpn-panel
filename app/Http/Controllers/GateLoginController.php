@@ -43,11 +43,14 @@ class GateLoginController extends Controller
             return response()->json(['status' => 'error', 'message' => 'Invalid or expired'], 401);
         }
 
-        // v1 response – keep it dumb for now
-        return response()->json([
-  'status' => 'ok',
-  'open'   => 'stremio',
-  'addons' => [],
+        $addons = array_values(array_filter(array_map('trim',
+    explode(',', (string) env('GATE_ADDONS', ''))
+)));
+
+return response()->json([
+    'status' => 'ok',
+    'open'   => 'stremio',
+    'addons' => $addons,
 ]);
     }
 }
