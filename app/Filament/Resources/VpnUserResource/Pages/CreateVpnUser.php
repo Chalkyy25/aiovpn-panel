@@ -12,21 +12,13 @@ class CreateVpnUser extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // Derive max_connections + expires_at from selected package (server-side safety).
+        // Package controls expiry + max_connections (authoritative server-side).
         $packageId = (int) ($data['package_id'] ?? 0);
-        if ($packageId > 0) {
-            $package = Package::query()->find($packageId);
+        if ($packageId > 0 && ($package = Package::query()->find($packageId))) {
+            $data['max_connections'] = (int) $package->max_connections;
 
-            if ($package) {
-                if (empty($data['max_connections'])) {
-                    $data['max_connections'] = (int) $package->max_connections;
-                }
-
-                if (empty($data['expires_at'])) {
-                    $months = (int) $package->duration_months;
-                    $data['expires_at'] = $months <= 0 ? null : now()->addMonthsNoOverflow($months);
-                }
-            }
+            $months = (int) $package->duration_months;
+            $data['expires_at'] = $months <= 0 ? null : now()->addMonthsNoOverflow($months);
         }
 
         unset($data['package_id']); // virtual field

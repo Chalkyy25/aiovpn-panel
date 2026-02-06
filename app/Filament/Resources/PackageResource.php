@@ -3,15 +3,15 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\PackageResource\Pages;
-use App\Filament\Resources\PackageResource\RelationManagers;
+// use App\Filament\Resources\PackageResource\RelationManagers; // unused
 use App\Models\Package;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
+// use Illuminate\Database\Eloquent\Builder; // unused
+// use Illuminate\Database\Eloquent\SoftDeletingScope; // unused
 
 class PackageResource extends Resource
 {
@@ -29,16 +29,26 @@ class PackageResource extends Resource
                 Forms\Components\Textarea::make('description')
                     ->columnSpanFull(),
                 Forms\Components\TextInput::make('price_credits')
+                    ->label('Price (credits per month)')
                     ->required()
-                    ->numeric(),
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(1),
                 Forms\Components\TextInput::make('max_connections')
                     ->required()
                     ->numeric()
-                    ->default(1),
+                    ->minValue(0)
+                    ->step(1)
+                    ->default(1)
+                    ->helperText('0 = unlimited'),
                 Forms\Components\TextInput::make('duration_months')
+                    ->label('Duration (months)')
                     ->required()
                     ->numeric()
-                    ->default(1),
+                    ->minValue(0)
+                    ->step(1)
+                    ->default(1)
+                    ->helperText('0 = no expiry'),
                 Forms\Components\Toggle::make('is_featured')
                     ->required(),
                 Forms\Components\Toggle::make('is_active')

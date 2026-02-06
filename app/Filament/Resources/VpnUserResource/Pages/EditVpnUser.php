@@ -23,6 +23,7 @@ class EditVpnUser extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         unset($data['vpn_server_ids']); // virtual field
+        unset($data['renewal_term_months']); // virtual field
         return $data;
     }
 

@@ -8,6 +8,7 @@ use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -25,154 +26,261 @@ class VpnUserResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Account')
-                ->columns(2)
+            Forms\Components\Grid::make()
+                ->columns(3)
                 ->schema([
-                    Forms\Components\TextInput::make('username')
-                        ->required()
-                        ->maxLength(255)
-                        ->unique(table: VpnUser::class, column: 'username', ignoreRecord: true)
-                        ->autofocus()
-                        ->autocomplete(false),
+                    Forms\Components\Group::make()
+                        ->columnSpan(['default' => 3, 'lg' => 2])
+                        ->schema([
+                            Forms\Components\Section::make('Account')
+                                ->columns(2)
+                                ->schema([
+                                    Forms\Components\TextInput::make('username')
+                                        ->required()
+                                        ->maxLength(255)
+                                        ->unique(table: VpnUser::class, column: 'username', ignoreRecord: true)
+                                        ->autofocus()
+                                        ->autocomplete(false),
 
-                    Forms\Components\TextInput::make('device_name')
-                        ->label('Device')
-                        ->maxLength(255)
-                        ->placeholder('e.g. iPhone 15 / Windows Laptop'),
+                                    Forms\Components\TextInput::make('device_name')
+                                        ->label('Device')
+                                        ->maxLength(255)
+                                        ->placeholder('e.g. iPhone 15 / Windows Laptop'),
 
-                    Forms\Components\Select::make('package_id')
-                        ->label('Package')
-                        ->options(fn (): array => Package::query()
-                            ->where('is_active', true)
-                            ->orderBy('duration_months')
-                            ->orderBy('price_credits')
-                            ->get()
-                            ->mapWithKeys(fn (Package $p) => [
-                                $p->id => sprintf(
-                                    '%s — %s mo — %s device%s — %s credits',
-                                    $p->name,
-                                    (int) $p->duration_months,
-                                    (int) $p->max_connections,
-                                    ((int) $p->max_connections) === 1 ? '' : 's',
-                                    (int) $p->price_credits,
-                                ),
-                            ])
-                            ->all())
-                        ->native(false)
-                        ->searchable()
-                        ->preload()
-                        ->visible(fn (?VpnUser $record) => $record === null) // create-only
-                        ->dehydrated(false) // virtual; applied in CreateVpnUser
-                        ->live()
-                        ->afterStateUpdated(function ($state, callable $set): void {
-                            $packageId = (int) $state;
-                            if ($packageId <= 0) {
-                                return;
-                            }
+                                    Forms\Components\Select::make('package_id')
+                                        ->label('Package')
+                                        ->options(fn (): array => Package::query()
+                                            ->where('is_active', true)
+                                            ->orderBy('duration_months')
+                                            ->orderBy('price_credits')
+                                            ->get()
+                                            ->mapWithKeys(function (Package $p): array {
+                                                $months = (int) $p->duration_months;
+                                                $dev = (int) $p->max_connections;
+                                                $total = $months * (int) $p->price_credits;
 
-                            $package = Package::query()->find($packageId);
-                            if (! $package) {
-                                return;
-                            }
+                                                return [
+                                                    $p->id => sprintf(
+                                                        '%s — %d month%s — %s device%s — %d credits',
+                                                        $p->name,
+                                                        $months,
+                                                        $months === 1 ? '' : 's',
+                                                        $dev === 0 ? 'Unlimited' : (string) $dev,
+                                                        $dev === 1 ? '' : 's',
+                                                        $total,
+                                                    ),
+                                                ];
+                                            })
+                                            ->all())
+                                        ->default(fn () => Package::query()->where('is_active', true)->orderBy('duration_months')->orderBy('price_credits')->value('id'))
+                                        ->native(false)
+                                        ->searchable()
+                                        ->preload()
+                                        ->required(fn (?VpnUser $record) => $record === null)
+                                        ->visible(fn (?VpnUser $record) => $record === null) // create-only
+                                        ->dehydrated(false) // virtual; enforced in CreateVpnUser
+                                        ->live()
+                                        ->afterStateUpdated(function ($state, callable $set): void {
+                                            $package = Package::query()->find((int) $state);
+                                            if (! $package) {
+                                                return;
+                                            }
 
-                            $set('max_connections', (int) $package->max_connections);
+                                            $set('max_connections', (int) $package->max_connections);
 
-                            $months = (int) $package->duration_months;
-                            $set('expires_at', $months <= 0 ? null : now()->addMonthsNoOverflow($months));
-                        })
-                        ->helperText('Sets Max Devices and Expiry from the selected package.'),
+                                            $months = (int) $package->duration_months;
+                                            $set('expires_at', $months <= 0 ? null : now()->addMonthsNoOverflow($months));
+                                        })
+                                        ->helperText('Expiry is set from the selected package.'),
 
-                    Forms\Components\TextInput::make('max_connections')
-                        ->label('Max Devices')
-                        ->numeric()
-                        ->minValue(0)
-                        ->step(1)
-                        ->helperText('0 = unlimited')
-                        ->default(1),
+                                    // persisted, not user-editable
+                                    Forms\Components\Hidden::make('expires_at'),
 
-                    Forms\Components\DateTimePicker::make('expires_at')
-                        ->label('Expiry')
-                        ->seconds(false)
-                        ->native(false)
-                        ->placeholder('No expiry'),
+                                    // edit-only, read-only visibility of current expiry
+                                    Forms\Components\Placeholder::make('current_expiry')
+                                        ->label('Current expiry')
+                                        ->visible(fn (?VpnUser $record) => filled($record))
+                                        ->content(fn (?VpnUser $record) => $record?->expires_at?->format('d M Y') ?? 'Never'),
 
-                    Forms\Components\Toggle::make('is_active')
-                        ->label('Active')
-                        ->inline(false)
-                        ->default(true),
+                                    // edit-only: renewal term (mirrors old flow: only changes expiry if expired)
+                                    Forms\Components\Select::make('renewal_term_months')
+                                        ->label('Renewal term')
+                                        ->options([
+                                            1 => '1 Month',
+                                            3 => '3 Months',
+                                            6 => '6 Months',
+                                            12 => '12 Months',
+                                        ])
+                                        ->native(false)
+                                        ->dehydrated(false) // virtual
+                                        ->visible(fn (?VpnUser $record) => (bool) ($record?->is_expired))
+                                        ->helperText('Only shown for expired users. Selecting sets a new expiry from now.')
+                                        ->live()
+                                        ->afterStateUpdated(function ($state, callable $set): void {
+                                            $months = (int) $state;
+                                            if ($months > 0) {
+                                                $set('expires_at', now()->addMonthsNoOverflow($months));
+                                            }
+                                        }),
 
-                    Forms\Components\Toggle::make('is_trial')
-                        ->label('Trial')
-                        ->inline(false)
-                        ->default(false),
+                                    Forms\Components\TextInput::make('max_connections')
+                                        ->label('Max Devices')
+                                        ->numeric()
+                                        ->minValue(0)
+                                        ->step(1)
+                                        ->helperText('0 = unlimited')
+                                        ->default(1),
 
-                    Forms\Components\TextInput::make('wireguard_address')
-                        ->label('WG Address')
-                        ->disabled()
-                        ->dehydrated(false)
-                        ->placeholder('Assigned automatically'),
+                                    Forms\Components\Toggle::make('is_active')
+                                        ->label('Active')
+                                        ->inline(false)
+                                        ->default(true),
 
-                    Forms\Components\DateTimePicker::make('last_seen_at')
-                        ->label('Last Seen')
-                        ->disabled()
-                        ->dehydrated(false)
-                        ->seconds(false)
-                        ->native(false)
-                        ->placeholder('Never'),
+                                    Forms\Components\Toggle::make('is_trial')
+                                        ->label('Trial')
+                                        ->inline(false)
+                                        ->default(false),
 
-                    Forms\Components\Select::make('package_length_days')
-                        ->label('Package length')
-                        ->options([
-                            7 => '7 days',
-                            30 => '30 days',
-                            90 => '90 days',
-                            180 => '180 days',
-                            365 => '365 days',
-                            0 => 'No expiry',
-                        ])
-                        ->default(30)
-                        ->native(false)
-                        ->searchable()
-                        ->helperText('Selecting a package sets the Expiry field automatically.')
-                        ->dehydrated(false) // virtual field
-                        ->visible(fn (?VpnUser $record) => $record === null) // create-only
-                        ->live()
-                        ->afterStateUpdated(function ($state, callable $set): void {
-                            $days = (int) $state;
+                                    Forms\Components\TextInput::make('wireguard_address')
+                                        ->label('WG Address')
+                                        ->disabled()
+                                        ->dehydrated(false)
+                                        ->placeholder('Assigned automatically'),
 
-                            $set('expires_at', $days === 0 ? null : now()->addDays($days));
-                        }),
-                ]),
+                                    Forms\Components\DateTimePicker::make('last_seen_at')
+                                        ->label('Last Seen')
+                                        ->disabled()
+                                        ->dehydrated(false)
+                                        ->seconds(false)
+                                        ->native(false)
+                                        ->placeholder('Never'),
 
-            Forms\Components\Section::make('Server Assignment')
-                ->description('Select one or more servers for this user.')
-                ->schema([
-                    Forms\Components\Select::make('vpn_server_ids')
-                        ->label('Servers')
-                        ->multiple()
-                        ->searchable()
-                        ->preload()
-                        ->native(false)
-                        ->required()
-                        ->dehydrated(false) // virtual; synced manually in the Page classes
-                        ->options(function (): array {
-                            $servers = VpnServer::query()
-                                ->orderBy('name')
-                                ->pluck('name', 'id')
-                                ->all();
+                                ]),
 
-                            return ['__all__' => 'All servers'] + $servers;
-                        })
-                        ->live()
-                        ->afterStateUpdated(function ($state, callable $set): void {
-                            $state = (array) $state;
+                            Forms\Components\Section::make('Server Assignment')
+                                ->description('Select one or more servers for this user.')
+                                ->schema([
+                                    Forms\Components\Select::make('vpn_server_ids')
+                                        ->label('Servers')
+                                        ->multiple()
+                                        ->searchable()
+                                        ->preload()
+                                        ->native(false)
+                                        ->required()
+                                        ->dehydrated(false) // virtual; synced manually in the Page classes
+                                        ->options(function (): array {
+                                            $servers = VpnServer::query()
+                                                ->orderBy('name')
+                                                ->pluck('name', 'id')
+                                                ->all();
 
-                            if (in_array('__all__', $state, true)) {
-                                $allIds = VpnServer::query()->orderBy('name')->pluck('id')->all();
-                                $set('vpn_server_ids', array_map('intval', $allIds));
-                            }
-                        })
-                        ->helperText('Tip: pick "All servers" to select every server.'),
+                                            return ['__all__' => 'All servers'] + $servers;
+                                        })
+                                        ->live()
+                                        ->afterStateUpdated(function ($state, callable $set): void {
+                                            $state = (array) $state;
+
+                                            if (in_array('__all__', $state, true)) {
+                                                $allIds = VpnServer::query()->orderBy('name')->pluck('id')->all();
+                                                $set('vpn_server_ids', array_map('intval', $allIds));
+                                            }
+                                        })
+                                        ->helperText('Tip: pick "All servers" to select every server.'),
+                                ]),
+                        ]),
+
+                    // Create-only summary (similar to old right panel)
+                    Forms\Components\Section::make('Summary')
+                        ->columnSpan(['default' => 3, 'lg' => 1])
+                        ->visible(fn (?VpnUser $record) => $record === null)
+                        ->schema([
+                            Forms\Components\Placeholder::make('summary_max_connections')
+                                ->label('Max connections')
+                                ->content(fn (Get $get) => (string) ((int) ($get('max_connections') ?? 0))),
+
+                            Forms\Components\Placeholder::make('summary_expires')
+                                ->label('Expires')
+                                ->content(function (Get $get): string {
+                                    $expires = $get('expires_at');
+                                    if (blank($expires)) {
+                                        return 'Never';
+                                    }
+
+                                    try {
+                                        return \Carbon\Carbon::parse($expires)->format('d M Y');
+                                    } catch (\Throwable) {
+                                        return (string) $expires;
+                                    }
+                                }),
+
+                            Forms\Components\Placeholder::make('summary_total_cost')
+                                ->label('Total cost')
+                                ->content(function (Get $get): string {
+                                    $packageId = (int) ($get('package_id') ?? 0);
+                                    if ($packageId <= 0) {
+                                        return '—';
+                                    }
+
+                                    $p = Package::query()->find($packageId);
+                                    if (! $p) {
+                                        return '—';
+                                    }
+
+                                    $months = (int) $p->duration_months;
+                                    $total = $months * (int) $p->price_credits;
+
+                                    return $total . ' credits';
+                                }),
+
+                            Forms\Components\Placeholder::make('summary_balance')
+                                ->label(fn () => (auth()->user()?->role ?? null) === 'admin' ? 'Current credits' : 'Balance after')
+                                ->content(function (Get $get): string {
+                                    $user = auth()->user();
+                                    $credits = $user->credits ?? null; // only if your User model has this
+
+                                    $packageId = (int) ($get('package_id') ?? 0);
+                                    $p = $packageId > 0 ? Package::query()->find($packageId) : null;
+
+                                    $months = (int) ($p->duration_months ?? 0);
+                                    $total = $months * (int) ($p->price_credits ?? 0);
+
+                                    if (! is_numeric($credits)) {
+                                        return '—';
+                                    }
+
+                                    if (($user->role ?? null) === 'admin') {
+                                        return (string) ((int) $credits);
+                                    }
+
+                                    return (string) ((int) $credits - (int) $total);
+                                }),
+
+                            Forms\Components\Placeholder::make('summary_warning')
+                                ->label('')
+                                ->content(function (Get $get): string {
+                                    $user = auth()->user();
+                                    if (($user->role ?? null) === 'admin') {
+                                        return 'Admin — price shown, not deducted.';
+                                    }
+
+                                    $credits = $user->credits ?? null;
+                                    if (! is_numeric($credits)) {
+                                        return '';
+                                    }
+
+                                    $packageId = (int) ($get('package_id') ?? 0);
+                                    $p = $packageId > 0 ? Package::query()->find($packageId) : null;
+
+                                    $months = (int) ($p->duration_months ?? 0);
+                                    $total = $months * (int) ($p->price_credits ?? 0);
+
+                                    if ((int) $credits < (int) $total) {
+                                        return 'Not enough credits for this purchase.';
+                                    }
+
+                                    return '';
+                                }),
+                        ]),
                 ]),
         ]);
     }
