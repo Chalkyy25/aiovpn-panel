@@ -59,6 +59,22 @@ use App\Livewire\Pages\Client\Dashboard;
 // 🌐 Public Routes
 // ============================
 
+Route::get('/debug-auth', function () {
+    return response()->json([
+        'url' => request()->fullUrl(),
+        'session_driver' => config('session.driver'),
+        'session_domain' => config('session.domain'),
+        'session_cookie' => config('session.cookie'),
+
+        'web_check' => auth('web')->check(),
+        'web_id' => auth('web')->id(),
+        'web_role' => optional(auth('web')->user())->role,
+
+        'client_check' => auth('client')->check(),
+        'client_id' => auth('client')->id(),
+    ]);
+});
+
 Route::get('/', fn () => view('welcome'));
 
 // ✅ Permanent public APK link for AFTV/Downloader (NEVER changes)
