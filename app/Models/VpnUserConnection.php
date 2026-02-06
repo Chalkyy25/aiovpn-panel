@@ -16,6 +16,8 @@ class VpnUserConnection extends Model
      * Don't fight mass-assignment here.
      */
     protected $guarded = [];
+    
+    protected $table = 'vpn_user_connections';
 
     protected $casts = [
         'is_connected'     => 'boolean',
@@ -32,14 +34,14 @@ class VpnUserConnection extends Model
     /* ───────────────────────── Relationships ───────────────────────── */
 
     public function vpnUser(): BelongsTo
-    {
-        return $this->belongsTo(VpnUser::class);
-    }
+{
+    return $this->belongsTo(VpnUser::class, 'vpn_user_id');
+}
 
-    public function vpnServer(): BelongsTo
-    {
-        return $this->belongsTo(VpnServer::class);
-    }
+public function vpnServer(): BelongsTo
+{
+    return $this->belongsTo(VpnServer::class, 'vpn_server_id');
+}
 
     /* ───────────────────────── Scopes ───────────────────────── */
 
