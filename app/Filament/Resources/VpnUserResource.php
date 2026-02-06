@@ -30,23 +30,28 @@ class VpnUserResource extends Resource
                     Forms\Components\TextInput::make('username')
                         ->required()
                         ->maxLength(255)
-                        ->autofocus(),
+                        ->unique(table: VpnUser::class, column: 'username', ignoreRecord: true)
+                        ->autofocus()
+                        ->autocomplete(false),
 
                     Forms\Components\TextInput::make('device_name')
                         ->label('Device')
-                        ->maxLength(255),
+                        ->maxLength(255)
+                        ->placeholder('e.g. iPhone 15 / Windows Laptop'),
 
                     Forms\Components\TextInput::make('max_connections')
                         ->label('Max Devices')
                         ->numeric()
                         ->minValue(0)
+                        ->step(1)
                         ->helperText('0 = unlimited')
                         ->default(1),
 
                     Forms\Components\DateTimePicker::make('expires_at')
                         ->label('Expiry')
                         ->seconds(false)
-                        ->native(false),
+                        ->native(false)
+                        ->placeholder('No expiry'),
 
                     Forms\Components\Toggle::make('is_active')
                         ->label('Active')
@@ -61,26 +66,30 @@ class VpnUserResource extends Resource
                     Forms\Components\TextInput::make('wireguard_address')
                         ->label('WG Address')
                         ->disabled()
-                        ->dehydrated(false),
+                        ->dehydrated(false)
+                        ->placeholder('Assigned automatically'),
 
                     Forms\Components\DateTimePicker::make('last_seen_at')
                         ->label('Last Seen')
                         ->disabled()
                         ->dehydrated(false)
                         ->seconds(false)
-                        ->native(false),
+                        ->native(false)
+                        ->placeholder('Never'),
                 ]),
 
             Forms\Components\Section::make('Server Assignment')
-                ->description('This field is virtual — we sync the vpn_server_user pivot after save.')
+                ->description('Select one or more servers for this user.')
                 ->schema([
-                    Forms\Components\Select::make('vpn_server_id')
-                        ->label('Primary Server')
-                        ->options(fn () => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
+                    Forms\Components\Select::make('vpnServers')
+                        ->label('Servers')
+                        ->relationship('vpnServers', 'name')
+                        ->multiple()
                         ->searchable()
+                        ->preload()
                         ->native(false)
                         ->required()
-                        ->default(fn (?VpnUser $record) => $record?->vpnServers()->value('vpn_servers.id')),
+                        ->helperText('You can assign this user to multiple servers.'),
                 ]),
         ]);
     }
@@ -105,25 +114,34 @@ class VpnUserResource extends Resource
                     ->copyMessage('Username copied')
                     ->limit(30),
 
-                // SHOW MULTI-SERVER PROPERLY
                 Tables\Columns\TagsColumn::make('vpnServers.name')
                     ->label('Servers')
-                    ->separator(',')
-                    ->limitList(5),
+                    ->limitList(5)
+                    ->toggleable(),
 
                 Tables\Columns\IconColumn::make('is_online')
                     ->label('Online')
                     ->boolean()
-                    ->alignCenter(),
+                    ->alignCenter()
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('state')
                     ->label('State')
                     ->badge()
                     ->alignCenter()
                     ->state(function (VpnUser $u): string {
-                        if (! $u->is_active) return 'Disabled';
-                        if ($u->is_expired)  return 'Expired';
-                        if ($u->is_trial)    return 'Trial';
+                        if (! $u->is_active) {
+                            return 'Disabled';
+                        }
+
+                        if ($u->is_expired) {
+                            return 'Expired';
+                        }
+
+                        if ($u->is_trial) {
+                            return 'Trial';
+                        }
+
                         return 'Active';
                     })
                     ->color(fn (string $state): string => match ($state) {
@@ -163,12 +181,12 @@ class VpnUserResource extends Resource
                     ->label('Expired')
                     ->query(fn (Builder $query) => $query->whereNotNull('expires_at')->where('expires_at', '<=', now())),
 
-                // CLEANER: Filament relationship filter
                 Tables\Filters\SelectFilter::make('vpn_server_id')
                     ->label('Server')
                     ->relationship('vpnServers', 'name')
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->multiple(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()

@@ -3,15 +3,16 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ClientResource\Pages;
-use App\Filament\Resources\ClientResource\RelationManagers;
+// use App\Filament\Resources\ClientResource\RelationManagers; // unused
 use App\Models\Client;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
+// use Illuminate\Database\Eloquent\Builder; // unused
+// use Illuminate\Database\Eloquent\SoftDeletingScope; // unused
+use Illuminate\Support\Facades\Hash;
 
 class ClientResource extends Resource
 {
@@ -23,16 +24,35 @@ class ClientResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('username')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('password')
-                    ->password()
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\Select::make('vpn_server_id')
-                    ->relationship('vpnServer', 'name')
-                    ->required(),
+                Forms\Components\Section::make('Client')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('username')
+                            ->required()
+                            ->maxLength(255)
+                            ->unique(table: Client::class, column: 'username', ignoreRecord: true)
+                            ->autocomplete(false),
+
+                        Forms\Components\TextInput::make('password')
+                            ->label('Password')
+                            ->password()
+                            ->revealable()
+                            ->autocomplete('new-password')
+                            ->required(fn (?Client $record) => $record === null)
+                            ->dehydrated(fn (?string $state) => filled($state))
+                            ->dehydrateStateUsing(fn (string $state) => Hash::make($state))
+                            ->maxLength(255)
+                            ->helperText('Leave blank to keep the current password.'),
+
+                        Forms\Components\Select::make('vpn_server_id')
+                            ->label('VPN Server')
+                            ->relationship('vpnServer', 'name')
+                            ->required()
+                            ->searchable()
+                            ->preload()
+                            ->native(false)
+                            ->placeholder('Select a server'),
+                    ]),
             ]);
     }
 
@@ -41,21 +61,33 @@ class ClientResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('username')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable()
+                    ->weight('bold')
+                    ->copyable()
+                    ->limit(40),
+
                 Tables\Columns\TextColumn::make('vpnServer.name')
-                    ->numeric()
-                    ->sortable(),
+                    ->label('Server')
+                    ->sortable()
+                    ->searchable(),
+
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+
                 Tables\Columns\TextColumn::make('updated_at')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('vpn_server_id')
+                    ->label('Server')
+                    ->relationship('vpnServer', 'name')
+                    ->searchable()
+                    ->preload(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
