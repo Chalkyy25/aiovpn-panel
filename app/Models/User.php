@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Filament\Panel;
 
 class User extends Authenticatable
 {
@@ -52,6 +53,11 @@ class User extends Authenticatable
     {
         return $this->role === 'admin';
     }
+
+    public function canAccessPanel(Panel $panel): bool
+{
+    return $this->role === 'admin';
+}
 
     public function isReseller(): bool
     {
