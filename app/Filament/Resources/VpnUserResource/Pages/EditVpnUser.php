@@ -11,19 +11,8 @@ class EditVpnUser extends EditRecord
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        $data['vpn_server_ids'] = $this->record
-            ->vpnServers()
-            ->pluck('vpn_servers.id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
-
-        return $data;
-    }
-
-    protected function mutateFormDataBeforeSave(array $data): array
-    {
-        unset($data['vpn_server_ids']); // virtual field
-        unset($data['renewal_term_months']); // virtual field
+        // Pre-fill virtual selection with currently assigned server IDs
+        $data['vpn_server_ids'] = $this->record->vpnServers()->pluck('vpn_servers.id')->map(fn ($id) => (int) $id)->all();
         return $data;
     }
 
@@ -32,13 +21,6 @@ class EditVpnUser extends EditRecord
         $ids = $this->data['vpn_server_ids'] ?? [];
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
 
-        $this->record->syncVpnServers($ids, context: 'filament.edit');
-    }
-
-    protected function getHeaderActions(): array
-    {
-        return [
-            \Filament\Actions\DeleteAction::make(),
-        ];
+        $this->record->vpnServers()->sync($ids);
     }
 }
