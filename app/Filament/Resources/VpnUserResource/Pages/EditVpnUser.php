@@ -9,6 +9,31 @@ class EditVpnUser extends EditRecord
 {
     protected static string $resource = VpnUserResource::class;
 
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        $data['vpn_server_ids'] = $this->record
+            ->vpnServers()
+            ->pluck('vpn_servers.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return $data;
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        unset($data['vpn_server_ids']); // virtual field
+        return $data;
+    }
+
+    protected function afterSave(): void
+    {
+        $ids = $this->data['vpn_server_ids'] ?? [];
+        $ids = array_values(array_filter(array_map('intval', (array) $ids)));
+
+        $this->record->vpnServers()->sync($ids);
+    }
+
     protected function getHeaderActions(): array
     {
         return [

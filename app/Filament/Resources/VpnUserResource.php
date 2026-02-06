@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\VpnUserResource\Pages;
+use App\Models\Package;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Filament\Forms;
@@ -38,6 +39,48 @@ class VpnUserResource extends Resource
                         ->label('Device')
                         ->maxLength(255)
                         ->placeholder('e.g. iPhone 15 / Windows Laptop'),
+
+                    Forms\Components\Select::make('package_id')
+                        ->label('Package')
+                        ->options(fn (): array => Package::query()
+                            ->where('is_active', true)
+                            ->orderBy('duration_months')
+                            ->orderBy('price_credits')
+                            ->get()
+                            ->mapWithKeys(fn (Package $p) => [
+                                $p->id => sprintf(
+                                    '%s — %s mo — %s device%s — %s credits',
+                                    $p->name,
+                                    (int) $p->duration_months,
+                                    (int) $p->max_connections,
+                                    ((int) $p->max_connections) === 1 ? '' : 's',
+                                    (int) $p->price_credits,
+                                ),
+                            ])
+                            ->all())
+                        ->native(false)
+                        ->searchable()
+                        ->preload()
+                        ->visible(fn (?VpnUser $record) => $record === null) // create-only
+                        ->dehydrated(false) // virtual; applied in CreateVpnUser
+                        ->live()
+                        ->afterStateUpdated(function ($state, callable $set): void {
+                            $packageId = (int) $state;
+                            if ($packageId <= 0) {
+                                return;
+                            }
+
+                            $package = Package::query()->find($packageId);
+                            if (! $package) {
+                                return;
+                            }
+
+                            $set('max_connections', (int) $package->max_connections);
+
+                            $months = (int) $package->duration_months;
+                            $set('expires_at', $months <= 0 ? null : now()->addMonthsNoOverflow($months));
+                        })
+                        ->helperText('Sets Max Devices and Expiry from the selected package.'),
 
                     Forms\Components\TextInput::make('max_connections')
                         ->label('Max Devices')
@@ -76,20 +119,60 @@ class VpnUserResource extends Resource
                         ->seconds(false)
                         ->native(false)
                         ->placeholder('Never'),
+
+                    Forms\Components\Select::make('package_length_days')
+                        ->label('Package length')
+                        ->options([
+                            7 => '7 days',
+                            30 => '30 days',
+                            90 => '90 days',
+                            180 => '180 days',
+                            365 => '365 days',
+                            0 => 'No expiry',
+                        ])
+                        ->default(30)
+                        ->native(false)
+                        ->searchable()
+                        ->helperText('Selecting a package sets the Expiry field automatically.')
+                        ->dehydrated(false) // virtual field
+                        ->visible(fn (?VpnUser $record) => $record === null) // create-only
+                        ->live()
+                        ->afterStateUpdated(function ($state, callable $set): void {
+                            $days = (int) $state;
+
+                            $set('expires_at', $days === 0 ? null : now()->addDays($days));
+                        }),
                 ]),
 
             Forms\Components\Section::make('Server Assignment')
                 ->description('Select one or more servers for this user.')
                 ->schema([
-                    Forms\Components\Select::make('vpnServers')
+                    Forms\Components\Select::make('vpn_server_ids')
                         ->label('Servers')
-                        ->relationship('vpnServers', 'name')
                         ->multiple()
                         ->searchable()
                         ->preload()
                         ->native(false)
                         ->required()
-                        ->helperText('You can assign this user to multiple servers.'),
+                        ->dehydrated(false) // virtual; synced manually in the Page classes
+                        ->options(function (): array {
+                            $servers = VpnServer::query()
+                                ->orderBy('name')
+                                ->pluck('name', 'id')
+                                ->all();
+
+                            return ['__all__' => 'All servers'] + $servers;
+                        })
+                        ->live()
+                        ->afterStateUpdated(function ($state, callable $set): void {
+                            $state = (array) $state;
+
+                            if (in_array('__all__', $state, true)) {
+                                $allIds = VpnServer::query()->orderBy('name')->pluck('id')->all();
+                                $set('vpn_server_ids', array_map('intval', $allIds));
+                            }
+                        })
+                        ->helperText('Tip: pick "All servers" to select every server.'),
                 ]),
         ]);
     }
@@ -181,7 +264,7 @@ class VpnUserResource extends Resource
                     ->label('Expired')
                     ->query(fn (Builder $query) => $query->whereNotNull('expires_at')->where('expires_at', '<=', now())),
 
-                Tables\Filters\SelectFilter::make('vpn_server_id')
+                Tables\Filters\SelectFilter::make('vpnServers')
                     ->label('Server')
                     ->relationship('vpnServers', 'name')
                     ->searchable()
