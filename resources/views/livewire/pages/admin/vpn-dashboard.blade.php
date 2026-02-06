@@ -42,7 +42,7 @@
   {{-- STAT TILES --}}
   <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
     <div class="aio-card p-4 flex items-center gap-3">
-      <x-icon name="o-user-group" class="w-6 h-6 text-[var(--aio-accent)]"/>
+      <x-icon name="heroicon-o-user-group" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Online</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.online_users"></div>
@@ -50,7 +50,7 @@
     </div>
 
     <div class="aio-card p-4 flex items-center gap-3">
-      <x-icon name="o-chart-bar" class="w-6 h-6 text-[var(--aio-accent)]"/>
+      <x-icon name="heroicon-o-chart-bar" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Connections</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_connections"></div>
@@ -58,7 +58,7 @@
     </div>
 
     <div class="aio-card p-4 flex items-center gap-3">
-      <x-icon name="o-server" class="w-6 h-6 text-[var(--aio-accent)]"/>
+      <x-icon name="heroicon-o-server" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Servers</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]" x-text="totals.active_servers"></div>
@@ -66,7 +66,7 @@
     </div>
 
     <div class="hidden lg:flex aio-card p-4 items-center gap-3">
-      <x-icon name="o-clock" class="w-6 h-6 text-[var(--aio-accent)]"/>
+      <x-icon name="heroicon-o-clock" class="w-6 h-6 text-[var(--aio-accent)]"/>
       <div>
         <div class="text-xs text-[var(--aio-sub)]">Avg. Session</div>
         <div class="text-2xl font-semibold text-[var(--aio-ink)]">
@@ -90,7 +90,7 @@
       x-bind:aria-expanded="showFilters"
       class="gap-2"
     >
-      <x-icon name="o-filter" class="w-4 h-4" />
+      <x-icon name="heroicon-o-funnel" class="w-4 h-4" />
       Filter
     </x-button>
 
@@ -104,7 +104,7 @@
   <div x-show="showFilters" x-transition x-cloak class="aio-card p-4 space-y-4">
     <div class="flex items-center justify-between gap-3">
       <h3 class="text-base font-semibold text-[var(--aio-ink)] flex items-center gap-2">
-        <x-icon name="o-filter" class="h-4 w-4 text-[var(--aio-accent)]" />
+        <x-icon name="heroicon-o-funnel" class="h-4 w-4 text-[var(--aio-accent)]" />
         Filter by server
       </h3>
 

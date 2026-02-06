@@ -120,7 +120,7 @@
           @auth
             <a href="{{ route('admin.credits') }}"
                class="aio-pill inline-flex items-center gap-1.5">
-              <x-icon name="o-currency-dollar" class="w-4 h-4"/>
+              <x-icon name="heroicon-o-currency-dollar" class="w-4 h-4"/>
               {{ auth()->user()->credits ?? 0 }}
             </a>
           @endauth

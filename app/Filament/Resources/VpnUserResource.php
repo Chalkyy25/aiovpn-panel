@@ -49,7 +49,6 @@ class VpnUserResource extends Resource
                         ->seconds(false)
                         ->native(false),
 
-                    // DO NOT expose wireguard_private_key or plain_password
                     Forms\Components\TextInput::make('wireguard_address')
                         ->disabled()
                         ->dehydrated(false),
