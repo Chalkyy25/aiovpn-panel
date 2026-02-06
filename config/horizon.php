@@ -12,7 +12,7 @@ return [
     'use' => env('HORIZON_CONNECTION', 'default'),
 
     // ── Redis key prefix ───────────────────────────────────────────────────
-    'prefix' => env('HORIZON_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_horizon:'),
+    'prefix' => env('HORIZON_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_') . '_horizon:'),
 
     // ── Dashboard guard ────────────────────────────────────────────────────
     'middleware' => ['web', 'auth'],
@@ -30,7 +30,7 @@ return [
         'recent'        => 60,
         'pending'       => 60,
         'completed'     => 60,
-        'recent_failed' => 10080,   // 7 days
+        'recent_failed' => 10080, // 7 days
         'failed'        => 10080,
         'monitored'     => 10080,
     ],
@@ -62,9 +62,9 @@ return [
             'balanceCooldown'     => 3,
             'maxTime'             => 0,
             'maxJobs'             => 0,
-            'memory'              => 256,   // per-worker recycle cap
+            'memory'              => 256, // per-worker recycle cap
             'tries'               => 2,
-            'timeout'             => 60,    // per-job
+            'timeout'             => 60,  // per-job
             'nice'                => 0,
         ],
 
@@ -125,18 +125,21 @@ return [
 
     // ── Environment-specific overrides only where it matters ───────────────
     'environments' => [
+
+        // IMPORTANT: 2 cores / 4GB => keep total workers ~5
         'production' => [
-            'default-high' => ['maxProcesses' => 10],
-            'wg-io'        => ['maxProcesses' => 6],
-            'ovpn-io'      => ['maxProcesses' => 4],
-            'low'          => ['maxProcesses' => 3],
+            'default-high' => ['maxProcesses' => 2],
+            'wg-io'        => ['maxProcesses' => 1],
+            'ovpn-io'       => ['maxProcesses' => 1],
+            'low'          => ['maxProcesses' => 1],
         ],
 
         'local' => [
             'default-high' => ['maxProcesses' => 2],
             'wg-io'        => ['maxProcesses' => 1],
-            'ovpn-io'      => ['maxProcesses' => 1],
+            'ovpn-io'       => ['maxProcesses' => 1],
             'low'          => ['maxProcesses' => 1],
         ],
     ],
+
 ];
