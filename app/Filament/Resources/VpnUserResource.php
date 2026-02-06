@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\VpnUserResource\Pages;
+use Illuminate\Database\Eloquent\Builder;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Filament\Forms;
@@ -76,7 +77,7 @@ class VpnUserResource extends Resource
     {
         return $table
             // avoid N+1
-            ->modifyQueryUsing(fn ($q) => $q->with(['vpnServers']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['vpnServers']))
             ->defaultSort('id', 'desc')
             ->columns([
                 Tables\Columns\TextColumn::make('id')->sortable()->toggleable(),
