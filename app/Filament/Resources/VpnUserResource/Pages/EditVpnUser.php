@@ -11,11 +11,12 @@ class EditVpnUser extends EditRecord
 
     protected function afterSave(): void
     {
-        $state = $this->form->getState();
-        $serverId = $state['primary_server_id'] ?? null;
+        $serverId = (int) ($this->data['vpn_server_id'] ?? 0);
 
-        if ($serverId) {
+        if ($serverId > 0) {
             $this->record->vpnServers()->sync([$serverId]);
+        } else {
+            $this->record->vpnServers()->detach();
         }
     }
 }
