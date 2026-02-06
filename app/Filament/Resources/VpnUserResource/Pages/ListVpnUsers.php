@@ -2,7 +2,7 @@
 
 namespace App\Filament\Resources\VpnUserResource\Pages;
 
-use App\Filament\Resources\VpnUser resource;
+use App\Filament\Resources\VpnUserResource;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
