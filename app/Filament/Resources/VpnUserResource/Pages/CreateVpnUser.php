@@ -13,8 +13,7 @@ class CreateVpnUser extends CreateRecord
     {
         $serverId = (int) ($this->data['vpn_server_id'] ?? 0);
 
-        if ($serverId > 0) {
-            $this->record->vpnServers()->sync([$serverId]);
-        }
+        // 1-to-1 assignment for now
+        $this->record->vpnServers()->sync($serverId ? [$serverId] : []);
     }
 }
