@@ -305,6 +305,14 @@ class VpnUserResource extends Resource
                     ->copyMessage('Username copied')
                     ->limit(30),
 
+                Tables\Columns\TextColumn::make('plain_password')
+                    ->label('Password')
+                    ->fontFamily('mono')
+                    ->copyable()
+                    ->copyMessage('Password copied')
+                    ->state(fn (VpnUser $u) => $u->plain_password ?: '******')
+                    ->toggleable(),
+
                 Tables\Columns\TagsColumn::make('vpnServers.name')
                     ->label('Servers')
                     ->limitList(5)
