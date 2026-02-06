@@ -17,16 +17,31 @@
                hover:border-[var(--aio-border)]
                hover:text-[var(--aio-ink)]";
 
-  // Active: blue background with white text for better contrast
   $activeCls = "bg-[var(--aio-accent)]
                 border-[var(--aio-accent)]
                 text-white font-semibold
                 shadow-lg shadow-[var(--aio-accent)]/25";
 
   $classes = $active ? "{$base} {$activeCls}" : "{$base} {$inactive}";
-
-  // Tooltip when collapsed (desktop sidebar)
   $tooltip = $title ?? trim((string) $slot);
+
+  // ✅ Normalize icon names:
+  // - "o-home"  -> "heroicon-o-home"
+  // - "s-user"  -> "heroicon-s-user"
+  // - "heroicon-o-home" stays as-is
+  $iconName = null;
+  if (!empty($icon)) {
+      $icon = (string) $icon;
+
+      if (str_starts_with($icon, 'heroicon-')) {
+          $iconName = $icon;
+      } elseif (str_starts_with($icon, 'o-') || str_starts_with($icon, 's-')) {
+          $iconName = 'heroicon-' . $icon;
+      } else {
+          // last resort: use as provided
+          $iconName = $icon;
+      }
+  }
 @endphp
 
 <a href="{{ $href }}"
@@ -34,8 +49,8 @@
    @if($active) aria-current="page" @endif
    {{ $attributes->merge(['class' => $classes]) }}>
 
-  @if ($icon)
-    <x-icon :name="$icon" class="w-5 h-5 shrink-0 text-current opacity-80 group-hover:opacity-100" />
+  @if ($iconName)
+    <x-icon :name="$iconName" class="w-5 h-5 shrink-0 text-current opacity-80 group-hover:opacity-100" />
   @endif
 
   @if ($collapseAware)
