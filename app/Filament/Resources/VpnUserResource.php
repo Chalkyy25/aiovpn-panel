@@ -15,7 +15,7 @@ class VpnUserResource extends Resource
 {
     protected static ?string $model = VpnUser::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-key';
+    protected static ?string $navigationIcon  = 'heroicon-o-key';
     protected static ?string $navigationLabel = 'VPN Users';
     protected static ?string $pluralModelLabel = 'VPN Users';
     protected static ?string $navigationGroup = 'VPN';
@@ -60,14 +60,14 @@ class VpnUserResource extends Resource
 
             Forms\Components\Section::make('Server Assignment')
                 ->schema([
-                    Forms\Components\Select::make('primary_server_id')
+                    // Virtual field. We will sync vpn_server_user pivot in the Page hooks.
+                    Forms\Components\Select::make('vpn_server_id')
                         ->label('Server')
                         ->options(fn () => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
                         ->searchable()
                         ->native(false)
                         ->required()
-                        ->default(fn (?VpnUser $record) => $record?->vpnServers()->value('vpn_servers.id'))
-                        ->dehydrated(false),
+                        ->default(fn (?VpnUser $record) => $record?->vpnServers()->value('vpn_servers.id')),
                 ]),
         ]);
     }
@@ -75,6 +75,8 @@ class VpnUserResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // avoid N+1
+            ->modifyQueryUsing(fn ($q) => $q->with(['vpnServers']))
             ->defaultSort('id', 'desc')
             ->columns([
                 Tables\Columns\TextColumn::make('id')->sortable()->toggleable(),
@@ -85,27 +87,32 @@ class VpnUserResource extends Resource
 
                 Tables\Columns\TextColumn::make('server')
                     ->label('Server')
-                    ->getStateUsing(fn (VpnUser $record) => $record->vpnServers()->value('vpn_servers.name') ?? '—'),
+                    ->getStateUsing(fn (VpnUser $record) => $record->vpnServers->first()?->name ?? '—'),
 
                 Tables\Columns\IconColumn::make('is_online')
                     ->label('Online')
                     ->boolean(),
 
-                Tables\Columns\BadgeColumn::make('state')
+                Tables\Columns\TextColumn::make('state')
                     ->label('State')
-                    ->getStateUsing(function (VpnUser $u) {
-                        if (!$u->is_active) return 'Disabled';
-                        if ($u->is_expired) return 'Expired';
+                    ->badge()
+                    ->state(function (VpnUser $u) {
+                        if (! $u->is_active) return 'Disabled';
+                        if ($u->is_expired)  return 'Expired';
                         return 'Active';
                     })
-                    ->colors([
-                        'danger' => ['Disabled', 'Expired'],
-                        'success' => ['Active'],
-                    ]),
+                    ->color(function (string $state) {
+                        return match ($state) {
+                            'Active'   => 'success',
+                            'Expired'  => 'danger',
+                            'Disabled' => 'danger',
+                            default    => 'gray',
+                        };
+                    }),
 
                 Tables\Columns\TextColumn::make('connection_summary')
                     ->label('Conn')
-                    ->getStateUsing(fn (VpnUser $u) => $u->connection_summary ?? '')
+                    ->getStateUsing(fn (VpnUser $u) => (string) ($u->connection_summary ?? ''))
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('last_seen_at')
@@ -121,6 +128,7 @@ class VpnUserResource extends Resource
             ->filters([
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active'),
                 Tables\Filters\TernaryFilter::make('is_online')->label('Online'),
+
                 Tables\Filters\Filter::make('expired')
                     ->label('Expired')
                     ->query(fn ($q) => $q->whereNotNull('expires_at')->where('expires_at', '<=', now())),
