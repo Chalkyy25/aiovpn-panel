@@ -11,11 +11,9 @@ class CreateVpnUser extends CreateRecord
 
     protected function afterCreate(): void
     {
-        $state = $this->form->getState();
-        $serverId = $state['primary_server_id'] ?? null;
+        $serverId = (int) ($this->data['vpn_server_id'] ?? 0);
 
-        if ($serverId) {
-            // Uses your existing relationship pivot: vpn_server_user
+        if ($serverId > 0) {
             $this->record->vpnServers()->sync([$serverId]);
         }
     }
