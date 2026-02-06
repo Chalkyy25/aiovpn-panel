@@ -22,6 +22,8 @@ class VpnUser extends Authenticatable
 {
     use HasFactory, ExecutesRemoteCommands, HasApiTokens;
 
+    public const GENERATED_PASSWORD_LENGTH = 5;
+
     protected $table = 'vpn_users';
 
     protected $fillable = [
@@ -323,6 +325,60 @@ class VpnUser extends Authenticatable
         }
     }
 
+    /**
+     * Sync assigned servers and handle side-effects (jobs + logs) centrally.
+     *
+     * @return array{attached: array<int,int>, detached: array<int,int>, updated: array<int,int>}
+     */
+    public function syncVpnServers(array $serverIds, ?string $context = null): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $serverIds), fn ($id) => $id > 0));
+
+        $changes = $this->vpnServers()->sync($ids);
+
+        $ctx = $context ? " context={$context}" : '';
+
+        if (!empty($changes['attached'])) {
+            $attachedServers = VpnServer::query()
+                ->whereIn('id', $changes['attached'])
+                ->get();
+
+            foreach ($attachedServers as $server) {
+                SyncOpenVPNCredentials::dispatch($server);
+
+                Log::channel('vpn')->info(sprintf(
+                    'VPN_USER_SERVERS: attached vpn_user_id=%d username=%s server_id=%d server=%s%s',
+                    (int) $this->id,
+                    (string) $this->username,
+                    (int) $server->id,
+                    (string) $server->name,
+                    $ctx
+                ));
+            }
+        }
+
+        if (!empty($changes['detached'])) {
+            Log::channel('vpn')->info(sprintf(
+                'VPN_USER_SERVERS: detached vpn_user_id=%d username=%s server_ids=[%s]%s',
+                (int) $this->id,
+                (string) $this->username,
+                implode(',', array_map('intval', $changes['detached'])),
+                $ctx
+            ));
+        }
+
+        if (empty($changes['attached']) && empty($changes['detached']) && empty($changes['updated'])) {
+            Log::channel('vpn')->info(sprintf(
+                'VPN_USER_SERVERS: sync no-op vpn_user_id=%d username=%s%s',
+                (int) $this->id,
+                (string) $this->username,
+                $ctx
+            ));
+        }
+
+        return $changes;
+    }
+
     /* ========= Model events ========= */
 
     protected static function booted(): void
@@ -336,7 +392,7 @@ class VpnUser extends Authenticatable
 
             // ensure password
             if (blank($u->plain_password) && blank($u->password)) {
-                $generated = Str::random(20);
+                $generated = Str::random(self::GENERATED_PASSWORD_LENGTH);
                 $u->plain_password = $generated;
                 $u->password       = Hash::make($generated);
             } elseif (!blank($u->plain_password) && blank($u->password)) {
@@ -377,7 +433,7 @@ class VpnUser extends Authenticatable
             if ($u->vpnServers()->exists()) {
                 foreach ($u->vpnServers as $server) {
                     SyncOpenVPNCredentials::dispatch($server);
-                    Log::info("OpenVPN creds synced to {$server->name} ({$server->ip_address})");
+                    Log::channel('vpn')->info("OpenVPN creds synced to {$server->name} ({$server->ip_address})");
                 }
             }
         });

@@ -4,6 +4,7 @@ namespace App\Filament\Resources\VpnUserResource\Pages;
 
 use App\Filament\Resources\VpnUserResource;
 use App\Models\Package;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateVpnUser extends CreateRecord
@@ -31,6 +32,13 @@ class CreateVpnUser extends CreateRecord
         $ids = $this->data['vpn_server_ids'] ?? [];
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
 
-        $this->record->vpnServers()->sync($ids);
+        $this->record->syncVpnServers($ids, context: 'filament.create');
+
+        // Match old flow: show created credentials
+        Notification::make()
+            ->success()
+            ->title('VPN user created')
+            ->body("Username: {$this->record->username}\nPassword: " . ($this->record->plain_password ?? '******'))
+            ->send();
     }
 }

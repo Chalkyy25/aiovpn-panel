@@ -32,7 +32,7 @@ class EditVpnUser extends EditRecord
         $ids = $this->data['vpn_server_ids'] ?? [];
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
 
-        $this->record->vpnServers()->sync($ids);
+        $this->record->syncVpnServers($ids, context: 'filament.edit');
     }
 
     protected function getHeaderActions(): array
