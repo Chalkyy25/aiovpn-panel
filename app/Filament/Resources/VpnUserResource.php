@@ -3,7 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\VpnUserResource\Pages;
-use App\Models\VpnServer;
+use App\Models\User;
 use App\Models\VpnUser;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -24,61 +24,63 @@ class VpnUserResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Account')
+            Forms\Components\Section::make('VPN User')
                 ->columns(2)
                 ->schema([
                     Forms\Components\TextInput::make('username')
                         ->required()
                         ->maxLength(255)
-                        ->autofocus(),
+                        ->autocapitalize('none')
+                        ->autocomplete('off'),
 
                     Forms\Components\TextInput::make('device_name')
-                        ->label('Device')
                         ->maxLength(255),
 
+                    Forms\Components\Select::make('client_id')
+                        ->label('Owner (Client)')
+                        ->options(fn () => User::query()
+                            ->orderBy('name')
+                            ->pluck('name', 'id')
+                            ->all()
+                        )
+                        ->searchable()
+                        ->preload()
+                        ->native(false),
+
                     Forms\Components\TextInput::make('max_connections')
-                        ->label('Max Devices')
                         ->numeric()
                         ->minValue(0)
                         ->helperText('0 = unlimited')
                         ->default(1),
 
+                    Forms\Components\Toggle::make('is_active')->default(true),
+                    Forms\Components\Toggle::make('is_trial')->default(false),
+
                     Forms\Components\DateTimePicker::make('expires_at')
-                        ->label('Expiry')
                         ->seconds(false)
                         ->native(false),
 
-                    Forms\Components\Toggle::make('is_active')
-                        ->inline(false)
-                        ->default(true),
-
-                    Forms\Components\Toggle::make('is_trial')
-                        ->inline(false)
-                        ->default(false),
-
-                    Forms\Components\TextInput::make('wireguard_address')
-                        ->label('WG Address')
+                    Forms\Components\TextInput::make('last_ip')
+                        ->label('Last IP')
                         ->disabled()
                         ->dehydrated(false),
 
                     Forms\Components\DateTimePicker::make('last_seen_at')
-                        ->label('Last Seen')
                         ->disabled()
-                        ->dehydrated(false)
-                        ->seconds(false)
-                        ->native(false),
+                        ->dehydrated(false),
                 ]),
 
             Forms\Components\Section::make('Server Assignment')
-                ->description('Assign this user to a VPN server (we sync the pivot table on save).')
                 ->schema([
-                    Forms\Components\Select::make('vpn_server_id')
-                        ->label('Server')
-                        ->options(fn () => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
+                    // ✅ this is the correct way: uses your belongsToMany(vpnServers) and auto-syncs pivot
+                    Forms\Components\Select::make('vpnServers')
+                        ->label('Assigned Servers')
+                        ->relationship('vpnServers', 'name')
+                        ->multiple()
+                        ->preload()
                         ->searchable()
                         ->native(false)
-                        ->required()
-                        ->default(fn (?VpnUser $record) => $record?->vpnServers()->value('vpn_servers.id')),
+                        ->helperText('Select one or more servers (pivot vpn_server_user will auto-sync).'),
                 ]),
         ]);
     }
@@ -86,14 +88,12 @@ class VpnUserResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['vpnServers']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['vpnServers', 'client']))
             ->defaultSort('id', 'desc')
             ->striped()
-            ->paginated([10, 25, 50])
             ->columns([
                 Tables\Columns\TextColumn::make('id')
                     ->label('#')
-                    ->size('sm')
                     ->sortable()
                     ->toggleable(),
 
@@ -102,58 +102,42 @@ class VpnUserResource extends Resource
                     ->sortable()
                     ->weight('bold')
                     ->copyable()
-                    ->copyMessage('Username copied')
-                    ->limit(24),
+                    ->copyMessage('Copied'),
 
-                Tables\Columns\TextColumn::make('server')
-                    ->label('Server')
-                    ->badge()
-                    ->color('info')
-                    ->getStateUsing(fn (VpnUser $u) => $u->vpnServers->first()?->name ?? 'Unassigned')
-                    ->sortable(query: function (Builder $query, string $direction): Builder {
-                        // Sort by server name via pivot relation (best-effort)
-                        return $query->orderBy(
-                            VpnServer::select('name')
-                                ->join('vpn_server_user', 'vpn_server_user.vpn_server_id', '=', 'vpn_servers.id')
-                                ->whereColumn('vpn_server_user.vpn_user_id', 'vpn_users.id')
-                                ->limit(1),
-                            $direction
-                        );
-                    }),
+                Tables\Columns\TextColumn::make('client.name')
+                    ->label('Owner')
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->searchable(),
 
-                Tables\Columns\TextColumn::make('online_status')
+                Tables\Columns\TagsColumn::make('vpnServers.name')
+                    ->label('Servers')
+                    ->separator(',')
+                    ->limitList(3) // keeps it clean on mobile
+                    ->expandable(),
+
+                Tables\Columns\BadgeColumn::make('is_online')
                     ->label('Online')
-                    ->badge()
-                    ->alignCenter()
-                    ->state(fn (VpnUser $u) => $u->is_online ? 'Online' : 'Offline')
-                    ->color(fn (string $state) => $state === 'Online' ? 'success' : 'danger'),
+                    ->formatStateUsing(fn (bool $v) => $v ? 'Online' : 'Offline')
+                    ->colors([
+                        'success' => true,
+                        'danger' => false,
+                    ]),
 
-                Tables\Columns\TextColumn::make('state')
+                Tables\Columns\BadgeColumn::make('state')
                     ->label('State')
-                    ->badge()
-                    ->alignCenter()
-                    ->state(function (VpnUser $u) {
+                    ->getStateUsing(function (VpnUser $u) {
                         if (! $u->is_active) return 'Disabled';
                         if ($u->is_expired)  return 'Expired';
-                        if ($u->is_trial)    return 'Trial';
                         return 'Active';
                     })
-                    ->color(function (string $state) {
-                        return match ($state) {
-                            'Active'   => 'success',
-                            'Trial'    => 'warning',
-                            'Expired'  => 'danger',
-                            'Disabled' => 'danger',
-                            default    => 'gray',
-                        };
-                    }),
+                    ->colors([
+                        'success' => 'Active',
+                        'danger'  => ['Expired', 'Disabled'],
+                    ]),
 
-                Tables\Columns\TextColumn::make('connections')
+                Tables\Columns\TextColumn::make('connection_summary')
                     ->label('Conn')
-                    ->badge()
-                    ->color('gray')
-                    ->alignCenter()
-                    ->state(fn (VpnUser $u) => (string) ($u->connection_summary ?? '0/0'))
+                    ->getStateUsing(fn (VpnUser $u) => (string) ($u->connection_summary ?? ''))
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('last_seen_at')
@@ -163,7 +147,7 @@ class VpnUserResource extends Resource
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('expires_at')
-                    ->label('Expiry')
+                    ->label('Expires')
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -171,31 +155,19 @@ class VpnUserResource extends Resource
             ->filters([
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active'),
                 Tables\Filters\TernaryFilter::make('is_online')->label('Online'),
-                Tables\Filters\TernaryFilter::make('is_trial')->label('Trial'),
 
                 Tables\Filters\Filter::make('expired')
                     ->label('Expired')
-                    ->query(fn (Builder $query) => $query->whereNotNull('expires_at')->where('expires_at', '<=', now())),
-
-                Tables\Filters\SelectFilter::make('server')
-                    ->label('Server')
-                    ->options(fn () => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
-                    ->query(function (Builder $query, array $data) {
-                        $serverId = $data['value'] ?? null;
-                        if (! $serverId) return $query;
-
-                        return $query->whereHas('vpnServers', fn (Builder $q) => $q->where('vpn_servers.id', $serverId));
-                    }),
+                    ->query(fn (Builder $query) => $query
+                        ->whereNotNull('expires_at')
+                        ->where('expires_at', '<=', now())
+                    ),
             ])
             ->actions([
-                Tables\Actions\EditAction::make()
-                    ->icon('heroicon-o-pencil-square')
-                    ->iconButton(),
+                Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
+                Tables\Actions\DeleteBulkAction::make(),
             ]);
     }
 
