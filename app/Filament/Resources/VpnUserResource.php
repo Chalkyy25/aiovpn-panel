@@ -34,6 +34,8 @@ class VpnUserResource extends Resource
                         ->schema([
                             Forms\Components\Section::make('Account')
                                 ->columns(2)
+                                ->compact()
+                                ->collapsible()
                                 ->schema([
                                     Forms\Components\TextInput::make('username')
                                         ->required()
@@ -158,6 +160,8 @@ class VpnUserResource extends Resource
                                 ]),
 
                             Forms\Components\Section::make('Server Assignment')
+                                ->compact()
+                                ->collapsible()
                                 ->description('Select one or more servers for this user.')
                                 ->schema([
                                     Forms\Components\Select::make('vpn_server_ids')
@@ -191,7 +195,8 @@ class VpnUserResource extends Resource
 
                     // Create-only summary (similar to old right panel)
                     Forms\Components\Section::make('Summary')
-                        ->columnSpan(['default' => 3, 'lg' => 1])
+                        ->compact()
+                        ->collapsible()
                         ->visible(fn (?VpnUser $record) => $record === null)
                         ->schema([
                             Forms\Components\Placeholder::make('summary_max_connections')
@@ -297,21 +302,25 @@ class VpnUserResource extends Resource
                     ->sortable()
                     ->toggleable(),
 
-                Tables\Columns\TextColumn::make('username')
-                    ->searchable()
-                    ->sortable()
-                    ->weight('bold')
-                    ->copyable()
-                    ->copyMessage('Username copied')
-                    ->limit(30),
+                // Put username + password together (matches your old "Credentials" block).
+                Tables\Columns\Layout\Stack::make([
+                    Tables\Columns\TextColumn::make('username')
+                        ->label('Username')
+                        ->searchable()
+                        ->sortable()
+                        ->weight('bold')
+                        ->copyable()
+                        ->copyMessage('Username copied')
+                        ->limit(30),
 
-                Tables\Columns\TextColumn::make('plain_password')
-                    ->label('Password')
-                    ->fontFamily('mono')
-                    ->copyable()
-                    ->copyMessage('Password copied')
-                    ->state(fn (VpnUser $u) => $u->plain_password ?: '******')
-                    ->toggleable(),
+                    Tables\Columns\TextColumn::make('plain_password')
+                        ->label('Password')
+                        ->fontFamily('mono')
+                        ->color('gray')
+                        ->copyable()
+                        ->copyMessage('Password copied')
+                        ->state(fn (VpnUser $u) => $u->plain_password ?: '******'),
+                ])->label('Credentials'),
 
                 Tables\Columns\TagsColumn::make('vpnServers.name')
                     ->label('Servers')
