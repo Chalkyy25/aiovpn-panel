@@ -13,8 +13,12 @@ class CreateVpnUser extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // Package controls expiry + max_connections (authoritative server-side).
-        $packageId = (int) ($data['package_id'] ?? 0);
+        // IMPORTANT:
+        // package_id + vpn_server_ids are virtual (dehydrated(false)),
+        // so they won't be inside $data. Use $this->data instead.
+
+        $packageId = (int) ($this->data['package_id'] ?? 0);
+
         if ($packageId > 0 && ($package = Package::query()->find($packageId))) {
             $data['max_connections'] = (int) $package->max_connections;
 
@@ -22,8 +26,6 @@ class CreateVpnUser extends CreateRecord
             $data['expires_at'] = $months <= 0 ? null : now()->addMonthsNoOverflow($months);
         }
 
-        unset($data['package_id']); // virtual field
-        unset($data['vpn_server_ids']); // virtual field
         return $data;
     }
 
@@ -32,9 +34,12 @@ class CreateVpnUser extends CreateRecord
         $ids = $this->data['vpn_server_ids'] ?? [];
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
 
-        $this->record->syncVpnServers($ids, context: 'filament.create');
+        // sync pivot
+        $this->record->vpnServers()->sync($ids);
 
-        // Match old flow: show created credentials
+        // if you have jobs/logging when servers are attached, DO IT HERE
+        // e.g. dispatch SyncOpenVPNCredentials per server if needed
+
         Notification::make()
             ->success()
             ->title('VPN user created')
