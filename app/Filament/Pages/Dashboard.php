@@ -8,13 +8,15 @@ class Dashboard extends BaseDashboard
 {
     public function getColumns(): int|array
     {
-        // Force 2-column grid on desktop
-        return 2;
+        return [
+            'default' => 1, // phones
+            'md'      => 2, // tablets
+            'xl'      => 3, // desktop
+        ];
     }
 
     public function getWidgets(): array
     {
-        // Explicit order (don’t rely on provider order)
         return [
             \App\Filament\Widgets\AdminStats::class,
             \App\Filament\Widgets\ConnectionsTrend::class,
