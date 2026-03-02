@@ -17,10 +17,10 @@ class DeployKeyResource extends Resource
 {
     protected static ?string $model = DeployKey::class;
 
-    protected static ?string $navigationGroup = 'Security';
+    protected static ?string $navigationGroup = 'admin';
 protected static ?string $navigationLabel = 'Deploy Keys';
 protected static ?string $navigationIcon  = 'heroicon-o-key';
-protected static ?int $navigationSort     = 1;
+protected static ?int $navigationSort     = 2;
 
     public static function form(Form $form): Form
     {
