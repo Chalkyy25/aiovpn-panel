@@ -10,10 +10,19 @@ class EditVpnUser extends EditRecord
 {
     protected static string $resource = VpnUserResource::class;
 
+    protected function authorizeAccess(): void
+    {
+        abort_unless(
+            $this->record->client_id === auth()->id(),
+            403
+        );
+    }
+
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()
+                ->visible(fn () => $this->record->client_id === auth()->id()),
         ];
     }
 }
