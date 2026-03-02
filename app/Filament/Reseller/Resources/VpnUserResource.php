@@ -21,13 +21,18 @@ class VpnUserResource extends Resource
     protected static ?string $navigationIcon  = 'heroicon-o-key';
     protected static ?string $navigationLabel = 'VPN Users';
     protected static ?string $navigationGroup = 'VPN';
-    protected static ?int $navigationSort     = 10;
+    protected static ?int    $navigationSort  = 10;
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()
-            ->where('client_id', auth()->id())
-            ->with('vpnServers');
+        $query = parent::getEloquentQuery()->with('vpnServers');
+
+        // Keep reseller scoping (only their users)
+        if (auth()->check()) {
+            $query->where('client_id', auth()->id());
+        }
+
+        return $query;
     }
 
     public static function form(Form $form): Form
@@ -42,7 +47,6 @@ class VpnUserResource extends Resource
                             Forms\Components\Section::make('Account')
                                 ->columns(2)
                                 ->schema([
-                                    // Let model booted() auto-generate if blank
                                     Forms\Components\TextInput::make('username')
                                         ->maxLength(50)
                                         ->unique(table: VpnUser::class, column: 'username', ignoreRecord: true)
@@ -60,7 +64,7 @@ class VpnUserResource extends Resource
                                         ->maxLength(100)
                                         ->placeholder('e.g. iPhone / Firestick'),
 
-                                    // PACKAGE (create only) → controls expiry + max_connections
+                                    // Create only (virtual) - used to set max_connections + expires_at
                                     Forms\Components\Select::make('package_id')
                                         ->label('Package')
                                         ->options(fn (): array => Package::query()
@@ -91,11 +95,13 @@ class VpnUserResource extends Resource
                                         ->preload()
                                         ->required(fn (?VpnUser $record) => $record === null)
                                         ->visible(fn (?VpnUser $record) => $record === null)
-                                        ->dehydrated(false) // virtual field
+                                        ->dehydrated(false) // virtual
                                         ->live()
                                         ->afterStateUpdated(function ($state, callable $set): void {
                                             $package = Package::query()->find((int) $state);
-                                            if (! $package) return;
+                                            if (! $package) {
+                                                return;
+                                            }
 
                                             $set('max_connections', (int) $package->max_connections);
 
@@ -110,7 +116,7 @@ class VpnUserResource extends Resource
                                         ->default(1)
                                         ->helperText('0 = unlimited'),
 
-                                    // persisted, set from package
+                                    // persisted (set from package on create)
                                     Forms\Components\Hidden::make('expires_at'),
 
                                     Forms\Components\Toggle::make('is_active')
@@ -132,8 +138,14 @@ class VpnUserResource extends Resource
                                             if ($state) {
                                                 $set(
                                                     'vpn_server_ids',
-                                                    VpnServer::query()->orderBy('name')->pluck('id')->map(fn ($id) => (int) $id)->all()
+                                                    VpnServer::query()
+                                                        ->orderBy('name')
+                                                        ->pluck('id')
+                                                        ->map(fn ($id) => (int) $id)
+                                                        ->all()
                                                 );
+                                            } else {
+                                                $set('vpn_server_ids', []);
                                             }
                                         }),
 
@@ -144,7 +156,7 @@ class VpnUserResource extends Resource
                                         ->preload()
                                         ->native(false)
                                         ->required()
-                                        ->dehydrated(false) // virtual (synced in Pages)
+                                        ->dehydrated(true) // ✅ MUST be true so pages can sync it
                                         ->options(fn (): array => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
                                         ->visible(fn (Get $get) => ! (bool) $get('all_servers')),
                                 ]),
@@ -158,8 +170,12 @@ class VpnUserResource extends Resource
                                 ->content(function (Get $get): string {
                                     $expires = $get('expires_at');
                                     if (blank($expires)) return 'Never';
-                                    try { return \Carbon\Carbon::parse($expires)->format('d M Y'); }
-                                    catch (\Throwable) { return (string) $expires; }
+
+                                    try {
+                                        return \Carbon\Carbon::parse($expires)->format('d M Y');
+                                    } catch (\Throwable) {
+                                        return (string) $expires;
+                                    }
                                 }),
                         ]),
                 ]),
