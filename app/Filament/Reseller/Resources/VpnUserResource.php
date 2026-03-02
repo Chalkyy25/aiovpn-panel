@@ -3,7 +3,9 @@
 namespace App\Filament\Reseller\Resources;
 
 use App\Filament\Reseller\Resources\VpnUserResource\Pages;
+use App\Models\VpnServer;
 use App\Models\VpnUser;
+use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -19,10 +21,67 @@ class VpnUserResource extends Resource
     protected static ?string $navigationGroup = 'VPN';
     protected static ?int $navigationSort = 10;
 
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->where('client_id', auth()->id())
+            ->with('vpnServers');
+    }
+
     public static function form(Form $form): Form
     {
-        // If your Pages define the form, keep this empty.
-        return $form->schema([]);
+        return $form->schema([
+            Forms\Components\Section::make('VPN Account')
+                ->schema([
+                    Forms\Components\TextInput::make('username')
+                        ->required()
+                        ->maxLength(50)
+                        ->helperText('Must be unique. You can leave it blank and auto-generate later if you want, but for now: required.'),
+
+                    Forms\Components\TextInput::make('plain_password')
+                        ->label('Password')
+                        ->password()
+                        ->revealable()
+                        ->helperText('If left blank, the system auto-generates one.')
+                        ->dehydrated(true),
+
+                    Forms\Components\TextInput::make('device_name')
+                        ->maxLength(100),
+
+                    Forms\Components\TextInput::make('max_connections')
+                        ->numeric()
+                        ->minValue(0)
+                        ->default(1)
+                        ->helperText('0 = unlimited'),
+                ])
+                ->columns(2),
+
+            Forms\Components\Section::make('Access & Expiry')
+                ->schema([
+                    Forms\Components\DateTimePicker::make('expires_at')
+                        ->label('Expiry date')
+                        ->seconds(false)
+                        ->helperText('Leave empty for no expiry.'),
+
+                    Forms\Components\Toggle::make('is_active')
+                        ->default(true),
+
+                    Forms\Components\Toggle::make('is_trial')
+                        ->default(false),
+                ])
+                ->columns(3),
+
+            Forms\Components\Section::make('Assigned Servers')
+                ->schema([
+                    Forms\Components\Select::make('vpnServers')
+                        ->label('Servers')
+                        ->relationship('vpnServers', 'name')
+                        ->multiple()
+                        ->preload()
+                        ->searchable()
+                        ->helperText('This controls where this user can connect.'),
+                ]),
+        ]);
     }
 
     public static function table(Table $table): Table
@@ -30,17 +89,13 @@ class VpnUserResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('username')
-                    ->label('Username')
                     ->searchable()
                     ->sortable()
-                    ->wrap()
-                    ->weight('medium'),
+                    ->wrap(),
 
-                // ✅ MANY-TO-MANY: show assigned servers
                 Tables\Columns\TagsColumn::make('vpnServers.name')
                     ->label('Servers')
-                    ->separator(',')
-                    ->limitList(3),
+                    ->limitList(2),
 
                 Tables\Columns\TextColumn::make('max_connections')
                     ->label('Max')
@@ -49,7 +104,7 @@ class VpnUserResource extends Resource
 
                 Tables\Columns\TextColumn::make('expires_at')
                     ->label('Expires')
-                    ->date()
+                    ->dateTime()
                     ->sortable()
                     ->color(fn (VpnUser $record) =>
                         $record->expires_at && $record->expires_at->isPast()
@@ -61,13 +116,16 @@ class VpnUserResource extends Resource
                     ->label('Active')
                     ->boolean()
                     ->sortable(),
+
+                Tables\Columns\IconColumn::make('is_trial')
+                    ->label('Trial')
+                    ->boolean()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->defaultSort('id', 'desc')
             ->filters([
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active'),
 
-                // ✅ Filter by MANY-TO-MANY servers
-                Tables\Filters\SelectFilter::make('vpnServers')
+                Tables\Filters\SelectFilter::make('server')
                     ->label('Server')
                     ->relationship('vpnServers', 'name')
                     ->multiple()
@@ -76,24 +134,9 @@ class VpnUserResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\DeleteAction::make(),
             ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
-            ])
-            ->paginated([10, 25, 50]);
-    }
-
-    /**
-     * Resellers should only see their own VPN users.
-     * Your table has client_id already, so use that.
-     */
-    public static function getEloquentQuery(): Builder
-    {
-        return parent::getEloquentQuery()
-            ->where('client_id', auth()->id())
-            ->with('vpnServers');
+            ->defaultSort('id', 'desc');
     }
 
     public static function getPages(): array
