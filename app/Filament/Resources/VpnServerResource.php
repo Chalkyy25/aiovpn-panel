@@ -14,9 +14,10 @@ class VpnServerResource extends Resource
 {
     protected static ?string $model = VpnServer::class;
 
-    protected static ?string $navigationGroup = 'VPN';
-    protected static ?string $navigationLabel = 'Servers';
-    protected static ?string $navigationIcon = 'heroicon-o-server-stack';
+protected static ?string $navigationGroup = 'VPN';
+protected static ?string $navigationLabel = 'Servers';
+protected static ?string $navigationIcon  = 'heroicon-o-server';
+protected static ?int $navigationSort     = 1;
 
     public static function form(Form $form): Form
     {
