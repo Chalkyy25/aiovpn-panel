@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Middleware\EnsureUserIsReseller;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
@@ -27,34 +28,32 @@ class ResellerPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Purple,
             ])
-
-->discoverResources(
-    in: app_path('Filament/Reseller/Resources'),
-    for: 'App\\Filament\\Reseller\\Resources'
-)
-
-            // IMPORTANT: do NOT discover all resources for resellers (security + clean nav)
-            // We'll manually register reseller-safe resources later.
-            // For now, keep it empty so the panel loads.
-            ->pages([
-                \Filament\Pages\Dashboard::class,
+            ->discoverResources(
+                in: app_path('Filament/Reseller/Resources'),
+                for: 'App\\Filament\\Reseller\\Resources'
+            )
+            ->discoverPages(
+                in: app_path('Filament/Reseller/Pages'),
+                for: 'App\\Filament\\Reseller\\Pages'
+            )
+            ->discoverWidgets(
+                in: app_path('Filament/Reseller/Widgets'),
+                for: 'App\\Filament\\Reseller\\Widgets'
+            )
+            ->middleware([
+                EncryptCookies::class,
+                AddQueuedCookiesToResponse::class,
+                StartSession::class,
+                AuthenticateSession::class,
+                ShareErrorsFromSession::class,
+                VerifyCsrfToken::class,
+                SubstituteBindings::class,
+                DisableBladeIconComponents::class,
+                DispatchServingFilamentEvent::class,
             ])
-
-->middleware([
-    EncryptCookies::class,
-    AddQueuedCookiesToResponse::class,
-    StartSession::class,
-    AuthenticateSession::class,
-    ShareErrorsFromSession::class,
-    VerifyCsrfToken::class,
-    SubstituteBindings::class,
-    DisableBladeIconComponents::class,
-    DispatchServingFilamentEvent::class,
-])
-->authMiddleware([
-    \Filament\Http\Middleware\Authenticate::class,
-    \App\Http\Middleware\EnsureUserIsReseller::class,
-]);
-
+            ->authMiddleware([
+                \Filament\Http\Middleware\Authenticate::class,
+                EnsureUserIsReseller::class,
+            ]);
     }
 }
