@@ -17,7 +17,7 @@ class DeployKeyResource extends Resource
 {
     protected static ?string $model = DeployKey::class;
 
-    protected static ?string $navigationGroup = 'admin';
+    protected static ?string $navigationGroup = 'Admin';
 protected static ?string $navigationLabel = 'Deploy Keys';
 protected static ?string $navigationIcon  = 'heroicon-o-key';
 protected static ?int $navigationSort     = 2;
