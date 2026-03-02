@@ -2,13 +2,17 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Auth\ResellerLogin;
 use App\Http\Middleware\EnsureUserIsReseller;
+use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Hasnayeen\Themes\ThemesPlugin;
+use Hasnayeen\Themes\Http\Middleware\SetTheme;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -22,24 +26,25 @@ class ResellerPanelProvider extends PanelProvider
     {
         return $panel
             ->id('reseller')
-            ->path('reseller-panel')
-            ->login(\App\Filament\Auth\Login::class)
+            ->path('reseller')
+
+            // panel-specific login
+            ->login(ResellerLogin::class)
+
             ->authGuard('web')
             ->colors([
                 'primary' => Color::Purple,
             ])
-            ->discoverResources(
-                in: app_path('Filament/Reseller/Resources'),
-                for: 'App\\Filament\\Reseller\\Resources'
+
+            ->plugin(
+                ThemesPlugin::make()
+                    ->canViewThemesPage(fn () => in_array(auth('web')->user()?->role, ['admin', 'reseller'], true))
             )
-            ->discoverPages(
-                in: app_path('Filament/Reseller/Pages'),
-                for: 'App\\Filament\\Reseller\\Pages'
-            )
-            ->discoverWidgets(
-                in: app_path('Filament/Reseller/Widgets'),
-                for: 'App\\Filament\\Reseller\\Widgets'
-            )
+
+            ->discoverResources(in: app_path('Filament/Reseller/Resources'), for: 'App\\Filament\\Reseller\\Resources')
+            ->discoverPages(in: app_path('Filament/Reseller/Pages'), for: 'App\\Filament\\Reseller\\Pages')
+            ->discoverWidgets(in: app_path('Filament/Reseller/Widgets'), for: 'App\\Filament\\Reseller\\Widgets')
+
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
@@ -50,9 +55,12 @@ class ResellerPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+
+                SetTheme::class,
             ])
+
             ->authMiddleware([
-                \Filament\Http\Middleware\Authenticate::class,
+                Authenticate::class,
                 EnsureUserIsReseller::class,
             ]);
     }
