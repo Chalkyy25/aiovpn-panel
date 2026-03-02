@@ -6,10 +6,20 @@ use Filament\Pages\Auth\Login as BaseLogin;
 
 class AdminLogin extends BaseLogin
 {
-    protected static string $view = 'filament.auth.login'; // optional, remove if you want default
+    // Remove the $view override (Filament v3 uses its own view)
 
     protected function getRedirectUrl(): string
     {
-        return url('/admin');
+        $user = auth('web')->user();
+
+        if (! $user) {
+            return parent::getRedirectUrl();
+        }
+
+        return match ($user->role) {
+            'admin'    => '/admin',
+            'reseller' => '/reseller',
+            default    => '/',
+        };
     }
 }
