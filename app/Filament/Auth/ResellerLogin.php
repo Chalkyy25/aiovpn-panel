@@ -6,10 +6,20 @@ use Filament\Pages\Auth\Login as BaseLogin;
 
 class ResellerLogin extends BaseLogin
 {
-    protected static string $view = 'filament.auth.login'; // optional
+    // Remove the $view override
 
     protected function getRedirectUrl(): string
     {
-        return url('/reseller');
+        $user = auth('web')->user();
+
+        if (! $user) {
+            return parent::getRedirectUrl();
+        }
+
+        return match ($user->role) {
+            'admin'    => '/admin',
+            'reseller' => '/reseller',
+            default    => '/',
+        };
     }
 }
