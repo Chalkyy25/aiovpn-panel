@@ -11,6 +11,7 @@
         "blade-ui-kit/blade-heroicons": "^2.6",
         "filament/filament": "^3.0",
         "guzzlehttp/guzzle": "^7.2",
+        "hasnayeen/themes": "^3.0",
         "laravel/fortify": "^1.25",
         "laravel/framework": "^10.10",
         "laravel/horizon": "^5.33",
