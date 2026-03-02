@@ -17,8 +17,10 @@ class VpnConnectionResource extends Resource
 {
     protected static ?string $model = VpnConnection::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
-
+    protected static ?string $navigationGroup = 'VPN';
+protected static ?string $navigationLabel = 'Connections';
+protected static ?string $navigationIcon  = 'heroicon-o-link';
+protected static ?int $navigationSort     = 2;
 
 public static function canCreate(): bool
 {
