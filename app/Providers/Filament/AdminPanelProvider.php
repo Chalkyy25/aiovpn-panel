@@ -2,18 +2,22 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Auth\AdminLogin;
 use App\Filament\Widgets\AdminStats;
 use App\Filament\Widgets\ConnectionsByServer;
 use App\Filament\Widgets\ConnectionsTrend;
 use App\Filament\Widgets\RecentConnections;
 use App\Filament\Widgets\ServerStatus;
 use App\Http\Middleware\EnsureUserIsAdmin;
+use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Hasnayeen\Themes\ThemesPlugin;
+use Hasnayeen\Themes\Http\Middleware\SetTheme;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -29,15 +33,25 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login(\App\Filament\Auth\Login::class)
+
+            // Use a panel-specific login so redirects + access rules are clean
+            ->login(AdminLogin::class)
+
             ->authGuard('web')
             ->colors([
                 'primary' => Color::Purple,
             ])
-            ->viteTheme('resources/css/filament/admin/theme.css')
+
+            // Theme plugin (no vite theme / no custom css required)
+            ->plugin(
+                ThemesPlugin::make()
+                    ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin')
+            )
+
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+
             ->widgets([
                 AdminStats::class,
                 ConnectionsTrend::class,
@@ -45,6 +59,7 @@ class AdminPanelProvider extends PanelProvider
                 ServerStatus::class,
                 RecentConnections::class,
             ])
+
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
@@ -55,9 +70,13 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
+
+                // Themes must be in middleware stack
+                SetTheme::class,
             ])
+
             ->authMiddleware([
-                \Filament\Http\Middleware\Authenticate::class,
+                Authenticate::class,
                 EnsureUserIsAdmin::class,
             ]);
     }
