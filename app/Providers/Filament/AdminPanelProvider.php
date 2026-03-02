@@ -43,11 +43,11 @@ class AdminPanelProvider extends PanelProvider
             ])
 
             // Theme plugin (no vite theme / no custom css required)
-            ->plugin(
-                ThemesPlugin::make()
-                    ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin')
-            )
-
+->plugin(
+    ThemesPlugin::make()
+        ->defaultTheme('dracula') // make Dracula the fallback
+        ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin')
+)
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
