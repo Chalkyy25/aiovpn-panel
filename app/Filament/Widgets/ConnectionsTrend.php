@@ -1,0 +1,48 @@
+<?php
+
+namespace App\Filament\Widgets;
+
+use App\Models\VpnUserConnection;
+use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Carbon;
+
+class ConnectionsTrend extends ChartWidget
+{
+    protected static ?string $heading = 'Connections (Last 24 Hours)';
+    protected static ?string $pollingInterval = '60s';
+    protected int|string|array $columnSpan = 'full';
+
+    protected function getData(): array
+    {
+        $now = now();
+        $hours = collect(range(23, 0))->map(fn ($i) => $now->copy()->subHours($i));
+
+        $labels = [];
+        $data = [];
+
+        foreach ($hours as $hour) {
+            $start = $hour->copy()->startOfHour();
+            $end   = $hour->copy()->endOfHour();
+
+            $count = VpnUserConnection::whereBetween('connected_at', [$start, $end])->count();
+
+            $labels[] = $start->format('H:00');
+            $data[]   = $count;
+        }
+
+        return [
+            'datasets' => [
+                [
+                    'label' => 'Connections',
+                    'data' => $data,
+                ],
+            ],
+            'labels' => $labels,
+        ];
+    }
+
+    protected function getType(): string
+    {
+        return 'line';
+    }
+}

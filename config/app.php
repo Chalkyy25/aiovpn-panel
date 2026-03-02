@@ -182,6 +182,7 @@ return [
         App\Providers\EventServiceProvider::class,
         App\Providers\HorizonServiceProvider::class, // Temporarily disabled
         App\Providers\Filament\AdminPanelProvider::class,
+        App\Providers\Filament\ResellerPanelProvider::class,
         App\Providers\RouteServiceProvider::class,
 	App\Providers\FortifyServiceProvider::class,
     ])->toArray(),
