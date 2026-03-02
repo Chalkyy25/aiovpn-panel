@@ -9,7 +9,13 @@ class EnsureUserIsReseller
 {
     public function handle(Request $request, Closure $next)
     {
-        if (auth()->user()?->role !== 'reseller') {
+        // Not logged in? Send to Filament reseller login.
+        if (! auth()->check()) {
+            return redirect()->route('filament.reseller.auth.login');
+        }
+
+        // Logged in but not reseller? Block.
+        if (auth()->user()->role !== 'reseller') {
             abort(403);
         }
 
