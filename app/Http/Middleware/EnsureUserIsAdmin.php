@@ -9,7 +9,13 @@ class EnsureUserIsAdmin
 {
     public function handle(Request $request, Closure $next)
     {
-        if (auth()->user()?->role !== 'admin') {
+        // Not logged in? Send to Filament admin login.
+        if (! auth()->check()) {
+            return redirect()->route('filament.admin.auth.login');
+        }
+
+        // Logged in but not admin? Block.
+        if (auth()->user()->role !== 'admin') {
             abort(403);
         }
 
