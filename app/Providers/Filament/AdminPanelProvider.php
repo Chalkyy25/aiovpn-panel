@@ -2,6 +2,12 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Widgets\AdminStats;
+use App\Filament\Widgets\ConnectionsByServer;
+use App\Filament\Widgets\ConnectionsTrend;
+use App\Filament\Widgets\RecentConnections;
+use App\Filament\Widgets\ServerStatus;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
@@ -17,42 +23,41 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
 {
-public function panel(Panel $panel): Panel
-{
-    return $panel
-        ->default()
-        ->id('admin')
-        ->path('panel')
-        ->login()
-        ->authGuard('web')
-        ->colors([
-            'primary' => Color::Purple,
-        ])
-        ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
-        ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
-        ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
-	->widgets([
-    \App\Filament\Widgets\AdminStats::class,
-    \App\Filament\Widgets\ConnectionsTrend::class,
-    \App\Filament\Widgets\ConnectionsByServer::class,
-    \App\Filament\Widgets\ServerStatus::class,
-    \App\Filament\Widgets\RecentConnections::class,
-])
-->middleware([
-    EncryptCookies::class,
-    AddQueuedCookiesToResponse::class,
-    StartSession::class,
-    AuthenticateSession::class,
-    ShareErrorsFromSession::class,
-    VerifyCsrfToken::class,
-    SubstituteBindings::class,
-    DisableBladeIconComponents::class,
-    DispatchServingFilamentEvent::class,
-])
-->authMiddleware([
-    \Filament\Http\Middleware\Authenticate::class,
-    \App\Http\Middleware\EnsureUserIsAdmin::class,
-]);
-
-}
+    public function panel(Panel $panel): Panel
+    {
+        return $panel
+            ->default()
+            ->id('admin')
+            ->path('panel')
+            ->login()
+            ->authGuard('web')
+            ->colors([
+                'primary' => Color::Purple,
+            ])
+            ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
+            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
+            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            ->widgets([
+                AdminStats::class,
+                ConnectionsTrend::class,
+                ConnectionsByServer::class,
+                ServerStatus::class,
+                RecentConnections::class,
+            ])
+            ->middleware([
+                EncryptCookies::class,
+                AddQueuedCookiesToResponse::class,
+                StartSession::class,
+                AuthenticateSession::class,
+                ShareErrorsFromSession::class,
+                VerifyCsrfToken::class,
+                SubstituteBindings::class,
+                DisableBladeIconComponents::class,
+                DispatchServingFilamentEvent::class,
+            ])
+            ->authMiddleware([
+                \Filament\Http\Middleware\Authenticate::class,
+                EnsureUserIsAdmin::class,
+            ]);
+    }
 }
