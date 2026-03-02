@@ -13,7 +13,10 @@ class RecentConnections extends BaseWidget
     protected static ?string $heading = 'Recent Connections';
     protected static ?int $sort = 3;
 
-    protected int|string|array $columnSpan = 2;
+    protected int|string|array $columnSpan = [
+    'default' => 1, // full width on mobile
+    'lg'      => 2, // wider on desktop
+];
 
     public function table(Table $table): Table
     {
