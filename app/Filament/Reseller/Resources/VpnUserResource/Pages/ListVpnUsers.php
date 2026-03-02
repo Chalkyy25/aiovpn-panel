@@ -16,4 +16,9 @@ class ListVpnUsers extends ListRecords
             Actions\CreateAction::make(),
         ];
     }
+
+    protected function authorizeAccess(): void
+    {
+        abort_unless(auth()->user()?->role === 'reseller', 403);
+    }
 }
