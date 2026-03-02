@@ -14,17 +14,14 @@ class VpnUserResource extends Resource
 {
     protected static ?string $model = VpnUser::class;
 
-    protected static ?string $navigationIcon  = 'heroicon-o-key';
+    protected static ?string $navigationIcon = 'heroicon-o-key';
     protected static ?string $navigationLabel = 'VPN Users';
     protected static ?string $navigationGroup = 'VPN';
-    protected static ?int $navigationSort     = 10;
-
-    protected static ?string $modelLabel      = 'VPN User';
-    protected static ?string $pluralModelLabel = 'VPN Users';
+    protected static ?int $navigationSort = 10;
 
     public static function form(Form $form): Form
     {
-        // Your create/edit pages already define the form, so keep this minimal
+        // If your Pages define the form, keep this empty.
         return $form->schema([]);
     }
 
@@ -39,23 +36,22 @@ class VpnUserResource extends Resource
                     ->wrap()
                     ->weight('medium'),
 
-                Tables\Columns\TextColumn::make('vpnServer.name')
-                    ->label('Server')
-                    ->badge()
-                    ->color('primary')
-                    ->toggleable(),
+                // ✅ MANY-TO-MANY: show assigned servers
+                Tables\Columns\TagsColumn::make('vpnServers.name')
+                    ->label('Servers')
+                    ->separator(',')
+                    ->limitList(3),
 
                 Tables\Columns\TextColumn::make('max_connections')
                     ->label('Max')
                     ->badge()
-                    ->color('gray')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('expires_at')
                     ->label('Expires')
                     ->date()
                     ->sortable()
-                    ->color(fn ($record) =>
+                    ->color(fn (VpnUser $record) =>
                         $record->expires_at && $record->expires_at->isPast()
                             ? 'danger'
                             : 'success'
@@ -64,18 +60,19 @@ class VpnUserResource extends Resource
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->sortable(),
             ])
             ->defaultSort('id', 'desc')
-            ->searchPlaceholder('Search username / server...')
             ->filters([
-                Tables\Filters\TernaryFilter::make('is_active')
-                    ->label('Active'),
+                Tables\Filters\TernaryFilter::make('is_active')->label('Active'),
 
-                Tables\Filters\SelectFilter::make('vpn_server_id')
+                // ✅ Filter by MANY-TO-MANY servers
+                Tables\Filters\SelectFilter::make('vpnServers')
                     ->label('Server')
-                    ->relationship('vpnServer', 'name'),
+                    ->relationship('vpnServers', 'name')
+                    ->multiple()
+                    ->preload()
+                    ->searchable(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -89,14 +86,14 @@ class VpnUserResource extends Resource
     }
 
     /**
-     * OPTIONAL BUT RECOMMENDED:
-     * If resellers should only see their own VPN users, lock it here.
-     * Adjust the field name if yours is different (created_by / reseller_id / user_id).
+     * Resellers should only see their own VPN users.
+     * Your table has client_id already, so use that.
      */
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->where('created_by', auth()->id());
+            ->where('client_id', auth()->id())
+            ->with('vpnServers');
     }
 
     public static function getPages(): array
