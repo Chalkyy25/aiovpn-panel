@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Background */
+.fi-main {
+    background: linear-gradient(180deg, #0a0f1f 0%, #111827 100%);
+}
+
+/* Card styling */
+.fi-widget {
+    border-radius: 20px;
+    border: 1px solid rgba(168, 85, 247, 0.15);
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(6px);
+}
+
+/* Sidebar */
+.fi-sidebar {
+    background: #0f172a;
+}
+
+/* Topbar */
+.fi-topbar {
+    background: #0f172a;
+    border-bottom: 1px solid rgba(168, 85, 247, 0.15);
+}
