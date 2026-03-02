@@ -2,32 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Base background ---------- */
-.fi-main {
+/* =========================================================
+   AIO Filament Theme (clean, glass, no neon, mobile-safe)
+   ========================================================= */
+
+/* 1) Background: apply to the page wrapper instead of only .fi-main */
+html, body {
+  background: #0b1020;
+}
+
+.fi-body,
+.fi-layout,
+.fi-main,
+.fi-page {
   background:
     radial-gradient(1200px 600px at 15% 10%, rgba(168, 85, 247, 0.10), transparent 60%),
     radial-gradient(900px 500px at 85% 20%, rgba(236, 72, 153, 0.06), transparent 55%),
     radial-gradient(900px 500px at 50% 95%, rgba(34, 211, 238, 0.05), transparent 55%),
-    #0b1020;
+    #0b1020 !important;
 }
 
-/* ---------- Remove “blue stripe / outlines” vibe ---------- */
-.fi-ta-table,
-.fi-wi,
-.fi-section,
-.fi-card,
-.fi-input,
-.fi-btn {
+/* 2) Kill Filament “ring/outline/stripe” look (focus rings & borders) */
+:where(.fi-ta-table, .fi-wi, .fi-section, .fi-card, .fi-input, .fi-btn) {
   outline: none !important;
+}
+
+:where(.fi-input, .fi-btn, .fi-ta-ctn, .fi-wi, .fi-section, .fi-card) {
   box-shadow: none;
 }
 
-/* ---------- Sidebar / Topbar: cleaner, darker, not “outlined” ---------- */
+/* 3) Topbar + Sidebar: darker, clean dividers */
 .fi-sidebar,
 .fi-topbar {
   background: rgba(10, 14, 28, 0.72) !important;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border-color: rgba(255, 255, 255, 0.06) !important;
 }
 
@@ -39,32 +46,30 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
-/* ---------- Glass cards / widgets ---------- */
-.fi-wi,
-.fi-section,
-.fi-card {
-  background: rgba(17, 24, 39, 0.55) !important; /* glass */
+/* 4) Glass “card” look: apply to cards/sections/widgets */
+:where(.fi-wi, .fi-section, .fi-card) {
+  background: rgba(17, 24, 39, 0.55) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 18px !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+
   box-shadow:
     0 18px 50px rgba(0, 0, 0, 0.45),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
 
-/* subtle hover lift (modern, not neon) */
-.fi-wi:hover,
-.fi-section:hover,
-.fi-card:hover {
-  transform: translateY(-1px);
-  transition: transform 140ms ease, box-shadow 140ms ease;
-  box-shadow:
-    0 22px 60px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+/* subtle hover lift (desktop only) */
+@media (hover: hover) and (pointer: fine) {
+  :where(.fi-wi, .fi-section, .fi-card):hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 22px 60px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
 }
 
-/* ---------- Tables: less harsh ---------- */
+/* 5) Tables: less harsh */
 .fi-ta-ctn {
   background: rgba(17, 24, 39, 0.35) !important;
   border: 1px solid rgba(255, 255, 255, 0.07) !important;
@@ -72,27 +77,25 @@
   overflow: hidden;
 }
 
-.fi-ta-header,
-.fi-ta-row,
-.fi-ta-cell {
+:where(.fi-ta-header, .fi-ta-row, .fi-ta-cell) {
   border-color: rgba(255, 255, 255, 0.06) !important;
 }
 
-/* ---------- Inputs ---------- */
+/* 6) Inputs */
 .fi-input {
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 12px !important;
 }
 
-/* ---------- Primary button: purple, not neon ---------- */
+/* 7) Primary button: purple, not neon */
 .fi-btn.fi-color-primary {
   background: linear-gradient(180deg, rgba(168, 85, 247, 0.95), rgba(139, 92, 246, 0.85)) !important;
   border: 1px solid rgba(255, 255, 255, 0.10) !important;
   box-shadow: 0 12px 30px rgba(168, 85, 247, 0.18);
 }
 
-/* ---------- Stat cards: better hierarchy ---------- */
+/* 8) Stat cards hierarchy */
 .fi-wi-stats-overview-stat {
   background: rgba(255, 255, 255, 0.03) !important;
   border: 1px solid rgba(255, 255, 255, 0.07) !important;
@@ -108,11 +111,13 @@
   letter-spacing: -0.02em;
 }
 
-/* ================================
-   iOS Safari glass glitch fixes
-   ================================ */
+/* =========================================================
+   iOS Safari FIX (this is the real culprit)
+   - Disable blur effects on mobile Safari
+   - Keep “frosted” look via solid rgba
+   ========================================================= */
 
-/* 1) Filament sometimes uses pseudo overlay layers */
+/* nuke pseudo overlays (can cause weird bands) */
 .fi-wi::before, .fi-wi::after,
 .fi-section::before, .fi-section::after,
 .fi-card::before, .fi-card::after {
@@ -120,28 +125,20 @@
   display: none !important;
 }
 
-/* 2) Disable blur on touch devices (Safari bug), keep “frosted” via solid rgba */
+/* blur = Safari pain. remove it on touch devices */
 @media (hover: none) and (pointer: coarse) {
+  .fi-sidebar,
+  .fi-topbar,
   .fi-wi,
   .fi-section,
-  .fi-card,
-  .fi-sidebar,
-  .fi-topbar {
+  .fi-card {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 
-  /* Keep the glass look without blur */
   .fi-wi,
   .fi-section,
   .fi-card {
     background: rgba(17, 24, 39, 0.82) !important;
-  }
-
-  /* Also kill hover transforms on mobile */
-  .fi-wi:hover,
-  .fi-section:hover,
-  .fi-card:hover {
-    transform: none !important;
   }
 }
