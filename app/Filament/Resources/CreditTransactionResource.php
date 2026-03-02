@@ -17,7 +17,10 @@ class CreditTransactionResource extends Resource
 {
     protected static ?string $model = CreditTransaction::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationGroup = 'Billing';
+protected static ?string $navigationLabel = 'Credit Transactions';
+protected static ?string $navigationIcon  = 'heroicon-o-banknotes';
+protected static ?int $navigationSort     = 2;
 
     public static function form(Form $form): Form
     {
