@@ -2,15 +2,16 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens;
+use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     use HasFactory, HasApiTokens, Notifiable;
 
@@ -21,10 +22,10 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',        // 'admin' | 'reseller' | 'client'
+        'role',        // admin | reseller | client
         'credits',     // int
         'is_active',   // bool
-        'created_by',  // parent (e.g., admin -> reseller, reseller -> client)
+        'created_by',  // parent (admin -> reseller, reseller -> client)
     ];
 
     /**
@@ -47,17 +48,31 @@ class User extends Authenticatable
     ];
 
     /* ---------------------------------------------------------
+     | Filament access
+     --------------------------------------------------------- */
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        // Hard stop: inactive users get nothing
+        if (!$this->is_active) {
+            return false;
+        }
+
+        return match ($panel->getId()) {
+            'admin'    => $this->role === 'admin',
+            'reseller' => $this->role === 'reseller',
+            default    => false,
+        };
+    }
+
+    /* ---------------------------------------------------------
      | Roles / helpers
      --------------------------------------------------------- */
+
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
     }
-
-    public function canAccessPanel(Panel $panel): bool
-{
-    return $this->role === 'admin';
-}
 
     public function isReseller(): bool
     {
@@ -73,17 +88,11 @@ class User extends Authenticatable
      | Relationships
      --------------------------------------------------------- */
 
-    /**
-     * Credit ledger entries for this user.
-     */
     public function creditTransactions(): HasMany
     {
         return $this->hasMany(CreditTransaction::class);
     }
 
-    /**
-     * (Optional) Children the user created (useful for reseller -> clients).
-     */
     public function createdUsers(): HasMany
     {
         return $this->hasMany(self::class, 'created_by');
@@ -105,10 +114,8 @@ class User extends Authenticatable
         }
 
         DB::transaction(function () use ($amount, $reason, $meta) {
-            // increment balance
             $this->increment('credits', $amount);
 
-            // log transaction
             $this->creditTransactions()->create([
                 'change' => +$amount,
                 'reason' => $reason,
@@ -120,51 +127,46 @@ class User extends Authenticatable
     }
 
     public function deductCredits(int $amount, ?string $reason = null, array $meta = []): void
-{
-    // 🚫 Negative protection
-    if ($amount < 0) {
-        throw new \InvalidArgumentException('Amount cannot be negative.');
-    }
+    {
+        if ($amount < 0) {
+            throw new \InvalidArgumentException('Amount cannot be negative.');
+        }
 
-    // ✅ Admins bypass credit deductions
-    if ($this->hasRole('admin')) {
-        $this->creditTransactions()->create([
-            'change' => 0,
-            'reason' => $reason ?? 'Admin bypass (no credits deducted)',
-            'meta'   => $meta ?: null,
-        ]);
-
-        return;
-    }
-
-    DB::transaction(function () use ($amount, $reason, $meta) {
-        if ($amount === 0) {
-            // Non-admins shouldn’t normally have 0-credit packages,
-            // but we’ll log it for traceability
+        // Admin bypass: log it (optional) but do not deduct
+        if ($this->isAdmin()) {
             $this->creditTransactions()->create([
                 'change' => 0,
-                'reason' => $reason ?? 'No charge',
+                'reason' => $reason ?? 'Admin bypass (no credits deducted)',
                 'meta'   => $meta ?: null,
             ]);
             return;
         }
 
-        // Normal deduction path
-        $affected = static::whereKey($this->getKey())
-            ->where('credits', '>=', $amount)
-            ->decrement('credits', $amount);
+        DB::transaction(function () use ($amount, $reason, $meta) {
+            if ($amount === 0) {
+                $this->creditTransactions()->create([
+                    'change' => 0,
+                    'reason' => $reason ?? 'No charge',
+                    'meta'   => $meta ?: null,
+                ]);
+                return;
+            }
 
-        if ($affected === 0) {
-            throw new \RuntimeException('Not enough credits.');
-        }
+            $affected = static::whereKey($this->getKey())
+                ->where('credits', '>=', $amount)
+                ->decrement('credits', $amount);
 
-        $this->creditTransactions()->create([
-            'change' => -$amount,
-            'reason' => $reason,
-            'meta'   => $meta ?: null,
-        ]);
-    });
+            if ($affected === 0) {
+                throw new \RuntimeException('Not enough credits.');
+            }
 
-    $this->refresh();
-}
+            $this->creditTransactions()->create([
+                'change' => -$amount,
+                'reason' => $reason,
+                'meta'   => $meta ?: null,
+            ]);
+        });
+
+        $this->refresh();
+    }
 }
