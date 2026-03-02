@@ -18,10 +18,10 @@ class VpnUserResource extends Resource
 {
     protected static ?string $model = VpnUser::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-key';
-    protected static ?string $navigationLabel = 'VPN Users';
-    protected static ?string $pluralModelLabel = 'VPN Users';
-    protected static ?string $navigationGroup = 'VPN';
+    protected static ?string $navigationGroup = 'Customers';
+protected static ?string $navigationLabel = 'VPN Users';
+protected static ?string $navigationIcon  = 'heroicon-o-key';
+protected static ?int $navigationSort     = 3;
 
     public static function form(Form $form): Form
     {
