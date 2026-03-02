@@ -2,50 +2,108 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Page background */
+/* ---------- Base background ---------- */
 .fi-main {
-    background: radial-gradient(
-        circle at 20% 20%,
-        rgba(168, 85, 247, 0.08),
-        transparent 40%
-    ),
-    #0f172a;
+  background:
+    radial-gradient(1200px 600px at 15% 10%, rgba(168, 85, 247, 0.10), transparent 60%),
+    radial-gradient(900px 500px at 85% 20%, rgba(236, 72, 153, 0.06), transparent 55%),
+    radial-gradient(900px 500px at 50% 95%, rgba(34, 211, 238, 0.05), transparent 55%),
+    #0b1020;
 }
 
-/* Sidebar */
-.fi-sidebar {
-    background: #0b1220;
-    border-right: 1px solid rgba(255,255,255,0.04);
+/* ---------- Remove “blue stripe / outlines” vibe ---------- */
+.fi-ta-table,
+.fi-wi,
+.fi-section,
+.fi-card,
+.fi-input,
+.fi-btn {
+  outline: none !important;
+  box-shadow: none;
 }
 
-/* Topbar */
+/* ---------- Sidebar / Topbar: cleaner, darker, not “outlined” ---------- */
+.fi-sidebar,
 .fi-topbar {
-    background: #0b1220;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+  background: rgba(10, 14, 28, 0.72) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-color: rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Widgets */
-.fi-widget {
-    background: #111827;
-    border-radius: 18px;
-    border: 1px solid rgba(255,255,255,0.05);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+.fi-sidebar {
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Remove ugly outlines */
-.fi-widget,
-.fi-ta-table {
-    outline: none !important;
+.fi-topbar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Stat numbers */
-.fi-widget h3 {
-    font-size: 2.25rem;
-    font-weight: 600;
-    color: white;
+/* ---------- Glass cards / widgets ---------- */
+.fi-wi,
+.fi-section,
+.fi-card {
+  background: rgba(17, 24, 39, 0.55) !important; /* glass */
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 18px !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-/* Labels */
-.fi-widget p {
-    color: rgba(255,255,255,0.6);
+/* subtle hover lift (modern, not neon) */
+.fi-wi:hover,
+.fi-section:hover,
+.fi-card:hover {
+  transform: translateY(-1px);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ---------- Tables: less harsh ---------- */
+.fi-ta-ctn {
+  background: rgba(17, 24, 39, 0.35) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+
+.fi-ta-header,
+.fi-ta-row,
+.fi-ta-cell {
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ---------- Inputs ---------- */
+.fi-input {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+}
+
+/* ---------- Primary button: purple, not neon ---------- */
+.fi-btn.fi-color-primary {
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.95), rgba(139, 92, 246, 0.85)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.10) !important;
+  box-shadow: 0 12px 30px rgba(168, 85, 247, 0.18);
+}
+
+/* ---------- Stat cards: better hierarchy ---------- */
+.fi-wi-stats-overview-stat {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 16px !important;
+}
+
+.fi-wi-stats-overview-stat-label {
+  color: rgba(255, 255, 255, 0.62) !important;
+}
+
+.fi-wi-stats-overview-stat-value {
+  font-weight: 600 !important;
+  letter-spacing: -0.02em;
 }
