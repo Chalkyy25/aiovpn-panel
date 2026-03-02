@@ -9,6 +9,7 @@ use App\Models\VpnUser;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -25,14 +26,9 @@ class VpnUserResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery()->with('vpnServers');
-
-        // Keep reseller scoping (only their users)
-        if (auth()->check()) {
-            $query->where('client_id', auth()->id());
-        }
-
-        return $query;
+        return parent::getEloquentQuery()
+            ->where('client_id', auth()->id())
+            ->with('vpnServers');
     }
 
     public static function form(Form $form): Form
@@ -64,7 +60,7 @@ class VpnUserResource extends Resource
                                         ->maxLength(100)
                                         ->placeholder('e.g. iPhone / Firestick'),
 
-                                    // Create only (virtual) - used to set max_connections + expires_at
+                                    // CREATE ONLY (virtual) → sets max_connections + expires_at
                                     Forms\Components\Select::make('package_id')
                                         ->label('Package')
                                         ->options(fn (): array => Package::query()
@@ -95,9 +91,9 @@ class VpnUserResource extends Resource
                                         ->preload()
                                         ->required(fn (?VpnUser $record) => $record === null)
                                         ->visible(fn (?VpnUser $record) => $record === null)
-                                        ->dehydrated(false) // virtual
+                                        ->dehydrated(false)
                                         ->live()
-                                        ->afterStateUpdated(function ($state, callable $set): void {
+                                        ->afterStateUpdated(function ($state, Set $set): void {
                                             $package = Package::query()->find((int) $state);
                                             if (! $package) {
                                                 return;
@@ -116,7 +112,6 @@ class VpnUserResource extends Resource
                                         ->default(1)
                                         ->helperText('0 = unlimited'),
 
-                                    // persisted (set from package on create)
                                     Forms\Components\Hidden::make('expires_at'),
 
                                     Forms\Components\Toggle::make('is_active')
@@ -134,31 +129,31 @@ class VpnUserResource extends Resource
                                         ->label('Assign to all servers')
                                         ->dehydrated(false)
                                         ->live()
-                                        ->afterStateUpdated(function (bool $state, callable $set): void {
-                                            if ($state) {
-                                                $set(
-                                                    'vpn_server_ids',
-                                                    VpnServer::query()
-                                                        ->orderBy('name')
-                                                        ->pluck('id')
-                                                        ->map(fn ($id) => (int) $id)
-                                                        ->all()
-                                                );
-                                            } else {
-                                                $set('vpn_server_ids', []);
+                                        ->afterStateUpdated(function (bool $state, Set $set): void {
+                                            if (! $state) {
+                                                return;
                                             }
+
+                                            $set(
+                                                'vpnServers',
+                                                VpnServer::query()
+                                                    ->orderBy('name')
+                                                    ->pluck('id')
+                                                    ->map(fn ($id) => (int) $id)
+                                                    ->all()
+                                            );
                                         }),
 
-                                    Forms\Components\Select::make('vpn_server_ids')
+                                    // ✅ This is the REAL relationship field. Filament will persist pivot.
+                                    Forms\Components\Select::make('vpnServers')
                                         ->label('Selected servers')
+                                        ->relationship('vpnServers', 'name')
                                         ->multiple()
-                                        ->searchable()
                                         ->preload()
+                                        ->searchable()
                                         ->native(false)
                                         ->required()
-                                        ->dehydrated(true) // ✅ MUST be true so pages can sync it
-                                        ->options(fn (): array => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
-                                        ->visible(fn (Get $get) => ! (bool) $get('all_servers')),
+                                        ->helperText('Controls which servers this user can connect to.'),
                                 ]),
                         ]),
 
