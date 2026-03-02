@@ -13,7 +13,10 @@ class ServerStatus extends BaseWidget
     protected static ?string $heading = 'Server Status';
     protected static ?int $sort = 2;
 
-    protected int|string|array $columnSpan = 1;
+    protected int|string|array $columnSpan = [
+    'default' => 1, // full width on mobile (because dashboard is 1 col)
+    'lg'      => 1,
+];
 
     public function table(Table $table): Table
     {
