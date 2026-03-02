@@ -22,7 +22,7 @@ class ResellerPanelProvider extends PanelProvider
     {
         return $panel
             ->id('reseller')
-            ->path('reseller')
+            ->path('reseller-panel')
             ->login(\App\Filament\Auth\Login::class)
             ->authGuard('web')
             ->colors([
