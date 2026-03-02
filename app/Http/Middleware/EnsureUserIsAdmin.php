@@ -5,11 +5,11 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 
-class EnsureUserIsReseller
+class EnsureUserIsAdmin
 {
     public function handle(Request $request, Closure $next)
     {
-        if (auth()->user()?->role !== 'reseller') {
+        if (auth()->user()?->role !== 'admin') {
             abort(403);
         }
 

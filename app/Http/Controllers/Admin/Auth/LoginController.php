@@ -22,9 +22,18 @@ class LoginController extends Controller
 
         if (Auth::guard('web')->attempt($creds, $request->boolean('remember'))) {
             $request->session()->regenerate();
+$user = Auth::guard('web')->user();
 
-            // ✅ always send admins to panel subdomain
-            return redirect()->away('https://panel.aiovpn.co.uk');
+if (! in_array($user->role, ['admin', 'reseller'], true)) {
+    Auth::guard('web')->logout();
+
+    return back()
+        ->withErrors(['email' => 'This login is for admins/resellers only.'])
+        ->onlyInput('email');
+}
+
+return redirect($user->role === 'admin' ? '/panel' : '/reseller-panel');
+
         }
 
         return back()

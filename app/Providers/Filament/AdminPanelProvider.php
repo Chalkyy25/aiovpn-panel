@@ -38,16 +38,21 @@ public function panel(Panel $panel): Panel
     \App\Filament\Widgets\ServerStatus::class,
     \App\Filament\Widgets\RecentConnections::class,
 ])
-        ->middleware([
-            EncryptCookies::class,
-            AddQueuedCookiesToResponse::class,
-            StartSession::class,
-            AuthenticateSession::class,
-            ShareErrorsFromSession::class,
-            VerifyCsrfToken::class,
-            SubstituteBindings::class,
-            DisableBladeIconComponents::class,
-            DispatchServingFilamentEvent::class,
-        ]);
+->middleware([
+    EncryptCookies::class,
+    AddQueuedCookiesToResponse::class,
+    StartSession::class,
+    AuthenticateSession::class,
+    ShareErrorsFromSession::class,
+    VerifyCsrfToken::class,
+    SubstituteBindings::class,
+    DisableBladeIconComponents::class,
+    DispatchServingFilamentEvent::class,
+])
+->authMiddleware([
+    \Filament\Http\Middleware\Authenticate::class,
+    \App\Http\Middleware\EnsureUserIsAdmin::class,
+]);
+
 }
 }
