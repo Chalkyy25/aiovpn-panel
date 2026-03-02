@@ -2,26 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Background */
+/* Page background */
 .fi-main {
-    background: linear-gradient(180deg, #0a0f1f 0%, #111827 100%);
-}
-
-/* Card styling */
-.fi-widget {
-    border-radius: 20px;
-    border: 1px solid rgba(168, 85, 247, 0.15);
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(6px);
+    background: radial-gradient(
+        circle at 20% 20%,
+        rgba(168, 85, 247, 0.08),
+        transparent 40%
+    ),
+    #0f172a;
 }
 
 /* Sidebar */
 .fi-sidebar {
-    background: #0f172a;
+    background: #0b1220;
+    border-right: 1px solid rgba(255,255,255,0.04);
 }
 
 /* Topbar */
 .fi-topbar {
-    background: #0f172a;
-    border-bottom: 1px solid rgba(168, 85, 247, 0.15);
+    background: #0b1220;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Widgets */
+.fi-widget {
+    background: #111827;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.05);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+/* Remove ugly outlines */
+.fi-widget,
+.fi-ta-table {
+    outline: none !important;
+}
+
+/* Stat numbers */
+.fi-widget h3 {
+    font-size: 2.25rem;
+    font-weight: 600;
+    color: white;
+}
+
+/* Labels */
+.fi-widget p {
+    color: rgba(255,255,255,0.6);
 }
