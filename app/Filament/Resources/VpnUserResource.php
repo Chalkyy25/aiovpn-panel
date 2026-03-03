@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\VpnUserResource\Pages;
 use App\Models\Package;
+use App\Models\User;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Filament\Forms;
@@ -174,7 +175,7 @@ protected static ?int $navigationSort     = 3;
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query) => $query->with('vpnServers'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['vpnServers', 'client']))
             ->defaultSort('id', 'desc')
             ->paginated([10, 25, 50])
             ->columns([
@@ -269,6 +270,25 @@ protected static ?int $navigationSort     = 3;
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                Tables\Filters\SelectFilter::make('client_id')
+                    ->label('Owner')
+                    ->searchable()
+                    ->preload()
+                    ->options(function (): array {
+                        $me = auth()->id();
+
+                        return User::query()
+                            ->where(function ($q) use ($me) {
+                                $q->where('role', 'reseller');
+                                if ($me) {
+                                    $q->orWhereKey($me);
+                                }
+                            })
+                            ->orderBy('name')
+                            ->pluck('name', 'id')
+                            ->all();
+                    })
+                    ->default(fn () => auth()->id()),
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active'),
                 Tables\Filters\TernaryFilter::make('is_online')->label('Online'),
                 Tables\Filters\TernaryFilter::make('is_trial')->label('Trial'),
@@ -284,6 +304,7 @@ protected static ?int $navigationSort     = 3;
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\DeleteAction::make()->iconButton(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
