@@ -16,6 +16,7 @@ use App\Http\Controllers\VpnDisconnectController;
 use App\Http\Controllers\VpnServerController;
 use App\Http\Controllers\VpnConfigController;
 use App\Http\Controllers\AdminImpersonationController;
+
 use App\Http\Controllers\Client\AuthController as ClientAuthController;
 use App\Http\Controllers\Admin\Auth\LoginController as AdminLogin;
 
@@ -67,11 +68,10 @@ use App\Livewire\Pages\Client\Dashboard as ClientDashboard;
 
 /*
 |--------------------------------------------------------------------------
-| PUBLIC
+| PUBLIC (aiovpn.co.uk is CLIENT-facing)
 |--------------------------------------------------------------------------
-| aiovpn.co.uk is CLIENT-facing.
 */
-Route::get('/', fn () => redirect('/login'));
+Route::get('/', fn () => redirect()->route('client.login.form'));
 
 /*
 |--------------------------------------------------------------------------
@@ -113,13 +113,20 @@ Route::get('/downloads/app.apk', [AppBuildPublicDownloadController::class, 'late
 |--------------------------------------------------------------------------
 | CLIENT AUTH + PORTAL (client guard)
 |--------------------------------------------------------------------------
-| This is what you want on aiovpn.co.uk:
+| Option A:
 | - /login is CLIENT login
 | - /dashboard is CLIENT dashboard
+| - keep /client/login as alias so old links don't break
+|--------------------------------------------------------------------------
 */
 Route::middleware('guest:client')->group(function () {
+    // ✅ Primary client login
     Route::get('/login', [ClientAuthController::class, 'showLoginForm'])->name('client.login.form');
     Route::post('/login', [ClientAuthController::class, 'login'])->name('client.login');
+
+    // ✅ Backward compatible alias
+    Route::get('/client/login', fn () => redirect()->route('client.login.form'));
+    Route::post('/client/login', [ClientAuthController::class, 'login']);
 });
 
 Route::middleware('auth:client')->group(function () {
@@ -135,9 +142,9 @@ Route::middleware('auth:client')->group(function () {
 |--------------------------------------------------------------------------
 | STAFF LOGIN (web guard) - OPTIONAL FALLBACK
 |--------------------------------------------------------------------------
-| Staff should normally use panel.aiovpn.co.uk (Filament).
-| If you still want a staff login on aiovpn.co.uk, keep it here:
-| - /staff/login
+| Staff should normally use panel.aiovpn.co.uk (Filament /admin and /reseller),
+| but keep this while migrating if you want.
+|--------------------------------------------------------------------------
 */
 Route::middleware('guest:web')->group(function () {
     Route::get('/staff/login', [AdminLogin::class, 'show'])->name('staff.login.form');
@@ -267,6 +274,9 @@ Route::middleware('auth')->group(function () {
 /*
 |--------------------------------------------------------------------------
 | Default Auth Routes
+|--------------------------------------------------------------------------
+| ⚠️ If this file registers /login (web guard), it will conflict.
+| On aiovpn.co.uk you want /login to be client login.
 |--------------------------------------------------------------------------
 */
 require __DIR__ . '/auth.php';
