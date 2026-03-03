@@ -196,7 +196,7 @@ protected static ?int $navigationSort     = 3;
                     ->copyable()
                     ->copyMessage('Password copied')
                     ->state(fn (VpnUser $u) => $u->plain_password ?: '******')
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->toggleable(),
 
                 // SHOW ALL SERVERS (not 1)
                 Tables\Columns\TextColumn::make('servers')
