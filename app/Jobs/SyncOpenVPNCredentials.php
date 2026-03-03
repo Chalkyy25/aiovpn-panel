@@ -33,7 +33,14 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
     }
 
     /** Only store the id to avoid serializing a model snapshot */
-    public function __construct(public int $vpnServerId) {}
+    public int $vpnServerId;
+
+    public function __construct(int|VpnServer $vpnServerId)
+    {
+        $this->vpnServerId = $vpnServerId instanceof VpnServer
+            ? (int) $vpnServerId->id
+            : (int) $vpnServerId;
+    }
 
     public function handle(): void
     {

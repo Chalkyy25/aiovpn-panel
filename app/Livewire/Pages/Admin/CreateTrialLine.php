@@ -80,7 +80,7 @@ class CreateTrialLine extends Component
 
             // Push OpenVPN creds to each server so the user can auth immediately
             foreach ($vpnUser->vpnServers as $server) {
-                SyncOpenVPNCredentials::dispatch($server);
+                SyncOpenVPNCredentials::dispatch((int) $server->id);
             }
 
             // Optional WG peer setup (only if feature enabled)

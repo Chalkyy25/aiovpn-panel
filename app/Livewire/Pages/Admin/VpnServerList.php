@@ -44,7 +44,7 @@ class VpnServerList extends Component
         }
 
         try {
-            dispatch(new SyncOpenVPNCredentials($server));
+            dispatch(new SyncOpenVPNCredentials((int) $server->id));
             $this->syncStatus[$id] = 'syncing';
             session()->flash('status-message', "🔄 Sync started for $server->name");
         } catch (Exception $e) {

@@ -88,7 +88,7 @@ class RemoveOpenVPNUser implements ShouldQueue
 
         // Dispatch the SyncOpenVPNCredentials job to regenerate the password file
         // This will automatically exclude the deleted user since they're no longer in the database
-        SyncOpenVPNCredentials::dispatch($server);
+        SyncOpenVPNCredentials::dispatch((int) $server->id);
 
         Log::info("✅ [OpenVPN] Credential regeneration queued for server: $server->name");
     }

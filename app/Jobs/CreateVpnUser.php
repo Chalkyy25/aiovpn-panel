@@ -83,7 +83,7 @@ class CreateVpnUser implements ShouldQueue
         // OpenVPN: generate .ovpn + sync creds per server
         foreach ($vpnUser->vpnServers as $server) {
             GenerateOvpnFile::dispatch($vpnUser, $server)->onQueue('ovpn');
-            SyncOpenVPNCredentials::dispatch($server)->onQueue('ovpn');
+            SyncOpenVPNCredentials::dispatch((int) $server->id)->onQueue('ovpn');
         }
 
         // WireGuard: add peer per server (if supported)

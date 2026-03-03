@@ -34,11 +34,8 @@ class CreateVpnUser extends CreateRecord
         $ids = $this->data['vpn_server_ids'] ?? [];
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
 
-        // sync pivot
-        $this->record->vpnServers()->sync($ids);
-
-        // if you have jobs/logging when servers are attached, DO IT HERE
-        // e.g. dispatch SyncOpenVPNCredentials per server if needed
+        // sync pivot + queue OpenVPN sync + logging
+        $this->record->syncVpnServers($ids, context: 'admin.create');
 
         Notification::make()
             ->success()

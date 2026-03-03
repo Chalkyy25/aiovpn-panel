@@ -91,7 +91,7 @@ class RegenerateVpnUsers extends Command
         // Sync OpenVPN credentials for all servers
         $this->info("\n\n🔄 Syncing OpenVPN credentials...");
         foreach ($servers as $server) {
-            SyncOpenVPNCredentials::dispatch($server);
+            SyncOpenVPNCredentials::dispatch((int) $server->id);
             $this->info("✅ Queued sync for $server->name");
         }
 

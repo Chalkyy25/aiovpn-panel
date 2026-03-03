@@ -101,7 +101,7 @@ class EditVpnUser extends Component
             // If server list changed, push OpenVPN creds (and optionally WG peer)
             if ($before !== $after) {
                 foreach ($this->vpnUser->vpnServers as $server) {
-                    SyncOpenVPNCredentials::dispatch($server);
+                    SyncOpenVPNCredentials::dispatch((int) $server->id);
                     Log::info("🚀 Synced OpenVPN creds to {$server->name} ({$server->ip_address})");
                 }
 

@@ -392,7 +392,7 @@ class VpnUser extends Authenticatable
             $servers = VpnServer::query()->whereIn('id', $changes['attached'])->get();
 
             foreach ($servers as $server) {
-                SyncOpenVPNCredentials::dispatch($server);
+                SyncOpenVPNCredentials::dispatch((int) $server->id);
 
                 Log::channel('vpn')->info(sprintf(
                     'VPN_USER_SERVERS: attached vpn_user_id=%d username=%s server_id=%d server=%s%s',
@@ -481,7 +481,7 @@ class VpnUser extends Authenticatable
             $u->loadMissing('vpnServers');
 
             foreach ($u->vpnServers as $server) {
-                SyncOpenVPNCredentials::dispatch($server);
+                SyncOpenVPNCredentials::dispatch((int) $server->id);
 
                 Log::channel('vpn')->info(sprintf(
                     'OpenVPN creds synced to server=%s ip=%s for user=%s',

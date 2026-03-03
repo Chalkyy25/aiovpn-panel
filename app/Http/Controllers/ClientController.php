@@ -41,8 +41,7 @@ public function create()
         ]);
 
         // Dispatch jobs to sync credentials and generate OVPN config
-        SyncOpenVPNCredentials::dispatch($client);
-        GenerateOvpnFile::dispatch($client);
+        SyncOpenVPNCredentials::dispatch((int) $request->vpn_server_id);
 
 return redirect()->route('clients.create')
     ->with('success', 'Client created and synced to VPN.')

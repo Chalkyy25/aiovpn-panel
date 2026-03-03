@@ -100,7 +100,7 @@ class CreateClientLine extends Component
 
             VpnConfigBuilder::generate($vpnUser);
             foreach ($vpnUser->vpnServers as $server) {
-                SyncOpenVPNCredentials::dispatch($server);
+                SyncOpenVPNCredentials::dispatch((int) $server->id);
             }
             AddWireGuardPeer::dispatch($vpnUser);
 
