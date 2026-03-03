@@ -196,7 +196,7 @@ class VpnUserResource extends Resource
                     ->fontFamily('mono')
                     ->copyable()
                     ->copyMessage('Password copied')
-                    ->state(fn (VpnUser $u) => $u->plain_password ?: '******')
+                    ->state(fn (VpnUser $u) => (string) ($u->plain_password ?? ''))
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('servers')

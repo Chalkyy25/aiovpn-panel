@@ -195,7 +195,7 @@ protected static ?int $navigationSort     = 3;
                     ->fontFamily('mono')
                     ->copyable()
                     ->copyMessage('Password copied')
-                    ->state(fn (VpnUser $u) => $u->plain_password ?: '******')
+                    ->state(fn (VpnUser $u) => (string) ($u->plain_password ?? ''))
                     ->toggleable(),
 
                 // SHOW ALL SERVERS (not 1)
