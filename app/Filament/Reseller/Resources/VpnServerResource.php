@@ -15,8 +15,8 @@ class VpnServerResource extends Resource
 
     protected static ?string $navigationIcon  = 'heroicon-o-server-stack';
     protected static ?string $navigationLabel = 'Servers';
-    protected static ?string $navigationGroup = 'VPN';
-    protected static ?int    $navigationSort  = 11;
+    protected static ?string $navigationGroup = null;
+    protected static ?int    $navigationSort  = 3;
 
     public static function canCreate(): bool
     {

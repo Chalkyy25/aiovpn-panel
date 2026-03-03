@@ -16,14 +16,14 @@ class ResellerStats extends BaseWidget
         return [
             Stat::make(
                 'My VPN Users',
-                VpnUser::where('reseller_id', $resellerId)->count()
+                VpnUser::where('client_id', $resellerId)->count()
             )->color('primary'),
 
             Stat::make(
                 'Users Online',
                 VpnUserConnection::where('is_connected', true)
                     ->whereHas('vpnUser', fn ($q) =>
-                        $q->where('reseller_id', $resellerId)
+                        $q->where('client_id', $resellerId)
                     )->count()
             )->color('success'),
 
@@ -31,7 +31,7 @@ class ResellerStats extends BaseWidget
                 'Active Sessions',
                 VpnUserConnection::where('is_connected', true)
                     ->whereHas('vpnUser', fn ($q) =>
-                        $q->where('reseller_id', $resellerId)
+                        $q->where('client_id', $resellerId)
                     )->count()
             )->color('warning'),
         ];
