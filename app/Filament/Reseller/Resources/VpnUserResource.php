@@ -184,7 +184,13 @@ class VpnUserResource extends Resource
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['vpnServers', 'client']))
             ->defaultSort('created_at', 'desc')
+            ->paginated([10, 25, 50])
             ->columns([
+                Tables\Columns\TextColumn::make('id')
+                    ->label('#')
+                    ->sortable()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('client.name')
                     ->label('Owner')
                     ->sortable()
@@ -250,6 +256,14 @@ class VpnUserResource extends Resource
                     ->alignCenter()
                     ->toggleable(),
 
+                Tables\Columns\TextColumn::make('online_status')
+                    ->label('Online')
+                    ->badge()
+                    ->state(fn (VpnUser $u) => $u->is_online ? 'Online' : 'Offline')
+                    ->color(fn (string $state) => $state === 'Online' ? 'success' : 'danger')
+                    ->alignCenter()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('servers')
                     ->label('Servers')
                     ->state(fn (VpnUser $u) => $u->vpnServers->pluck('name')->values()->all())
@@ -291,14 +305,15 @@ class VpnUserResource extends Resource
                     ->multiple(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\Action::make('toggle_active')
                     ->label(fn (VpnUser $record) => $record->is_active ? 'Disable' : 'Enable')
                     ->icon(fn (VpnUser $record) => $record->is_active ? 'heroicon-o-no-symbol' : 'heroicon-o-check-circle')
                     ->color(fn (VpnUser $record) => $record->is_active ? 'danger' : 'success')
                     ->requiresConfirmation()
-                    ->action(fn (VpnUser $record) => $record->update(['is_active' => ! $record->is_active])),
-                Tables\Actions\DeleteAction::make(),
+                    ->action(fn (VpnUser $record) => $record->update(['is_active' => ! $record->is_active]))
+                    ->iconButton(),
+                Tables\Actions\DeleteAction::make()->iconButton(),
             ]);
     }
 
