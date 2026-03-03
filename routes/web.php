@@ -69,9 +69,15 @@ use App\Livewire\Pages\Client\Dashboard as ClientDashboard;
 |--------------------------------------------------------------------------
 | PUBLIC
 |--------------------------------------------------------------------------
+| aiovpn.co.uk is CLIENT-facing.
 */
-Route::get('/', fn () => view('welcome'));
+Route::get('/', fn () => redirect('/login'));
 
+/*
+|--------------------------------------------------------------------------
+| Debug
+|--------------------------------------------------------------------------
+*/
 Route::get('/debug-auth', function () {
     return response()->json([
         'url'            => request()->fullUrl(),
@@ -105,50 +111,42 @@ Route::get('/downloads/app.apk', [AppBuildPublicDownloadController::class, 'late
 
 /*
 |--------------------------------------------------------------------------
-| STAFF LOGIN (web guard)
+| CLIENT AUTH + PORTAL (client guard)
 |--------------------------------------------------------------------------
-| This is your global staff login page.
-| Filament will handle its own /admin/login and /reseller/login too,
-| but keeping this is fine while transitioning.
+| This is what you want on aiovpn.co.uk:
+| - /login is CLIENT login
+| - /dashboard is CLIENT dashboard
+*/
+Route::middleware('guest:client')->group(function () {
+    Route::get('/login', [ClientAuthController::class, 'showLoginForm'])->name('client.login.form');
+    Route::post('/login', [ClientAuthController::class, 'login'])->name('client.login');
+});
+
+Route::middleware('auth:client')->group(function () {
+    Route::post('/logout', [ClientAuthController::class, 'logout'])->name('client.logout');
+
+    Route::get('/dashboard', ClientDashboard::class)->name('client.dashboard');
+
+    Route::get('/vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])
+        ->name('client.vpn.download');
+});
+
+/*
+|--------------------------------------------------------------------------
+| STAFF LOGIN (web guard) - OPTIONAL FALLBACK
+|--------------------------------------------------------------------------
+| Staff should normally use panel.aiovpn.co.uk (Filament).
+| If you still want a staff login on aiovpn.co.uk, keep it here:
+| - /staff/login
 */
 Route::middleware('guest:web')->group(function () {
-    Route::get('/login', [AdminLogin::class, 'show'])->name('login.form');
-    Route::post('/login', [AdminLogin::class, 'login'])->name('login');
+    Route::get('/staff/login', [AdminLogin::class, 'show'])->name('staff.login.form');
+    Route::post('/staff/login', [AdminLogin::class, 'login'])->name('staff.login');
 });
 
-Route::post('/logout', [AdminLogin::class, 'logout'])
+Route::post('/staff/logout', [AdminLogin::class, 'logout'])
     ->middleware('auth:web')
-    ->name('logout');
-
-/*
-|--------------------------------------------------------------------------
-| SHARED FALLBACK DASHBOARD (optional)
-|--------------------------------------------------------------------------
-*/
-Route::get('/dashboard', fn () => view('dashboard'))
-    ->middleware(['auth', 'verified'])
-    ->name('dashboard');
-
-/*
-|--------------------------------------------------------------------------
-| CLIENT (client guard) - unchanged
-|--------------------------------------------------------------------------
-*/
-Route::prefix('client')->name('client.')->group(function () {
-
-    Route::middleware('guest:client')->group(function () {
-        Route::get('login', [ClientAuthController::class, 'showLoginForm'])->name('login.form');
-        Route::post('login', [ClientAuthController::class, 'login'])->name('login');
-    });
-
-    Route::middleware('auth:client')->group(function () {
-        Route::post('logout', [ClientAuthController::class, 'logout'])->name('logout');
-        Route::get('dashboard', ClientDashboard::class)->name('dashboard');
-
-        Route::get('vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])
-            ->name('vpn.download');
-    });
-});
+    ->name('staff.logout');
 
 /*
 |--------------------------------------------------------------------------
@@ -171,8 +169,6 @@ Route::get('/vpn-users/{vpnuser}/configs', VpnUserConfigs::class)
 |--------------------------------------------------------------------------
 | LEGACY PANEL (LIVEWIRE) - MOVED OUT OF THE WAY
 |--------------------------------------------------------------------------
-| Everything old that used to live at /admin and /reseller now lives under /legacy/*
-| so Filament can own /admin and /reseller cleanly.
 */
 Route::prefix('legacy')->name('legacy.')->group(function () {
 
