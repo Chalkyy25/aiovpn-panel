@@ -135,7 +135,7 @@ class VpnUserResource extends Resource
                                             }
 
                                             $set(
-                                                'vpnServers',
+                                                'vpn_server_ids',
                                                 VpnServer::query()
                                                     ->orderBy('name')
                                                     ->pluck('id')
@@ -144,15 +144,17 @@ class VpnUserResource extends Resource
                                             );
                                         }),
 
-                                    // ✅ This is the REAL relationship field. Filament will persist pivot.
-                                    Forms\Components\Select::make('vpnServers')
+                                    // Virtual field; persisted via Pages hooks (syncVpnServers)
+                                    Forms\Components\Select::make('vpn_server_ids')
                                         ->label('Selected servers')
-                                        ->relationship('vpnServers', 'name')
                                         ->multiple()
                                         ->preload()
                                         ->searchable()
                                         ->native(false)
                                         ->required()
+                                        ->dehydrated(false)
+                                        ->options(fn (): array => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
+                                        ->visible(fn (Get $get) => ! (bool) $get('all_servers'))
                                         ->helperText('Controls which servers this user can connect to.'),
                                 ]),
                         ]),
