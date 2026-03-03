@@ -193,9 +193,9 @@ protected static ?int $navigationSort     = 3;
                 Tables\Columns\TextColumn::make('plain_password')
                     ->label('Password')
                     ->fontFamily('mono')
-                    ->copyable()
+                    ->copyable(fn (string $state): bool => filled($state) && $state !== 'Missing')
                     ->copyMessage('Password copied')
-                    ->state(fn (VpnUser $u) => (string) ($u->plain_password ?? ''))
+                    ->state(fn (VpnUser $u) => filled($u->plain_password) ? (string) $u->plain_password : 'Missing')
                     ->toggleable(),
 
                 // SHOW ALL SERVERS (not 1)
