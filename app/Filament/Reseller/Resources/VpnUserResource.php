@@ -306,6 +306,7 @@ class VpnUserResource extends Resource
                     ->multiple(),
             ])
             ->actions([
+                Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\Action::make('extend')
                     ->label('Extend')
                     ->icon('heroicon-o-calendar-days')
