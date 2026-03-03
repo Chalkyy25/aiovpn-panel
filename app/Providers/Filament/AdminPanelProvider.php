@@ -42,10 +42,11 @@ class AdminPanelProvider extends PanelProvider
                 'primary' => Color::Purple,
             ])
 
-            // Theme plugin (no vite theme / no custom css required)
-->plugin(
-        ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin')
-)
+                        // Theme plugin
+            ->plugins([
+                ThemesPlugin::make()
+                    ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin'),
+            ])
 
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
