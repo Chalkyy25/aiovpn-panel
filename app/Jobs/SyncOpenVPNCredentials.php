@@ -27,25 +27,33 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
     /** Prevent duplicate sync jobs per server (seconds) */
     public int $uniqueFor = 300;
 
+    /** Only store the id to avoid serializing a model snapshot */
+    public int $vpnServerId;
+
+    /**
+     * If you ever truly need restarts (config changes), set to true.
+     * Default false: psw-file updates do NOT require restart.
+     */
+    public bool $restartServices = false;
+
     public function uniqueId(): string
     {
         return 'sync-ovpn-creds:' . $this->vpnServerId;
     }
 
-    /** Only store the id to avoid serializing a model snapshot */
-    public int $vpnServerId;
-
-    public function __construct(int|VpnServer $vpnServerId)
+    public function __construct(int|VpnServer $vpnServerId, bool $restartServices = false)
     {
         $this->vpnServerId = $vpnServerId instanceof VpnServer
             ? (int) $vpnServerId->id
             : (int) $vpnServerId;
+
+        $this->restartServices = $restartServices;
     }
 
     public function handle(): void
     {
         $server = VpnServer::query()->find($this->vpnServerId);
-        if (!$server) {
+        if (! $server) {
             Log::warning("[OpenVPN] Sync skipped: server id={$this->vpnServerId} not found.");
             return;
         }
@@ -55,7 +63,7 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
         $sshUser = 'root';
 
         $sshKey = storage_path('app/ssh_keys/id_rsa');
-        if (!is_readable($sshKey)) {
+        if (! is_readable($sshKey)) {
             throw new RuntimeException("[OpenVPN] SSH key not readable at: {$sshKey}");
         }
 
@@ -91,15 +99,15 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
         @mkdir(dirname($tmpFile), 0700, true);
         file_put_contents($tmpFile, $content);
 
-        // IMPORTANT: unique remote tmp file to avoid race collisions
+        // unique remote tmp file to avoid race collisions
         $remoteTmp = "{$remoteFile}.tmp." . bin2hex(random_bytes(6));
 
         try {
-            $this->ssh($ip, $sshUser, $sshKey, "mkdir -p {$remoteDir} && chmod 700 {$remoteDir}", "Create auth dir");
+            $this->sshStrict($ip, $sshUser, $sshKey, "mkdir -p {$remoteDir} && chmod 700 {$remoteDir}", "Create auth dir");
 
-            $this->scp($ip, $sshUser, $sshKey, $tmpFile, $remoteTmp, "Upload psw-file tmp");
+            $this->scpStrict($ip, $sshUser, $sshKey, $tmpFile, $remoteTmp, "Upload psw-file tmp");
 
-            $this->ssh(
+            $this->sshStrict(
                 $ip,
                 $sshUser,
                 $sshKey,
@@ -107,41 +115,40 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
                 "Install psw-file atomically"
             );
 
-            $this->ssh($ip, $sshUser, $sshKey, "systemctl restart openvpn-server@server", "Restart OpenVPN UDP");
+            // IMPORTANT: psw-file updates do NOT require service restart.
+            // Only run if explicitly requested.
+            if ($this->restartServices) {
+                $this->sshSoft($ip, $sshUser, $sshKey, "systemctl restart openvpn-server@server", "Restart OpenVPN UDP (optional)");
 
-            $this->ssh(
-                $ip,
-                $sshUser,
-                $sshKey,
-                "systemctl is-enabled openvpn-server@server-tcp >/dev/null 2>&1 && systemctl restart openvpn-server@server-tcp || true",
-                "Restart OpenVPN TCP (if enabled)"
-            );
+                $this->sshSoft(
+                    $ip,
+                    $sshUser,
+                    $sshKey,
+                    "systemctl is-enabled openvpn-server@server-tcp >/dev/null 2>&1 && systemctl restart openvpn-server@server-tcp || true",
+                    "Restart OpenVPN TCP (if enabled, optional)"
+                );
+            }
 
             Log::info("[OpenVPN] Sync complete", [
                 'server_id' => $server->id,
                 'name'      => $name,
                 'ip'        => $ip,
                 'users'     => $users->count(),
+                'restart'   => $this->restartServices,
             ]);
         } finally {
             @unlink($tmpFile);
 
-            // try to clean any orphan tmp (best-effort)
-            try {
-                $this->ssh($ip, $sshUser, $sshKey, "rm -f {$remoteFile}.tmp.* 2>/dev/null || true", "Cleanup tmp (best-effort)");
-            } catch (\Throwable) {
-                // ignore
-            }
+            // cleanup tmp (best-effort, never fail job)
+            $this->sshSoft($ip, $sshUser, $sshKey, "rm -f {$remoteFile}.tmp.* 2>/dev/null || true", "Cleanup tmp (best-effort)");
         }
     }
 
-    private function ssh(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
+    /**
+     * STRICT SSH: failures throw (used for required steps like upload/install)
+     */
+    private function sshStrict(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
     {
-        // IMPORTANT:
-        // When passing an array to Symfony Process, ssh will not preserve argument boundaries
-        // for the remote command. If we pass ['sh','-lc', $remoteCmd] the remote side may see
-        // `sh -lc mkdir` with the rest as positional args, breaking commands like `mkdir -p .. && ...`.
-        // Fix: wrap the entire remote command as a single argument to `sh -lc`.
         $wrapped = 'sh -lc ' . escapeshellarg($remoteCmd);
 
         $process = new Process([
@@ -158,7 +165,7 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
         $process->setTimeout(45);
         $process->run();
 
-        if (!$process->isSuccessful()) {
+        if (! $process->isSuccessful()) {
             Log::error("[OpenVPN] SSH failed: {$label}", [
                 'ip'        => $ip,
                 'exit_code' => $process->getExitCode(),
@@ -175,9 +182,47 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
         ]);
     }
 
-    private function scp(string $ip, string $user, string $keyPath, string $localPath, string $remotePath, string $label): void
+    /**
+     * SOFT SSH: failures log but DO NOT throw (used for optional steps)
+     */
+    private function sshSoft(string $ip, string $user, string $keyPath, string $remoteCmd, string $label): void
     {
-        if (!is_readable($localPath)) {
+        $wrapped = 'sh -lc ' . escapeshellarg($remoteCmd);
+
+        $process = new Process([
+            'ssh',
+            '-i', $keyPath,
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
+            '-o', 'ConnectTimeout=15',
+            '-o', 'BatchMode=yes',
+            "{$user}@{$ip}",
+            $wrapped,
+        ]);
+
+        $process->setTimeout(45);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            Log::warning("[OpenVPN] SSH soft-fail: {$label}", [
+                'ip'        => $ip,
+                'exit_code' => $process->getExitCode(),
+                'stdout'    => $process->getOutput(),
+                'stderr'    => $process->getErrorOutput(),
+                'cmd'       => $remoteCmd,
+            ]);
+            return;
+        }
+
+        Log::info("[OpenVPN] SSH ok: {$label}", [
+            'ip'     => $ip,
+            'stdout' => trim($process->getOutput()),
+        ]);
+    }
+
+    private function scpStrict(string $ip, string $user, string $keyPath, string $localPath, string $remotePath, string $label): void
+    {
+        if (! is_readable($localPath)) {
             throw new RuntimeException("[OpenVPN] Local file missing/unreadable: {$localPath}");
         }
 
@@ -195,7 +240,7 @@ class SyncOpenVPNCredentials implements ShouldQueue, ShouldBeUniqueUntilProcessi
         $process->setTimeout(45);
         $process->run();
 
-        if (!$process->isSuccessful()) {
+        if (! $process->isSuccessful()) {
             Log::error("[OpenVPN] SCP failed: {$label}", [
                 'ip'          => $ip,
                 'exit_code'   => $process->getExitCode(),
