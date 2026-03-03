@@ -281,7 +281,7 @@ protected static ?int $navigationSort     = 3;
                             ->where(function ($q) use ($me) {
                                 $q->where('role', 'reseller');
                                 if ($me) {
-                                    $q->orWhereKey($me);
+                                    $q->orWhere('id', $me);
                                 }
                             })
                             ->orderBy('name')
