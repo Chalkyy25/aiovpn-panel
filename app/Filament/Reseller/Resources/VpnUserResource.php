@@ -230,6 +230,18 @@ class VpnUserResource extends Resource
                     ->copyable()
                     ->toggleable(),
 
+                Tables\Columns\TextColumn::make('last_seen_at')
+                    ->label('Last Seen')
+                    ->since()
+                    ->sortable()
+                    ->toggleable(),
+
+                Tables\Columns\TextColumn::make('created_at')
+                    ->label('Created')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('is_active')
                     ->label('Active')
                     ->badge()
@@ -259,23 +271,6 @@ class VpnUserResource extends Resource
                     ->state(fn (VpnUser $u) => ((int) $u->max_connections === 0) ? 'Unlimited' : (string) (int) $u->max_connections)
                     ->alignCenter()
                     ->toggleable(),
-
-                Tables\Columns\TextColumn::make('state')
-                    ->label('State')
-                    ->badge()
-                    ->state(function (VpnUser $u): string {
-                        if (! $u->is_active) return 'Disabled';
-                        if ($u->is_expired) return 'Expired';
-                        if ($u->is_trial) return 'Trial';
-                        return 'Active';
-                    })
-                    ->color(fn (string $state) => match ($state) {
-                        'Active' => 'success',
-                        'Trial' => 'warning',
-                        'Expired', 'Disabled' => 'danger',
-                        default => 'gray',
-                    }),
-
                 Tables\Columns\TextColumn::make('expires_at')
                     ->label('Expires')
                     ->date()
@@ -303,32 +298,6 @@ class VpnUserResource extends Resource
                     ->color(fn (VpnUser $record) => $record->is_active ? 'danger' : 'success')
                     ->requiresConfirmation()
                     ->action(fn (VpnUser $record) => $record->update(['is_active' => ! $record->is_active])),
-                Tables\Actions\Action::make('extend_expiry')
-                    ->label('Extend')
-                    ->icon('heroicon-o-calendar-days')
-                    ->color('gray')
-                    ->form([
-                        Forms\Components\Select::make('days')
-                            ->label('Extend by')
-                            ->options([
-                                30 => '30 days',
-                                90 => '90 days',
-                                365 => '365 days',
-                            ])
-                            ->required(),
-                    ])
-                    ->action(function (VpnUser $record, array $data): void {
-                        $days = (int) ($data['days'] ?? 0);
-                        if ($days <= 0) {
-                            return;
-                        }
-
-                        $base = $record->expires_at && $record->expires_at->isFuture()
-                            ? $record->expires_at
-                            : now();
-
-                        $record->update(['expires_at' => $base->copy()->addDays($days)]);
-                    }),
                 Tables\Actions\DeleteAction::make(),
             ]);
     }
