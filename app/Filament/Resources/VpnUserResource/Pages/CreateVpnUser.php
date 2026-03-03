@@ -48,4 +48,9 @@ class CreateVpnUser extends CreateRecord
             ->body("Username: {$this->record->username}\nPassword: " . ($this->record->plain_password ?? '******'))
             ->send();
     }
+
+    protected function getRedirectUrl(): string
+    {
+        return static::getResource()::getUrl('index');
+    }
 }
