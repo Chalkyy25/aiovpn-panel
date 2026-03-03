@@ -26,6 +26,11 @@ class CreateVpnUser extends CreateRecord
             $data['expires_at'] = $months <= 0 ? null : now()->addMonthsNoOverflow($months);
         }
 
+        // Ensure ownership is set so the default Owner filter (client_id = me)
+        // shows newly created lines immediately.
+        $data['client_id'] ??= auth()->id();
+        $data['created_by'] ??= auth()->id();
+
         return $data;
     }
 
