@@ -21,7 +21,7 @@ class VpnUserResource extends Resource
     protected static ?string $model = VpnUser::class;
 
     protected static ?string $navigationIcon  = 'heroicon-o-key';
-    protected static ?string $navigationLabel = 'Lines - Vpn Users';
+    protected static ?string $navigationLabel = 'VPN Users';
     protected static ?string $navigationGroup = null;
     protected static ?int    $navigationSort  = 2;
 
