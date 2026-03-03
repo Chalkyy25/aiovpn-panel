@@ -10,6 +10,7 @@ use App\Models\VpnUser;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -317,7 +318,65 @@ protected static ?int $navigationSort     = 3;
                     ->multiple(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\Action::make('extend')
+                    ->label('Extend')
+                    ->icon('heroicon-o-calendar-days')
+                    ->color('primary')
+                    ->form([
+                        Forms\Components\Select::make('package_id')
+                            ->label('Package')
+                            ->options(fn (): array => Package::query()
+                                ->where('is_active', true)
+                                ->orderBy('duration_months')
+                                ->orderBy('price_credits')
+                                ->get()
+                                ->mapWithKeys(function (Package $p): array {
+                                    $months = (int) $p->duration_months;
+                                    $dev = (int) $p->max_connections;
+                                    $total = $months * (int) $p->price_credits;
+
+                                    return [
+                                        $p->id => sprintf(
+                                            '%s — %d month%s — %s device%s — %d credits',
+                                            $p->name,
+                                            $months,
+                                            $months === 1 ? '' : 's',
+                                            $dev === 0 ? 'Unlimited' : (string) $dev,
+                                            $dev === 1 ? '' : 's',
+                                            $total
+                                        ),
+                                    ];
+                                })
+                                ->all())
+                            ->native(false)
+                            ->searchable()
+                            ->preload()
+                            ->required(),
+                    ])
+                    ->action(function (VpnUser $record, array $data): void {
+                        $packageId = (int) ($data['package_id'] ?? 0);
+                        $package = $packageId ? Package::query()->find($packageId) : null;
+                        if (! $package) {
+                            return;
+                        }
+
+                        $months = (int) $package->duration_months;
+                        $base = ($record->expires_at && $record->expires_at->isFuture())
+                            ? $record->expires_at
+                            : now();
+
+                        $record->update([
+                            'max_connections' => (int) $package->max_connections,
+                            'expires_at'      => $months <= 0 ? null : $base->copy()->addMonthsNoOverflow($months),
+                        ]);
+
+                        Notification::make()
+                            ->success()
+                            ->title('Line extended')
+                            ->body("{$record->username} updated via package: {$package->name}")
+                            ->send();
+                    })
+                    ->iconButton(),
                 Tables\Actions\Action::make('toggle_active')
                     ->label(fn (VpnUser $record) => $record->is_active ? 'Disable' : 'Enable')
                     ->icon(fn (VpnUser $record) => $record->is_active ? 'heroicon-o-no-symbol' : 'heroicon-o-check-circle')
