@@ -176,13 +176,18 @@ protected static ?int $navigationSort     = 3;
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['vpnServers', 'client']))
-            ->defaultSort('id', 'desc')
+            ->defaultSort('created_at', 'desc')
             ->paginated([10, 25, 50])
             ->columns([
                 Tables\Columns\TextColumn::make('id')
                     ->label('#')
                     ->sortable()
                     ->toggleable(),
+
+                Tables\Columns\TextColumn::make('client.name')
+                    ->label('Owner')
+                    ->sortable()
+                    ->searchable(),
 
                 Tables\Columns\TextColumn::make('username')
                     ->searchable()
@@ -216,6 +221,20 @@ protected static ?int $navigationSort     = 3;
                     ->copyable(fn (string $state): bool => filled($state) && $state !== 'Missing')
                     ->copyMessage('Password copied')
                     ->state(fn (VpnUser $u) => filled($u->plain_password) ? (string) $u->plain_password : 'Missing')
+                    ->toggleable(),
+
+                Tables\Columns\TextColumn::make('last_ip')
+                    ->label('Last IP')
+                    ->fontFamily('mono')
+                    ->copyable()
+                    ->toggleable(),
+
+                Tables\Columns\TextColumn::make('is_active')
+                    ->label('Active')
+                    ->badge()
+                    ->state(fn (VpnUser $u) => $u->is_active ? 'Yes' : 'No')
+                    ->color(fn (VpnUser $u) => $u->is_active ? 'success' : 'danger')
+                    ->alignCenter()
                     ->toggleable(),
 
                 // SHOW ALL SERVERS (not 1)
@@ -304,6 +323,40 @@ protected static ?int $navigationSort     = 3;
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\Action::make('toggle_active')
+                    ->label(fn (VpnUser $record) => $record->is_active ? 'Disable' : 'Enable')
+                    ->icon(fn (VpnUser $record) => $record->is_active ? 'heroicon-o-no-symbol' : 'heroicon-o-check-circle')
+                    ->color(fn (VpnUser $record) => $record->is_active ? 'danger' : 'success')
+                    ->requiresConfirmation()
+                    ->action(fn (VpnUser $record) => $record->update(['is_active' => ! $record->is_active]))
+                    ->iconButton(),
+                Tables\Actions\Action::make('extend_expiry')
+                    ->label('Extend')
+                    ->icon('heroicon-o-calendar-days')
+                    ->color('gray')
+                    ->form([
+                        Forms\Components\Select::make('days')
+                            ->label('Extend by')
+                            ->options([
+                                30 => '30 days',
+                                90 => '90 days',
+                                365 => '365 days',
+                            ])
+                            ->required(),
+                    ])
+                    ->action(function (VpnUser $record, array $data): void {
+                        $days = (int) ($data['days'] ?? 0);
+                        if ($days <= 0) {
+                            return;
+                        }
+
+                        $base = $record->expires_at && $record->expires_at->isFuture()
+                            ? $record->expires_at
+                            : now();
+
+                        $record->update(['expires_at' => $base->copy()->addDays($days)]);
+                    })
+                    ->iconButton(),
                 Tables\Actions\DeleteAction::make()->iconButton(),
             ])
             ->bulkActions([
