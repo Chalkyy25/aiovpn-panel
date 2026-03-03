@@ -4,8 +4,11 @@ namespace App\Filament\Resources\VpnUserResource\Pages;
 
 use App\Filament\Resources\VpnUserResource;
 use App\Models\Package;
+use App\Models\VpnServer;
+use App\Services\WireGuardService;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Support\Facades\Log;
 
 class CreateVpnUser extends CreateRecord
 {
@@ -13,7 +16,6 @@ class CreateVpnUser extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // IMPORTANT:
         // package_id + vpn_server_ids are virtual (dehydrated(false)),
         // so they won't be inside $data. Use $this->data instead.
 
@@ -39,9 +41,38 @@ class CreateVpnUser extends CreateRecord
         $ids = $this->data['vpn_server_ids'] ?? [];
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
 
-        // sync pivot + queue OpenVPN sync + logging
+        // 1) Sync pivot + trigger any protocol-specific jobs you already have
         $this->record->syncVpnServers($ids, context: 'admin.create');
 
+        // 2) If any selected server supports WireGuard, provision WG peer now
+        try {
+            if (! empty($ids)) {
+                $servers = VpnServer::query()->whereIn('id', $ids)->get();
+
+                /** @var WireGuardService $wg */
+                $wg = app(WireGuardService::class);
+
+                foreach ($servers as $server) {
+                    if ($server->supportsWireGuard()) {
+                        $wg->ensurePeerForUser($server, $this->record);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('❌ Filament: WG provisioning failed on create vpn user', [
+                'vpn_user_id' => $this->record->id,
+                'server_ids'  => $ids,
+                'error'       => $e->getMessage(),
+            ]);
+
+            Notification::make()
+                ->danger()
+                ->title('VPN user created, but WireGuard provisioning failed')
+                ->body($e->getMessage())
+                ->send();
+        }
+
+        // 3) Success notification
         Notification::make()
             ->success()
             ->title('VPN user created')
