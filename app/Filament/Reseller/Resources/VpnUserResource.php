@@ -191,6 +191,12 @@ class VpnUserResource extends Resource
                     ->wrap()
                     ->copyable(),
 
+                Tables\Columns\TextColumn::make('plain_password')
+                    ->label('Password')
+                    ->fontFamily('mono')
+                    ->copyable()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('servers')
                     ->label('Servers')
                     ->state(fn (VpnUser $u) => $u->vpnServers->pluck('name')->values()->all())
@@ -204,6 +210,14 @@ class VpnUserResource extends Resource
                     ->color('gray')
                     ->state(fn (VpnUser $u) => (string) ($u->connection_summary ?? '0/0'))
                     ->alignCenter(),
+
+                Tables\Columns\TextColumn::make('max_connections')
+                    ->label('Max Devices')
+                    ->badge()
+                    ->color('gray')
+                    ->state(fn (VpnUser $u) => ((int) $u->max_connections === 0) ? 'Unlimited' : (string) (int) $u->max_connections)
+                    ->alignCenter()
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('state')
                     ->label('State')
@@ -225,7 +239,7 @@ class VpnUserResource extends Resource
                     ->label('Expires')
                     ->date()
                     ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->toggleable(),
             ])
             ->filters([
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active'),
