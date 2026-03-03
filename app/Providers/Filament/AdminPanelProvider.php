@@ -44,7 +44,6 @@ class AdminPanelProvider extends PanelProvider
 
             // Theme plugin (no vite theme / no custom css required)
 ->plugin(
-    ThemesPlugin::make()
         ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin')
 )
 
