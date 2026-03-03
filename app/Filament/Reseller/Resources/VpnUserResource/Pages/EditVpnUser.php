@@ -30,9 +30,13 @@ class EditVpnUser extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        // Capture desired server ids from form
+        // IMPORTANT:
+        // vpn_server_ids is a virtual field (dehydrated(false)) so Filament will NOT include it in $data.
+        // Read it from $this->data (the full form state) to avoid wiping server assignments on every edit.
+        $rawIds = $this->data['vpn_server_ids'] ?? Arr::get($data, 'vpn_server_ids', []);
+
         $this->vpnServerIds = array_values(array_filter(
-            array_map('intval', Arr::get($data, 'vpn_server_ids', [])),
+            array_map('intval', (array) $rawIds),
             fn (int $id) => $id > 0
         ));
 
