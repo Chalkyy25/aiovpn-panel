@@ -188,7 +188,26 @@ protected static ?int $navigationSort     = 3;
                     ->sortable()
                     ->weight('bold')
                     ->copyable()
-                    ->copyMessage('Username copied'),
+                    ->copyMessage('Username copied')
+                    ->description(function (VpnUser $u): string {
+                        $expires = $u->expires_at;
+                        if ($expires === null) {
+                            return 'Never expires';
+                        }
+
+                        $days = now()->diffInDays($expires, false);
+
+                        if ($days > 0) {
+                            return "Expires in {$days} day" . ($days === 1 ? '' : 's');
+                        }
+
+                        if ($days === 0) {
+                            return 'Expires today';
+                        }
+
+                        $days = abs($days);
+                        return "Expired {$days} day" . ($days === 1 ? '' : 's') . ' ago';
+                    }),
 
                 Tables\Columns\TextColumn::make('plain_password')
                     ->label('Password')
