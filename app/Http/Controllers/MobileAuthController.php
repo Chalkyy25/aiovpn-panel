@@ -38,7 +38,7 @@ class MobileAuthController extends Controller
             return response()->json(['message' => 'Invalid username or password'], 401);
         }
 
-        if (!$user->is_active || $user->isExpired) {
+	if (!$user->is_active || $user->isExpired()) {
             return response()->json(['message' => 'Account inactive or expired'], 403);
         }
 
