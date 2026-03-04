@@ -2,7 +2,8 @@
 
 namespace App\Livewire\Pages\Client;
 
-use App\Models\VpnServer;
+use App\Models\VpnUser;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -10,31 +11,30 @@ use Livewire\Component;
 #[Layout('layouts.client')]
 class Dashboard extends Component
 {
-    public \App\Models\VpnUser $user;
-    public \Illuminate\Support\Collection $vpnServers;
+    public VpnUser $user;
+    public Collection $vpnServers;
 
     public function mount(): void
     {
         $guard = Auth::guard('client');
-
         abort_unless($guard->check(), 403);
 
-        /** @var \App\Models\VpnUser $user */
+        /** @var VpnUser $user */
         $user = $guard->user();
+
         $this->user = $user;
 
-        // Eager-load what we render to avoid N+1s
         $this->vpnServers = $user->vpnServers()
-            ->select(['vpn_servers.id','name','location','is_online'])
-            ->orderBy('name')
+            ->select(['vpn_servers.id', 'vpn_servers.name', 'vpn_servers.location', 'vpn_servers.is_online'])
+            ->orderBy('vpn_servers.name')
             ->get();
     }
 
     public function render()
     {
         return view('livewire.pages.client.dashboard', [
-            'user'       => $this->user,       // explicit for clarity
-            'vpnServers' => $this->vpnServers, // explicit for clarity
+            'user'       => $this->user,
+            'vpnServers' => $this->vpnServers,
         ]);
     }
 }
