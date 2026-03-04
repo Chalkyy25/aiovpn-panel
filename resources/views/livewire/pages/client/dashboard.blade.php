@@ -7,9 +7,17 @@
                     <div class="font-medium">🔐 Admin Impersonation Active — viewing as <span class="text-[var(--aio-ink)]">{{ $user->username }}</span></div>
                     <div class="text-xs text-[var(--aio-sub)]">Admin: {{ session('impersonating_admin_name') }}</div>
                 </div>
-                <form method="POST" action="{{ route('admin.stop-impersonation') }}">
+                @php($stopRoute = \Illuminate\Support\Facades\Route::has('legacy.admin.stop-impersonation')
+                    ? route('legacy.admin.stop-impersonation')
+                    : (\Illuminate\Support\Facades\Route::has('admin.stop-impersonation')
+                        ? route('admin.stop-impersonation')
+                        : null))
+
+                <form method="POST" action="{{ $stopRoute ?? '#' }}">
                     @csrf
-                    <button class="aio-pill bg-orange-600/90 hover:shadow-glow">Stop Impersonation</button>
+                    <button class="aio-pill bg-orange-600/90 hover:shadow-glow" @disabled($stopRoute === null)>
+                        Stop Impersonation
+                    </button>
                 </form>
             </div>
         </div>
