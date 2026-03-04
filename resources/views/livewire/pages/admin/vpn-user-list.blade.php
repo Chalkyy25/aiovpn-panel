@@ -169,13 +169,6 @@
                     </details>
                   @endif
 
-                  <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
-                    @csrf
-                    <x-button type="submit" variant="secondary" size="sm">
-                      Login
-                    </x-button>
-                  </form>
-
                   <x-button type="button" wire:click="toggleActive({{ $user->id }})" variant="secondary" size="sm">
                     {{ $user->is_active ? 'Disable' : 'Enable' }}
                   </x-button>
@@ -268,11 +261,6 @@
             <x-button type="button" wire:click="generateOvpn({{ $user->id }})" variant="secondary" size="sm">Configs</x-button>
             <x-button type="button" wire:click="generateWireGuard({{ $user->id }})" variant="secondary" size="sm">Ensure WG</x-button>
             <x-button type="button" wire:click="forceRemoveWireGuardPeer({{ $user->id }})" variant="secondary" size="sm">Revoke WG</x-button>
-
-            <form method="POST" action="{{ route('admin.impersonate', $user->id) }}" class="inline">
-              @csrf
-              <x-button type="submit" variant="secondary" size="sm">Login</x-button>
-            </form>
 
             <x-button type="button" wire:click="toggleActive({{ $user->id }})" variant="secondary" size="sm">
               {{ $user->is_active ? 'Disable' : 'Enable' }}

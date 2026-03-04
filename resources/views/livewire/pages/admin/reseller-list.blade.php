@@ -109,7 +109,7 @@
                                 <td class="px-4 py-3">
                                     <div class="flex items-center justify-end gap-2">
                                         <x-button
-                                            href="{{ route('admin.resellers.index') }}?impersonate={{ $r->id }}"
+                                            href="{{ route('admin.resellers.index') }}"
                                             variant="secondary"
                                             size="sm">
                                             View
@@ -181,7 +181,7 @@
 
                 <div class="mt-3 flex items-center justify-end gap-2">
                     <x-button
-                        href="{{ route('admin.resellers.index') }}?impersonate={{ $r->id }}"
+                        href="{{ route('admin.resellers.index') }}"
                         variant="secondary"
                         size="sm">
                         View

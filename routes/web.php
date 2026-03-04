@@ -15,7 +15,6 @@ use App\Http\Controllers\VpnUserController;
 use App\Http\Controllers\VpnDisconnectController;
 use App\Http\Controllers\VpnServerController;
 use App\Http\Controllers\VpnConfigController;
-use App\Http\Controllers\AdminImpersonationController;
 
 use App\Http\Controllers\Client\AuthController as ClientAuthController;
 use App\Http\Controllers\Admin\Auth\LoginController as AdminLogin;
@@ -222,11 +221,6 @@ Route::prefix('legacy')->name('legacy.')->group(function () {
             Route::get('/resellers/create', CreateReseller::class)->name('resellers.create');
 
             Route::get('/credits', ManageCredits::class)->name('credits');
-
-            Route::post('/impersonate/{vpnUser}', [AdminImpersonationController::class, 'impersonate'])
-                ->name('impersonate');
-            Route::post('/stop-impersonation', [AdminImpersonationController::class, 'stopImpersonation'])
-                ->name('stop-impersonation');
 
             Route::get('/app-builds', AppBuilds::class)->name('app-builds.index');
             Route::get('/app-builds/{build}/download', AdminAppBuildDownloadController::class)

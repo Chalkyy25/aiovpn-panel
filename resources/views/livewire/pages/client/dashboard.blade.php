@@ -6,12 +6,6 @@
             @if($user->email)
                 <p class="text-[var(--aio-sub)] text-sm mt-1">Your email: {{ $user->email }}</p>
             @endif
-        </div>
-        <form method="POST" action="/logout">
-            @csrf
-            <button class="aio-pill bg-red-600/90 hover:shadow-glow">🚪 Logout</button>
-        </form>
-    </div>
 
     <div class="aio-card p-5">
         <h3 class="text-lg font-semibold text-[var(--aio-ink)] mb-3">Your VPN Servers</h3>
