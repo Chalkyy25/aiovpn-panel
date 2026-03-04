@@ -8,14 +8,13 @@ use App\Models\VpnUser;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class ActiveNowUsers extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected static ?string $heading = 'Active Now Users';
-    protected static ?int $sort = 4;
+    protected static ?int $sort = 1;
 
     protected int|string|array $columnSpan = [
         'default' => 1,
@@ -41,6 +40,11 @@ class ActiveNowUsers extends BaseWidget
                 VpnUser::query()
                     ->joinSub($livePerUser, 'live', fn ($join) => $join->on('vpn_users.id', '=', 'live.vpn_user_id'))
                     ->select('vpn_users.*', 'live.live_connections', 'live.live_last_seen_at')
+                    ->with([
+                        'sessionConnections' => fn ($q) => $q
+                            ->live($now)
+                            ->with('vpnServer:id,name,country_code'),
+                    ])
                     ->orderByDesc('live.live_last_seen_at')
             )
             ->columns([
@@ -50,10 +54,61 @@ class ActiveNowUsers extends BaseWidget
                     ->sortable()
                     ->url(fn (VpnUser $record): string => VpnUserResource::getUrl('edit', ['record' => $record])),
 
+                Tables\Columns\TagsColumn::make('active_protocols')
+                    ->label('Config')
+                    ->state(function (VpnUser $u): array {
+                        $protocols = $u->sessionConnections
+                            ->pluck('protocol')
+                            ->filter()
+                            ->map(fn ($p) => strtoupper((string) $p))
+                            ->unique()
+                            ->values();
+
+                        return $protocols->all();
+                    })
+                    ->separator(', '),
+
+                Tables\Columns\TagsColumn::make('active_countries')
+                    ->label('Country')
+                    ->state(function (VpnUser $u): array {
+                        $countries = $u->sessionConnections
+                            ->map(function ($conn): ?string {
+                                $server = $conn->vpnServer;
+                                if (!$server) return null;
+
+                                $name = $server->country_name;
+                                if (filled($name)) {
+                                    return (string) $name;
+                                }
+
+                                $code = strtoupper((string) ($server->country_code ?? ''));
+                                return $code !== '' ? $code : null;
+                            })
+                            ->filter()
+                            ->unique()
+                            ->values();
+
+                        return $countries->all();
+                    })
+                    ->separator(', '),
+
                 Tables\Columns\TextColumn::make('live_connections')
                     ->label('Live')
                     ->badge()
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('online_since')
+                    ->label('Online Since')
+                    ->state(function (VpnUser $u) {
+                        $first = $u->sessionConnections
+                            ->filter(fn ($c) => $c->connected_at !== null)
+                            ->sortBy('connected_at')
+                            ->first();
+
+                        return $first?->connected_at;
+                    })
+                    ->since()
+                    ->toggleable(),
 
                 Tables\Columns\TextColumn::make('live_last_seen_at')
                     ->label('Last Seen')

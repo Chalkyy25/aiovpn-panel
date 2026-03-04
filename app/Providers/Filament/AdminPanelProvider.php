@@ -56,10 +56,10 @@ class AdminPanelProvider extends PanelProvider
 
             ->widgets([
                 AdminStats::class,
+                ActiveNowUsers::class,
                 ConnectionsTrend::class,
                 ConnectionsByServer::class,
                 ServerStatus::class,
-                ActiveNowUsers::class,
                 RecentConnections::class,
             ])
 

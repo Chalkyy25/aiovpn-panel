@@ -122,9 +122,13 @@ class DeployEventController extends Controller
                     'disconnected_at' => null,
                 ]);
 
+                // Preserve the original connected_at for this session_key.
+                // Only update it if we learn an EARLIER timestamp (some sources jitter).
                 if ($connectedAt) {
-                    $row->connected_at = $connectedAt;
-                } elseif (!$row->exists || !$row->connected_at) {
+                    if (!$row->connected_at || $connectedAt->lt($row->connected_at)) {
+                        $row->connected_at = $connectedAt;
+                    }
+                } elseif (!$row->connected_at) {
                     $row->connected_at = $now;
                 }
 

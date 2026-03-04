@@ -22,6 +22,13 @@ class WireGuardEventController extends Controller
      */
     private const STALE_SECONDS = 240; // 4 minutes
 
+    /**
+     * If a peer briefly falls "offline" due to handshake staleness and then returns,
+     * do NOT reset connected_at (otherwise dashboards show a constantly resetting session).
+     * Only treat it as a new session if it has been offline longer than this.
+     */
+    private const RECONNECT_RESET_SECONDS = 900; // 15 minutes
+
     public function store(Request $request, VpnServer $server): JsonResponse
     {
         $data = $request->validate([
@@ -85,6 +92,8 @@ class WireGuardEventController extends Controller
                 ]);
 
                 $wasOnline = (bool)($row->is_active ?? false);
+                $previousConnectedAt = $row->connected_at;
+                $previousDisconnectedAt = $row->disconnected_at;
 
                 $bytesIn  = (int)($p['bytes_received'] ?? $p['bytes_in']  ?? 0);
                 $bytesOut = (int)($p['bytes_sent']     ?? $p['bytes_out'] ?? 0);
@@ -109,9 +118,22 @@ class WireGuardEventController extends Controller
                     'disconnected_at' => $isOnline ? null : ($wasOnline ? $now : $row->disconnected_at),
                 ]);
 
-                // Only set connected_at when offline->online (or first create)
-                if ($isOnline && (!$row->exists || !$row->connected_at || !$wasOnline)) {
-                    $row->connected_at = $now;
+                // Only set connected_at for truly new sessions.
+                if ($isOnline) {
+                    // First ever connect for this session row
+                    if (!$row->exists || !$previousConnectedAt) {
+                        $row->connected_at = $now;
+                    }
+
+                    // Offline -> online flaps happen for WG when handshakes are sparse.
+                    // Preserve connected_at unless it was offline for a long time.
+                    if ($wasOnline === false && $previousConnectedAt) {
+                        if ($previousDisconnectedAt && $previousDisconnectedAt->lte($now->copy()->subSeconds(self::RECONNECT_RESET_SECONDS))) {
+                            $row->connected_at = $now;
+                        } else {
+                            $row->connected_at = $previousConnectedAt;
+                        }
+                    }
                 }
 
                 $row->save();

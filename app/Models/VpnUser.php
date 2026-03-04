@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -121,6 +122,20 @@ class VpnUser extends Authenticatable
         return $this->hasMany(VpnUserConnection::class);
     }
 
+    /**
+     * Session-level connection tracking (vpn_connections table).
+     * This is what the admin dashboard uses for accurate "online now" logic.
+     */
+    public function sessionConnections(): HasMany
+    {
+        return $this->hasMany(VpnConnection::class, 'vpn_user_id');
+    }
+
+    public function liveSessionConnections(): HasMany
+    {
+        return $this->hasMany(VpnConnection::class, 'vpn_user_id')->live();
+    }
+
     public function activeConnections(): HasMany
     {
         return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
@@ -133,6 +148,14 @@ class VpnUser extends Authenticatable
     public function scopeActive(Builder $q): Builder
     {
         return $q->where('is_active', true);
+    }
+
+    /**
+     * “Online now” based on live vpn_connections sessions (not just last_seen_at on the user).
+     */
+    public function scopeOnlineNow(Builder $q, ?Carbon $now = null): Builder
+    {
+        return $q->whereHas('sessionConnections', fn (Builder $sessions) => $sessions->live($now));
     }
 
     public function scopeTrials(Builder $q): Builder
