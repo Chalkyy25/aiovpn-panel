@@ -135,7 +135,7 @@ Route::middleware('auth:client')->group(function () {
     Route::post('/logout', [ClientAuthController::class, 'logout'])
         ->name('client.logout');
 
-    Route::get('/dashboard', ClientDashboard::class)
+    Route::get('/dashboard', \App\Livewire\Pages\Client\Dashboard::class)
         ->name('client.dashboard');
 
     Route::get('/vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])
