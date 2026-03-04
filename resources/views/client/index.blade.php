@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.client')
 
 @section('content')
 <div class="max-w-5xl mx-auto bg-white p-6 rounded shadow">
