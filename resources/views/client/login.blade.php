@@ -18,7 +18,6 @@
         <form method="POST" action="{{ route('client.login') }}" class="space-y-5">
             @csrf
 
-            {{-- Username --}}
             <x-input
                 label="Username"
                 name="username"
@@ -29,7 +28,6 @@
                 autofocus
             />
 
-            {{-- Password (toggle is built into x-input) --}}
             <x-input
                 label="Password"
                 name="password"
