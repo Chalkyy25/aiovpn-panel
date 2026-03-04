@@ -4,16 +4,12 @@ namespace App\Filament\Widgets;
 
 use App\Models\VpnConnection;
 use App\Models\VpnServer;
+use App\Models\VpnUser;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Support\Facades\DB;
 
 class AdminStats extends BaseWidget
 {
-    // WireGuard needs longer to avoid false “offline”
-    private const OPENVPN_STALE_SECONDS = 120;
-    private const WIREGUARD_STALE_SECONDS = 300;
-
     protected static ?string $pollingInterval = '15s';
 
     protected function getStats(): array
@@ -25,54 +21,25 @@ class AdminStats extends BaseWidget
         // “online” by your server heartbeat
         $serversOnline = VpnServer::where('is_online', 1)->count();
 
+        $vpnUsersTotal = VpnUser::count();
+        $vpnUsersActive = VpnUser::query()->where('is_active', true)->count();
+
         // Live connections: active + not stale (per protocol)
-        $activeLive = VpnConnection::query()
-            ->where('is_active', 1)
-            ->whereNotNull('last_seen_at')
-            ->where(function ($q) use ($now) {
-                $q->where(function ($q) use ($now) {
-                    $q->where('protocol', 'OPENVPN')
-                      ->where('last_seen_at', '>=', $now->copy()->subSeconds(self::OPENVPN_STALE_SECONDS));
-                })->orWhere(function ($q) use ($now) {
-                    $q->where('protocol', 'WIREGUARD')
-                      ->where('last_seen_at', '>=', $now->copy()->subSeconds(self::WIREGUARD_STALE_SECONDS));
-                });
-            })
-            ->count();
+        $activeLive = VpnConnection::query()->live($now)->count();
 
         $usersOnline = VpnConnection::query()
-            ->where('is_active', 1)
-            ->whereNotNull('last_seen_at')
-            ->where(function ($q) use ($now) {
-                $q->where(function ($q) use ($now) {
-                    $q->where('protocol', 'OPENVPN')
-                      ->where('last_seen_at', '>=', $now->copy()->subSeconds(self::OPENVPN_STALE_SECONDS));
-                })->orWhere(function ($q) use ($now) {
-                    $q->where('protocol', 'WIREGUARD')
-                      ->where('last_seen_at', '>=', $now->copy()->subSeconds(self::WIREGUARD_STALE_SECONDS));
-                });
-            })
+            ->live($now)
             ->distinct('vpn_user_id')
             ->count('vpn_user_id');
 
         // “stale actives” = marked active but not seen recently
-        $staleActives = VpnConnection::query()
-            ->where('is_active', 1)
-            ->whereNotNull('last_seen_at')
-            ->where(function ($q) use ($now) {
-                $q->where(function ($q) use ($now) {
-                    $q->where('protocol', 'OPENVPN')
-                      ->where('last_seen_at', '<', $now->copy()->subSeconds(self::OPENVPN_STALE_SECONDS));
-                })->orWhere(function ($q) use ($now) {
-                    $q->where('protocol', 'WIREGUARD')
-                      ->where('last_seen_at', '<', $now->copy()->subSeconds(self::WIREGUARD_STALE_SECONDS));
-                });
-            })
-            ->count();
+        $staleActives = VpnConnection::query()->stale($now)->count();
 
         return [
             Stat::make('Total Servers', $serversTotal)->color('gray'),
             Stat::make('Online Servers', $serversOnline)->color($serversOnline === $serversTotal ? 'success' : 'warning'),
+            Stat::make('Total VPN Users', $vpnUsersTotal)->color('gray'),
+            Stat::make('Active VPN Users', $vpnUsersActive)->color($vpnUsersActive === $vpnUsersTotal ? 'success' : 'warning'),
             Stat::make('Live Connections', $activeLive)->color('success'),
             Stat::make('Users Online', $usersOnline)->color('success'),
             Stat::make('Stale Actives', $staleActives)->color($staleActives > 0 ? 'danger' : 'gray')

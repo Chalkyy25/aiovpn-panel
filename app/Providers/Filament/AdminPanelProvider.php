@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Auth\AdminLogin;
+use App\Filament\Widgets\ActiveNowUsers;
 use App\Filament\Widgets\AdminStats;
 use App\Filament\Widgets\ConnectionsByServer;
 use App\Filament\Widgets\ConnectionsTrend;
@@ -58,6 +59,7 @@ class AdminPanelProvider extends PanelProvider
                 ConnectionsTrend::class,
                 ConnectionsByServer::class,
                 ServerStatus::class,
+                ActiveNowUsers::class,
                 RecentConnections::class,
             ])
 
