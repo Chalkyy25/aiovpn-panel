@@ -7,7 +7,6 @@
   <title>{{ config('app.name','AIO VPN') }}</title>
 
   <script>
-    // Apply theme early (default LIGHT). No flash.
     try {
       const saved = localStorage.getItem('theme') ?? 'light';
       if (saved === 'dark') document.documentElement.classList.add('dark');
@@ -24,7 +23,6 @@
 <body class="aio-bg min-h-full font-sans antialiased">
   <div class="min-h-screen flex flex-col text-[var(--aio-ink)]">
 
-    {{-- SIMPLE TOP BAR (NO SIDEBAR, NO ADMIN LINKS) --}}
     <header class="h-16 flex items-center justify-between px-3 md:px-4 sticky top-0 z-50
                    border-b border-[var(--aio-border)] bg-[color-mix(in_srgb,var(--aio-card)_92%,transparent)] backdrop-blur-md">
       <div class="flex items-center gap-2">
@@ -42,7 +40,6 @@
           🌓 Theme
         </button>
 
-        {{-- Client logout button (only if logged in as client) --}}
         @if(auth('client')->check())
           <form method="POST" action="{{ route('client.logout') }}">
             @csrf
@@ -54,7 +51,6 @@
 
     <main class="p-3 md:p-4 flex-1">
       @yield('content')
-      {{ $slot ?? '' }}
     </main>
 
   </div>
