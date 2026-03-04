@@ -18,9 +18,9 @@ class Dashboard extends BaseDashboard
     public function getWidgets(): array
     {
         return [
-            \App\Filament\Widgets\ActiveNowUsers::class,
-            \App\Filament\Widgets\ConnectionsByServer::class,
             \App\Filament\Widgets\AdminStats::class,
+            \App\Filament\Widgets\ConnectionsByServer::class,
+            \App\Filament\Widgets\ActiveNowUsers::class,
             \App\Filament\Widgets\ConnectionsTrend::class,
             \App\Filament\Widgets\ServerStatus::class,
             \App\Filament\Widgets\RecentConnections::class,

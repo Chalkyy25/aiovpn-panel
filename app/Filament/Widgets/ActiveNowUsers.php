@@ -14,11 +14,11 @@ class ActiveNowUsers extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected static ?string $heading = 'Active Now Users';
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 3;
 
     protected int|string|array $columnSpan = [
         'default' => 1,
-        'lg' => 2, // left 2/3 of first desktop row
+        'lg' => 2,
     ];
 
     public function table(Table $table): Table
