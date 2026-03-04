@@ -114,11 +114,14 @@ Route::get('/downloads/app.apk', [AppBuildPublicDownloadController::class, 'late
 | CLIENT AUTH + PORTAL (client guard)
 |--------------------------------------------------------------------------
 | Option A:
-| - /login        => client login
-| - /dashboard    => client dashboard
-| - /client/login => legacy alias
+| - /login                => client login (client guard)
+| - /dashboard            => client dashboard (Livewire)
+| - /downloads            => config chooser page (Livewire)
+| - /vpn/{vpnserver}/download => direct download (Controller)
+| - /client/login         => legacy alias
 |--------------------------------------------------------------------------
 */
+
 Route::middleware('guest:client')->group(function () {
     Route::get('/login', [ClientAuthController::class, 'showLoginForm'])
         ->name('client.login.form');
@@ -126,7 +129,7 @@ Route::middleware('guest:client')->group(function () {
     Route::post('/login', [ClientAuthController::class, 'login'])
         ->name('client.login');
 
-    // legacy alias (old links)
+    // Legacy alias (old links)
     Route::get('/client/login', fn () => redirect()->route('client.login.form'));
     Route::post('/client/login', [ClientAuthController::class, 'login']);
 });
@@ -135,9 +138,14 @@ Route::middleware('auth:client')->group(function () {
     Route::post('/logout', [ClientAuthController::class, 'logout'])
         ->name('client.logout');
 
+    // Main client portal pages
     Route::get('/dashboard', \App\Livewire\Pages\Client\Dashboard::class)
         ->name('client.dashboard');
 
+    Route::get('/downloads', \App\Livewire\Pages\Client\DownloadConfig::class)
+        ->name('client.downloads');
+
+    // Direct download endpoint (still useful for one-click buttons)
     Route::get('/vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])
         ->name('client.vpn.download');
 });
