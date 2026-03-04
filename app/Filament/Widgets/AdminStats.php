@@ -10,7 +10,7 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class AdminStats extends BaseWidget
 {
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 1;
     protected static ?string $pollingInterval = '15s';
 
     protected int|string|array $columnSpan = [

@@ -14,7 +14,7 @@ class ActiveNowUsers extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected static ?string $heading = 'Active Now Users';
-    protected static ?int $sort = 1;
+    protected static ?int $sort = 2;
 
     protected int|string|array $columnSpan = [
         'default' => 1,
