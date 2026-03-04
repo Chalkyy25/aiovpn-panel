@@ -1,46 +1,49 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Client;
 
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
-class ClientAuthController extends Controller
+class AuthController extends Controller
 {
     public function showLoginForm()
     {
-        return view('client.login');
+        return view('client.login'); // resources/views/client/login.blade.php
     }
 
     public function login(Request $request)
     {
         $credentials = $request->validate([
-            'username' => 'required',
-            'password' => 'required',
+            'username' => ['required', 'string'],
+            'password' => ['required', 'string'],
         ]);
 
-        if (Auth::guard('client')->attempt($credentials)) {
-            $request->session()->regenerate();
-            return redirect()->intended(route('client.dashboard'));
+        $remember = (bool) $request->boolean('remember');
+
+        if (! Auth::guard('client')->attempt($credentials, $remember)) {
+            throw ValidationException::withMessages([
+                'username' => 'Invalid username or password.',
+            ]);
         }
 
-        return back()->withErrors([
-            'username' => 'Invalid credentials.',
-        ]);
+        // Important: regenerate session to prevent fixation
+        $request->session()->regenerate();
+
+        // Go to Livewire dashboard route
+        return redirect()->intended(route('client.dashboard'));
     }
 
     public function logout(Request $request)
     {
         Auth::guard('client')->logout();
+
+        // Kill session + CSRF token
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect(route('client.login'));
-    }
-
-    public function dashboard()
-    {
-        $user = Auth::guard('client')->user();
-        return view('client.dashboard', compact('user'));
+        return redirect()->route('client.login.form');
     }
 }
