@@ -10,7 +10,13 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class AdminStats extends BaseWidget
 {
+    protected static ?int $sort = 3;
     protected static ?string $pollingInterval = '15s';
+
+    protected int|string|array $columnSpan = [
+        'default' => 1,
+        'lg' => 3, // full-width row on desktop
+    ];
 
     protected function getStats(): array
     {

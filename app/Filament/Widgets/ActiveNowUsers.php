@@ -18,7 +18,7 @@ class ActiveNowUsers extends BaseWidget
 
     protected int|string|array $columnSpan = [
         'default' => 1,
-        'lg' => 2,
+        'lg' => 2, // left 2/3 of first desktop row
     ];
 
     public function table(Table $table): Table

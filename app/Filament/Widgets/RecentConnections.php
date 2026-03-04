@@ -11,12 +11,12 @@ class RecentConnections extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected static ?string $heading = 'Recent Connections';
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 6;
 
     protected int|string|array $columnSpan = [
-    'default' => 1, // full width on mobile
-    'lg'      => 2, // wider on desktop
-];
+        'default' => 1,
+        'lg'      => 2, // right 2/3 of last desktop row
+    ];
 
     public function table(Table $table): Table
     {

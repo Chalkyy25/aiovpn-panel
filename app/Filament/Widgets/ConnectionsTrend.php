@@ -10,6 +10,7 @@ class ConnectionsTrend extends ChartWidget
 {
     protected static ?string $heading = 'Connections (Last 24 Hours)';
     protected static ?string $pollingInterval = '60s';
+    protected static ?int $sort = 4;
     protected int|string|array $columnSpan = [
     'default' => 1,
     'lg'      => 3, // full-width row on desktop

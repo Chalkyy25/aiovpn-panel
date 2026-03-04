@@ -11,12 +11,12 @@ class ServerStatus extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected static ?string $heading = 'Server Status';
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 5;
 
     protected int|string|array $columnSpan = [
-    'default' => 1, // full width on mobile (because dashboard is 1 col)
-    'lg'      => 1,
-];
+        'default' => 1,
+        'lg'      => 1, // left 1/3 of last desktop row
+    ];
 
     public function table(Table $table): Table
     {

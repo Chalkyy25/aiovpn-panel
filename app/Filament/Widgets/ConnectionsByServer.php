@@ -14,7 +14,12 @@ class ConnectionsByServer extends BaseWidget
 {
     protected static ?string $heading = 'Live Connections by Server';
     protected static ?string $pollingInterval = '15s';
-    protected int|string|array $columnSpan = 1;
+    protected static ?int $sort = 2;
+
+    protected int|string|array $columnSpan = [
+        'default' => 1,
+        'lg' => 1, // right 1/3 of first desktop row
+    ];
 
     public function table(Table $table): Table
     {
