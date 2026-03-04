@@ -15,7 +15,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('client.login') }}" class="space-y-5">
+        <form method="POST" action="/login" class="space-y-5">
             @csrf
 
             <x-input

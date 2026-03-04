@@ -11,7 +11,10 @@ class AuthController extends Controller
 {
     public function showLoginForm()
     {
-        return view('client.login'); // resources/views/client/login.blade.php
+        return response()
+            ->view('client.login') // resources/views/client/login.blade.php
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            ->header('Pragma', 'no-cache');
     }
 
     public function login(Request $request)
