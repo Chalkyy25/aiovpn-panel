@@ -2,44 +2,54 @@
 
 namespace App\Livewire\Pages\Client;
 
-use App\Models\VpnUser;
 use App\Models\VpnServer;
+use App\Models\VpnUser;
 use App\Services\VpnConfigBuilder;
 use App\Services\WireGuardService;
-use Livewire\Component;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Layout;
+use Livewire\Component;
 
+#[Layout('layouts.client')]
 class DownloadConfig extends Component
 {
     public VpnUser $vpnUser;
-    public $availableConfigs = [];
 
-    public function mount()
+    /** @var array<int, array<string,mixed>> */
+    public array $availableConfigs = [];
+
+    public function mount(): void
     {
-        $user = auth()->user();
+        // 1) Admin (web guard) override: /download-config?vpn_user_id=123
+        $web = Auth::guard('web');
+        if ($web->check() && ($web->user()->role ?? null) === 'admin') {
+            $vpnUserId = (int) request()->query('vpn_user_id', 0);
+            abort_unless($vpnUserId > 0, 404);
 
-        // Admin can download configs for arbitrary vpn_user via ?user_id=xx
-        if ($user && ($user->role === 'admin' || $user->is_admin)) {
-            $userId = request()->get('user_id');
-            $this->vpnUser = VpnUser::findOrFail($userId);
+            $this->vpnUser = VpnUser::query()->findOrFail($vpnUserId);
         } else {
-            // For normal logins, make sure we end up with a VpnUser instance
-            $this->vpnUser = $user->vpnUser ?? $user;
+            // 2) Normal client flow
+            $client = Auth::guard('client');
+            abort_unless($client->check(), 403);
+
+            /** @var VpnUser $u */
+            $u = $client->user();
+            $this->vpnUser = $u;
         }
 
-        // Only describes which servers/variants are available – no WG key generation here
+        // Build list of available configs (no WG generation here)
         $this->availableConfigs = VpnConfigBuilder::generate($this->vpnUser);
     }
 
-    public function downloadConfig($serverId, $variant = 'unified')
+    public function downloadConfig(int $serverId, string $variant = 'unified')
     {
-        $server = VpnServer::findOrFail($serverId);
+        $server = VpnServer::query()->findOrFail($serverId);
 
         // Ensure user has access to this server
         if (! $this->vpnUser->vpnServers()->whereKey($serverId)->exists()) {
             session()->flash('error', 'Server not assigned to your account.');
-            return;
+            return null;
         }
 
         try {
@@ -47,21 +57,20 @@ class DownloadConfig extends Component
                 /** @var WireGuardService $wg */
                 $wg = app(WireGuardService::class);
 
-                // 🔑 This guarantees a real peer exists on the WG server
+                // Guarantees a peer exists
                 $peer    = $wg->ensurePeerForUser($server, $this->vpnUser);
                 $content = $wg->buildClientConfig($server, $peer);
 
-                $filename    = "{$server->name}_{$this->vpnUser->username}_wireguard.conf";
+                $filename    = sprintf('%s_%s_wireguard.conf', $server->name, $this->vpnUser->username);
                 $contentType = 'text/plain';
             } else {
-                // OpenVPN configs still come from the existing builder
                 $content = VpnConfigBuilder::generateOpenVpnConfigString(
                     $this->vpnUser,
                     $server,
                     $variant
                 );
 
-                $filename    = "{$server->name}_{$this->vpnUser->username}_{$variant}.ovpn";
+                $filename    = sprintf('%s_%s_%s.ovpn', $server->name, $this->vpnUser->username, $variant);
                 $contentType = 'application/x-openvpn-profile';
             }
 
@@ -72,14 +81,14 @@ class DownloadConfig extends Component
             ]);
         } catch (\Throwable $e) {
             Log::error('DownloadConfig failed', [
-                'vpn_user_id' => $this->vpnUser->id ?? null,
+                'vpn_user_id' => $this->vpnUser->id,
                 'server_id'   => $serverId,
                 'variant'     => $variant,
                 'error'       => $e->getMessage(),
             ]);
 
-            session()->flash('error', 'Failed to generate config: ' . $e->getMessage());
-            return;
+            session()->flash('error', 'Failed to generate config.');
+            return null;
         }
     }
 
@@ -87,6 +96,7 @@ class DownloadConfig extends Component
     {
         return view('livewire.pages.client.download-config', [
             'configs' => $this->availableConfigs,
+            'user'    => $this->vpnUser,
         ]);
     }
 }
