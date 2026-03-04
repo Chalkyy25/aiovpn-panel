@@ -61,7 +61,7 @@ protected static ?int $navigationSort     = 3;
                                             ->mapWithKeys(function (Package $p): array {
                                                 $months = (int) $p->duration_months;
                                                 $dev = (int) $p->max_connections;
-                                                $total = $months * (int) $p->price_credits;
+                                                $total = (int) $p->price_credits;
 
                                                 return [
                                                     $p->id => sprintf(
@@ -334,7 +334,7 @@ protected static ?int $navigationSort     = 3;
                                 ->mapWithKeys(function (Package $p): array {
                                     $months = (int) $p->duration_months;
                                     $dev = (int) $p->max_connections;
-                                    $total = $months * (int) $p->price_credits;
+                                    $total = (int) $p->price_credits;
 
                                     return [
                                         $p->id => sprintf(

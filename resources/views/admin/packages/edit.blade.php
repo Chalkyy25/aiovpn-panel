@@ -86,9 +86,9 @@
     </form>
 
     <div class="text-xs text-[var(--aio-sub)] space-y-1">
-        <p><strong>Credit Cost:</strong> Cost per month (e.g., 100 credits/month)</p>
+        <p><strong>Credit Cost:</strong> Total subscription cost (e.g., 300 credits)</p>
         <p><strong>Duration:</strong> How many months this package lasts</p>
-        <p><strong>Total Cost:</strong> Will be Credit Cost × Duration (shown in create VPN user)</p>
+        <p><strong>Total Cost:</strong> Same as Credit Cost (shown in create VPN user)</p>
     </div>
 </div>
 @endsection

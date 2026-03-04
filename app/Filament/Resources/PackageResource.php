@@ -31,7 +31,7 @@ protected static ?int $navigationSort     = 1;
                 Forms\Components\Textarea::make('description')
                     ->columnSpanFull(),
                 Forms\Components\TextInput::make('price_credits')
-                    ->label('Price (credits per month)')
+                    ->label('Price (credits)')
                     ->required()
                     ->numeric()
                     ->minValue(0)
@@ -65,6 +65,7 @@ protected static ?int $navigationSort     = 1;
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('price_credits')
+                    ->label('Credits')
                     ->numeric()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('max_connections')

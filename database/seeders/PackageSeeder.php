@@ -13,7 +13,7 @@ class PackageSeeder extends Seeder
             [
                 'name'            => 'Starter (1 Device) — Annual',
                 'description'     => 'Single device plan, valid for 12 months.',
-                'price_credits'   => 1,   // per month
+                'price_credits'   => 1,   // total credits for the subscription
                 'max_connections' => 1,
                 'duration_months' => 12,
                 'is_featured'     => false,

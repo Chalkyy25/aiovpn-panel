@@ -57,7 +57,7 @@ class PackageResource extends Resource
                     ->wrap(),
 
                 Tables\Columns\TextColumn::make('price_credits')
-                    ->label('Credits / month')
+                    ->label('Credits')
                     ->numeric()
                     ->sortable(),
 

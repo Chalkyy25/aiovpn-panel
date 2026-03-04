@@ -24,7 +24,7 @@ class CreateVpnUser extends Component
     public ?int $packageId = null;
 
     // UI fields (read-only in Blade)
-    public int $priceCredits = 0;        // total cost (months * credits_per_month)
+    public int $priceCredits = 0;        // total cost (credits per subscription)
     public int $adminCredits = 0;        // current admin/reseller credits
     public int $creditsLeft = 0;         // adminCredits - priceCredits
     public int $maxConnections = 1;      // from package.max_connections
@@ -49,7 +49,7 @@ class CreateVpnUser extends Component
         $this->packages = Package::query()
             ->active()
             ->orderBy('price_credits')
-            ->get(['id', 'name', 'price_credits', 'max_connections']);
+            ->get(['id', 'name', 'price_credits', 'max_connections', 'duration_months']);
 
         if (! $this->packageId && $this->packages->isNotEmpty()) {
             $this->packageId = (int) $this->packages->first()->id;
@@ -82,9 +82,7 @@ class CreateVpnUser extends Component
         $pkg = $this->packages->firstWhere('id', $this->packageId);
 
         $months = (int) ($pkg->duration_months ?? 1);
-        $rate   = (int) ($pkg->price_credits ?? 0);
-
-        $this->priceCredits   = $months * $rate;
+        $this->priceCredits   = (int) ($pkg->price_credits ?? 0);
         $this->maxConnections = (int) ($pkg->max_connections ?? 1);
 
         $expiresAt = Carbon::now()->addMonths($months);
@@ -153,8 +151,7 @@ class CreateVpnUser extends Component
 
         // Never trust computed UI values — recompute server-side
         $months      = (int) $pkg->duration_months;
-        $rate        = (int) $pkg->price_credits;
-        $totalCost   = $months * $rate;
+        $totalCost   = (int) $pkg->price_credits;
         $expiresAt   = Carbon::now()->addMonths($months);
         $plainPass   = Str::random(5);
 
@@ -175,7 +172,7 @@ class CreateVpnUser extends Component
                             'package_id'    => $pkg->id,
                             'months'        => $months,
                             'connections'   => (int) $pkg->max_connections,
-                            'credits_per_m' => (int) $pkg->price_credits,
+                            'credits_total' => (int) $pkg->price_credits,
                         ]
                     );
                 }

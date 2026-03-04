@@ -10,7 +10,7 @@ class Package extends Model
     protected $fillable = [
         'name',
         'description',
-        // credits PER MONTH (e.g. 1, 3, 6, 12)
+        // Total credits for the subscription (one-time cost)
         'price_credits',
         // 0 = Unlimited
         'max_connections',
@@ -60,18 +60,17 @@ class Package extends Model
 
     public function getTotalCreditsAttribute(): int
     {
-        // credits per month × months
-        return (int) $this->price_credits * (int) $this->duration_months;
+        // Total credits per subscription
+        return (int) $this->price_credits;
     }
 
     public function getLabelAttribute(): string
     {
         return sprintf(
-            '%s — %d months • %s devices • %d cr/mo (total %d)',
+            '%s — %d months • %s devices • %d credits',
             $this->name,
             $this->duration_months,
             $this->max_connections_text,
-            $this->price_credits,
             $this->total_credits
         );
     }

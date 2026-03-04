@@ -32,7 +32,7 @@
                                 @php
                                     $dev = (int) $p->max_connections;
                                     $months = (int) $p->duration_months;
-                                    $totalCredits = $months * (int)$p->price_credits;
+                                    $totalCredits = (int) $p->price_credits;
                                 @endphp
                                 <option value="{{ $p->id }}">
                                     {{ $p->name }} — {{ $months }} month{{ $months === 1 ? '' : 's' }} — {{ $dev === 0 ? 'Unlimited' : $dev }} device{{ $dev === 1 ? '' : 's' }} — {{ $totalCredits }} credits
