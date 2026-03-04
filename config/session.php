@@ -168,7 +168,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE', false),
+    // NOTE: 419 errors on login are commonly caused by the session cookie not being
+    // persisted (e.g. secure cookie over http). Default secure cookies to "true"
+    // only when APP_URL is https, unless explicitly overridden.
+    'secure' => env('SESSION_SECURE_COOKIE', str_starts_with((string) env('APP_URL', ''), 'https://')),
 
     /*
     |--------------------------------------------------------------------------
@@ -197,7 +200,6 @@ return [
     */
 
     'same_site' => env('SESSION_SAME_SITE', 'lax'),
-    'cookie' => env('SESSION_COOKIE', 'aiovpn_session'),
     /*
     |--------------------------------------------------------------------------
     | Partitioned Cookies
