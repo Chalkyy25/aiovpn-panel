@@ -61,7 +61,7 @@ use App\Livewire\Pages\Reseller\CreateClientLine;
 
 /*
 |--------------------------------------------------------------------------
-| Livewire Pages (Client)
+| Client Livewire Pages
 |--------------------------------------------------------------------------
 */
 use App\Livewire\Pages\Client\Dashboard as ClientDashboard;
@@ -103,7 +103,7 @@ Route::get('/debug-db', fn () => config('database.connections.mysql'));
 
 /*
 |--------------------------------------------------------------------------
-| PUBLIC DOWNLOADS (STABLE URL)
+| Public downloads
 |--------------------------------------------------------------------------
 */
 Route::get('/downloads/app.apk', [AppBuildPublicDownloadController::class, 'latest'])
@@ -114,25 +114,29 @@ Route::get('/downloads/app.apk', [AppBuildPublicDownloadController::class, 'late
 | CLIENT AUTH + PORTAL (client guard)
 |--------------------------------------------------------------------------
 | Option A:
-| - /login is CLIENT login
-| - /dashboard is CLIENT dashboard
-| - keep /client/login as alias so old links don't break
+| - /login        => client login
+| - /dashboard    => client dashboard
+| - /client/login => legacy alias
 |--------------------------------------------------------------------------
 */
 Route::middleware('guest:client')->group(function () {
-    // ✅ Primary client login
-    Route::get('/login', [ClientAuthController::class, 'showLoginForm'])->name('client.login.form');
-    Route::post('/login', [ClientAuthController::class, 'login'])->name('client.login');
+    Route::get('/login', [ClientAuthController::class, 'showLoginForm'])
+        ->name('client.login.form');
 
-    // ✅ Backward compatible alias
+    Route::post('/login', [ClientAuthController::class, 'login'])
+        ->name('client.login');
+
+    // legacy alias (old links)
     Route::get('/client/login', fn () => redirect()->route('client.login.form'));
     Route::post('/client/login', [ClientAuthController::class, 'login']);
 });
 
 Route::middleware('auth:client')->group(function () {
-    Route::post('/logout', [ClientAuthController::class, 'logout'])->name('client.logout');
+    Route::post('/logout', [ClientAuthController::class, 'logout'])
+        ->name('client.logout');
 
-    Route::get('/dashboard', ClientDashboard::class)->name('client.dashboard');
+    Route::get('/dashboard', ClientDashboard::class)
+        ->name('client.dashboard');
 
     Route::get('/vpn/{vpnserver}/download', [VpnConfigController::class, 'clientDownload'])
         ->name('client.vpn.download');
@@ -140,10 +144,10 @@ Route::middleware('auth:client')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| STAFF LOGIN (web guard) - OPTIONAL FALLBACK
+| STAFF LOGIN (web guard) - OPTIONAL on aiovpn.co.uk
 |--------------------------------------------------------------------------
-| Staff should normally use panel.aiovpn.co.uk (Filament /admin and /reseller),
-| but keep this while migrating if you want.
+| Staff should use panel.aiovpn.co.uk (Filament /admin/login and /reseller/login).
+| Keep this only if you still need staff login on aiovpn.co.uk.
 |--------------------------------------------------------------------------
 */
 Route::middleware('guest:web')->group(function () {
@@ -157,7 +161,7 @@ Route::post('/staff/logout', [AdminLogin::class, 'logout'])
 
 /*
 |--------------------------------------------------------------------------
-| VPN CONFIG DOWNLOADS (keep URLs so nothing breaks)
+| VPN config downloads (keep stable URLs)
 |--------------------------------------------------------------------------
 */
 Route::get('/clients/{vpnuser}/config', [VpnConfigController::class, 'download'])
@@ -174,16 +178,12 @@ Route::get('/vpn-users/{vpnuser}/configs', VpnUserConfigs::class)
 
 /*
 |--------------------------------------------------------------------------
-| LEGACY PANEL (LIVEWIRE) - MOVED OUT OF THE WAY
+| LEGACY PANEL (LIVEWIRE) - lives under /legacy/*
 |--------------------------------------------------------------------------
 */
 Route::prefix('legacy')->name('legacy.')->group(function () {
 
-    /*
-    |--------------------------------------------------------------------------
-    | Legacy Admin (Livewire)
-    |--------------------------------------------------------------------------
-    */
+    // Legacy Admin (Livewire)
     Route::middleware(['auth', 'verified', 'role:admin'])
         ->prefix('admin')
         ->name('admin.')
@@ -242,11 +242,7 @@ Route::prefix('legacy')->name('legacy.')->group(function () {
             });
         });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Legacy Reseller (Livewire)
-    |--------------------------------------------------------------------------
-    */
+    // Legacy Reseller (Livewire)
     Route::middleware(['auth', 'verified', 'role:reseller'])
         ->prefix('reseller')
         ->name('reseller.')
@@ -275,8 +271,10 @@ Route::middleware('auth')->group(function () {
 |--------------------------------------------------------------------------
 | Default Auth Routes
 |--------------------------------------------------------------------------
-| ⚠️ If this file registers /login (web guard), it will conflict.
-| On aiovpn.co.uk you want /login to be client login.
+| DO NOT register /login for web guard on aiovpn.co.uk.
+| Only load these if they won't collide, or delete web /login from auth.php.
 |--------------------------------------------------------------------------
 */
-require __DIR__ . '/auth.php';
+if (! Route::has('login')) {
+    require __DIR__ . '/auth.php';
+}
