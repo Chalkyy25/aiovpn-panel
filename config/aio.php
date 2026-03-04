@@ -20,6 +20,22 @@ return [
     // Primary hostname for the control plane (for reference / logging / clients).
     'control_plane_host' => env('AIO_CONTROL_PLANE_HOST', 'panel.aiovpn.co.uk'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Session Cookie Isolation (Client vs Panel)
+    |--------------------------------------------------------------------------
+    |
+    | This app serves both the client portal (aiovpn.co.uk) and the staff panel
+    | (panel.aiovpn.co.uk). To prevent CSRF 419s and cross-subdomain session
+    | collisions, we use different session cookie names per host.
+    |
+    */
+
+    'session_cookies' => [
+        'panel' => env('PANEL_SESSION_COOKIE', 'aiovpn_panel_session'),
+        'client' => env('CLIENT_SESSION_COOKIE', 'aiovpn_client_session'),
+    ],
+
     // Base URL that mobile/TV apps should talk to for API calls.
     'api_base_url' => env('AIO_API_BASE_URL', 'https://panel.aiovpn.co.uk'),
 
