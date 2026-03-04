@@ -41,7 +41,7 @@
         </button>
 
         @if(auth('client')->check())
-          <form method="POST" action="{{ route('client.logout') }}">
+          <form method="POST" action="/logout">
             @csrf
             <x-button type="submit" class="aio-pill">Logout</x-button>
           </form>

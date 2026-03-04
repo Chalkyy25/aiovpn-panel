@@ -1,28 +1,4 @@
 <div class="p-6 space-y-6">
-    {{-- Impersonation banner --}}
-    @if(session()->has('impersonating_admin_id'))
-        <div class="aio-card border border-orange-500/30 bg-orange-500/10 p-4 rounded">
-            <div class="flex items-center justify-between">
-                <div class="text-sm">
-                    <div class="font-medium">🔐 Admin Impersonation Active — viewing as <span class="text-[var(--aio-ink)]">{{ $user->username }}</span></div>
-                    <div class="text-xs text-[var(--aio-sub)]">Admin: {{ session('impersonating_admin_name') }}</div>
-                </div>
-                @php($stopRoute = \Illuminate\Support\Facades\Route::has('legacy.admin.stop-impersonation')
-                    ? route('legacy.admin.stop-impersonation')
-                    : (\Illuminate\Support\Facades\Route::has('admin.stop-impersonation')
-                        ? route('admin.stop-impersonation')
-                        : null))
-
-                <form method="POST" action="{{ $stopRoute ?? '#' }}">
-                    @csrf
-                    <button class="aio-pill bg-orange-600/90 hover:shadow-glow" @disabled($stopRoute === null)>
-                        Stop Impersonation
-                    </button>
-                </form>
-            </div>
-        </div>
-    @endif
-
     {{-- Header + logout --}}
     <div class="flex items-center justify-between">
         <div>
@@ -31,7 +7,7 @@
                 <p class="text-[var(--aio-sub)] text-sm mt-1">Your email: {{ $user->email }}</p>
             @endif
         </div>
-        <form method="POST" action="{{ route('client.logout') }}">
+        <form method="POST" action="/logout">
             @csrf
             <button class="aio-pill bg-red-600/90 hover:shadow-glow">🚪 Logout</button>
         </form>
