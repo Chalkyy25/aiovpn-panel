@@ -275,6 +275,3 @@ Route::middleware('auth')->group(function () {
 | Only load these if they won't collide, or delete web /login from auth.php.
 |--------------------------------------------------------------------------
 */
-if (! Route::has('login')) {
-    require __DIR__ . '/auth.php';
-}
