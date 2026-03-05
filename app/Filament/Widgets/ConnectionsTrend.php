@@ -2,9 +2,8 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\VpnUserConnection;
+use App\Models\VpnConnection;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Carbon;
 
 class ConnectionsTrend extends ChartWidget
 {
@@ -12,9 +11,9 @@ class ConnectionsTrend extends ChartWidget
     protected static ?string $pollingInterval = '60s';
     protected static ?int $sort = 4;
     protected int|string|array $columnSpan = [
-    'default' => 1,
-    'lg'      => 3, // full-width row on desktop
-];
+        'default' => 1,
+        'lg'      => 3, // full-width row on desktop
+    ];
 
     protected function getData(): array
     {
@@ -28,7 +27,16 @@ class ConnectionsTrend extends ChartWidget
             $start = $hour->copy()->startOfHour();
             $end   = $hour->copy()->endOfHour();
 
-            $count = VpnUserConnection::whereBetween('connected_at', [$start, $end])->count();
+            // Number of sessions that started in this hour (source of truth: vpn_connections)
+            $count = VpnConnection::query()
+                ->where(function ($q) use ($start, $end) {
+                    $q->whereBetween('connected_at', [$start, $end])
+                        ->orWhere(function ($q) use ($start, $end) {
+                            $q->whereNull('connected_at')
+                                ->whereBetween('created_at', [$start, $end]);
+                        });
+                })
+                ->count();
 
             $labels[] = $start->format('H:00');
             $data[]   = $count;

@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\VpnUserConnection;
+use App\Models\VpnConnection;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
@@ -22,9 +22,10 @@ class RecentConnections extends BaseWidget
     {
         return $table
             ->query(
-                VpnUserConnection::query()
+                VpnConnection::query()
                     ->with(['vpnUser', 'vpnServer'])
-                    ->latest('updated_at')
+                    ->orderByDesc('last_seen_at')
+                    ->orderByDesc('updated_at')
             )
             ->columns([
                 Tables\Columns\TextColumn::make('vpnUser.username')
@@ -37,10 +38,32 @@ class RecentConnections extends BaseWidget
                     ->searchable()
                     ->sortable(),
 
-                Tables\Columns\IconColumn::make('is_connected')
-                    ->label('Connected')
+                Tables\Columns\IconColumn::make('is_live')
+                    ->label('Live')
                     ->boolean()
-                    ->sortable(),
+                    ->state(function (VpnConnection $c): bool {
+                        if (! $c->is_active) {
+                            return false;
+                        }
+
+                        $seen = $c->last_seen_at;
+                        if (! $seen) {
+                            return false;
+                        }
+
+                        $now = now();
+
+                        return match (strtoupper((string) $c->protocol)) {
+                            'WIREGUARD' => $seen->greaterThanOrEqualTo($now->copy()->subSeconds(VpnConnection::WIREGUARD_STALE_SECONDS)),
+                            default => $seen->greaterThanOrEqualTo($now->copy()->subSeconds(VpnConnection::OPENVPN_STALE_SECONDS)),
+                        };
+                    })
+                    ->sortable(query: function ($query, string $direction) {
+                        // Basic sort: is_active first, then last_seen_at.
+                        return $query
+                            ->orderBy('is_active', $direction === 'asc' ? 'asc' : 'desc')
+                            ->orderBy('last_seen_at', 'desc');
+                    }),
 
                 Tables\Columns\TextColumn::make('client_ip')
                     ->label('Client IP')
@@ -50,7 +73,12 @@ class RecentConnections extends BaseWidget
                     ->badge()
                     ->toggleable(),
 
-                Tables\Columns\TextColumn::make('seen_at')
+                Tables\Columns\TextColumn::make('connected_at')
+                    ->label('Connected')
+                    ->since()
+                    ->toggleable(),
+
+                Tables\Columns\TextColumn::make('last_seen_at')
                     ->label('Seen')
                     ->since()
                     ->toggleable(),
