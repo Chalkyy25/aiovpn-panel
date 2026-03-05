@@ -176,11 +176,11 @@ class VpnUserResource extends Resource
                                     }
                                 }),
 
-                            Forms\\Components\\Placeholder::make('credits_current')
+                            Forms\Components\Placeholder::make('credits_current')
                                 ->label('Current credits')
                                 ->content(fn (): string => (string) ((int) (auth()->user()?->credits ?? 0)) . ' credits'),
 
-                            Forms\\Components\\Placeholder::make('credits_deducting')
+                            Forms\Components\Placeholder::make('credits_deducting')
                                 ->label('Deducting')
                                 ->content(function (Get $get): string {
                                     $packageId = (int) ($get('package_id') ?? 0);
@@ -192,7 +192,7 @@ class VpnUserResource extends Resource
                                     return (string) ((int) $package->price_credits) . ' credits';
                                 }),
 
-                            Forms\\Components\\Placeholder::make('credits_remaining')
+                            Forms\Components\Placeholder::make('credits_remaining')
                                 ->label('Remaining credits')
                                 ->content(function (Get $get): string {
                                     $current = (int) (auth()->user()?->credits ?? 0);
