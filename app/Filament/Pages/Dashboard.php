@@ -19,11 +19,13 @@ class Dashboard extends BaseDashboard
     {
         return [
             \App\Filament\Widgets\AdminStats::class,
-            \App\Filament\Widgets\ConnectionsByServer::class,
-            \App\Filament\Widgets\ActiveNowUsers::class,
             \App\Filament\Widgets\ConnectionsTrend::class,
-            \App\Filament\Widgets\ServerStatus::class,
+            \App\Filament\Widgets\ActiveNowUsers::class,
+            \App\Filament\Widgets\DashboardLinks::class,
+            \App\Filament\Widgets\ExpiringSoonUsers::class,
+            \App\Filament\Widgets\ConnectionsByServer::class,
             \App\Filament\Widgets\RecentConnections::class,
+            \App\Filament\Widgets\ServerStatus::class,
         ];
     }
 }

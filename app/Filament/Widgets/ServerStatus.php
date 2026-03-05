@@ -11,7 +11,7 @@ class ServerStatus extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected static ?string $heading = 'Server Status';
-    protected static ?int $sort = 5;
+    protected static ?int $sort = 8;
 
     protected int|string|array $columnSpan = [
         'default' => 1,

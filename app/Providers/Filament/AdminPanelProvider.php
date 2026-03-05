@@ -7,6 +7,8 @@ use App\Filament\Widgets\ActiveNowUsers;
 use App\Filament\Widgets\AdminStats;
 use App\Filament\Widgets\ConnectionsByServer;
 use App\Filament\Widgets\ConnectionsTrend;
+use App\Filament\Widgets\DashboardLinks;
+use App\Filament\Widgets\ExpiringSoonUsers;
 use App\Filament\Widgets\RecentConnections;
 use App\Filament\Widgets\ServerStatus;
 use App\Http\Middleware\SetSessionCookieForHost;
@@ -58,6 +60,8 @@ class AdminPanelProvider extends PanelProvider
                 AdminStats::class,
                 ActiveNowUsers::class,
                 ConnectionsTrend::class,
+                DashboardLinks::class,
+                ExpiringSoonUsers::class,
                 ConnectionsByServer::class,
                 ServerStatus::class,
                 RecentConnections::class,

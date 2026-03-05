@@ -3,9 +3,11 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\VpnServerResource\Pages;
+use App\Jobs\DeployVpnServer;
 use App\Models\VpnServer;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -256,17 +258,36 @@ protected static ?int $navigationSort     = 1;
             ->actions([
                 Tables\Actions\EditAction::make(),
 
+                Tables\Actions\Action::make('deploy')
+                    ->label('Deploy')
+                    ->icon('heroicon-o-rocket-launch')
+                    ->requiresConfirmation()
+                    ->disabled(fn (VpnServer $record): bool => (bool) ($record->is_deploying ?? false))
+                    ->action(function (VpnServer $record): void {
+                        $record->forceFill([
+                            'deployment_status' => 'queued',
+                            'status' => $record->status ?: 'pending',
+                            'is_deploying' => false,
+                        ])->save();
+
+                        DeployVpnServer::dispatch($record);
+
+                        Notification::make()
+                            ->success()
+                            ->title('Deployment queued')
+                            ->body("Server: {$record->name}")
+                            ->send();
+                    }),
+
                 Tables\Actions\Action::make('log')
                     ->label('Log')
                     ->icon('heroicon-o-document-text')
-                    ->modalHeading('Deployment Log')
+                    ->modalHeading(fn (VpnServer $record): string => "Deployment Log — {$record->name}")
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close')
-                    ->infolist([
-                        \Filament\Infolists\Components\TextEntry::make('deployment_log')
-                            ->label('')
-                            ->columnSpanFull(),
-                    ]),
+                    ->modalContent(fn (VpnServer $record) => view('filament.modals.server-deployment-log', [
+                        'serverId' => (int) $record->id,
+                    ])),
             ]);
     }
 
