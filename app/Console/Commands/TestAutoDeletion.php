@@ -8,6 +8,7 @@ use App\Jobs\RemoveWireGuardPeer;
 use App\Jobs\RemoveOpenVPNUser;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Queue;
 
@@ -38,7 +39,7 @@ class TestAutoDeletion extends Command
         try {
             // Step 1: Create test server
             $this->info('1. Creating test VPN server...');
-            $testServer = VpnServer::create([
+            $serverPayload = [
                 'name' => 'test-server-autodeletion',
                 'ip_address' => '192.168.1.100',
                 'protocol' => 'openvpn',
@@ -51,7 +52,13 @@ class TestAutoDeletion extends Command
                 'dns' => '1.1.1.1',
                 'deployment_status' => 'deployed',
                 'is_deploying' => false,
-            ]);
+            ];
+
+            if (! Schema::hasColumn('vpn_servers', 'is_deploying')) {
+                unset($serverPayload['is_deploying']);
+            }
+
+            $testServer = VpnServer::create($serverPayload);
             $this->info("✅ Test server created: {$testServer->name} (ID: {$testServer->id})");
 
             // Step 2: Create test user

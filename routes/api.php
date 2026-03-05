@@ -66,7 +66,7 @@ Route::post('/gate/login', [GateLoginController::class, 'login']);
 | MOBILE CLIENT
 ======================= */
 
-Route::post('/auth/login', [MobileAuthController::class, 'login']);
+Route::post('/auth/login', [MobileAuthController::class, 'login'])->middleware('throttle:10,1');
 
 
 Route::prefix('stealth')->group(function () {
@@ -76,6 +76,9 @@ Route::prefix('stealth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/auth/logout', [MobileAuthController::class, 'logout']);
+    Route::get('/auth/me', [MobileProfileController::class, 'index']);
+
     Route::get('/profiles',        [MobileProfileController::class, 'index']);
     Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
     Route::get('/ovpn',            [MobileProfileController::class, 'ovpn']);

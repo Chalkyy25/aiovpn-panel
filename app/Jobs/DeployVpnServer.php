@@ -8,6 +8,7 @@ use App\Models\VpnServer;
 use App\Models\DeployKey;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -37,7 +38,9 @@ class DeployVpnServer implements ShouldQueue
     {
         Log::info("🚀 DeployVpnServer: starting for #{$this->vpnServer->id}");
 
-        if ($this->vpnServer->is_deploying) {
+            $hasIsDeploying = Schema::hasColumn('vpn_servers', 'is_deploying');
+
+            if ($hasIsDeploying && ($this->vpnServer->is_deploying ?? false)) {
             Log::warning("⚠️ DeployVpnServer: already deploying #{$this->vpnServer->id}");
             return;
         }
@@ -94,10 +97,15 @@ class DeployVpnServer implements ShouldQueue
         }
 
         $this->vpnServer->update([
-            'is_deploying'      => true,
+            $startPayload = [
+                'is_deploying'      => true,
             'deployment_status' => 'running',
             'deployment_log'    => "🚀 Starting deployment on {$ip}…\n",
         ]);
+            if (! $hasIsDeploying) {
+                unset($startPayload['is_deploying']);
+            }
+            $this->vpnServer->forceFill($startPayload)->save();
 
         try {
             $sshCmdBase = $this->buildSshBase($user, $ip, $port);
@@ -327,11 +335,16 @@ BASH;
             }
 
             $this->vpnServer->update([
-                'is_deploying'      => false,
+                $finishPayload = [
+                    'is_deploying'      => false,
                 'deployment_status' => $status,
                 'deployment_log'    => $finalLog,
                 'status'            => $exitCode === 0 ? 'online' : 'offline',
             ]);
+                if (! $hasIsDeploying) {
+                    unset($finishPayload['is_deploying']);
+                }
+                $this->vpnServer->forceFill($finishPayload)->save();
 
             Log::info("✅ DeployVpnServer: done for #{$this->vpnServer->id} (exit={$exitCode})");
         } catch (Throwable $e) {

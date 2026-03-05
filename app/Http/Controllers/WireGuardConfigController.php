@@ -18,6 +18,13 @@ class WireGuardConfigController extends Controller
      */
     public function servers(Request $request)
     {
+        $authUser = $request->user();
+        if (!($authUser instanceof VpnUser)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // If you later switch back to per-user server assignments,
+        // you can change this to $authUser->vpnServers() again.
         $servers = VpnServer::query()
             ->where('enabled', true)
             ->whereNotNull('wg_public_key')
@@ -49,50 +56,31 @@ class WireGuardConfigController extends Controller
     public function config(Request $request)
     {
         $authUser = $request->user();
-        $serverId = (int) $request->query('server_id');
-
-        if (!$serverId) {
-            return response()->json(['error' => 'server_id is required'], 422);
+        if (!($authUser instanceof VpnUser)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        $server = VpnServer::findOrFail($serverId);
+        if (!$authUser->is_active || $authUser->isExpired()) {
+            return response()->json(['error' => 'Account inactive or expired'], 403);
+        }
+
+        $data = $request->validate([
+            'server_id' => ['required', 'integer'],
+        ]);
+
+        $serverId = (int) $data['server_id'];
+
+        /** @var VpnServer $server */
+        $server = VpnServer::query()
+            ->where('enabled', true)
+            ->whereKey($serverId)
+            ->firstOrFail();
 
         if (!$server->hasWireGuard()) {
             return response()->json(['error' => 'Server has no WireGuard enabled'], 422);
         }
 
-        // Resolve the authenticated principal to a concrete VpnUser model.
-        // This is future-proof to work whether the request is authenticated as
-        // a VpnUser (client app) or as a different User type (e.g., admin).
-        $vpnUser = null;
-
-        if ($authUser instanceof VpnUser) {
-            $vpnUser = $authUser;
-        } else {
-            // Try explicit username from query first (if provided by client)
-            $username = (string) $request->query('username', '');
-
-            if ($username !== '') {
-                $vpnUser = VpnUser::where('username', $username)->first();
-            }
-
-            // Fallbacks: try common mappings from the authenticated user
-            if (!$vpnUser && method_exists($authUser, 'vpnUser')) {
-                // Relation on the auth model
-                $vpnUser = $authUser->vpnUser; // may be null
-            }
-
-            if (!$vpnUser && property_exists($authUser, 'username') && !empty($authUser->username)) {
-                $vpnUser = VpnUser::where('username', $authUser->username)->first();
-            }
-        }
-
-        if (!$vpnUser instanceof VpnUser) {
-            return response()->json([
-                'error' => 'Unable to resolve VPN user for this request',
-                'hint'  => 'Authenticate as a VpnUser or provide ?username=...',
-            ], 422);
-        }
+        $vpnUser = $authUser;
 
         // Ensure peer exists (or create + push it)
         $peer = $this->wg->ensurePeerForUser($server, $vpnUser);

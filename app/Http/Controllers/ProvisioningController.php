@@ -5,17 +5,24 @@ namespace App\Http\Controllers;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 
 class ProvisioningController extends Controller
 {
     public function start(Request $req, VpnServer $server)
     {
-        $server->update([
+        $payload = [
             'deployment_status' => 'running',
             'deployment_log'    => trim(($server->deployment_log ?? '')."\n".$req->input('message','▶ start')),
             'is_deploying'      => true,
-        ]);
+        ];
+
+        if (! Schema::hasColumn('vpn_servers', 'is_deploying')) {
+            unset($payload['is_deploying']);
+        }
+
+        $server->forceFill($payload)->save();
         return response()->json(['ok' => true]);
     }
 
@@ -31,12 +38,18 @@ class ProvisioningController extends Controller
     public function finish(Request $req, VpnServer $server)
     {
         $ok = (bool) $req->boolean('ok', false);
-        $server->update([
+        $payload = [
             'deployment_status' => $ok ? 'success' : 'failed',
             'status'            => $ok ? 'online' : 'offline',
             'deployment_log'    => trim(($server->deployment_log ?? '')."\n".($req->input('message','■ done'))),
             'is_deploying'      => false,
-        ]);
+        ];
+
+        if (! Schema::hasColumn('vpn_servers', 'is_deploying')) {
+            unset($payload['is_deploying']);
+        }
+
+        $server->forceFill($payload)->save();
         return response()->json(['ok' => true]);
     }
 

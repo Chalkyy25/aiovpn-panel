@@ -21,7 +21,16 @@ class MobileProfileController extends Controller
         /** @var VpnUser $user */
         $user = $request->user()->loadMissing('vpnServers');
 
-        $servers = $user->vpnServers
+        // If you assign all servers to all users, the pivot may be empty.
+        // Fall back to returning all enabled servers.
+        $serverQuery = $user->vpnServers()->where('vpn_servers.enabled', true);
+
+        if ($serverQuery->count() === 0) {
+            $serverQuery = VpnServer::query()->where('enabled', true);
+        }
+
+        $servers = $serverQuery
+            ->get()
             ->map(function (VpnServer $s) {
                 $raw = strtolower((string) $s->protocol); // "udp", "tcp", "wireguard", etc.
 
@@ -77,9 +86,16 @@ class MobileProfileController extends Controller
         $serverId = (int) $request->query('server_id', 0);
 
         /** @var VpnServer|null $server */
-        $server = $serverId
-            ? $user->vpnServers()->where('vpn_servers.id', $serverId)->first()
-            : $user->vpnServers()->first();
+        if ($serverId) {
+            // If all servers are available to all users, allow selecting any enabled server.
+            $server = VpnServer::query()->where('enabled', true)->whereKey($serverId)->first();
+        } else {
+            $server = $user->vpnServers()->where('vpn_servers.enabled', true)->first();
+
+            if (!$server) {
+                $server = VpnServer::query()->where('enabled', true)->first();
+            }
+        }
 
         if (!$server) {
             return response("No VPN server assigned to this user", 404);
@@ -126,11 +142,12 @@ class MobileProfileController extends Controller
         /** @var VpnServer $vpnServer */
         $vpnServer = VpnServer::findOrFail($data['server_id']);
 
-        // Ensure the user is assigned to this server
-        $assigned = $vpnUser->vpnServers()->whereKey($vpnServer->id)->exists();
-        if (!$assigned) {
-            return response('Server not assigned to this user.', 403);
+        if (!($vpnServer->enabled ?? false)) {
+            return response('Server is disabled.', 403);
         }
+
+        // Ensure the user is assigned to this server
+        // If you later re-enable per-user assignment rules, reintroduce a server assignment check here.
 
         // Default to unified (stealth + fallback) for best ISP bypass
         $variant = $data['variant'] ?? 'unified';

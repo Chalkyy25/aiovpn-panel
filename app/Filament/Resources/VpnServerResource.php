@@ -11,6 +11,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Schema;
 
 class VpnServerResource extends Resource
 {
@@ -266,11 +267,17 @@ protected static ?int $navigationSort     = 1;
                     ->requiresConfirmation()
                     ->disabled(fn (VpnServer $record): bool => (bool) ($record->is_deploying ?? false))
                     ->action(function (VpnServer $record): void {
-                        $record->forceFill([
+                        $payload = [
                             'deployment_status' => 'queued',
                             'status' => $record->status ?: 'pending',
                             'is_deploying' => false,
-                        ])->save();
+                        ];
+
+                        if (! Schema::hasColumn('vpn_servers', 'is_deploying')) {
+                            unset($payload['is_deploying']);
+                        }
+
+                        $record->forceFill($payload)->save();
 
                         DeployVpnServer::dispatch($record);
 
