@@ -22,9 +22,9 @@ class DashboardLinks extends Widget
     {
         return [
             'links' => [
-                ['label' => 'VPN Users', 'url' => VpnUserResource::getUrl('index')],
-                ['label' => 'Servers', 'url' => VpnServerResource::getUrl('index')],
-                ['label' => 'Connections', 'url' => VpnConnectionResource::getUrl('index')],
+                ['label' => 'VPN Users', 'url' => VpnUserResource::getUrl('index'), 'icon' => 'heroicon-m-users'],
+                ['label' => 'Servers', 'url' => VpnServerResource::getUrl('index'), 'icon' => 'heroicon-m-server'],
+                ['label' => 'Connections', 'url' => VpnConnectionResource::getUrl('index'), 'icon' => 'heroicon-m-signal'],
             ],
         ];
     }
