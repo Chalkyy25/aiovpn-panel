@@ -164,9 +164,23 @@ class DeployApiController extends Controller
         }
 
         // Non-mgmt events
-        $vpn->deployment_status = $data['status'] === 'info'
-            ? $vpn->deployment_status
-            : $data['status'];
+        if ($data['status'] !== 'info') {
+            $incoming = (string) $data['status'];
+
+            $mapped = match (strtolower($incoming)) {
+                'queued' => 'queued',
+                'running', 'deploying', 'in_progress' => 'running',
+                'success', 'succeeded', 'ok', 'done' => 'success',
+                'failed', 'error' => 'failed',
+                'pending', 'idle' => 'pending',
+                'deployed' => 'deployed',
+                default => null,
+            };
+
+            if ($mapped !== null) {
+                $vpn->deployment_status = $mapped;
+            }
+        }
 
         $vpn->appendLog(sprintf(
             '[%s] %s: %s',

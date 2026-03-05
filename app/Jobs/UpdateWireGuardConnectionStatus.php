@@ -24,7 +24,7 @@ class UpdateWireGuardConnectionStatus implements ShouldQueue
 
         // ✅ Your DB uses supports_wireguard (protocol stays "openvpn" even when WG exists)
         $servers = VpnServer::query()
-            ->whereIn('deployment_status', ['succeeded', 'deployed'])
+            ->whereIn('deployment_status', ['success', 'deployed'])
             ->where('supports_wireguard', 1)
             ->when($this->serverId, fn ($q) => $q->whereKey($this->serverId))
             ->get();

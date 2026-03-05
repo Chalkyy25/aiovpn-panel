@@ -32,7 +32,7 @@ class ProvisioningController extends Controller
     {
         $ok = (bool) $req->boolean('ok', false);
         $server->update([
-            'deployment_status' => $ok ? 'succeeded' : 'failed',
+            'deployment_status' => $ok ? 'success' : 'failed',
             'status'            => $ok ? 'online' : 'offline',
             'deployment_log'    => trim(($server->deployment_log ?? '')."\n".($req->input('message','■ done'))),
             'is_deploying'      => false,

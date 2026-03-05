@@ -271,7 +271,7 @@ BASH;
                 $exitCode = (int) $m[1];
             }
 
-            $status   = $exitCode === 0 ? 'succeeded' : 'failed';
+            $status   = $exitCode === 0 ? 'success' : 'failed';
             $finalLog = $this->stripNoise($combined);
 
             if ($exitCode === 0) {

@@ -134,13 +134,14 @@ protected static ?int $navigationSort     = 1;
                             ->schema([
                                 Forms\Components\Select::make('deployment_status')
                                     ->options([
-                                        'idle' => 'Idle',
                                         'queued' => 'Queued',
-                                        'deploying' => 'Deploying',
+                                        'running' => 'Running',
                                         'success' => 'Success',
                                         'failed' => 'Failed',
+                                        'pending' => 'Pending',
+                                        'deployed' => 'Deployed',
                                     ])
-                                    ->default('idle'),
+                                    ->default('queued'),
 
                                 Forms\Components\TextInput::make('status')->default('pending'),
 
@@ -219,11 +220,11 @@ protected static ?int $navigationSort     = 1;
                 Tables\Columns\TextColumn::make('deployment_status')
                     ->badge()
                     ->colors([
-                        'gray' => 'idle',
                         'warning' => 'queued',
-                        'info' => 'deploying',
-                        'success' => 'success',
+                        'info' => 'running',
+                        'success' => ['success', 'deployed'],
                         'danger' => 'failed',
+                        'gray' => 'pending',
                     ])
                     ->sortable(),
 
@@ -248,11 +249,12 @@ protected static ?int $navigationSort     = 1;
                 Tables\Filters\TernaryFilter::make('is_online')->label('Online'),
                 Tables\Filters\SelectFilter::make('deployment_status')
                     ->options([
-                        'idle' => 'Idle',
                         'queued' => 'Queued',
-                        'deploying' => 'Deploying',
+                        'running' => 'Running',
                         'success' => 'Success',
                         'failed' => 'Failed',
+                        'pending' => 'Pending',
+                        'deployed' => 'Deployed',
                     ]),
             ])
             ->actions([

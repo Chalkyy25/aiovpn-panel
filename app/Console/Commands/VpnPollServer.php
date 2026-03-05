@@ -81,7 +81,7 @@ class VpnPollServer extends Command
     protected function pollServers(?string $serverId, bool $skipDb, int $iteration, bool $silent): void
     {
         $servers = VpnServer::query()
-            ->whereIn('deployment_status', ['succeeded', 'deployed'])
+            ->whereIn('deployment_status', ['success', 'deployed'])
             ->when($serverId, fn($q) => $q->where('id', $serverId))
             ->get();
 

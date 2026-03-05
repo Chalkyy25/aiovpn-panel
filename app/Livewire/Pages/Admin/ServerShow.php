@@ -51,7 +51,7 @@ class ServerShow extends Component
         $this->deploymentLog = $server->deployment_log ?? '';
         $this->deploymentStatus = $server->deployment_status ?? 'unknown';
 
-        if (in_array($this->deploymentStatus, ['succeeded', 'failed'])) {
+            if (in_array($this->deploymentStatus, ['success', 'failed'])) {
             try {
                 $ssh = $this->makeSshClient();
                 $this->uptime = trim($ssh->exec("uptime"));

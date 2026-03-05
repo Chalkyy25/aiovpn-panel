@@ -17,7 +17,7 @@ class UpdateVpnStatus extends Command
     {
         $serverId = $this->option('server_id');
 
-        $q = VpnServer::query()->whereIn('deployment_status', ['succeeded', 'deployed']);
+        $q = VpnServer::query()->whereIn('deployment_status', ['success', 'deployed']);
         if ($serverId) {
             $q->where('id', (int) $serverId);
         }

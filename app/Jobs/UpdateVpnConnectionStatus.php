@@ -40,7 +40,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
 
         /** @var Collection<int,VpnServer> $servers */
         $servers = VpnServer::query()
-            ->whereIn('deployment_status', ['succeeded', 'deployed'])
+            ->whereIn('deployment_status', ['success', 'deployed'])
             ->when($this->serverId, fn ($q) => $q->where('id', $this->serverId))
             ->get();
 
@@ -48,7 +48,7 @@ class UpdateVpnConnectionStatus implements ShouldQueue
             Log::channel('vpn')->warning(
                 $this->serverId
                     ? "⚠️ No VPN server found with ID {$this->serverId}"
-                    : "⚠️ No succeeded VPN servers found."
+                    : "⚠️ No deployed VPN servers found."
             );
             return;
         }

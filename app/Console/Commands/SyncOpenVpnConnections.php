@@ -111,14 +111,14 @@ class SyncOpenVpnConnections extends Command
     protected function resolveServers()
     {
         if ($this->option('all')) {
-            return VpnServer::where('deployment_status','succeeded')->orderBy('name')->get();
+            return VpnServer::where('deployment_status', 'success')->orderBy('name')->get();
         }
 
         $terms = (array) $this->option('server');
         $terms = array_filter(array_map('trim', $terms));
         if (!$terms) return collect();
 
-        return VpnServer::where('deployment_status','succeeded')
+        return VpnServer::where('deployment_status', 'success')
             ->where(function ($q) use ($terms) {
                 foreach ($terms as $t) {
                     $q->orWhere('id', $t)->orWhere('name','like',"%{$t}%");
