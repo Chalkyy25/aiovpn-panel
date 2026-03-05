@@ -129,3 +129,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/app/latest-sanctum',        [AppUpdateController::class, 'latest']);
     Route::get('/app/download-sanctum/{id}', [AppUpdateController::class, 'download']);
 });
+
+Route::get('/debug/routes', function () {
+    $routes = collect(Route::getRoutes())
+        ->filter(fn($route) => str_starts_with($route->uri(), 'api/'))
+        ->map(function ($route) {
+            return [
+                'method' => implode('|', $route->methods()),
+                'uri' => $route->uri(),
+                'name' => $route->getName(),
+                'action' => $route->getActionName(),
+                'middleware' => $route->middleware(),
+            ];
+        })
+        ->values();
+
+    return response()->json([
+        'count' => $routes->count(),
+        'routes' => $routes
+    ]);
+});
