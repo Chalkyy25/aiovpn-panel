@@ -9,11 +9,50 @@ use App\Models\VpnUser;
 use App\Services\WireGuardService;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class CreateVpnUser extends CreateRecord
 {
     protected static string $resource = VpnUserResource::class;
+
+    protected function handleRecordCreation(array $data): Model
+    {
+        $reseller = auth()->user();
+
+        $packageId = (int) ($this->data['package_id'] ?? 0);
+        $package = $packageId > 0 ? Package::query()->find($packageId) : null;
+
+        $months = (int) ($package?->duration_months ?? 0);
+        $costCredits = (int) ($package?->price_credits ?? 0);
+
+        if ($costCredits > 0 && (int) ($reseller?->credits ?? 0) < $costCredits) {
+            throw ValidationException::withMessages([
+                'package_id' => 'Not enough credits for this package.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($data, $reseller, $packageId, $package, $months, $costCredits): Model {
+            if ($costCredits > 0) {
+                $reseller->deductCredits(
+                    $costCredits,
+                    'Create VPN user',
+                    [
+                        'username'      => (string) ($data['username'] ?? ''),
+                        'package_id'    => $packageId,
+                        'months'        => $months,
+                        'connections'   => (int) ($package?->max_connections ?? 1),
+                        'credits_total' => $costCredits,
+                        'source'        => 'filament.reseller.create',
+                    ]
+                );
+            }
+
+            return VpnUser::create($data);
+        });
+    }
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {

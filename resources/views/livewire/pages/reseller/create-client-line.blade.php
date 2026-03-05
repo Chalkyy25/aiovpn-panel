@@ -91,6 +91,9 @@ class="bg-gray-900 text-white rounded shadow p-6">
                 <div class="mt-2 text-xs text-gray-300 space-y-0.5">
                     <div>Cost: <span class="font-semibold">{{ $priceCredits }}</span> credits</div>
                     <div>Your credits: <span class="font-semibold">{{ $adminCredits }}</span></div>
+                    <div>
+                        Remaining after: <span class="font-semibold">{{ (int) $adminCredits - (int) $priceCredits }}</span> credits
+                    </div>
                     @if($adminCredits < $priceCredits)
                         <div class="text-red-400">Not enough credits for this package.</div>
                     @endif
@@ -178,6 +181,12 @@ class="bg-gray-900 text-white rounded shadow p-6">
                 <div class="bg-gray-800 rounded p-4">
                     <h4 class="font-semibold mb-3">Credits</h4>
                     <div class="text-sm space-y-2">
+                        @php
+                            $currentCredits = (int) $adminCredits;
+                            $deductingCredits = (int) $priceCredits;
+                            $remainingCredits = $currentCredits - $deductingCredits;
+                        @endphp
+
                         <div class="flex justify-between">
                             <span class="text-gray-300">Package</span>
                             <span class="text-gray-100">
@@ -186,21 +195,19 @@ class="bg-gray-900 text-white rounded shadow p-6">
                             </span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-300">Cost</span>
-                            <span class="text-gray-100">{{ $priceCredits }} credits</span>
+                            <span class="text-gray-300">Current credits</span>
+                            <span class="text-gray-100">{{ $currentCredits }} credits</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-300">Your balance</span>
-                            <span class="{{ $adminCredits < $priceCredits ? 'text-red-300' : 'text-green-300' }}">
-                                {{ $adminCredits }} credits
+                            <span class="text-gray-300">Deducting</span>
+                            <span class="text-gray-100">{{ $deductingCredits }} credits</span>
+                        </div>
+                        <div class="flex justify-between border-t border-gray-700 pt-2">
+                            <span class="text-gray-300">Remaining credits</span>
+                            <span class="{{ $remainingCredits < 0 ? 'text-red-300' : 'text-green-300' }}">
+                                {{ $remainingCredits }} credits
                             </span>
                         </div>
-                        @if($adminCredits >= $priceCredits)
-                            <div class="flex justify-between border-t border-gray-700 pt-2">
-                                <span class="text-gray-300">Balance after</span>
-                                <span class="text-gray-100">{{ $adminCredits - $priceCredits }} credits</span>
-                            </div>
-                        @endif
                     </div>
                 </div>
             </div>

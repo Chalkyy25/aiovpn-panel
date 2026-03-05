@@ -175,6 +175,35 @@ class VpnUserResource extends Resource
                                         return (string) $expires;
                                     }
                                 }),
+
+                            Forms\\Components\\Placeholder::make('credits_current')
+                                ->label('Current credits')
+                                ->content(fn (): string => (string) ((int) (auth()->user()?->credits ?? 0)) . ' credits'),
+
+                            Forms\\Components\\Placeholder::make('credits_deducting')
+                                ->label('Deducting')
+                                ->content(function (Get $get): string {
+                                    $packageId = (int) ($get('package_id') ?? 0);
+                                    if ($packageId <= 0) return '—';
+
+                                    $package = Package::query()->find($packageId);
+                                    if (! $package) return '—';
+
+                                    return (string) ((int) $package->price_credits) . ' credits';
+                                }),
+
+                            Forms\\Components\\Placeholder::make('credits_remaining')
+                                ->label('Remaining credits')
+                                ->content(function (Get $get): string {
+                                    $current = (int) (auth()->user()?->credits ?? 0);
+                                    $packageId = (int) ($get('package_id') ?? 0);
+                                    if ($packageId <= 0) return (string) $current . ' credits';
+
+                                    $package = Package::query()->find($packageId);
+                                    $cost = (int) ($package?->price_credits ?? 0);
+
+                                    return (string) ($current - $cost) . ' credits';
+                                }),
                         ]),
                 ]),
         ]);

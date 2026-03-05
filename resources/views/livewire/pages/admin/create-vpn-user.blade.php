@@ -88,6 +88,12 @@
                 </div>
 
                 <div class="aio-card-body space-y-3 text-sm">
+                    @php
+                        $costCredits = (int) ($priceCredits ?? 0);
+                        $deductingCredits = $isAdmin ? 0 : $costCredits;
+                        $remainingCredits = (int) ($adminCredits ?? 0) - $deductingCredits;
+                    @endphp
+
                     <div class="flex items-center justify-between">
                         <span class="text-[var(--aio-sub)]">Max connections</span>
                         <span class="font-semibold text-[var(--aio-ink)]">{{ $maxConnections ?? 0 }}</span>
@@ -99,16 +105,26 @@
                     </div>
 
                     <div class="flex items-center justify-between">
-                        <span class="text-[var(--aio-sub)]">Total cost</span>
-                        <span class="font-semibold text-[var(--aio-ink)]">{{ (int)($priceCredits ?? 0) }} credits</span>
+                        <span class="text-[var(--aio-sub)]">Current credits</span>
+                        <span class="font-semibold text-[var(--aio-ink)]">{{ (int) ($adminCredits ?? 0) }} credits</span>
                     </div>
 
                     <div class="flex items-center justify-between">
-                        <span class="text-[var(--aio-sub)]">{{ $isAdmin ? 'Current credits' : 'Balance after' }}</span>
-                        <span class="font-semibold text-[var(--aio-ink)]">{{ $isAdmin ? (int)$adminCredits : (int)($creditsLeft ?? 0) }}</span>
+                        <span class="text-[var(--aio-sub)]">Package cost</span>
+                        <span class="font-semibold text-[var(--aio-ink)]">{{ $costCredits }} credits</span>
                     </div>
 
-                    @if(!$isAdmin && (int)$adminCredits < (int)($priceCredits ?? 0))
+                    <div class="flex items-center justify-between">
+                        <span class="text-[var(--aio-sub)]">Deducting</span>
+                        <span class="font-semibold text-[var(--aio-ink)]">{{ $deductingCredits }} credits</span>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <span class="text-[var(--aio-sub)]">Remaining credits</span>
+                        <span class="font-semibold text-[var(--aio-ink)]">{{ $remainingCredits }} credits</span>
+                    </div>
+
+                    @if(!$isAdmin && (int) ($adminCredits ?? 0) < $costCredits)
                         <div class="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
                             Not enough credits for this purchase.
                         </div>
