@@ -119,10 +119,10 @@ protected static ?int $navigationSort     = 1;
                             ->schema([
                                 Forms\Components\TextInput::make('wg_endpoint_host')->maxLength(255),
                                 Forms\Components\Textarea::make('wg_public_key')->rows(3)->columnSpanFull(),
-                                Forms\Components\Textarea::make('wg_private_key')
-                                    ->rows(4)
+                                Forms\Components\TextInput::make('wg_private_key')
                                     ->password()
                                     ->revealable()
+                                    ->maxLength(255)
                                     ->columnSpanFull(),
                             ])
                             ->visible(fn ($get) => $get('protocol') === 'wireguard'),
