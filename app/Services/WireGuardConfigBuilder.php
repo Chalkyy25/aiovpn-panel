@@ -44,11 +44,14 @@ class WireGuardConfigBuilder
 
         $endpoint = "{$endpointHost}:{$endpointPort}";
 
-        return <<<CONF
+$mtu = (int) ($server->mtu ?: 1380);
+
+return <<<CONF
 [Interface]
 PrivateKey = {$user->wireguard_private_key}
 Address = {$address}
 DNS = {$dns}
+MTU = {$mtu}
 
 [Peer]
 PublicKey = {$server->wg_public_key}
@@ -56,6 +59,7 @@ AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = {$endpoint}
 PersistentKeepalive = 25
 CONF;
+
     }
 
     /**
