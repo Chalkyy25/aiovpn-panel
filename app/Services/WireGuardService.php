@@ -269,22 +269,24 @@ class WireGuardService
         }
 
         $endpoint   = $server->wgEndpoint(); // host:port
-        $dns        = $peer->dns ?: ($server->dns ?: '1.1.1.1');
-        $allowedIps = '0.0.0.0/0, ::/0';
-        $clientIpWithMask = $vpnUser->wireguard_address;
+$dns        = $peer->dns ?: ($server->dns ?: '1.1.1.1');
+$allowedIps = '0.0.0.0/0, ::/0';
+$clientIpWithMask = $vpnUser->wireguard_address;
+$mtu = (int) ($server->mtu ?: 1380);
 
-        $lines = [
-            '[Interface]',
-            'PrivateKey = ' . $privateKey,
-            'Address = ' . $clientIpWithMask,
-            'DNS = ' . $dns,
-            '',
-            '[Peer]',
-            'PublicKey = ' . $server->wg_public_key,
-            'AllowedIPs = ' . $allowedIps,
-            'Endpoint = ' . $endpoint,
-            'PersistentKeepalive = 25',
-        ];
+$lines = [
+    '[Interface]',
+    'PrivateKey = ' . $privateKey,
+    'Address = ' . $clientIpWithMask,
+    'DNS = ' . $dns,
+    'MTU = ' . $mtu,
+    '',
+    '[Peer]',
+    'PublicKey = ' . $server->wg_public_key,
+    'AllowedIPs = ' . $allowedIps,
+    'Endpoint = ' . $endpoint,
+    'PersistentKeepalive = 25',
+];
 
         return implode("\n", $lines) . "\n";
     }
