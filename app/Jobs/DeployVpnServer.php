@@ -16,6 +16,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use App\Jobs\SyncOpenVPNCredentials;
 use App\Jobs\AddWireGuardPeer;
 use App\Services\GeoIpService; // 👈
+use App\Services\WireGuardIpAllocator;
 
 class DeployVpnServer implements ShouldQueue
 {
@@ -716,71 +717,71 @@ BASH;
     }
 
     private function resyncWireGuardPeers(): int
-    {
-        $server = $this->vpnServer->fresh(['vpnUsers']);
+{
+    $server = $this->vpnServer->fresh(['vpnUsers']);
 
-        $users = $server->vpnUsers()
-            ->where('vpn_users.is_active', true)
-            ->select([
-                'vpn_users.id',
-                'vpn_users.username',
-                'vpn_users.wireguard_private_key',
-                'vpn_users.wireguard_public_key',
-                'vpn_users.wireguard_address',
-            ])
-            ->orderBy('vpn_users.id')
-            ->get();
+    $users = $server->vpnUsers()
+        ->where('vpn_users.is_active', true)
+        ->select([
+            'vpn_users.id',
+            'vpn_users.username',
+            'vpn_users.wireguard_private_key',
+            'vpn_users.wireguard_public_key',
+            'vpn_users.wireguard_address',
+        ])
+        ->orderBy('vpn_users.id')
+        ->get();
 
-        if ($users->isEmpty()) {
-            Log::info("🔁 No active users to WG-sync on server #{$server->id}");
-            return 0;
+    if ($users->isEmpty()) {
+        Log::info("🔁 No active users to WG-sync on server #{$server->id}");
+        return 0;
+    }
+
+    $serversCount = 1;
+    Log::info("🔧 Starting WG sync for {$users->count()} users across {$serversCount} server(s)...");
+
+    $dispatched = 0;
+
+    foreach ($users as $u) {
+        $dirty = false;
+
+        if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
+            $keys = VpnUser::generateWireGuardKeys();
+            $u->wireguard_private_key = $keys['private'];
+            $u->wireguard_public_key  = $keys['public'];
+            $dirty = true;
         }
 
-        $serversCount = 1;
-        Log::info("🔧 Starting WG sync for {$users->count()} users across {$serversCount} server(s)...");
+        if (blank($u->wireguard_address)) {
+            $u->wireguard_address = WireGuardIpAllocator::next();
+            $dirty = true;
+        }
 
-        $taken = array_fill_keys(
-            VpnUser::whereNotNull('wireguard_address')->pluck('wireguard_address')->all(),
-            true
+        if ($dirty) {
+            $u->saveQuietly();
+
+            Log::info(sprintf(
+                '🔑 [WG] Repaired identity for user=%s (#%d) addr=%s',
+                $u->username,
+                $u->id,
+                $u->wireguard_address
+            ));
+        }
+
+        dispatch(
+            (new AddWireGuardPeer($u, $server))
+                ->setQuiet(true)
+                ->onConnection('redis')
+                ->onQueue('wg')
         );
 
-        $dispatched = 0;
+        $dispatched++;
+    }
 
-        foreach ($users as $u) {
-            $dirty = false;
+    Log::info("✅ [WG] Added {$dispatched} user(s) across {$serversCount}/{$serversCount} server(s).");
 
-            if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
-                $keys                       = VpnUser::generateWireGuardKeys();
-                $u->wireguard_private_key   = $keys['private'];
-                $u->wireguard_public_key    = $keys['public'];
-                $dirty                      = true;
-            }
-
-            if (blank($u->wireguard_address)) {
-                for ($i = 2; $i <= 254; $i++) {
-                    $candidate = "10.66.66.$i/32";
-                    if (!isset($taken[$candidate])) {
-                        $u->wireguard_address = $candidate;
-                        $taken[$candidate]    = true;
-                        $dirty                = true;
-                        break;
-                    }
-                }
-            }
-
-            if ($dirty) {
-                $u->saveQuietly();
-            }
-
-            dispatch(
-                (new AddWireGuardPeer($u, $server))
-                    ->setQuiet(true)
-                    ->onConnection('redis')
-                    ->onQueue('wg')
-            );
-
-            $dispatched++;
-        }
+    return $dispatched;
+}
 
         Log::info("✅ [WG] Added {$dispatched} user(s) across {$serversCount}/{$serversCount} server(s).");
         return $dispatched;
