@@ -79,13 +79,9 @@ class WgRepairKeys extends Command
 
                         // assign /32 if missing
                         if (blank($user->wireguard_address)) {
-                            do {
-                                $last = random_int(2, 254);
-                                $ip = "10.66.66.$last/32";
-                            } while (VpnUser::where('wireguard_address', $ip)->exists());
-                            $user->wireguard_address = $ip;
-                        }
-
+                        $user->wireguard_address = \App\Services\WireGuardIpAllocator::next();
+                    }
+                    
                         $user->saveQuietly();
                         $this->info("🔑 Generated WG keys for {$user->username} ({$user->wireguard_address})");
                         $created++;
