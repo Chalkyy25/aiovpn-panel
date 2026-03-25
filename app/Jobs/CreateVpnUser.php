@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\VpnUser;
 use App\Services\WireGuardService;
+use App\Services\WireGuardIpAllocator;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
