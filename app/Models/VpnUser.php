@@ -490,15 +490,10 @@ class VpnUser extends Authenticatable
                 }
 
                 if (blank($u->wireguard_address)) {
-                    do {
-                        $last = random_int(2, 254);
-                        $ip = "10.66.66.$last/32";
-                    } while (self::where('wireguard_address', $ip)->exists());
-
-                    $u->wireguard_address = $ip;
+                    $u->wireguard_address = \App\Services\WireGuardIpAllocator::next();
                 }
-            }
-        });
+                            }
+                        });
 
         static::created(function (self $u) {
             $u->loadMissing('vpnServers');
