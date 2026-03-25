@@ -97,12 +97,18 @@ class DeployVpnServer implements ShouldQueue
             Log::info("🔑 Seeding VPN user: {$vpnUser}");
         }
 
-        $this->vpnServer->update([
-            $startPayload = [
-                'is_deploying'      => true,
-            'deployment_status' => 'running',
-            'deployment_log'    => "🚀 Starting deployment on {$ip}…\n",
-        ]);
+        $startPayload = [
+    'is_deploying'      => true,
+    'deployment_status' => 'running',
+    'deployment_log'    => "🚀 Starting deployment on {$ip}…\n",
+];
+
+if (! $hasIsDeploying) {
+    unset($startPayload['is_deploying']);
+}
+
+$this->vpnServer->forceFill($startPayload)->save();
+
             if (! $hasIsDeploying) {
                 unset($startPayload['is_deploying']);
             }
@@ -335,13 +341,19 @@ BASH;
                 $finalLog .= "\n❌ Deployment failed (exit code: {$exitCode})";
             }
 
-            $this->vpnServer->update([
-                $finishPayload = [
-                    'is_deploying'      => false,
-                'deployment_status' => $status,
-                'deployment_log'    => $finalLog,
-                'status'            => $exitCode === 0 ? 'online' : 'offline',
-            ]);
+            $finishPayload = [
+    'is_deploying'      => false,
+    'deployment_status' => $status,
+    'deployment_log'    => $finalLog,
+    'status'            => $exitCode === 0 ? 'online' : 'offline',
+];
+
+if (! $hasIsDeploying) {
+    unset($finishPayload['is_deploying']);
+}
+
+$this->vpnServer->forceFill($finishPayload)->save();
+
                 if (! $hasIsDeploying) {
                     unset($finishPayload['is_deploying']);
                 }
