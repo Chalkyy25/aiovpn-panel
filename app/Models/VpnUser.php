@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Jobs\RemoveOpenVPNUser;
 use App\Jobs\RemoveWireGuardPeer;
 use App\Jobs\SyncOpenVPNCredentials;
+use App\Services\WireGuardIpAllocator;
 use App\Traits\ExecutesRemoteCommands;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
