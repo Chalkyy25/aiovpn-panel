@@ -24,8 +24,6 @@ class CreateVpnUser implements ShouldQueue
     public ?int $clientId;
     public ?Carbon $expiresAt;
 
-    private string $wgSubnetCidr = '10.66.66.0/24';
-
     public int $tries   = 2;
     public int $timeout = 120;
 
@@ -107,55 +105,23 @@ class CreateVpnUser implements ShouldQueue
      * Ensure WG keys + /32 are set (idempotent).
      */
     private function ensureWireGuardIdentity(VpnUser $user): void
-    {
-        $changed = false;
+{
+    $changed = false;
 
-        if (blank($user->wireguard_private_key) || blank($user->wireguard_public_key)) {
-            $keys = VpnUser::generateWireGuardKeys();
-            $user->wireguard_private_key = $keys['private'];
-            $user->wireguard_public_key  = $keys['public'];
-            $changed = true;
-        }
+    if (blank($user->wireguard_private_key) || blank($user->wireguard_public_key)) {
+        $keys = VpnUser::generateWireGuardKeys();
+        $user->wireguard_private_key = $keys['private'];
+        $user->wireguard_public_key  = $keys['public'];
+        $changed = true;
+    }
 
-        if (blank($user->wireguard_address)) {
-    $user->wireguard_address = \App\Services\WireGuardIpAllocator::next();
+    if (blank($user->wireguard_address)) {
+        $user->wireguard_address = \App\Services\WireGuardIpAllocator::next();
+        $changed = true;
+    }
+
+    if ($changed) {
+        $user->save();
+    }
 }
-
-        if ($changed) {
-            $user->save();
-        }
-    }
-
-    /**
-     * Allocate next free /32 from WG pool.
-     */
-    private function allocateWireGuardAddress(): string
-    {
-        [$net, $maskBits] = explode('/', $this->wgSubnetCidr);
-        $maskBits = (int) $maskBits;
-
-        $netLong = ip2long($net);
-        if ($netLong === false) {
-            throw new \RuntimeException("Invalid WG subnet: {$this->wgSubnetCidr}");
-        }
-
-        $start = $netLong + 2;
-        $end   = $netLong + (1 << (32 - $maskBits)) - 2;
-
-        $used = VpnUser::whereNotNull('wireguard_address')
-            ->pluck('wireguard_address')
-            ->map(fn ($cidr) => ip2long(strtok($cidr, '/')))
-            ->filter()
-            ->all();
-
-        $usedSet = array_flip($used);
-
-        for ($ip = $start; $ip <= $end; $ip++) {
-            if (! isset($usedSet[$ip])) {
-                return long2ip($ip) . '/32';
-            }
-        }
-
-        throw new \RuntimeException("No free WireGuard IPs in {$this->wgSubnetCidr}");
-    }
 }
