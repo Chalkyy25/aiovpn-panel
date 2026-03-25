@@ -790,11 +790,6 @@ $this->vpnServer->forceFill($finishPayload)->save();
         $dispatched++;
     }
 
-    Log::info("✅ [WG] Added {$dispatched} user(s) across {$serversCount}/{$serversCount} server(s).");
-
-    return $dispatched;
-}
-
         Log::info("✅ [WG] Added {$dispatched} user(s) across {$serversCount}/{$serversCount} server(s).");
         return $dispatched;
     }
