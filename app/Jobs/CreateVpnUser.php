@@ -118,9 +118,8 @@ class CreateVpnUser implements ShouldQueue
         }
 
         if (blank($user->wireguard_address)) {
-            $user->wireguard_address = $this->allocateWireGuardAddress();
-            $changed = true;
-        }
+    $user->wireguard_address = \App\Services\WireGuardIpAllocator::next();
+}
 
         if ($changed) {
             $user->save();
