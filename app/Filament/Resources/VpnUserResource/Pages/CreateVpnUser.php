@@ -5,6 +5,8 @@ namespace App\Filament\Resources\VpnUserResource\Pages;
 use App\Filament\Resources\VpnUserResource;
 use App\Models\Package;
 use App\Models\VpnServer;
+use App\Models\VpnUser;
+use App\Services\WireGuardIpAllocator;
 use App\Services\WireGuardService;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -16,9 +18,6 @@ class CreateVpnUser extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // package_id + vpn_server_ids are virtual (dehydrated(false)),
-        // so they won't be inside $data. Use $this->data instead.
-
         $packageId = (int) ($this->data['package_id'] ?? 0);
 
         if ($packageId > 0 && ($package = Package::query()->find($packageId))) {
@@ -28,8 +27,6 @@ class CreateVpnUser extends CreateRecord
             $data['expires_at'] = $months <= 0 ? null : now()->addMonthsNoOverflow($months);
         }
 
-        // Ensure ownership is set so the default Owner filter (client_id = me)
-        // shows newly created lines immediately.
         $data['client_id'] ??= auth()->id();
         $data['created_by'] ??= auth()->id();
 
@@ -41,10 +38,51 @@ class CreateVpnUser extends CreateRecord
         $ids = $this->data['vpn_server_ids'] ?? [];
         $ids = array_values(array_filter(array_map('intval', (array) $ids)));
 
-        // 1) Sync pivot + trigger any protocol-specific jobs you already have
+        // 1) Ensure WG identity exists BEFORE any WG provisioning
+        try {
+            $dirty = false;
+
+            if (blank($this->record->wireguard_private_key) || blank($this->record->wireguard_public_key)) {
+                $keys = VpnUser::generateWireGuardKeys();
+                $this->record->wireguard_private_key = $keys['private'];
+                $this->record->wireguard_public_key  = $keys['public'];
+                $dirty = true;
+            }
+
+            if (blank($this->record->wireguard_address)) {
+                $this->record->wireguard_address = WireGuardIpAllocator::next();
+                $dirty = true;
+            }
+
+            if ($dirty) {
+                $this->record->save();
+            }
+
+            Log::channel('vpn')->info('FILAMENT_CREATE_VPN_USER: WG identity ensured', [
+                'vpn_user_id' => $this->record->id,
+                'username' => $this->record->username,
+                'wireguard_address' => $this->record->wireguard_address,
+            ]);
+        } catch (\Throwable $e) {
+            Log::channel('vpn')->error('FILAMENT_CREATE_VPN_USER: failed ensuring WG identity', [
+                'vpn_user_id' => $this->record->id,
+                'username' => $this->record->username,
+                'error' => $e->getMessage(),
+            ]);
+
+            Notification::make()
+                ->danger()
+                ->title('VPN user created, but WireGuard identity failed')
+                ->body($e->getMessage())
+                ->send();
+
+            return;
+        }
+
+        // 2) Sync pivot + protocol jobs/logging
         $this->record->syncVpnServers($ids, context: 'admin.create');
 
-        // 2) If any selected server supports WireGuard, provision WG peer now
+        // 3) Provision WG peers on selected WG-capable servers
         try {
             if (! empty($ids)) {
                 $servers = VpnServer::query()->whereIn('id', $ids)->get();
@@ -55,11 +93,18 @@ class CreateVpnUser extends CreateRecord
                 foreach ($servers as $server) {
                     if ($server->supportsWireGuard()) {
                         $wg->ensurePeerForUser($server, $this->record);
+
+                        Log::channel('vpn')->info('FILAMENT_CREATE_VPN_USER: WG peer ensured', [
+                            'vpn_user_id' => $this->record->id,
+                            'username' => $this->record->username,
+                            'server_id' => $server->id,
+                            'server_name' => $server->name,
+                        ]);
                     }
                 }
             }
         } catch (\Throwable $e) {
-            Log::error('❌ Filament: WG provisioning failed on create vpn user', [
+            Log::channel('vpn')->error('FILAMENT_CREATE_VPN_USER: WG provisioning failed', [
                 'vpn_user_id' => $this->record->id,
                 'server_ids'  => $ids,
                 'error'       => $e->getMessage(),
@@ -72,7 +117,7 @@ class CreateVpnUser extends CreateRecord
                 ->send();
         }
 
-        // 3) Success notification
+        // 4) Success
         Notification::make()
             ->success()
             ->title('VPN user created')
