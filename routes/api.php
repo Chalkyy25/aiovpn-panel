@@ -3,23 +3,23 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+use App\Models\VpnUser;
+
 use App\Http\Controllers\ProvisioningController;
 use App\Http\Controllers\DeployApiController;
-use App\Http\Controllers\Api\DeployEventController;
-use App\Http\Controllers\Api\WireGuardEventController;
-
 use App\Http\Controllers\MobileAuthController;
 use App\Http\Controllers\MobileProfileController;
-use App\Http\Controllers\Api\LocationController;
-use App\Http\Controllers\Api\GenericStealthConfigController;
 use App\Http\Controllers\WireGuardConfigController;
-
-use App\Http\Controllers\Api\GateV2Controller;
 use App\Http\Controllers\GateLoginController;
 
-use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\AppUpdateController;
-use App\Models\VpnUser;
+use App\Http\Controllers\Api\DeployEventController;
+use App\Http\Controllers\Api\DeviceController;
+use App\Http\Controllers\Api\GateV2Controller;
+use App\Http\Controllers\Api\GenericStealthConfigController;
+use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\ServerController;
+use App\Http\Controllers\Api\WireGuardEventController;
 
 /*
 |--------------------------------------------------------------------------
@@ -27,17 +27,20 @@ use App\Models\VpnUser;
 |--------------------------------------------------------------------------
 */
 
-// ✅ SERVER → PANEL (must be authenticated with panel-token)
+/*
+|--------------------------------------------------------------------------
+| SERVER -> PANEL
+|--------------------------------------------------------------------------
+*/
 Route::prefix('servers/{server}')
     ->middleware('auth.panel-token')
     ->group(function () {
-
         // Provisioning lifecycle
         Route::post('/provision/start',  [ProvisioningController::class, 'start']);
         Route::post('/provision/update', [ProvisioningController::class, 'update']);
         Route::post('/provision/finish', [ProvisioningController::class, 'finish']);
 
-        // Deploy events + logs
+        // Deploy events + logs + facts
         Route::post('/deploy/events', [DeployApiController::class, 'event']);
         Route::post('/deploy/logs',   [DeployApiController::class, 'log']);
         Route::post('/deploy/facts',  [DeployApiController::class, 'facts']);
@@ -54,53 +57,43 @@ Route::prefix('servers/{server}')
         Route::post('/mgmt/push',     [DeployApiController::class, 'pushMgmt']);
         Route::post('/mgmt/snapshot', [DeployApiController::class, 'pushMgmtSnapshot']);
 
-        // Auth file (pull + upload)
+        // Auth file
         Route::get('/authfile',  [DeployApiController::class, 'authFile']);
         Route::post('/authfile', [DeployApiController::class, 'uploadAuthFile']);
     });
 
+/*
+|--------------------------------------------------------------------------
+| GATE / LOGIN
+|--------------------------------------------------------------------------
+*/
 Route::post('/gate/v2/auth', [GateV2Controller::class, 'auth']);
 Route::post('/gate/login', [GateLoginController::class, 'login']);
 
-/* =======================
-| MOBILE CLIENT
-======================= */
+/*
+|--------------------------------------------------------------------------
+| MOBILE AUTH
+|--------------------------------------------------------------------------
+*/
+Route::post('/auth/login', [MobileAuthController::class, 'login'])
+    ->middleware('throttle:10,1');
 
-Route::post('/auth/login', [MobileAuthController::class, 'login'])->middleware('throttle:10,1');
-
-
+/*
+|--------------------------------------------------------------------------
+| PUBLIC STEALTH
+|--------------------------------------------------------------------------
+*/
 Route::prefix('stealth')->group(function () {
     Route::get('/servers',           [GenericStealthConfigController::class, 'servers']);
     Route::get('/config/{serverId}', [GenericStealthConfigController::class, 'config']);
     Route::get('/info/{serverId}',   [GenericStealthConfigController::class, 'configInfo']);
 });
 
-Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/auth/logout', [MobileAuthController::class, 'logout']);
-    Route::get('/auth/me', [MobileProfileController::class, 'index']);
-
-    Route::get('/profiles',        [MobileProfileController::class, 'index']);
-    Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
-    Route::get('/ovpn',            [MobileProfileController::class, 'ovpn']);
-
-    Route::get('/wg/servers', [WireGuardConfigController::class, 'servers']);
-    Route::get('/wg/config',  [WireGuardConfigController::class, 'config']);
-
-    Route::get('/locations', [LocationController::class, 'index']);
-
-    Route::get('/ping', function (Request $req) {
-        $u = $req->user();
-        return response()->json([
-            'ok'   => true,
-            'user' => method_exists($u, 'only') ? $u->only('id', 'username') : null,
-        ]);
-    });
-});
-
-/* =======================
-| PUBLIC / MISC
-======================= */
-
+/*
+|--------------------------------------------------------------------------
+| PUBLIC / DEVICE REGISTRATION
+|--------------------------------------------------------------------------
+*/
 Route::post('/device/register', function (Request $request) {
     $request->validate([
         'username'    => 'required|string',
@@ -114,38 +107,81 @@ Route::post('/device/register', function (Request $request) {
     return response()->json(['status' => 'success']);
 });
 
-/* =======================
-| APP UPDATER (device token)
-======================= */
-
 Route::post('/devices/register-token', [DeviceController::class, 'register']);
 
+/*
+|--------------------------------------------------------------------------
+| MOBILE CLIENT (SANCTUM)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->group(function () {
+    // Auth
+    Route::post('/auth/logout', [MobileAuthController::class, 'logout']);
+    Route::get('/auth/me', [MobileProfileController::class, 'index']);
+
+    // Profiles
+    Route::get('/profiles',        [MobileProfileController::class, 'index']);
+    Route::get('/profiles/{user}', [MobileProfileController::class, 'show']);
+    Route::get('/ovpn',            [MobileProfileController::class, 'ovpn']);
+
+    // WireGuard
+    Route::get('/wg/servers', [WireGuardConfigController::class, 'servers']);
+    Route::get('/wg/config',  [WireGuardConfigController::class, 'config']);
+
+    // Smart routing / app server list
+    Route::get('/servers', [ServerController::class, 'index']);
+
+    // Locations
+    Route::get('/locations', [LocationController::class, 'index']);
+
+    // Ping test
+    Route::get('/ping', function (Request $request) {
+        $user = $request->user();
+
+        return response()->json([
+            'ok'   => true,
+            'user' => method_exists($user, 'only')
+                ? $user->only('id', 'username')
+                : null,
+        ]);
+    });
+
+    // App updater via Sanctum
+    Route::get('/app/latest-sanctum',        [AppUpdateController::class, 'latest']);
+    Route::get('/app/download-sanctum/{id}', [AppUpdateController::class, 'download']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| APP UPDATER (DEVICE TOKEN)
+|--------------------------------------------------------------------------
+*/
 Route::middleware('device.token')->group(function () {
     Route::get('/app/latest',        [AppUpdateController::class, 'latest']);
     Route::get('/app/download/{id}', [AppUpdateController::class, 'download']);
 });
 
-Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/app/latest-sanctum',        [AppUpdateController::class, 'latest']);
-    Route::get('/app/download-sanctum/{id}', [AppUpdateController::class, 'download']);
-});
-
+/*
+|--------------------------------------------------------------------------
+| DEBUG
+|--------------------------------------------------------------------------
+*/
 Route::get('/debug/routes', function () {
     $routes = collect(Route::getRoutes())
-        ->filter(fn($route) => str_starts_with($route->uri(), 'api/'))
+        ->filter(fn ($route) => str_starts_with($route->uri(), 'api/'))
         ->map(function ($route) {
             return [
-                'method' => implode('|', $route->methods()),
-                'uri' => $route->uri(),
-                'name' => $route->getName(),
-                'action' => $route->getActionName(),
+                'method'     => implode('|', $route->methods()),
+                'uri'        => $route->uri(),
+                'name'       => $route->getName(),
+                'action'     => $route->getActionName(),
                 'middleware' => $route->middleware(),
             ];
         })
         ->values();
 
     return response()->json([
-        'count' => $routes->count(),
-        'routes' => $routes
+        'count'  => $routes->count(),
+        'routes' => $routes,
     ]);
 });
