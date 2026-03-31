@@ -17,36 +17,39 @@ class WireGuardConfigController extends Controller
      * List WireGuard-capable servers (for app server picker).
      */
     public function servers(Request $request)
-    {
-        $authUser = $request->user();
-        if (!($authUser instanceof VpnUser)) {
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
+{
+    $authUser = $request->user();
 
-        // If you later switch back to per-user server assignments,
-        // you can change this to $authUser->vpnServers() again.
-        $servers = VpnServer::query()
-            ->where('enabled', true)
-            ->whereNotNull('wg_public_key')
-            ->whereNotNull('wg_endpoint_host')
-            ->orderBy('country_code')
-            ->orderBy('city')
-            ->get()
-            ->map(fn (VpnServer $s) => [
-                'id'          => (int) $s->id,
-                'name'        => $s->name,
-                'ip'          => $s->ip_address,
-                'country'     => $s->country_code,
-                'city'        => $s->city,
-                'label'       => $s->display_location,
-                'endpoint'    => $s->wgEndpoint(),
-                'port'        => $s->wg_port ?: 51820,
-                'subnet'      => $s->wg_subnet,
-                'tags'        => $s->tags,
-            ]);
-
-        return response()->json(['data' => $servers]);
+    if (!($authUser instanceof VpnUser)) {
+        return response()->json(['error' => 'Unauthorized'], 401);
     }
+
+    $servers = VpnServer::query()
+        ->where('enabled', true)
+        ->where('is_online', true)
+        ->whereNotNull('wg_public_key')
+        ->whereNotNull('wg_endpoint_host')
+        ->orderBy('country_code')
+        ->orderBy('city')
+        ->get()
+        ->map(fn (VpnServer $s) => [
+            'id'           => (int) $s->id,
+            'name'         => $s->name,
+            'ip'           => $s->wg_endpoint_host ?: $s->ip_address,
+            'country_code' => $s->country_code,
+            'city'         => $s->city,
+            'label'        => $s->display_location,
+            'endpoint'     => $s->wgEndpoint(),
+            'port'         => (int) ($s->wg_port ?: 51820),
+            'mtu'          => (int) ($s->mtu ?: 1340),
+            'tags'         => $s->tags,
+        ])
+        ->values();
+
+    return response()->json([
+        'data' => $servers,
+    ]);
+}
 
     /**
      * Return a ready-to-import WireGuard config for the authenticated user.
