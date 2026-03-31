@@ -272,7 +272,7 @@ class WireGuardService
         $dns        = $peer->dns ?: ($server->dns ?: '1.1.1.1');
         $allowedIps = '0.0.0.0/0, ::/0';
         $clientIpWithMask = $vpnUser->wireguard_address;
-        $mtu = (int) ($server->mtu ?: 1320);
+        $mtu = (int) ($server->mtu ?: 1340);
 
 $lines = [
     '[Interface]',
