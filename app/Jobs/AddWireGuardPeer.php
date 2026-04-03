@@ -112,11 +112,11 @@ class AddWireGuardPeer implements ShouldQueue
     }
 
     private function buildAddPeerScript(string $publicKey, string $ip32): string
-    {
-        $PUB = escapeshellarg($publicKey);
-        $IP  = escapeshellarg($ip32);
+{
+    $PUB = escapeshellarg($publicKey);
+    $IP  = escapeshellarg($ip32);
 
-        return <<<BASH
+    return <<<BASH
 set -euo pipefail
 IFACE="wg0"
 PUB={$PUB}
@@ -125,15 +125,26 @@ IP32={$IP}
 if ! command -v wg >/dev/null 2>&1; then
   echo "NO_WG"; exit 2
 fi
+
 if ! wg show "\$IFACE" >/dev/null 2>&1; then
   echo "NO_IFACE"; exit 3
 fi
 
-# Idempotent add/update
-wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32"
+# Find any existing peer already using this IP
+WRONG_KEY=\$(wg show "\$IFACE" allowed-ips | awk -v ip="\$IP32" '\$2 == ip {print \$1}')
 
-# Persist peers (SaveConfig=true)
+# Remove stale/wrong peer if it exists and does not match the intended pubkey
+if [ -n "\$WRONG_KEY" ] && [ "\$WRONG_KEY" != "\$PUB" ]; then
+  wg set "\$IFACE" peer "\$WRONG_KEY" remove
+fi
+
+# Add/update the correct peer
+wg set "\$IFACE" peer "\$PUB" allowed-ips "\$IP32" persistent-keepalive 25
+
+# Persist to config
+wg-quick save "\$IFACE"
+
 echo "OK"
 BASH;
-    }
+}
 }
