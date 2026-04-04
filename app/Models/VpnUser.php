@@ -15,9 +15,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -32,8 +32,8 @@ class VpnUser extends Authenticatable
     protected $table = 'vpn_users';
 
     protected $fillable = [
-        'client_id',             // owner account (User model)
-        'created_by',            // who created this vpn user (admin/reseller user id)
+        'client_id',
+        'created_by',
         'username',
         'plain_password',
         'password',
@@ -68,7 +68,7 @@ class VpnUser extends Authenticatable
     ];
 
     /* =========================
-     | Auth (username/password)
+     | Auth
      ========================= */
 
     public function getAuthIdentifierName(): string
@@ -81,7 +81,6 @@ class VpnUser extends Authenticatable
         return (string) $this->password;
     }
 
-    // No remember token for vpn users
     public function setRememberToken($value): void {}
     public function getRememberToken(): ?string { return null; }
     public function getRememberTokenName(): string { return 'remember_token'; }
@@ -100,19 +99,11 @@ class VpnUser extends Authenticatable
         )->withTimestamps();
     }
 
-    /**
-     * “Client” here means the owning web User record (admin/reseller/client account).
-     * You already use client_id for this.
-     */
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');
     }
 
-    /**
-     * Track who created this vpn user (admin/reseller).
-     * This is what your reseller scoping wants.
-     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -123,10 +114,6 @@ class VpnUser extends Authenticatable
         return $this->hasMany(VpnUserConnection::class);
     }
 
-    /**
-     * Session-level connection tracking (vpn_connections table).
-     * This is what the admin dashboard uses for accurate "online now" logic.
-     */
     public function sessionConnections(): HasMany
     {
         return $this->hasMany(VpnConnection::class, 'vpn_user_id');
@@ -151,9 +138,6 @@ class VpnUser extends Authenticatable
         return $q->where('is_active', true);
     }
 
-    /**
-     * “Online now” based on live vpn_connections sessions (not just last_seen_at on the user).
-     */
     public function scopeOnlineNow(Builder $q, ?Carbon $now = null): Builder
     {
         return $q->whereHas('sessionConnections', fn (Builder $sessions) => $sessions->live($now));
@@ -234,7 +218,6 @@ class VpnUser extends Authenticatable
         });
     }
 
-    /** 0 = unlimited devices */
     public function canConnect(): bool
     {
         $limit = (int) $this->max_connections;
@@ -256,7 +239,7 @@ class VpnUser extends Authenticatable
     }
 
     /* =========================
-     | Password handling
+     | Attribute mutators
      ========================= */
 
     protected function password(): Attribute
@@ -269,7 +252,6 @@ class VpnUser extends Authenticatable
 
                 $v = (string) $value;
 
-                // If it's already hashed, keep it.
                 if (Hash::isHashed($v)) {
                     return $v;
                 }
@@ -292,6 +274,21 @@ class VpnUser extends Authenticatable
         );
     }
 
+    protected function wireguardAddress(): Attribute
+    {
+        return Attribute::make(
+            set: function ($value) {
+                if (blank($value)) {
+                    return null;
+                }
+
+                $ip = preg_replace('/\/\d+$/', '', trim((string) $value));
+
+                return $ip !== '' ? $ip . '/32' : null;
+            }
+        );
+    }
+
     /* =========================
      | Device limit enforcement
      ========================= */
@@ -306,7 +303,7 @@ class VpnUser extends Authenticatable
 
         $activeConnections = $this->activeConnections()
             ->with('vpnServer')
-            ->orderBy('connected_at', 'asc') // oldest first
+            ->orderBy('connected_at', 'asc')
             ->get();
 
         $current = $activeConnections->count();
@@ -371,7 +368,6 @@ class VpnUser extends Authenticatable
                 return;
             }
 
-            // OpenVPN management kill
             $mgmtPort = (int) ($conn->mgmt_port ?: 7505);
             $clientId = $conn->client_id;
 
@@ -386,7 +382,6 @@ class VpnUser extends Authenticatable
             );
 
             $this->executeRemoteCommand($server, $cmd, 5);
-
         } catch (\Throwable $e) {
             Log::channel('vpn')->error(sprintf(
                 'Failed to kill session=%s user=%s err=%s',
@@ -401,9 +396,6 @@ class VpnUser extends Authenticatable
      | Server sync helper
      ========================= */
 
-    /**
-     * @return array{attached: array<int,int>, detached: array<int,int>, updated: array<int,int>}
-     */
     public function syncVpnServers(array $serverIds, ?string $context = null): array
     {
         $ids = array_values(array_filter(array_map('intval', $serverIds), fn ($id) => $id > 0));
@@ -464,11 +456,9 @@ class VpnUser extends Authenticatable
                 $u->username = 'wg-' . Str::lower(Str::random(10));
             }
 
-            // Defaults
             $u->max_connections ??= 1;
-            $u->is_active       ??= true;
+            $u->is_active ??= true;
 
-            // Password defaults
             if (blank($u->plain_password) && blank($u->password)) {
                 $generated = Str::random(self::GENERATED_PASSWORD_LENGTH);
                 $u->plain_password = $generated;
@@ -477,12 +467,11 @@ class VpnUser extends Authenticatable
                 $u->password = Hash::make((string) $u->plain_password);
             }
 
-            // Optional WireGuard identity
             if (config('services.wireguard.autogen', false)) {
                 if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
                     $keys = self::generateWireGuardKeys();
                     $u->wireguard_private_key = $keys['private'];
-                    $u->wireguard_public_key  = $keys['public'];
+                    $u->wireguard_public_key = $keys['public'];
                 } elseif (blank($u->wireguard_public_key) && ! blank($u->wireguard_private_key)) {
                     $pub = self::wgPublicFromPrivate($u->wireguard_private_key);
                     if ($pub) {
@@ -491,10 +480,10 @@ class VpnUser extends Authenticatable
                 }
 
                 if (blank($u->wireguard_address)) {
-                    $u->wireguard_address = \App\Services\WireGuardIpAllocator::next();
+                    $u->wireguard_address = WireGuardIpAllocator::next();
                 }
-                            }
-                        });
+            }
+        });
 
         static::created(function (self $u) {
             $u->loadMissing('vpnServers');
@@ -540,7 +529,6 @@ class VpnUser extends Authenticatable
 
         $sk = random_bytes(32);
 
-        // clamp X25519
         $sk[0]  = $sk[0]  & "\xF8";
         $sk[31] = ($sk[31] & "\x7F") | "\x40";
 
@@ -559,11 +547,7 @@ class VpnUser extends Authenticatable
         }
 
         $raw = base64_decode($private, true);
-        if ($raw === false) {
-            return null;
-        }
-
-        if (strlen($raw) !== 32) {
+        if ($raw === false || strlen($raw) !== 32) {
             return null;
         }
 
