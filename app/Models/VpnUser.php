@@ -445,78 +445,96 @@ class VpnUser extends Authenticatable
     }
 
     /* =========================
-     | Model events
-     ========================= */
+ | Model events
+ ========================= */
 
-    protected static function booted(): void
-    {
-        static::creating(function (self $u) {
-            $u->username = trim((string) ($u->username ?? ''));
+protected static function booted(): void
+{
+    static::creating(function (self $u) {
+        $u->username = trim((string) ($u->username ?? ''));
 
-            if ($u->username === '' || strtoupper($u->username) === 'UNDEF') {
-                $u->username = 'wg-' . Str::lower(Str::random(10));
-            }
+        if ($u->username === '' || strtoupper($u->username) === 'UNDEF') {
+            $u->username = 'wg-' . Str::lower(Str::random(10));
+        }
 
-            $u->max_connections ??= 1;
-            $u->is_active ??= true;
+        $u->max_connections ??= 1;
+        $u->is_active ??= true;
 
-            if (blank($u->plain_password) && blank($u->password)) {
-                $generated = Str::random(self::GENERATED_PASSWORD_LENGTH);
-                $u->plain_password = $generated;
-                $u->password = Hash::make($generated);
-            } elseif (! blank($u->plain_password) && blank($u->password)) {
-                $u->password = Hash::make((string) $u->plain_password);
-            }
+        if (blank($u->plain_password) && blank($u->password)) {
+            $generated = Str::random(self::GENERATED_PASSWORD_LENGTH);
+            $u->plain_password = $generated;
+            $u->password = Hash::make($generated);
+        } elseif (! blank($u->plain_password) && blank($u->password)) {
+            $u->password = Hash::make((string) $u->plain_password);
+        }
 
-            if (config('services.wireguard.autogen', false)) {
-                if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
-                    $keys = self::generateWireGuardKeys();
-                    $u->wireguard_private_key = $keys['private'];
-                    $u->wireguard_public_key = $keys['public'];
-                } elseif (blank($u->wireguard_public_key) && ! blank($u->wireguard_private_key)) {
-                    $pub = self::wgPublicFromPrivate($u->wireguard_private_key);
-                    if ($pub) {
-                        $u->wireguard_public_key = $pub;
-                    }
-                }
-
-                if (blank($u->wireguard_address)) {
-                    $u->wireguard_address = WireGuardIpAllocator::next();
-                }
-            }
-        });
-
-        static::created(function (self $u) {
-            $u->loadMissing('vpnServers');
-
-            foreach ($u->vpnServers as $server) {
-                SyncOpenVPNCredentials::dispatch((int) $server->id);
-
-                Log::channel('vpn')->info(sprintf(
-                    'OpenVPN creds synced to server=%s ip=%s for user=%s',
-                    (string) $server->name,
-                    (string) $server->ip_address,
-                    (string) $u->username
-                ));
-            }
-        });
-
-        static::deleting(function (self $u) {
-            $u->loadMissing('vpnServers');
-
-            Log::channel('vpn')->info("Cleanup queued for VPN user={$u->username}");
-
-            if (config('services.wireguard.autogen', false)) {
-                foreach ($u->vpnServers as $server) {
-                    dispatch_sync(new \App\Jobs\ReconcileWireGuardServer($server));
+        if (config('services.wireguard.autogen', false)) {
+            if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
+                $keys = self::generateWireGuardKeys();
+                $u->wireguard_private_key = $keys['private'];
+                $u->wireguard_public_key = $keys['public'];
+            } elseif (blank($u->wireguard_public_key) && ! blank($u->wireguard_private_key)) {
+                $pub = self::wgPublicFromPrivate($u->wireguard_private_key);
+                if ($pub) {
+                    $u->wireguard_public_key = $pub;
                 }
             }
 
-            if ($u->vpnServers->isNotEmpty()) {
-                RemoveOpenVPNUser::dispatch($u);
+            if (blank($u->wireguard_address)) {
+                $u->wireguard_address = WireGuardIpAllocator::next();
             }
-        });
-    }
+        }
+    });
+
+    static::created(function (self $u) {
+        $u->loadMissing('vpnServers');
+
+        foreach ($u->vpnServers as $server) {
+            SyncOpenVPNCredentials::dispatch((int) $server->id);
+
+            Log::channel('vpn')->info(sprintf(
+                'OpenVPN creds synced to server=%s ip=%s for user=%s',
+                (string) $server->name,
+                (string) $server->ip_address,
+                (string) $u->username
+            ));
+        }
+    });
+
+    static::deleting(function (self $u) {
+        $u->loadMissing('vpnServers');
+
+        // capture linked server IDs before the row is gone
+        $u->reconcileWireGuardServerIds = $u->vpnServers
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        Log::channel('vpn')->info("Cleanup queued for VPN user={$u->username}");
+
+        if ($u->vpnServers->isNotEmpty()) {
+            RemoveOpenVPNUser::dispatch($u);
+        }
+    });
+
+    static::deleted(function (self $u) {
+        if (! config('services.wireguard.autogen', false)) {
+            return;
+        }
+
+        foreach ($u->reconcileWireGuardServerIds as $serverId) {
+            $server = VpnServer::find($serverId);
+
+            if (! $server) {
+                continue;
+            }
+
+            Log::channel('vpn')->info("WG reconcile after delete user={$u->username} server={$server->name}");
+
+            dispatch_sync(new ReconcileWireGuardServer($server));
+        }
+    });
+}
 
     /* =========================
      | WireGuard helpers
