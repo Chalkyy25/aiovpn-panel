@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\RemoveOpenVPNUser;
 use App\Jobs\RemoveWireGuardPeer;
+use App\Jobs\ReconcileWireGuardServer;
 use App\Jobs\SyncOpenVPNCredentials;
 use App\Services\WireGuardIpAllocator;
 use App\Traits\ExecutesRemoteCommands;
@@ -505,9 +506,9 @@ class VpnUser extends Authenticatable
 
             Log::channel('vpn')->info("Cleanup queued for VPN user={$u->username}");
 
-            if (config('services.wireguard.autogen', false) && ! blank($u->wireguard_public_key)) {
+            if (config('services.wireguard.autogen', false)) {
                 foreach ($u->vpnServers as $server) {
-                    RemoveWireGuardPeer::dispatch(clone $u, $server);
+                    dispatch_sync(new \App\Jobs\ReconcileWireGuardServer($server));
                 }
             }
 
