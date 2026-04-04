@@ -36,7 +36,7 @@ class RemoveWireGuardPeer implements ShouldQueue
         $pub = trim((string) $this->vpnUser->wireguard_public_key);
 
         if ($pub === '') {
-            Log::channel('vpn')->warning("WG REMOVE SKIP user={$this->vpnUser->username} reason=no_public_key");
+            Log::info("WG REMOVE SKIP user={$this->vpnUser->username} reason=no_public_key");
             return;
         }
 
@@ -45,7 +45,7 @@ class RemoveWireGuardPeer implements ShouldQueue
             : $this->vpnUser->vpnServers()->get();
 
         if ($servers->isEmpty()) {
-            Log::channel('vpn')->warning("WG REMOVE SKIP user={$this->vpnUser->username} reason=no_servers");
+            Log::warning("WG REMOVE SKIP user={$this->vpnUser->username} reason=no_servers");
             return;
         }
 
@@ -56,23 +56,23 @@ class RemoveWireGuardPeer implements ShouldQueue
 
     protected function removeFromServer(VpnServer $server, string $publicKey): void
     {
-        Log::channel('vpn')->info("WG REMOVE TRY user={$this->vpnUser->username} server={$server->name}");
+        Log::info("WG REMOVE TRY user={$this->vpnUser->username} server={$server->name} ip={$server->ip_address}");
 
-        $script = $this->buildRemoveScript($publicKey);
+        $result = $this->executeRemoteCommand($server, $this->buildRemoveScript($publicKey), 30);
 
-        $res = $this->executeRemoteCommand($server, $script);
-
-        if (($res['status'] ?? 1) !== 0) {
-            $out = trim(implode("\n", (array) ($res['output'] ?? [])));
-            Log::channel('vpn')->error("WG REMOVE FAIL user={$this->vpnUser->username} server={$server->name} exit=" . ($res['status'] ?? 'unknown'));
-            if ($out !== '') {
-                Log::channel('vpn')->error("WG REMOVE OUTPUT {$server->name}: {$out}");
+        if (($result['status'] ?? 1) !== 0) {
+            Log::error("WG REMOVE FAIL user={$this->vpnUser->username} server={$server->name} exit=" . ($result['status'] ?? 'unknown'));
+            if (!empty($result['output'])) {
+                Log::error("WG REMOVE STDOUT server={$server->name}: " . implode("\n", $result['output']));
+            }
+            if (!empty($result['stderr'])) {
+                Log::error("WG REMOVE STDERR server={$server->name}: " . implode("\n", $result['stderr']));
             }
             return;
         }
 
-        $out = trim(implode("\n", (array) ($res['output'] ?? [])));
-        Log::channel('vpn')->info("WG REMOVE SUCCESS user={$this->vpnUser->username} server={$server->name}" . ($out !== '' ? " {$out}" : ""));
+        $out = implode("\n", $result['output'] ?? []);
+        Log::info("WG REMOVE SUCCESS user={$this->vpnUser->username} server={$server->name} output={$out}");
     }
 
     protected function buildRemoveScript(string $publicKey): string
@@ -94,12 +94,7 @@ if ! wg show "\$IFACE" >/dev/null 2>&1; then
   exit 3
 fi
 
-EXISTS=0
-if wg show "\$IFACE" peers | grep -Fxq "\$PUB"; then
-  EXISTS=1
-fi
-
-if [ "\$EXISTS" -eq 0 ]; then
+if ! wg show "\$IFACE" peers | grep -Fxq "\$PUB"; then
   echo "NOT_FOUND"
   exit 0
 fi
