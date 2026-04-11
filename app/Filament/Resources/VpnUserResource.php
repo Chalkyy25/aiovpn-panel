@@ -247,6 +247,21 @@ protected static ?int $navigationSort     = 3;
                     ->copyMessage('Password copied')
                     ->state(fn (VpnUser $u) => filled($u->plain_password) ? (string) $u->plain_password : 'Missing')
                     ->toggleable(),
+                    
+                Tables\Columns\TextColumn::make('login_copy')
+                    ->label('Login')
+                    ->state(function (VpnUser $u): string {
+                        $password = filled($u->plain_password) ? (string) $u->plain_password : 'Missing';
+                
+                        return "Username: {$u->username}\nPassword: {$password}";
+                    })
+                    ->formatStateUsing(fn () => 'Copy login')
+                    ->badge()
+                    ->color('gray')
+                    ->copyable()
+                    ->copyMessage('Username and password copied')
+                    ->copyMessageDuration(1500)
+                    ->alignCenter(),
 
                 Tables\Columns\TextColumn::make('last_ip')
                     ->label('Last IP')
