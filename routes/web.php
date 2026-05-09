@@ -211,7 +211,6 @@ Route::prefix('legacy')->name('legacy.')->group(function () {
 
             Route::resource('packages', PackageController::class);
 
-            Route::get('/vpn-users', VpnUserList::class)->name('vpn-users.index');
             Route::get('/vpn-users/create', CreateVpnUser::class)->name('vpn-users.create');
             Route::get('/vpn-users/{vpnUser}/edit', EditVpnUser::class)->name('vpn-users.edit');
             Route::get('/vpn-users/trial', CreateTrialLine::class)->name('vpn-users.trial');
