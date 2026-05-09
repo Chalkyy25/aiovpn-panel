@@ -1,3 +1,10 @@
+/**
+ * LEGACY MODEL
+ *
+ * Superseded by App\Models\VpnConnection.
+ * Pending gradual migration/removal.
+ */
+
 <?php
 
 namespace App\Models;
