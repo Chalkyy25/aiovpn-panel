@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\DeployKey;
+use App\Models\VpnConnection;
 use App\Services\VpnConfigBuilder;
 use App\Traits\ExecutesRemoteCommands;
 use Exception;
@@ -130,16 +131,16 @@ public function supportsWireGuard(): bool
 }
 
     public function connections(): HasMany
-    {
-        return $this->hasMany(VpnUserConnection::class, 'vpn_server_id');
+{
+        return $this->hasMany(VpnConnection::class, 'vpn_server_id');
     }
-
+    
     public function activeConnections(): HasMany
     {
-        return $this->hasMany(VpnUserConnection::class, 'vpn_server_id')
-            ->where('is_connected', true);
+        return $this->hasMany(VpnConnection::class, 'vpn_server_id')
+            ->live();
     }
-
+    
     /** DB-backed SSH key (preferred over legacy ssh_key/ssh_type) */
     public function deployKey(): BelongsTo
     {
