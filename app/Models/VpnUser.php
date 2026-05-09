@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Jobs\RemoveOpenVPNUser;
-use App\Jobs\RemoveWireGuardPeer;
 use App\Jobs\ReconcileWireGuardServer;
 use App\Jobs\SyncOpenVPNCredentials;
 use App\Services\WireGuardIpAllocator;
@@ -112,22 +111,24 @@ class VpnUser extends Authenticatable
 
     public function connections(): HasMany
     {
-        return $this->hasMany(VpnUserConnection::class);
+        return $this->hasMany(VpnConnection::class, 'vpn_user_id');
     }
-
+    
     public function sessionConnections(): HasMany
     {
         return $this->hasMany(VpnConnection::class, 'vpn_user_id');
     }
-
+    
     public function liveSessionConnections(): HasMany
     {
-        return $this->hasMany(VpnConnection::class, 'vpn_user_id')->live();
+        return $this->hasMany(VpnConnection::class, 'vpn_user_id')
+            ->live();
     }
-
+    
     public function activeConnections(): HasMany
     {
-        return $this->hasMany(VpnUserConnection::class)->where('is_connected', true);
+        return $this->hasMany(VpnConnection::class, 'vpn_user_id')
+            ->live();
     }
 
     /* =========================
@@ -213,8 +214,10 @@ class VpnUser extends Authenticatable
                 ? $this->connections
                 : $this->connections()->get();
 
-            $ts = $connections->where('is_connected', false)->max('disconnected_at');
-
+                $ts = $connections
+                    ->whereNotNull('disconnected_at')
+                    ->max('disconnected_at');
+                
             return $ts ? $ts->copy() : null;
         });
     }
@@ -318,18 +321,15 @@ class VpnUser extends Authenticatable
         $disconnected = 0;
 
         foreach ($activeConnections->take($toDisconnect) as $conn) {
-            $this->killVpnSession($conn);
-
             $conn->update([
-                'is_connected'     => false,
-                'disconnected_at'  => $now,
-                'session_duration' => $conn->connected_at ? $now->diffInSeconds($conn->connected_at) : null,
+                'is_active' => false,
+                'disconnected_at' => $now,
             ]);
-
+            
             $disconnected++;
-
+            
             Log::channel('vpn')->info(sprintf(
-                'DEVICE_LIMIT: auto-killed %s session=%s user=%s (%d>%d)',
+                'DEVICE_LIMIT: marked disconnected %s session=%s user=%s (%d>%d)',
                 $conn->protocol,
                 $conn->session_key,
                 $this->username,
@@ -338,59 +338,7 @@ class VpnUser extends Authenticatable
             ));
         }
 
-        VpnUserConnection::updateUserOnlineStatusIfNoActiveConnections($this->id);
-
         return $disconnected;
-    }
-
-    private function killVpnSession(VpnUserConnection $conn): void
-    {
-        try {
-            $server = $conn->vpnServer;
-            if (! $server) {
-                return;
-            }
-
-            if ($conn->protocol === 'WIREGUARD') {
-                $publicKey = $conn->public_key;
-                if (! $publicKey) {
-                    return;
-                }
-
-                $interface = $server->wg_interface ?? 'wg0';
-
-                $cmd = sprintf(
-                    'wg set %s peer %s remove 2>/dev/null || true',
-                    escapeshellarg($interface),
-                    escapeshellarg($publicKey)
-                );
-
-                $this->executeRemoteCommand($server, $cmd, 5);
-                return;
-            }
-
-            $mgmtPort = (int) ($conn->mgmt_port ?: 7505);
-            $clientId = $conn->client_id;
-
-            if ($clientId === null) {
-                return;
-            }
-
-            $cmd = sprintf(
-                'echo "kill %s" | nc 127.0.0.1 %d 2>/dev/null || true',
-                escapeshellarg((string) $clientId),
-                $mgmtPort
-            );
-
-            $this->executeRemoteCommand($server, $cmd, 5);
-        } catch (\Throwable $e) {
-            Log::channel('vpn')->error(sprintf(
-                'Failed to kill session=%s user=%s err=%s',
-                (string) $conn->session_key,
-                (string) $this->username,
-                $e->getMessage()
-            ));
-        }
     }
 
     /* =========================
