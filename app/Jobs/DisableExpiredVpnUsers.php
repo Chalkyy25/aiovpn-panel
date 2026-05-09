@@ -3,7 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\VpnUser;
-use App\Models\VpnUserConnection;
+use App\Models\VpnConnection;
 use Illuminate\Bus\Queueable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -45,10 +45,11 @@ class DisableExpiredVpnUsers implements ShouldQueue
                         ]);
 
                         // 2) Mark any live sessions as disconnected in DB
-                        VpnUserConnection::where('vpn_user_id', $user->id)
-                            ->where('is_connected', true)
+                        VpnConnection::where('vpn_user_id', $user->id)
+                            ->where('is_active', true)
+                            ->whereNull('disconnected_at')
                             ->update([
-                                'is_connected'    => false,
+                                'is_active'       => false,
                                 'disconnected_at' => $now,
                             ]);
                     });
