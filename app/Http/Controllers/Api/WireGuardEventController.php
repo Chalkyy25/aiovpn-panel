@@ -221,7 +221,6 @@ class WireGuardEventController extends Controller
 
     /**
      * Snapshot rows MUST match what Alpine expects.
-     * Key point: use is_connected (not is_active) so frontend doesn't need special cases.
      */
     private function snapshot(VpnServer $server): array
     {
@@ -253,7 +252,7 @@ class WireGuardEventController extends Controller
     'protocol'        => 'WIREGUARD',
     'session_key'     => $r->session_key,
     'public_key'      => $r->wg_public_key,
-    'is_connected'    => (bool) $r->is_active,
+    'is_active'    => (bool) $r->is_active,
 ])
             ->values()
             ->all();
