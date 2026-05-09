@@ -42,11 +42,8 @@ class MgmtSnapshotStore
             $u['protocol'] = $proto;
 
             // normalize online flag
-            if (!array_key_exists('is_connected', $u) && array_key_exists('is_active', $u)) {
-                $u['is_connected'] = (bool) $u['is_active'];
-            }
-            $u['is_connected'] = (bool)($u['is_connected'] ?? true);
-
+            $u['is_active'] = (bool) ($u['is_active'] ?? true);
+            
             // add connected_human if missing
             if (empty($u['connected_human'])) {
                 $u['connected_human'] = !empty($u['connected_at'])
