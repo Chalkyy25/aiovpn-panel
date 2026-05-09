@@ -198,7 +198,6 @@ Route::prefix('legacy')->name('legacy.')->group(function () {
 
             Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
-            Route::get('/vpn-dashboard', VpnDashboard::class)->name('vpn-dashboard');
             Route::post('/servers/{server}/disconnect', [VpnDisconnectController::class, 'disconnect'])
                 ->name('servers.disconnect');
 
