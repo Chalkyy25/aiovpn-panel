@@ -226,6 +226,8 @@ class VpnPollServer extends Command
 
             $server->last_sync_at = now();
 
+            $server->last_polled_at = now();
+
             $server->save();
 
             logger()->info('SERVER METRICS SAVE', [
