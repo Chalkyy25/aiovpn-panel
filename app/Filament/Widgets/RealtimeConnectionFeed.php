@@ -9,7 +9,7 @@ use Filament\Widgets\TableWidget as BaseWidget;
 
 class RealtimeConnectionFeed extends BaseWidget
 {
-    protected static ?string $heading = 'Realtime Connection Feed';
+    protected static ?string $heading = 'Live Sessions';
 
     protected static ?int $sort = 5;
 
