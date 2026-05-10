@@ -97,68 +97,178 @@ class VpnPollServer extends Command
         }
     }
 
-    protected function pollOneServer(VpnServer $server, bool $skipDb, int $iteration, bool $silent): void
-    {
-        try {
-            [$raw, $source] = $this->fetchStatusWithSource($server);
+    protected function pollOneServer(
+    VpnServer $server,
+    bool $skipDb,
+    int $iteration,
+    bool $silent
+): void {
+    try {
 
-            if ($raw === '') {
-                if ($iteration === 1 && !$silent) {
-                    $this->warn("⚠️ {$server->name}: No status data available");
-                }
-                return;
+        [$raw, $source] = $this->fetchStatusWithSource($server);
+
+        if ($raw === '') {
+
+            $server->update([
+                'is_online' => false,
+            ]);
+
+            if ($iteration === 1 && !$silent) {
+                $this->warn("⚠️ {$server->name}: No status data available");
             }
 
-            $parsed = OpenVpnStatusParser::parse($raw);
-            $clients = $parsed['clients'] ?? [];
-            $usernames = array_column($clients, 'username');
-
-            // Check if status changed (only log/broadcast on change for efficiency)
-            $currentHash = md5(json_encode($usernames));
-            $lastHash = $this->lastStatus[$server->id] ?? null;
-
-            if ($currentHash !== $lastHash || $iteration === 1) {
-                $this->lastStatus[$server->id] = $currentHash;
-
-                // Broadcast event for real-time dashboard updates
-                //broadcast(new ServerMgmtEvent(
-                   // $server->id,
-                   // now()->toIso8601String(),
-                    //$clients,
-                    //null,
-                    //$raw
-                //));
-
-                // Persist to database unless --no-db flag is set
-                if (!$skipDb) {
-                    $this->pushSnapshot($server->id, now(), $clients);
-                }
-
-                // Show change notification
-                if (!$silent) {
-                    $this->info(sprintf(
-                        "📡 %s: %d clients [%s] (source: %s)",
-                        $server->name,
-                        count($clients),
-                        implode(', ', $usernames) ?: 'none',
-                        $source
-                    ));
-                }
-
-                Log::channel('vpn')->info("MGMT POLL: {$server->name} clients=" . count($clients), [
-                    'users' => $usernames,
-                    'source' => $source,
-                    'iteration' => $iteration
-                ]);
-            }
-
-        } catch (\Throwable $e) {
-            if (!$silent) {
-                $this->error("❌ {$server->name}: {$e->getMessage()}");
-            }
-            Log::channel('vpn')->error("Poll error for {$server->name}: {$e->getMessage()}");
+            return;
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Parse VPN status
+        |--------------------------------------------------------------------------
+        */
+
+        $parsed = OpenVpnStatusParser::parse($raw);
+
+        $clients = $parsed['clients'] ?? [];
+
+        $usernames = array_column($clients, 'username');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Fetch node metrics
+        |--------------------------------------------------------------------------
+        */
+
+        $metrics = $this->fetchNodeMetrics($server);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Persist metrics
+        |--------------------------------------------------------------------------
+        */
+
+        $server->update([
+            'is_online'     => true,
+            'online_users'  => count($clients),
+            'last_sync_at'  => now(),
+
+            'cpu_usage'     => $metrics['cpu'],
+            'memory_usage'  => $metrics['memory_usage'],
+            'load_average'  => $metrics['load'],
+        ]);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Change detection
+        |--------------------------------------------------------------------------
+        */
+
+        $currentHash = md5(json_encode($usernames));
+
+        $lastHash = $this->lastStatus[$server->id] ?? null;
+
+        if ($currentHash !== $lastHash || $iteration === 1) {
+
+            $this->lastStatus[$server->id] = $currentHash;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Push snapshots
+            |--------------------------------------------------------------------------
+            */
+
+            if (!$skipDb) {
+                $this->pushSnapshot(
+                    $server->id,
+                    now(),
+                    $clients
+                );
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Console output
+            |--------------------------------------------------------------------------
+            */
+
+            if (!$silent) {
+
+                $this->info(sprintf(
+                    "📡 %s: %d clients | CPU %.1f%% | RAM %.1f%% | Load %.2f",
+                    $server->name,
+                    count($clients),
+                    $metrics['cpu'],
+                    $metrics['memory_usage'],
+                    $metrics['load']
+                ));
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Logging
+            |--------------------------------------------------------------------------
+            */
+
+            Log::channel('vpn')->info(
+                "MGMT POLL: {$server->name}",
+                [
+                    'users'          => $usernames,
+                    'count'          => count($clients),
+                    'cpu_usage'      => $metrics['cpu'],
+                    'memory_usage'   => $metrics['memory_usage'],
+                    'load_average'   => $metrics['load'],
+                    'source'         => $source,
+                    'iteration'      => $iteration,
+                ]
+            );
+        }
+
+    } catch (\Throwable $e) {
+
+        $server->update([
+            'is_online' => false,
+        ]);
+
+        if (!$silent) {
+            $this->error("❌ {$server->name}: {$e->getMessage()}");
+        }
+
+        Log::channel('vpn')->error(
+            "Poll error for {$server->name}: {$e->getMessage()}"
+        );
     }
+}
+
+protected function fetchNodeMetrics(VpnServer $server): array
+{
+    $cmd = <<<'BASH'
+echo "CPU=$(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')"
+
+echo "LOAD=$(cat /proc/loadavg | awk '{print $1}')"
+
+free -m | awk '/Mem:/ {
+    print "MEMORY_PERCENT="($3/$2)*100
+}'
+BASH;
+
+    $res = $this->executeRemoteCommand(
+        $server,
+        'bash -lc ' . escapeshellarg($cmd)
+    );
+
+    $output = implode("\n", $res['output'] ?? []);
+
+    preg_match('/CPU=([\d\.]+)/', $output, $cpu);
+
+    preg_match('/LOAD=([\d\.]+)/', $output, $load);
+
+    preg_match('/MEMORY_PERCENT=([\d\.]+)/', $output, $memory);
+
+    return [
+        'cpu'            => round((float) ($cpu[1] ?? 0), 2),
+        'load'           => round((float) ($load[1] ?? 0), 2),
+        'memory_usage'   => round((float) ($memory[1] ?? 0), 2),
+    ];
+}
 
     protected function fetchStatusWithSource(VpnServer $server): array
     {
