@@ -44,7 +44,26 @@ class SyncOpenVpnConnections extends Command
                     continue;
                 }
 
-                $raw = OpenVpnStatusParser::fetchAnyStatus($ssh);
+                $statusPaths = [
+                    '/run/openvpn/server.status',
+                    '/var/log/openvpn/status.log',
+                    '/etc/openvpn/openvpn-status.log',
+                    '/var/log/openvpn-status.log',
+                ];
+        
+                $raw = '';
+                
+                foreach ($statusPaths as $path) {
+                    $cmd = 'test -f ' . escapeshellarg($path) .
+                        ' && cat ' . escapeshellarg($path) . ' 2>/dev/null || true';
+                
+                    $output = $ssh->exec($cmd);
+                
+                    if (is_string($output) && trim($output) !== '') {
+                        $raw = $output;
+                        break;
+                    }
+                }
 
                 if (trim($raw) === '') {
                     $this->warn('  Status empty.');
