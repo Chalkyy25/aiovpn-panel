@@ -67,6 +67,6 @@ class RealtimeConnectionFeed extends BaseWidget
                     ->since()
                     ->sortable(),
             ])
-            ->defaultPaginationPageOption(10);
+            ->paginated(false);
     }
 }
