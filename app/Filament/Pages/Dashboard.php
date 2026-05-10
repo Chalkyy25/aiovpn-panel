@@ -27,16 +27,8 @@ class Dashboard extends BaseDashboard
             \App\Filament\Widgets\TopServers::class,
             \App\Filament\Widgets\RealtimeConnectionFeed::class,
 
-            // User activity
-            \App\Filament\Widgets\ActiveNowUsers::class,
-            \App\Filament\Widgets\RecentConnections::class,
-
             // Infrastructure
             \App\Filament\Widgets\ServerStatus::class,
-            \App\Filament\Widgets\ConnectionsByServer::class,
-
-            // Business / retention
-            \App\Filament\Widgets\ExpiringSoonUsers::class,
 
             // Quick actions
             \App\Filament\Widgets\DashboardLinks::class,
