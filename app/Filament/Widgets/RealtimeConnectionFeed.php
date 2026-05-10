@@ -26,8 +26,10 @@ class RealtimeConnectionFeed extends BaseWidget
             ->query(
                 VpnConnection::query()
                     ->with(['vpnUser', 'vpnServer'])
+                    ->where('is_active', 1)
+                    ->whereNotNull('last_seen_at')
+                    ->where('last_seen_at', '>=', now()->subMinutes(5))
                     ->latest('last_seen_at')
-                    ->limit(25)
             )
             ->columns([
 
