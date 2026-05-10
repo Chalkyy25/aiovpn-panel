@@ -26,6 +26,7 @@ class Dashboard extends BaseDashboard
             \App\Filament\Widgets\ConnectionsTrend::class,
             \App\Filament\Widgets\TopServers::class,
             \App\Filament\Widgets\RealtimeConnectionFeed::class,
+            \App\Filament\Widgets\NodeHealth::class,
 
             // Infrastructure
             \App\Filament\Widgets\ServerStatus::class,
