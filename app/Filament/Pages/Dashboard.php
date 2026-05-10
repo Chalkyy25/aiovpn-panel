@@ -25,6 +25,7 @@ class Dashboard extends BaseDashboard
             // Main charts + activity
             \App\Filament\Widgets\ConnectionsTrend::class,
             \App\Filament\Widgets\TopServers::class,
+            \App\Filament\Widgets\RealtimeConnectionFeed::class,
 
             // User activity
             \App\Filament\Widgets\ActiveNowUsers::class,
