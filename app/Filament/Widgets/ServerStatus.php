@@ -150,10 +150,10 @@ class ServerStatus extends BaseWidget
                     ->icon('heroicon-o-eye')
                     ->label('View')
                     ->url(fn (VpnServer $record) =>
-                        static::getResource()::getUrl('edit', [
-                            'record' => $record,
-                        ])
-                    ),
+                    \App\Filament\Resources\VpnServerResource::getUrl('edit', [
+                        'record' => $record,
+                    ])
+                ),
 
             ])
 
