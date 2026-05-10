@@ -9,57 +9,160 @@ use Filament\Widgets\TableWidget as BaseWidget;
 
 class ServerStatus extends BaseWidget
 {
-    protected static ?string $pollingInterval = '15s';
-    protected static ?string $heading = 'Server Status';
-    protected static ?int $sort = 8;
+    protected static ?string $heading = 'VPN Network Status';
 
-    protected int|string|array $columnSpan = [
-        'default' => 1,
-        'lg'      => 1, // left 1/3 of last desktop row
-    ];
+    protected static ?string $pollingInterval = '10s';
+
+    protected static ?int $sort = 2;
+
+    protected int|string|array $columnSpan = 'full';
 
     public function table(Table $table): Table
     {
         return $table
-            ->query(VpnServer::query()->orderBy('name'))
+            ->query(
+                VpnServer::query()
+                    ->orderByDesc('is_online')
+                    ->orderBy('name')
+            )
+
             ->columns([
+
+                /*
+                |--------------------------------------------------------------------------
+                | SERVER
+                |--------------------------------------------------------------------------
+                */
+
                 Tables\Columns\TextColumn::make('name')
+                    ->label('Server')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->weight('bold'),
 
-                Tables\Columns\TextColumn::make('ip_address')
-                    ->label('IP')
-                    ->toggleable(),
+                /*
+                |--------------------------------------------------------------------------
+                | LOCATION
+                |--------------------------------------------------------------------------
+                */
 
-                Tables\Columns\TextColumn::make('is_online')
-                    ->label('Status')
-                    ->state(fn (VpnServer $record) => (bool) $record->is_online)
-                    ->formatStateUsing(fn (bool $state) => $state ? 'ONLINE' : 'OFFLINE')
+                Tables\Columns\TextColumn::make('location')
                     ->badge()
-                    ->color(fn (bool $state) => $state ? 'success' : 'danger'),
+                    ->color('gray')
+                    ->searchable(),
+
+                /*
+                |--------------------------------------------------------------------------
+                | STATUS
+                |--------------------------------------------------------------------------
+                */
+
+                Tables\Columns\TextColumn::make('status')
+                    ->label('Status')
+                    ->state(fn (VpnServer $record) => $record->is_online)
+                    ->formatStateUsing(fn (bool $state) =>
+                        $state ? 'ONLINE' : 'OFFLINE'
+                    )
+                    ->badge()
+                    ->color(fn (bool $state) =>
+                        $state ? 'success' : 'danger'
+                    ),
+
+                /*
+                |--------------------------------------------------------------------------
+                | USERS
+                |--------------------------------------------------------------------------
+                */
 
                 Tables\Columns\TextColumn::make('online_users')
                     ->label('Users')
-                    ->numeric()
-                    ->sortable(),
+                    ->badge()
+                    ->sortable()
+                    ->color(fn ($state) =>
+                        $state > 0 ? 'success' : 'gray'
+                    ),
+
+                /*
+                |--------------------------------------------------------------------------
+                | PROTOCOL
+                |--------------------------------------------------------------------------
+                */
 
                 Tables\Columns\TextColumn::make('protocol')
                     ->badge()
-                    ->sortable(),
+                    ->formatStateUsing(fn (?string $state) =>
+                        strtoupper($state ?? 'unknown')
+                    )
+                    ->color(fn (?string $state) =>
+                        match ($state) {
+                            'wireguard' => 'success',
+                            'openvpn'   => 'warning',
+                            default     => 'gray',
+                        }
+                    ),
+
+                /*
+                |--------------------------------------------------------------------------
+                | HEARTBEAT
+                |--------------------------------------------------------------------------
+                */
 
                 Tables\Columns\TextColumn::make('last_mgmt_at')
-                    ->label('Last Mgmt')
+                    ->label('Heartbeat')
                     ->since()
                     ->sortable()
-                    ->toggleable(),
+                    ->color(function ($state) {
+
+                        if (! $state) {
+                            return 'danger';
+                        }
+
+                        return now()->diffInSeconds($state) < 30
+                            ? 'success'
+                            : 'danger';
+                    }),
+
+                /*
+                |--------------------------------------------------------------------------
+                | DEPLOYMENT
+                |--------------------------------------------------------------------------
+                */
 
                 Tables\Columns\TextColumn::make('deployment_status')
                     ->label('Deploy')
                     ->badge()
-                    ->sortable()
-                    ->toggleable(),
+                    ->formatStateUsing(fn (?string $state) =>
+                        strtoupper($state ?? 'UNKNOWN')
+                    )
+                    ->colors([
+                        'warning' => 'queued',
+                        'info'    => 'running',
+                        'success' => ['success', 'deployed'],
+                        'danger'  => 'failed',
+                        'gray'    => 'pending',
+                    ]),
+
             ])
-            ->defaultSort('name', 'asc')
-            ->defaultPaginationPageOption(10);
+
+            ->actions([
+
+                Tables\Actions\Action::make('view')
+                    ->icon('heroicon-o-eye')
+                    ->label('View')
+                    ->url(fn (VpnServer $record) =>
+                        static::getResource()::getUrl('edit', [
+                            'record' => $record,
+                        ])
+                    ),
+
+            ])
+
+            ->paginated([10, 25, 50])
+
+            ->defaultPaginationPageOption(10)
+
+            ->striped()
+
+            ->defaultSort('is_online', 'desc');
     }
 }
