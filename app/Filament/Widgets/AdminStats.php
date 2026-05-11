@@ -139,11 +139,11 @@ class AdminStats extends BaseWidget
             */
 
             Stat::make(
-                'Active VPN Users',
-                number_format($vpnUsersActive)
+                'Total VPN Users',
+                number_format($vpnUsersTotal)
             )
                 ->description(
-                    number_format($vpnUsersTotal) . ' total users'
+                    number_format($vpnUsersActive) . ' enabled'
                 )
                 ->descriptionIcon('heroicon-m-users')
                 ->color('info'),

@@ -25,6 +25,7 @@ class NodeHealth extends BaseWidget
         return $table
             ->query(
                 VpnServer::query()
+                    ->withCount('activeConnections')
                     ->orderByDesc('is_online')
                     ->orderBy('name')
             )
@@ -64,7 +65,7 @@ class NodeHealth extends BaseWidget
                         default => 'success',
                     }),
 
-                Tables\Columns\TextColumn::make('online_users')
+                Tables\Columns\TextColumn::make('active_connections_count')
                     ->label('Users')
                     ->badge()
                     ->sortable(),

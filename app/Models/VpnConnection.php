@@ -72,6 +72,30 @@ class VpnConnection extends Model
             });
     }
 
+
+    /**
+     * Whether this single instance is currently live.
+     * Mirrors the live() scope so widgets can call this on a loaded model
+     * instead of duplicating the stale-threshold logic inline.
+     */
+    public function isLive(?Carbon $now = null): bool
+    {
+        if (! $this->is_active || ! $this->last_seen_at) {
+            return false;
+        }
+
+        $now ??= now();
+
+        return match (strtoupper((string) $this->protocol)) {
+            'WIREGUARD' => $this->last_seen_at->greaterThanOrEqualTo(
+                $now->copy()->subSeconds(self::WIREGUARD_STALE_SECONDS)
+            ),
+            default => $this->last_seen_at->greaterThanOrEqualTo(
+                $now->copy()->subSeconds(self::OPENVPN_STALE_SECONDS)
+            ),
+        };
+    }
+
     /**
      * “Stale” = active in DB, but last_seen_at is older than the live cutoff.
      */
