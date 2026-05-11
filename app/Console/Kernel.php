@@ -9,16 +9,23 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 class Kernel extends ConsoleKernel
 {
     /**
-     * If you register console commands manually, keep them here.
-     * (You can also rely on $this->load(__DIR__.'/Commands') below.)
+     * Manually registered commands.
      */
     protected $commands = [
+
         \App\Console\Commands\VpnPollServer::class,
+
+        \App\Console\Commands\CleanupStaleConnections::class,
     ];
 
     protected function schedule(Schedule $schedule): void
     {
-        // ✅ Housekeeping ONLY (safe, does not touch live connection snapshots)
+        /*
+        |--------------------------------------------------------------------------
+        | VPN user expiry enforcement
+        |--------------------------------------------------------------------------
+        */
+
         $schedule->job(DisableExpiredVpnUsers::class)
             ->everyMinute()
             ->onOneServer()
@@ -26,17 +33,57 @@ class Kernel extends ConsoleKernel
             ->appendOutputTo(storage_path('logs/scheduler.log'));
 
         /*
-         * ❌ DISABLED (temporary): These were racing with DeployEventController
-         * and causing the dashboard flicker / "_" by rewriting connection state.
-         *
-         * Re-enable ONE of these later ONLY after refactoring it to:
-         * - not broadcast mgmt.update, and/or
-         * - not overwrite connected_at / is_connected state
-         *
-         * $schedule->job(UpdateVpnConnectionStatus::class)->everyFifteenSeconds()...
-         * $schedule->command('vpn:sync-connections')->cron
-         * $schedule->command('vpn:sync')->everyFiveMinutes()...
-         */
+        |--------------------------------------------------------------------------
+        | Canonical stale VPN session cleanup
+        |--------------------------------------------------------------------------
+        |
+        | Pollers are responsible for:
+        | - updating last_seen_at
+        | - updating bandwidth/session metrics
+        | - marking connections active when seen
+        |
+        | Cleanup is responsible for:
+        | - expiring stale sessions
+        | - marking sessions offline
+        | - setting disconnected_at
+        |
+        | This separation prevents dashboard race conditions,
+        | ghost sessions, and inconsistent online counts.
+        |
+        */
+
+        $schedule->command('vpn:cleanup-stale-connections')
+            ->everyMinute()
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/scheduler.log'));
+
+        /*
+        |--------------------------------------------------------------------------
+        | Disabled legacy sync jobs
+        |--------------------------------------------------------------------------
+        |
+        | These previously raced against realtime pollers and
+        | websocket snapshot updates, causing:
+        |
+        | - dashboard flickering
+        | - incorrect connected_at resets
+        | - stale online counts
+        | - ghost/disappearing sessions
+        |
+        | Re-enable only after full architectural review.
+        |
+        */
+
+        /*
+        $schedule->job(UpdateVpnConnectionStatus::class)
+            ->everyFifteenSeconds();
+
+        $schedule->command('vpn:sync-connections')
+            ->cron('* * * * *');
+
+        $schedule->command('vpn:sync')
+            ->everyFiveMinutes();
+        */
     }
 
     protected function commands(): void
