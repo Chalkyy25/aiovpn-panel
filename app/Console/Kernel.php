@@ -59,6 +59,19 @@ class Kernel extends ConsoleKernel
 
         /*
         |--------------------------------------------------------------------------
+        | WireGuardPollServer is EXCLUDED from the scheduler intentionally
+        |--------------------------------------------------------------------------
+        |
+        | vpn:poll-wireguard is LEGACY/DEBUG ONLY.
+        | WireGuard session state is managed exclusively by
+        | WireGuardEventController (push-based, event-driven architecture).
+        | Adding vpn:poll-wireguard here would race against the event controller
+        | and corrupt vpn_connections session history.
+        |
+        */
+
+        /*
+        |--------------------------------------------------------------------------
         | Disabled legacy sync jobs
         |--------------------------------------------------------------------------
         |

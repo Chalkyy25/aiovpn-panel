@@ -14,14 +14,28 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * WireGuardEventController is the SOLE authoritative writer for WIREGUARD
+ * vpn_connections rows.
+ *
+ * Architecture notes:
+ *  - WireGuard has NO true disconnect event.  A peer is considered online only
+ *    while its last_seen_at (latest handshake timestamp) is fresher than
+ *    VpnConnection::WIREGUARD_STALE_SECONDS.  Staleness is therefore an inferred
+ *    state, not an explicit notification from the peer.
+ *  - connected_at  = timestamp of the first handshake for this session (reset only
+ *                    after the peer has been absent for RECONNECT_RESET_SECONDS).
+ *  - last_seen_at  = latest handshake/activity timestamp received from the agent.
+ *  - disconnected_at = set when a peer is absent from the push payload AND/OR its
+ *                    last_seen_at is older than WIREGUARD_STALE_SECONDS.
+ *  - is_active     = compatibility flag kept in sync; dashboards must use live().
+ *  - vpn_servers.online_users is a DEPRECATED write-through cache updated here
+ *    for legacy API consumers only; dashboards must use VpnConnection::live().
+ *  - WireGuardPollServer (vpn:poll-wireguard) is LEGACY/DEBUG ONLY and must never
+ *    write WireGuard session state in production.
+ */
 class WireGuardEventController extends Controller
 {
-    /**
-     * WireGuard peers can be "connected" but idle (no handshake for a while).
-     * Use 180–300s unless you enforce PersistentKeepalive on clients.
-     */
-    private const STALE_SECONDS = 240; // 4 minutes
-
     /**
      * If a peer briefly falls "offline" due to handshake staleness and then returns,
      * do NOT reset connected_at (otherwise dashboards show a constantly resetting session).
@@ -91,8 +105,8 @@ class WireGuardEventController extends Controller
                     'session_key'   => $sessionKey,
                 ]);
 
-                $wasOnline = (bool)($row->is_active ?? false);
-                $previousConnectedAt = $row->connected_at;
+                $wasLive             = $row->exists ? $row->isLive($now) : false;
+                $previousConnectedAt    = $row->connected_at;
                 $previousDisconnectedAt = $row->disconnected_at;
 
                 $bytesIn  = (int)($p['bytes_received'] ?? $p['bytes_in']  ?? 0);
@@ -115,7 +129,7 @@ class WireGuardEventController extends Controller
 
                     'last_seen_at'    => $lastSeen,
                     'is_active'       => $isOnline ? 1 : 0,
-                    'disconnected_at' => $isOnline ? null : ($wasOnline ? $now : $row->disconnected_at),
+                    'disconnected_at' => $isOnline ? null : ($wasLive ? $now : $row->disconnected_at),
                 ]);
 
                 // Only set connected_at for truly new sessions.
@@ -127,7 +141,7 @@ class WireGuardEventController extends Controller
 
                     // Offline -> online flaps happen for WG when handshakes are sparse.
                     // Preserve connected_at unless it was offline for a long time.
-                    if ($wasOnline === false && $previousConnectedAt) {
+                    if ($wasLive === false && $previousConnectedAt) {
                         if ($previousDisconnectedAt && $previousDisconnectedAt->lte($now->copy()->subSeconds(self::RECONNECT_RESET_SECONDS))) {
                             $row->connected_at = $now;
                         } else {
@@ -205,7 +219,9 @@ class WireGuardEventController extends Controller
 
     private function disconnectMissingOrStale(int $serverId, array $touchedSessionKeys, Carbon $now): void
     {
-        $cutoff = $now->copy()->subSeconds(self::STALE_SECONDS);
+        // WireGuard has no explicit disconnect event; peers become "offline" when
+        // their last_seen_at is older than WIREGUARD_STALE_SECONDS.
+        $cutoff = $now->copy()->subSeconds(VpnConnection::WIREGUARD_STALE_SECONDS);
 
         $q = VpnConnection::query()
             ->where('vpn_server_id', $serverId)
@@ -230,13 +246,18 @@ class WireGuardEventController extends Controller
 
     /**
      * Snapshot rows MUST match what Alpine expects.
+     *
+     * Uses live($now) so only peers with a fresh last_seen_at are included,
+     * consistent with the inferred-online model for WireGuard.
      */
     private function snapshot(VpnServer $server): array
     {
+        $now = now();
+
         return VpnConnection::with('vpnUser:id,username')
             ->where('vpn_server_id', $server->id)
             ->where('protocol', 'WIREGUARD')
-            ->where('is_active', 1)
+            ->live($now)
             ->orderByDesc('last_seen_at')
             ->limit(500)
             ->get()
@@ -270,7 +291,9 @@ class WireGuardEventController extends Controller
     private function isOnline(?Carbon $seenAt, Carbon $now): bool
     {
         if (!$seenAt) return false;
-        return $seenAt->gte($now->copy()->subSeconds(self::STALE_SECONDS));
+        // WireGuard has no true disconnect event; online state is inferred from
+        // last_seen_at freshness using the canonical WIREGUARD_STALE_SECONDS threshold.
+        return $seenAt->gte($now->copy()->subSeconds(VpnConnection::WIREGUARD_STALE_SECONDS));
     }
 
     private function extractSeenAt(array $peer): ?Carbon

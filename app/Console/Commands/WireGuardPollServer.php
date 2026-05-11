@@ -9,13 +9,37 @@ use App\Traits\ExecutesRemoteCommands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @deprecated  WireGuardPollServer is LEGACY/DEBUG ONLY.
+ *
+ * WireGuard session state is now managed exclusively by
+ * App\Http\Controllers\Api\WireGuardEventController, which receives
+ * push events from the WireGuard agent running on each VPN server.
+ *
+ * This command must NOT be registered in Supervisor or any production
+ * scheduler.  It may be run manually for debugging peer connectivity,
+ * but it must never be the authoritative writer for vpn_connections rows
+ * in a production environment.
+ *
+ * Production flow:
+ *   WireGuard agent  →  POST /api/servers/{id}/wireguard-events
+ *                    →  WireGuardEventController::store()
+ *                    →  vpn_connections (WIREGUARD rows only)
+ */
 class WireGuardPollServer extends Command
 {
     use ExecutesRemoteCommands;
 
+    /**
+     * LEGACY/DEBUG ONLY — do NOT add to Supervisor or production scheduler.
+     * See class docblock above.
+     */
     protected $signature = 'vpn:poll-wireguard {--interval=10}';
 
-    protected $description = 'Poll WireGuard peers and update live status';
+    /**
+     * LEGACY/DEBUG ONLY -- WireGuard state is managed by WireGuardEventController.
+     */
+    protected $description = '[LEGACY/DEBUG ONLY] Poll WireGuard peers -- do NOT run in production';
 
     public function handle(): int
     {
