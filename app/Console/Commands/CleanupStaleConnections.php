@@ -10,7 +10,7 @@ class CleanupStaleConnections extends Command
 {
     protected $signature = 'vpn:cleanup-stale-connections';
 
-    protected $description = 'Mark stale VPN sessions as disconnected';
+    protected $description = 'Mark stale OpenVPN sessions as disconnected (WireGuard excluded)';
 
     public function handle(): int
     {
@@ -18,17 +18,26 @@ class CleanupStaleConnections extends Command
 
         /*
         |--------------------------------------------------------------------------
-        | Find stale active sessions
+        | Find stale active sessions — OPENVPN only
         |--------------------------------------------------------------------------
+        |
+        | WireGuard has no true disconnect event.  Its session state is managed
+        | exclusively by WireGuardEventController, which infers "offline" from
+        | last_seen_at freshness on every push from the WireGuard agent.
+        |
+        | This command must NEVER mark WIREGUARD rows offline — doing so would
+        | race against WireGuardEventController and corrupt session history.
+        |
         */
 
         $staleConnections = VpnConnection::query()
+            ->where('protocol', 'OPENVPN')
             ->stale($now)
             ->get();
 
         if ($staleConnections->isEmpty()) {
 
-            $this->info('✅ No stale VPN sessions found');
+            $this->info('✅ No stale OpenVPN sessions found');
 
             return self::SUCCESS;
         }
@@ -64,7 +73,7 @@ class CleanupStaleConnections extends Command
 
             $count++;
 
-            Log::info('VPN session marked stale/offline', [
+            Log::info('OpenVPN session marked stale/offline', [
                 'connection_id' => $connection->id,
                 'vpn_user_id'   => $connection->vpn_user_id,
                 'server_id'     => $connection->vpn_server_id,
@@ -74,7 +83,7 @@ class CleanupStaleConnections extends Command
         }
 
         $this->info(
-            "🧹 Cleaned {$count} stale VPN sessions"
+            "🧹 Cleaned {$count} stale OpenVPN sessions"
         );
 
         return self::SUCCESS;
