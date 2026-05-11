@@ -46,7 +46,7 @@ class ServerStatus extends BaseWidget
                 |--------------------------------------------------------------------------
                 */
 
-                Tables\Columns\TextColumn::make('location')
+                Tables\Columns\TextColumn::make('display_location')
                     ->badge()
                     ->color('gray')
                     ->searchable(),
@@ -103,23 +103,23 @@ class ServerStatus extends BaseWidget
 
                 /*
                 |--------------------------------------------------------------------------
-                | HEARTBEAT
+                | LAST POLL
                 |--------------------------------------------------------------------------
                 */
-
-                Tables\Columns\TextColumn::make('last_mgmt_at')
-                    ->label('Heartbeat')
+                
+                Tables\Columns\TextColumn::make('last_sync_at')
+                    ->label('Last Poll')
                     ->since()
                     ->sortable()
                     ->color(function ($state) {
-
+                
                         if (! $state) {
                             return 'danger';
                         }
-
+                
                         return now()->diffInSeconds($state) < 30
                             ? 'success'
-                            : 'danger';
+                            : 'warning';
                     }),
 
                 /*
@@ -157,9 +157,7 @@ class ServerStatus extends BaseWidget
 
             ])
 
-            ->paginated([10, 25, 50])
-
-            ->defaultPaginationPageOption(10)
+            ->paginated(false)
 
             ->striped()
 
