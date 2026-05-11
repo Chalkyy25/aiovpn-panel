@@ -57,6 +57,7 @@ class EditVpnUser extends EditRecord
                     'vpn_user_id'       => $this->record->id,
                     'username'          => $this->record->username,
                     'wireguard_address' => $this->record->wireguard_address,
+                    'generated'         => $dirty,
                 ]);
             } catch (\Throwable $e) {
                 Log::channel('vpn')->error('FILAMENT_EDIT_VPN_USER: failed ensuring WG identity', [
@@ -71,6 +72,8 @@ class EditVpnUser extends EditRecord
                     ->body($e->getMessage())
                     ->send();
 
+                // Cannot provision WG peers without a valid identity.
+                // OpenVPN credential sync was already dispatched inside syncVpnServers above.
                 return;
             }
         }
