@@ -53,20 +53,20 @@ class WireGuardService
             } catch (\Throwable $e) {
                 Log::error('❌ WG: Failed to encrypt private key for revoked peer restore', [
                     'vpn_user_id' => $vpnUser->id,
-                    'server_id'   => $server->id,
-                    'peer_id'     => $revokedPeer->id,
-                    'error'       => $e->getMessage(),
+                    'server_id' => $server->id,
+                    'peer_id' => $revokedPeer->id,
+                    'error' => $e->getMessage(),
                 ]);
-                throw new InvalidArgumentException("Could not encrypt WireGuard private key.");
+                throw new InvalidArgumentException('Could not encrypt WireGuard private key.');
             }
 
             $revokedPeer->forceFill([
-                'public_key'            => (string) $vpnUser->wireguard_public_key,
+                'public_key' => (string) $vpnUser->wireguard_public_key,
                 'private_key_encrypted' => $encryptedPrivate,
-                'ip_address'            => $clientIp,
-                'allowed_ips'           => $clientIp . '/32',
-                'dns'                   => $server->dns ?: null,
-                'revoked'               => false,
+                'ip_address' => $clientIp,
+                'allowed_ips' => $clientIp.'/32',
+                'dns' => $server->dns ?: null,
+                'revoked' => false,
             ])->save();
 
             $this->addPeerOnServer($server, $revokedPeer);
@@ -86,22 +86,22 @@ class WireGuardService
         } catch (\Throwable $e) {
             Log::error('❌ WG: Failed to encrypt private key for peer', [
                 'vpn_user_id' => $vpnUser->id,
-                'server_id'   => $server->id,
-                'error'       => $e->getMessage(),
+                'server_id' => $server->id,
+                'error' => $e->getMessage(),
             ]);
-            throw new InvalidArgumentException("Could not encrypt WireGuard private key.");
+            throw new InvalidArgumentException('Could not encrypt WireGuard private key.');
         }
 
         $peer = new WireguardPeer([
-            'vpn_server_id'         => $server->id,
-            'vpn_user_id'           => $vpnUser->id,
-            'public_key'            => (string) $vpnUser->wireguard_public_key,
-            'preshared_key'         => null, // optional later
+            'vpn_server_id' => $server->id,
+            'vpn_user_id' => $vpnUser->id,
+            'public_key' => (string) $vpnUser->wireguard_public_key,
+            'preshared_key' => null, // optional later
             'private_key_encrypted' => $encryptedPrivate,
-            'ip_address'            => $clientIp,
-            'allowed_ips'           => $clientIp . '/32',
-            'dns'                   => $server->dns ?: null,
-            'revoked'               => false,
+            'ip_address' => $clientIp,
+            'allowed_ips' => $clientIp.'/32',
+            'dns' => $server->dns ?: null,
+            'revoked' => false,
         ]);
 
         $peer->save();
@@ -126,7 +126,7 @@ class WireGuardService
 
         // 1) Generate keypair locally on panel (requires wireguard-tools)
         $private = trim($this->runLocal(['wg', 'genkey']));
-        $public  = trim($this->runLocalWithInput(['wg', 'pubkey'], $private . "\n"));
+        $public = trim($this->runLocalWithInput(['wg', 'pubkey'], $private."\n"));
 
         // 2) Detect server subnet from wg0.conf (Address = x.x.x.x/yy)
         $subnetCidr = $this->detectServerSubnetCidr($server); // e.g. 10.7.0.0/24
@@ -136,14 +136,14 @@ class WireGuardService
 
         $vpnUser->forceFill([
             'wireguard_private_key' => $private,
-            'wireguard_public_key'  => $public,
-            'wireguard_address'     => $clientIp . '/32',
+            'wireguard_public_key' => $public,
+            'wireguard_address' => $clientIp.'/32',
         ])->save();
 
         Log::info('✅ WG: Generated identity for user', [
             'vpn_user_id' => $vpnUser->id,
-            'server_id'   => $server->id,
-            'address'     => $vpnUser->wireguard_address,
+            'server_id' => $server->id,
+            'address' => $vpnUser->wireguard_address,
         ]);
     }
 
@@ -153,8 +153,8 @@ class WireGuardService
      */
     protected function detectServerSubnetCidr(VpnServer $server): string
     {
-        $cmd = "sudo sh -lc " . escapeshellarg("grep -E '^Address\\s*=' /etc/wireguard/wg0.conf | head -n1");
-        $result = $server->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
+        $cmd = 'sudo sh -lc '.escapeshellarg("grep -E '^Address\\s*=' /etc/wireguard/wg0.conf | head -n1");
+        $result = $server->executeRemoteCommand($server, 'bash -lc '.escapeshellarg($cmd));
 
         $out = $result['output'] ?? [];
         $line = is_array($out) ? implode("\n", $out) : (string) $out;
@@ -164,7 +164,7 @@ class WireGuardService
         }
 
         $serverIp = $m[1];
-        $mask     = (int) $m[2];
+        $mask = (int) $m[2];
 
         $ipLong = ip2long($serverIp);
         if ($ipLong === false) {
@@ -179,7 +179,7 @@ class WireGuardService
         $netmaskLong = ($mask === 24) ? ip2long('255.255.255.0') : ip2long('255.255.0.0');
         $networkLong = $ipLong & $netmaskLong;
 
-        return long2ip($networkLong) . "/{$mask}";
+        return long2ip($networkLong)."/{$mask}";
     }
 
     /**
@@ -228,8 +228,8 @@ class WireGuardService
      */
     protected function addPeerOnServer(VpnServer $server, WireguardPeer $peer): void
     {
-        $interface  = 'wg0';
-        $allowedIps = $peer->allowed_ips ?: ($peer->ip_address . '/32');
+        $interface = 'wg0';
+        $allowedIps = $peer->allowed_ips ?: ($peer->ip_address.'/32');
 
         // ✅ FIXED: removed extra sprintf arg
         $cmd = sprintf(
@@ -240,39 +240,41 @@ class WireGuardService
         );
 
         try {
-            $result = $server->executeRemoteCommand($server, 'bash -lc ' . escapeshellarg($cmd));
+            $result = $server->executeRemoteCommand($server, 'bash -lc '.escapeshellarg($cmd));
         } catch (\Throwable $e) {
             Log::error('❌ WG: SSH error adding peer', [
                 'server_id' => $server->id,
                 'server_ip' => $server->ip_address,
-                'peer_id'   => $peer->id,
+                'peer_id' => $peer->id,
                 'exception' => $e->getMessage(),
             ]);
+
             return;
         }
 
         $status = $result['status'] ?? 1;
-        $out    = $result['output'] ?? [];
-        $err    = $result['error'] ?? null;
+        $out = $result['output'] ?? [];
+        $err = $result['error'] ?? null;
 
         if ($status !== 0) {
             Log::error('❌ WG: Failed to add peer on server', [
                 'server_id' => $server->id,
                 'server_ip' => $server->ip_address,
-                'peer_id'   => $peer->id,
-                'cmd'       => $cmd,
-                'status'    => $status,
-                'output'    => $out,
-                'error'     => $err,
+                'peer_id' => $peer->id,
+                'cmd' => $cmd,
+                'status' => $status,
+                'output' => $out,
+                'error' => $err,
             ]);
+
             return;
         }
 
         Log::info('✅ WG: Peer added', [
             'server_id' => $server->id,
             'server_ip' => $server->ip_address,
-            'peer_id'   => $peer->id,
-            'peer_ip'   => $peer->ip_address,
+            'peer_id' => $peer->id,
+            'peer_ip' => $peer->ip_address,
         ]);
     }
 
@@ -294,10 +296,10 @@ class WireGuardService
                 $privateKey = Crypt::decryptString($peer->private_key_encrypted);
             } catch (\Throwable $e) {
                 Log::error('❌ WG: Failed to decrypt peer private key', [
-                    'peer_id'     => $peer->id,
-                    'server_id'   => $server->id,
+                    'peer_id' => $peer->id,
+                    'server_id' => $server->id,
                     'vpn_user_id' => $vpnUser->id,
-                    'error'       => $e->getMessage(),
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -306,27 +308,27 @@ class WireGuardService
             throw new InvalidArgumentException("VpnUser {$vpnUser->id} missing WG identity.");
         }
 
-        $endpoint   = $server->wgEndpoint(); // host:port
-        $dns        = $peer->dns ?: ($server->dns ?: '1.1.1.1');
+        $endpoint = $server->wgEndpoint(); // host:port
+        $dns = $peer->dns ?: ($server->dns ?: '1.1.1.1');
         $allowedIps = '0.0.0.0/0, ::/0';
         $clientIpWithMask = $vpnUser->wireguard_address;
         $mtu = (int) ($server->mtu ?: 1340);
 
-$lines = [
-    '[Interface]',
-    'PrivateKey = ' . $privateKey,
-    'Address = ' . $clientIpWithMask,
-    'DNS = ' . $dns,
-    'MTU = ' . $mtu,
-    '',
-    '[Peer]',
-    'PublicKey = ' . $server->wg_public_key,
-    'AllowedIPs = ' . $allowedIps,
-    'Endpoint = ' . $endpoint,
-    'PersistentKeepalive = 25',
-];
+        $lines = [
+            '[Interface]',
+            'PrivateKey = '.$privateKey,
+            'Address = '.$clientIpWithMask,
+            'DNS = '.$dns,
+            'MTU = '.$mtu,
+            '',
+            '[Peer]',
+            'PublicKey = '.$server->wg_public_key,
+            'AllowedIPs = '.$allowedIps,
+            'Endpoint = '.$endpoint,
+            'PersistentKeepalive = 25',
+        ];
 
-        return implode("\n", $lines) . "\n";
+        return implode("\n", $lines)."\n";
     }
 
     public function syncServerPeerStats(VpnServer $server): void
@@ -336,22 +338,24 @@ $lines = [
         try {
             $result = $server->executeRemoteCommand(
                 $server,
-                'bash -lc ' . escapeshellarg('sudo wg show ' . escapeshellarg($interface) . ' dump')
+                'bash -lc '.escapeshellarg('sudo wg show '.escapeshellarg($interface).' dump')
             );
         } catch (\Throwable $e) {
             Log::error('❌ WG: Failed to run wg show dump', [
                 'server_id' => $server->id,
-                'error'     => $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
+
             return;
         }
 
         if (($result['status'] ?? 1) !== 0) {
             Log::warning('⚠️ WG: Non-zero status from wg show dump', [
                 'server_id' => $server->id,
-                'output'    => $result['output'] ?? [],
-                'error'     => $result['error'] ?? null,
+                'output' => $result['output'] ?? [],
+                'error' => $result['error'] ?? null,
             ]);
+
             return;
         }
 
@@ -383,7 +387,7 @@ $lines = [
 
             $peer->transfer_rx_bytes = (int) $rx;
             $peer->transfer_tx_bytes = (int) $tx;
-            $peer->allowed_ips       = $allowedIps;
+            $peer->allowed_ips = $allowedIps;
 
             if ((int) $handshake > 0) {
                 $peer->last_handshake_at = now()->subSeconds(
@@ -401,7 +405,7 @@ $lines = [
         $p->run();
 
         if (! $p->isSuccessful()) {
-            throw new InvalidArgumentException("WG command failed (" . implode(' ', $cmd) . '): ' . $p->getErrorOutput());
+            throw new InvalidArgumentException('WG command failed ('.implode(' ', $cmd).'): '.$p->getErrorOutput());
         }
 
         return (string) $p->getOutput();
@@ -414,7 +418,7 @@ $lines = [
         $p->run();
 
         if (! $p->isSuccessful()) {
-            throw new InvalidArgumentException("WG command failed (" . implode(' ', $cmd) . '): ' . $p->getErrorOutput());
+            throw new InvalidArgumentException('WG command failed ('.implode(' ', $cmd).'): '.$p->getErrorOutput());
         }
 
         return (string) $p->getOutput();

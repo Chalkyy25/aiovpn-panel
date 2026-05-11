@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\SyncOpenVPNCredentials;
 use App\Jobs\ReconcileWireGuardServer;
+use App\Jobs\SyncOpenVPNCredentials;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
 use App\Models\WireguardPeer;
@@ -45,7 +45,7 @@ class VpnUserServerSyncDispatchTest extends TestCase
 
     public function test_sync_openvpn_credentials_job_constructor_accepts_vpnserver_model_or_int(): void
     {
-        $server = new VpnServer();
+        $server = new VpnServer;
         $server->id = 123;
 
         $jobFromModel = new SyncOpenVPNCredentials($server);

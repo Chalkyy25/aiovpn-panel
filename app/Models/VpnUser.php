@@ -2,12 +2,11 @@
 
 namespace App\Models;
 
-use App\Jobs\RemoveOpenVPNUser;
 use App\Jobs\ReconcileWireGuardServer;
+use App\Jobs\RemoveOpenVPNUser;
 use App\Jobs\SyncOpenVPNCredentials;
-use App\Models\WireguardPeer;
-use App\Services\WireGuardService;
 use App\Services\WireGuardIpAllocator;
+use App\Services\WireGuardService;
 use App\Traits\ExecutesRemoteCommands;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,9 +24,9 @@ use Laravel\Sanctum\HasApiTokens;
 
 class VpnUser extends Authenticatable
 {
-    use HasFactory;
     use ExecutesRemoteCommands;
     use HasApiTokens;
+    use HasFactory;
 
     public const GENERATED_PASSWORD_LENGTH = 5;
 
@@ -60,13 +59,13 @@ class VpnUser extends Authenticatable
 
     protected $casts = [
         'max_connections' => 'integer',
-        'is_online'       => 'boolean',
-        'is_active'       => 'boolean',
-        'is_trial'        => 'boolean',
-        'last_seen_at'    => 'datetime',
-        'expires_at'      => 'datetime',
-        'created_at'      => 'datetime',
-        'updated_at'      => 'datetime',
+        'is_online' => 'boolean',
+        'is_active' => 'boolean',
+        'is_trial' => 'boolean',
+        'last_seen_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     /* =========================
@@ -84,8 +83,16 @@ class VpnUser extends Authenticatable
     }
 
     public function setRememberToken($value): void {}
-    public function getRememberToken(): ?string { return null; }
-    public function getRememberTokenName(): string { return 'remember_token'; }
+
+    public function getRememberToken(): ?string
+    {
+        return null;
+    }
+
+    public function getRememberTokenName(): string
+    {
+        return 'remember_token';
+    }
 
     /* =========================
      | Relationships
@@ -115,18 +122,18 @@ class VpnUser extends Authenticatable
     {
         return $this->hasMany(VpnConnection::class, 'vpn_user_id');
     }
-    
+
     public function sessionConnections(): HasMany
     {
         return $this->hasMany(VpnConnection::class, 'vpn_user_id');
     }
-    
+
     public function liveSessionConnections(): HasMany
     {
         return $this->hasMany(VpnConnection::class, 'vpn_user_id')
             ->live();
     }
-    
+
     public function activeConnections(): HasMany
     {
         return $this->hasMany(VpnConnection::class, 'vpn_user_id')
@@ -173,8 +180,7 @@ class VpnUser extends Authenticatable
 
     public function activeConnectionsCount(): Attribute
     {
-        return Attribute::get(fn (): int =>
-            $this->relationLoaded('activeConnections')
+        return Attribute::get(fn (): int => $this->relationLoaded('activeConnections')
                 ? $this->activeConnections->count()
                 : (int) $this->activeConnections()->count()
         );
@@ -182,17 +188,15 @@ class VpnUser extends Authenticatable
 
     public function connectionLimitText(): Attribute
     {
-        return Attribute::get(fn (): string =>
-            ((int) $this->max_connections === 0) ? 'Unlimited' : (string) (int) $this->max_connections
+        return Attribute::get(fn (): string => ((int) $this->max_connections === 0) ? 'Unlimited' : (string) (int) $this->max_connections
         );
     }
 
     public function connectionSummary(): Attribute
     {
-        return Attribute::get(fn (): string =>
-            ((int) $this->max_connections === 0)
-                ? ($this->activeConnectionsCount . '/∞')
-                : ($this->activeConnectionsCount . '/' . (int) $this->max_connections)
+        return Attribute::get(fn (): string => ((int) $this->max_connections === 0)
+                ? ($this->activeConnectionsCount.'/∞')
+                : ($this->activeConnectionsCount.'/'.(int) $this->max_connections)
         );
     }
 
@@ -216,10 +220,10 @@ class VpnUser extends Authenticatable
                 ? $this->connections
                 : $this->connections()->get();
 
-                $ts = $connections
-                    ->whereNotNull('disconnected_at')
-                    ->max('disconnected_at');
-                
+            $ts = $connections
+                ->whereNotNull('disconnected_at')
+                ->max('disconnected_at');
+
             return $ts ? $ts->copy() : null;
         });
     }
@@ -290,7 +294,7 @@ class VpnUser extends Authenticatable
 
                 $ip = preg_replace('/\/\d+$/', '', trim((string) $value));
 
-                return $ip !== '' ? $ip . '/32' : null;
+                return $ip !== '' ? $ip.'/32' : null;
             }
         );
     }
@@ -327,9 +331,9 @@ class VpnUser extends Authenticatable
                 'is_active' => false,
                 'disconnected_at' => $now,
             ]);
-            
+
             $disconnected++;
-            
+
             Log::channel('vpn')->info(sprintf(
                 'DEVICE_LIMIT: marked disconnected %s session=%s user=%s (%d>%d)',
                 $conn->protocol,
@@ -500,93 +504,93 @@ class VpnUser extends Authenticatable
  | Model events
  ========================= */
 
-protected static function booted(): void
-{
-    static::creating(function (self $u) {
-        $u->username = trim((string) ($u->username ?? ''));
+    protected static function booted(): void
+    {
+        static::creating(function (self $u) {
+            $u->username = trim((string) ($u->username ?? ''));
 
-        if ($u->username === '' || strtoupper($u->username) === 'UNDEF') {
-            $u->username = 'wg-' . Str::lower(Str::random(10));
-        }
+            if ($u->username === '' || strtoupper($u->username) === 'UNDEF') {
+                $u->username = 'wg-'.Str::lower(Str::random(10));
+            }
 
-        $u->max_connections ??= 1;
-        $u->is_active ??= true;
+            $u->max_connections ??= 1;
+            $u->is_active ??= true;
 
-        if (blank($u->plain_password) && blank($u->password)) {
-            $generated = Str::random(self::GENERATED_PASSWORD_LENGTH);
-            $u->plain_password = $generated;
-            $u->password = Hash::make($generated);
-        } elseif (! blank($u->plain_password) && blank($u->password)) {
-            $u->password = Hash::make((string) $u->plain_password);
-        }
+            if (blank($u->plain_password) && blank($u->password)) {
+                $generated = Str::random(self::GENERATED_PASSWORD_LENGTH);
+                $u->plain_password = $generated;
+                $u->password = Hash::make($generated);
+            } elseif (! blank($u->plain_password) && blank($u->password)) {
+                $u->password = Hash::make((string) $u->plain_password);
+            }
 
-        if (config('services.wireguard.autogen', false)) {
-            if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
-                $keys = self::generateWireGuardKeys();
-                $u->wireguard_private_key = $keys['private'];
-                $u->wireguard_public_key = $keys['public'];
-            } elseif (blank($u->wireguard_public_key) && ! blank($u->wireguard_private_key)) {
-                $pub = self::wgPublicFromPrivate($u->wireguard_private_key);
-                if ($pub) {
-                    $u->wireguard_public_key = $pub;
+            if (config('services.wireguard.autogen', false)) {
+                if (blank($u->wireguard_private_key) || blank($u->wireguard_public_key)) {
+                    $keys = self::generateWireGuardKeys();
+                    $u->wireguard_private_key = $keys['private'];
+                    $u->wireguard_public_key = $keys['public'];
+                } elseif (blank($u->wireguard_public_key) && ! blank($u->wireguard_private_key)) {
+                    $pub = self::wgPublicFromPrivate($u->wireguard_private_key);
+                    if ($pub) {
+                        $u->wireguard_public_key = $pub;
+                    }
+                }
+
+                if (blank($u->wireguard_address)) {
+                    $u->wireguard_address = WireGuardIpAllocator::next();
                 }
             }
+        });
 
-            if (blank($u->wireguard_address)) {
-                $u->wireguard_address = WireGuardIpAllocator::next();
+        static::created(function (self $u) {
+            $u->loadMissing('vpnServers');
+
+            foreach ($u->vpnServers as $server) {
+                SyncOpenVPNCredentials::dispatch((int) $server->id);
+
+                Log::channel('vpn')->info(sprintf(
+                    'OpenVPN creds synced to server=%s ip=%s for user=%s',
+                    (string) $server->name,
+                    (string) $server->ip_address,
+                    (string) $u->username
+                ));
             }
-        }
-    });
+        });
 
-    static::created(function (self $u) {
-        $u->loadMissing('vpnServers');
+        static::deleting(function (self $u) {
+            $u->loadMissing('vpnServers');
 
-        foreach ($u->vpnServers as $server) {
-            SyncOpenVPNCredentials::dispatch((int) $server->id);
+            // capture linked server IDs before the row is gone
+            $u->reconcileWireGuardServerIds = $u->vpnServers
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
 
-            Log::channel('vpn')->info(sprintf(
-                'OpenVPN creds synced to server=%s ip=%s for user=%s',
-                (string) $server->name,
-                (string) $server->ip_address,
-                (string) $u->username
-            ));
-        }
-    });
+            Log::channel('vpn')->info("Cleanup queued for VPN user={$u->username}");
 
-    static::deleting(function (self $u) {
-        $u->loadMissing('vpnServers');
+            if ($u->vpnServers->isNotEmpty()) {
+                RemoveOpenVPNUser::dispatch($u);
+            }
+        });
 
-        // capture linked server IDs before the row is gone
-        $u->reconcileWireGuardServerIds = $u->vpnServers
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
-
-        Log::channel('vpn')->info("Cleanup queued for VPN user={$u->username}");
-
-        if ($u->vpnServers->isNotEmpty()) {
-            RemoveOpenVPNUser::dispatch($u);
-        }
-    });
-
-    static::deleted(function (self $u) {
-        if (! config('services.wireguard.autogen', false)) {
-            return;
-        }
-
-        foreach ($u->reconcileWireGuardServerIds as $serverId) {
-            $server = VpnServer::find($serverId);
-
-            if (! $server) {
-                continue;
+        static::deleted(function (self $u) {
+            if (! config('services.wireguard.autogen', false)) {
+                return;
             }
 
-            Log::channel('vpn')->info("WG reconcile after delete user={$u->username} server={$server->name}");
+            foreach ($u->reconcileWireGuardServerIds as $serverId) {
+                $server = VpnServer::find($serverId);
 
-            dispatch_sync(new ReconcileWireGuardServer($server));
-        }
-    });
-}
+                if (! $server) {
+                    continue;
+                }
+
+                Log::channel('vpn')->info("WG reconcile after delete user={$u->username} server={$server->name}");
+
+                dispatch_sync(new ReconcileWireGuardServer($server));
+            }
+        });
+    }
 
     /* =========================
      | WireGuard helpers
@@ -600,14 +604,14 @@ protected static function booted(): void
 
         $sk = random_bytes(32);
 
-        $sk[0]  = $sk[0]  & "\xF8";
+        $sk[0] = $sk[0] & "\xF8";
         $sk[31] = ($sk[31] & "\x7F") | "\x40";
 
         $pk = sodium_crypto_scalarmult_base($sk);
 
         return [
             'private' => base64_encode($sk),
-            'public'  => base64_encode($pk),
+            'public' => base64_encode($pk),
         ];
     }
 
@@ -622,7 +626,7 @@ protected static function booted(): void
             return null;
         }
 
-        $raw[0]  = $raw[0]  & "\xF8";
+        $raw[0] = $raw[0] & "\xF8";
         $raw[31] = ($raw[31] & "\x7F") | "\x40";
 
         return base64_encode(sodium_crypto_scalarmult_base($raw));
