@@ -145,28 +145,41 @@ class WireGuardPollServer extends Command
 
         if (! $connection->exists || ! $connection->connected_at) {
 
-            $connection->connected_at = now();
-        }
+    $connection->connected_at = now();
+}
 
-        $connection->vpn_user_id = $vpnUser->id;
+/*
+|--------------------------------------------------------------------------
+| Detect reconnect
+|--------------------------------------------------------------------------
+*/
 
-        $connection->protocol = 'WIREGUARD';
+$wasOffline = ! $connection->is_active;
 
-        $connection->session_key = "wg:{$server->id}:{$publicKey}";
+if ($isOnline && $wasOffline) {
 
-        $connection->client_ip = $endpoint
-            ? explode(':', $endpoint)[0]
-            : null;
+    $connection->connected_at = now();
+}
 
-        $connection->virtual_ip = str_replace('/32', '', $allowedIps);
+$connection->vpn_user_id = $vpnUser->id;
 
-        $connection->endpoint = $endpoint;
+$connection->protocol = 'WIREGUARD';
 
-        $connection->bytes_in = $rx;
+$connection->session_key = "wg:{$server->id}:{$publicKey}";
 
-        $connection->bytes_out = $tx;
+$connection->client_ip = $endpoint
+    ? explode(':', $endpoint)[0]
+    : null;
 
-        $connection->is_active = $isOnline;
+$connection->virtual_ip = str_replace('/32', '', $allowedIps);
+
+$connection->endpoint = $endpoint;
+
+$connection->bytes_in = $rx;
+
+$connection->bytes_out = $tx;
+
+$connection->is_active = $isOnline;
 
         /*
         |--------------------------------------------------------------------------
