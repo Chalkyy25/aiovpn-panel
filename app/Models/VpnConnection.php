@@ -10,7 +10,7 @@ class VpnConnection extends Model
 {
     // WireGuard needs longer to avoid false “offline”
     public const OPENVPN_STALE_SECONDS = 120;
-    public const WIREGUARD_STALE_SECONDS = 300;
+    public const WIREGUARD_STALE_SECONDS = 60;
 
     protected $fillable = [
         'vpn_server_id',
