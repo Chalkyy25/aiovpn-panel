@@ -25,7 +25,8 @@ class TopServers extends BaseWidget
         return $table
             ->query(
                 VpnServer::query()
-                    ->orderByDesc('online_users')
+                    ->withCount('activeConnections')
+                    ->orderByDesc('active_connections_count')
             )
             ->columns([
 
@@ -41,7 +42,7 @@ class TopServers extends BaseWidget
                         default => 'gray',
                     }),
 
-                Tables\Columns\TextColumn::make('live_users_count')
+                Tables\Columns\TextColumn::make('active_connections_count')
                     ->label('Users')
                     ->badge()
                     ->color('success')
@@ -51,7 +52,7 @@ class TopServers extends BaseWidget
                     ->label('Status')
                     ->boolean(),
 
-                Tables\Columns\TextColumn::make('last_mgmt_at')
+                Tables\Columns\TextColumn::make('last_sync_at')
                     ->label('Heartbeat')
                     ->since()
                     ->sortable(),
