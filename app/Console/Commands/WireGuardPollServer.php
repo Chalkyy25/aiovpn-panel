@@ -133,8 +133,17 @@ class WireGuardPollServer extends Command
             */
 
             if (! $connection->exists || ! $connection->connected_at) {
-                $connection->connected_at = $now;
-            }
+    $connection->connected_at = $now;
+}
+
+$wasStale = ! $connection->last_seen_at
+    || $connection->last_seen_at->lt(
+        $now->copy()->subSeconds(VpnConnection::WIREGUARD_STALE_SECONDS)
+    );
+
+if ($isFresh && $wasStale) {
+    $connection->connected_at = $now;
+}
 
             /*
             |--------------------------------------------------------------------------
