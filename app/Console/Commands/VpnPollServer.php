@@ -220,8 +220,6 @@ class VpnPollServer extends Command
 
             $server->load_average = $metrics['load'];
 
-            $server->online_users = count($clients);
-
             $server->is_online = true;
 
             $server->last_sync_at = now();
