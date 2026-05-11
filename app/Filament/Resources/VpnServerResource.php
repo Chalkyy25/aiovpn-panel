@@ -178,9 +178,10 @@ class VpnServerResource extends Resource
                                                 : 'OFFLINE'
                                         ),
 
-                                    Forms\Components\Placeholder::make('online_users')
+                                    Forms\Components\Placeholder::make('active_connections_count')
+                                        ->label('Live Users')
                                         ->content(fn ($record) =>
-                                            $record?->online_users ?? 0
+                                            $record ? $record->activeConnections()->count() : 0
                                         ),
 
                                     Forms\Components\Placeholder::make('last_sync_at')
@@ -209,6 +210,7 @@ class VpnServerResource extends Resource
     {
         return $table
             ->defaultSort('created_at', 'desc')
+            ->modifyQueryUsing(fn ($query) => $query->withCount('activeConnections'))
 
             ->columns([
 
@@ -243,7 +245,7 @@ class VpnServerResource extends Resource
                         'danger'  => fn ($record) => ! $record->is_online,
                     ]),
 
-                Tables\Columns\TextColumn::make('online_users')
+                Tables\Columns\TextColumn::make('active_connections_count')
                     ->label('Users')
                     ->badge()
                     ->sortable(),

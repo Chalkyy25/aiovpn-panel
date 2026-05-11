@@ -38,7 +38,8 @@ class VpnServerResource extends Resource
         // Read-only list of available servers. Intentionally does not expose admin-only fields.
         // Resellers should only see servers that are currently online.
         return parent::getEloquentQuery()
-            ->where('is_online', true);
+            ->where('is_online', true)
+            ->withCount('activeConnections');
     }
 
     public static function table(Table $table): Table
@@ -85,7 +86,7 @@ class VpnServerResource extends Resource
                     ->color(fn (VpnServer $s) => $s->is_online ? 'success' : 'danger')
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('online_users')
+                Tables\Columns\TextColumn::make('active_connections_count')
                     ->label('Users')
                     ->badge()
                     ->color('gray')

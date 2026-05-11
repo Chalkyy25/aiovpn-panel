@@ -43,6 +43,10 @@ class RecentConnections extends BaseWidget
                     ->boolean()
                     ->state(fn (VpnConnection $c): bool => $c->isLive())
                     ->sortable(query: function ($query, string $direction) {
+                        // Sort proxy: is_active sorts the DB flag; last_seen_at DESC puts
+                        // the most-recently-seen records first within each group.
+                        // This is a close approximation of isLive() — an exact DB sort
+                        // would require a protocol-aware CASE expression.
                         return $query
                             ->orderBy('is_active', $direction === 'asc' ? 'asc' : 'desc')
                             ->orderBy('last_seen_at', 'desc');

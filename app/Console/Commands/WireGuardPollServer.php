@@ -342,11 +342,21 @@ class WireGuardPollServer extends Command
 
     ]);
 
-    // Live count is derived from VpnConnection::live() — no need to cache it on vpn_servers.online_users.
+    // Write-through cache: keep vpn_servers.online_users in sync for legacy API
+    // consumers, matching the same cache maintained by WireGuardEventController.
+    // Dashboards must NOT read online_users — they derive counts from
+    // VpnConnection::live() / activeConnections().
+    //
+    // WireGuard has no true disconnect event; the peer simply stops sending
+    // handshakes.  Online state is inferred from last_seen_at freshness
+    // (WIREGUARD_STALE_SECONDS threshold).  Stale cleanup is intentional
+    // behaviour, not exact disconnect timing.
     $liveCount = VpnConnection::query()
         ->where('vpn_server_id', $server->id)
         ->live()
         ->count();
+
+    $server->update(['online_users' => $liveCount]);
 
     $this->info(
 

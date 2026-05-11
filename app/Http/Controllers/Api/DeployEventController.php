@@ -138,10 +138,18 @@ class DeployEventController extends Controller
             // mark missing OpenVPN sessions inactive
             $this->disconnectMissingOpenVpn($server->id, $touchedSessionKeys, $now);
 
+            // Write-through cache: keep vpn_servers.online_users in sync so that
+            // legacy API consumers still get a usable count without joining
+            // vpn_connections.  Dashboards must NOT read this column — they must
+            // derive counts from VpnConnection::live() / activeConnections().
+            //
+            // OpenVPN sessions disappear from the status file on disconnect.
+            // The grace window (OFFLINE_GRACE_SECONDS) prevents flapping during
+            // brief poll gaps.  Stale cleanup is intentional, not exact timing.
             $live = VpnConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('protocol', 'OPENVPN')
-                ->where('is_active', 1)
+                ->live($now)
                 ->count();
 
             $server->forceFill([

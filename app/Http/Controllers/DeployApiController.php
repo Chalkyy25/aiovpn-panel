@@ -228,6 +228,12 @@ class DeployApiController extends Controller
     /**
      * POST /api/servers/{server}/mgmt/snapshot
      * Simple “count + usernames” snapshot for dashboards.
+     *
+     * @deprecated  The online_users field in the request body is accepted only for
+     *              backwards compatibility with older polling agents that push this
+     *              payload.  The value is stored in vpn_servers.online_users as a
+     *              write-through cache.  All dashboard UI must read live counts from
+     *              VpnConnection::live() / activeConnections(), not from this field.
      */
     public function pushMgmtSnapshot(Request $req, VpnServer $server)
     {

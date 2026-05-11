@@ -47,6 +47,9 @@ class VpnServer extends Model
         'status',
         'status_log_path',
         'deploy_key_id',
+        // @deprecated  online_users is a write-through cache kept for legacy API
+        //              compatibility.  All dashboard counts must use
+        //              withCount('activeConnections') or VpnConnection::live().
         'online_users',
         'last_sync_at',
 
@@ -89,6 +92,7 @@ class VpnServer extends Model
         'wg_port'        => 'integer',
         'port'           => 'integer',
         'mgmt_port'      => 'integer',
+        // @deprecated  Read via withCount('activeConnections') in UI instead.
         'online_users'   => 'integer',
         'protocol'       => 'string',
         'transport'      => 'string',
