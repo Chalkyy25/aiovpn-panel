@@ -71,76 +71,74 @@ class WireGuardPollServer extends Command
 
         foreach ($lines as $line) {
 
-            $parts = preg_split('/\s+/', trim($line));
+    $parts = preg_split('/\s+/', trim($line));
 
-            if (count($parts) < 8) {
-                continue;
-            }
+    /*
+    |--------------------------------------------------------------------------
+    | Skip interface line
+    |--------------------------------------------------------------------------
+    */
 
-            /*
-            |--------------------------------------------------------------------------
-            | wg show dump format
-            |--------------------------------------------------------------------------
-            |
-            | 0 interface
-            | 1 public_key
-            | 2 preshared_key
-            | 3 endpoint
-            | 4 allowed_ips
-            | 5 latest_handshake
-            | 6 rx_bytes
-            | 7 tx_bytes
-            | 8 persistent_keepalive
-            |
-            */
+    if (count($parts) < 9) {
+        continue;
+    }
 
-            $publicKey = $parts[1] ?? null;
+    $publicKey = $parts[1] ?? null;
 
-            $latestHandshake = (int) ($parts[5] ?? 0);
+    $endpoint = $parts[3] ?? null;
 
-            $rx = (int) ($parts[6] ?? 0);
+    $allowedIps = $parts[4] ?? null;
 
-            $tx = (int) ($parts[7] ?? 0);
+    $latestHandshake = (int) ($parts[5] ?? 0);
 
-            if (! $publicKey) {
-                continue;
-            }
+    $rx = (int) ($parts[6] ?? 0);
 
-            $vpnUser = VpnUser::query()
-                ->where('wireguard_public_key', $publicKey)
-                ->first();
+    $tx = (int) ($parts[7] ?? 0);
 
-            if (! $vpnUser) {
-                continue;
-            }
+    if (! $publicKey) {
+        continue;
+    }
 
-            $isOnline = false;
+    $vpnUser = VpnUser::query()
+        ->where('wireguard_public_key', $publicKey)
+        ->first();
 
-            if ($latestHandshake > 0) {
+    if (! $vpnUser) {
 
-                $secondsAgo = now()->timestamp - $latestHandshake;
+        $this->warn("No VPN user found for {$publicKey}");
 
-                $isOnline = $secondsAgo <= 180;
-            }
+        continue;
+    }
 
-            VpnConnection::updateOrCreate(
-                [
-                    'vpn_server_id' => $server->id,
-                    'vpn_user_id' => $vpnUser->id,
-                    'protocol' => 'WIREGUARD',
-                    'session_key' => $publicKey,
-                ],
-                [
-                    'wg_public_key' => $publicKey,
-                    'bytes_in' => $rx,
-                    'bytes_out' => $tx,
-                    'is_active' => $isOnline,
-                    'last_seen_at' => $isOnline ? now() : null,
-                    'connected_at' => $isOnline ? now() : null,
-                    'disconnected_at' => $isOnline ? null : now(),
-                ]
-            );
-        }
+    $isOnline = false;
+
+    if ($latestHandshake > 0) {
+
+        $secondsAgo = now()->timestamp - $latestHandshake;
+
+        $isOnline = $secondsAgo <= 180;
+    }
+
+    VpnConnection::updateOrCreate(
+        [
+            'vpn_server_id' => $server->id,
+            'vpn_user_id' => $vpnUser->id,
+            'protocol' => 'WIREGUARD',
+            'session_key' => $publicKey,
+        ],
+        [
+            'wg_public_key' => $publicKey,
+            'endpoint' => $endpoint,
+            'virtual_ip' => $allowedIps,
+            'bytes_in' => $rx,
+            'bytes_out' => $tx,
+            'is_active' => $isOnline,
+            'last_seen_at' => $isOnline ? now() : null,
+            'connected_at' => $isOnline ? now() : null,
+            'disconnected_at' => $isOnline ? null : now(),
+        ]
+    );
+}
 
         $onlineUsers = VpnConnection::query()
             ->where('vpn_server_id', $server->id)
