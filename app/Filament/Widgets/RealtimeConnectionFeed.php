@@ -27,7 +27,7 @@ class RealtimeConnectionFeed extends BaseWidget
             VpnConnection::query()
                 ->with(['vpnUser', 'vpnServer'])
                 ->live()
-                ->latest('connected_at')
+                ->latest('last_seen_at')
         )
         ->columns([
 
@@ -62,6 +62,11 @@ class RealtimeConnectionFeed extends BaseWidget
 
             Tables\Columns\TextColumn::make('connected_at')
                 ->label('Connected')
+                ->since()
+                ->sortable(),
+
+            Tables\Columns\TextColumn::make('last_seen_at')
+                ->label('Last Active')
                 ->since()
                 ->sortable(),
         ])

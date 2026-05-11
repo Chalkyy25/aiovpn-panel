@@ -103,19 +103,7 @@ class ActiveNowUsers extends BaseWidget
 
                 Tables\Columns\TextColumn::make('online_since')
                     ->label('Online Since')
-                    ->state(function (VpnUser $u) {
-                        $fromJoin = $u->getAttribute('live_connected_at');
-                        if ($fromJoin) {
-                            return $fromJoin;
-                        }
-
-                        $first = $u->sessionConnections
-                            ->filter(fn ($c) => $c->connected_at !== null)
-                            ->sortBy('connected_at')
-                            ->first();
-
-                        return $first?->connected_at;
-                    })
+                    ->state(fn (VpnUser $u) => $u->getAttribute('live_connected_at'))
                     ->since()
                     ->toggleable(),
 

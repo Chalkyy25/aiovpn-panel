@@ -41,25 +41,12 @@ class RecentConnections extends BaseWidget
                 Tables\Columns\IconColumn::make('is_live')
                     ->label('Live')
                     ->boolean()
-                    ->state(function (VpnConnection $c): bool {
-                        if (! $c->is_active) {
-                            return false;
-                        }
-
-                        $seen = $c->last_seen_at;
-                        if (! $seen) {
-                            return false;
-                        }
-
-                        $now = now();
-
-                        return match (strtoupper((string) $c->protocol)) {
-                            'WIREGUARD' => $seen->greaterThanOrEqualTo($now->copy()->subSeconds(VpnConnection::WIREGUARD_STALE_SECONDS)),
-                            default => $seen->greaterThanOrEqualTo($now->copy()->subSeconds(VpnConnection::OPENVPN_STALE_SECONDS)),
-                        };
-                    })
+                    ->state(fn (VpnConnection $c): bool => $c->isLive())
                     ->sortable(query: function ($query, string $direction) {
-                        // Basic sort: is_active first, then last_seen_at.
+                        // Sort proxy: is_active sorts the DB flag; last_seen_at DESC puts
+                        // the most-recently-seen records first within each group.
+                        // This is a close approximation of isLive() — an exact DB sort
+                        // would require a protocol-aware CASE expression.
                         return $query
                             ->orderBy('is_active', $direction === 'asc' ? 'asc' : 'desc')
                             ->orderBy('last_seen_at', 'desc');
@@ -81,6 +68,7 @@ class RecentConnections extends BaseWidget
                 Tables\Columns\TextColumn::make('last_seen_at')
                     ->label('Seen')
                     ->since()
+                    ->sortable()
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('updated_at')

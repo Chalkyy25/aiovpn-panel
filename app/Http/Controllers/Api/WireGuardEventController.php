@@ -152,11 +152,20 @@ class WireGuardEventController extends Controller
             // Mark missing/stale sessions offline
             $this->disconnectMissingOrStale($server->id, $touchedSessionKeys, $now);
 
-            // Update server aggregate counters
+            // Write-through cache: keep vpn_servers.online_users in sync so that
+            // legacy API consumers and third-party integrations still get a usable
+            // count without querying vpn_connections directly.
+            // IMPORTANT: dashboards must NOT read online_users for display — they
+            // must derive counts from VpnConnection::live() / activeConnections().
+            //
+            // WireGuard has no true disconnect event; the peer simply stops sending
+            // handshakes.  online state is inferred from last_seen_at freshness
+            // (STALE_SECONDS threshold).  Stale cleanup is intentional behaviour,
+            // not exact disconnect timing.
             $live = VpnConnection::query()
                 ->where('vpn_server_id', $server->id)
                 ->where('protocol', 'WIREGUARD')
-                ->where('is_active', 1)
+                ->live($now)
                 ->count();
 
             $server->forceFill([
