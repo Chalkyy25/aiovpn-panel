@@ -6,7 +6,6 @@ use App\Filament\Resources\VpnUserResource;
 use App\Models\VpnUser;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
-use Illuminate\Support\Arr;
 
 class EditVpnUser extends EditRecord
 {
@@ -26,7 +25,7 @@ class EditVpnUser extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         // vpn_server_ids is virtual (dehydrated(false)); read from full form state.
-        $rawIds = $this->data['vpn_server_ids'] ?? Arr::get($data, 'vpn_server_ids', []);
+        $rawIds = $this->data['vpn_server_ids'] ?? [];
 
         $this->vpnServerIds = array_values(array_filter(
             array_map('intval', (array) $rawIds),
@@ -57,7 +56,7 @@ class EditVpnUser extends EditRecord
             Notification::make()
                 ->warning()
                 ->title('VPN user updated with WireGuard warnings')
-                ->body("Some WireGuard operations failed ({$wgEnsureFailures} peer ensure, {$wgReconcileFailures} reconcile). Please review the application logs for details.")
+                ->body("Some WireGuard operations failed ({$wgEnsureFailures} peer creations, {$wgReconcileFailures} cleanups). Please review the application logs for details.")
                 ->send();
         }
     }
