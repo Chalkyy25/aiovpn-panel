@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 class ConnectionsByServer extends BaseWidget
 {
     protected static ?string $heading = 'Live Connections by Server';
-    protected static ?string $pollingInterval = '15s';
+    protected static ?string $pollingInterval = '10s';
     protected static ?int $sort = 50;
 
     protected int | string | array $columnSpan = [

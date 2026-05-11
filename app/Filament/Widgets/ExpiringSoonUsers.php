@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 class ExpiringSoonUsers extends BaseWidget
 {
     protected static ?string $heading = 'Expiring in 7 Days';
-    protected static ?string $pollingInterval = '60s';
+    protected static ?string $pollingInterval = '10s';
     protected static ?int $sort = 5;
 
     protected int|string|array $columnSpan = [

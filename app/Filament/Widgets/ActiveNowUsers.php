@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 class ActiveNowUsers extends BaseWidget
 {
-    protected static ?string $pollingInterval = '15s';
+    protected static ?string $pollingInterval = '10s';
     protected static ?string $heading = 'Active Now Users';
     protected static ?int $sort = 3;
 

@@ -13,7 +13,7 @@ class TopServers extends BaseWidget
 
     protected static ?int $sort = 4;
 
-    protected static ?string $pollingInterval = '15s';
+    protected static ?string $pollingInterval = '10s';
 
     protected int|string|array $columnSpan = [
         'default' => 1,

@@ -8,7 +8,7 @@ use Filament\Widgets\ChartWidget;
 class ConnectionsTrend extends ChartWidget
 {
     protected static ?string $heading = 'Connections (Last 24 Hours)';
-    protected static ?string $pollingInterval = '60s';
+    protected static ?string $pollingInterval = '10s';
     protected static ?int $sort = 10;
 
     protected int | string | array $columnSpan = [

@@ -9,7 +9,7 @@ use Filament\Widgets\TableWidget as BaseWidget;
 
 class RecentConnections extends BaseWidget
 {
-    protected static ?string $pollingInterval = '15s';
+    protected static ?string $pollingInterval = '10s';
     protected static ?string $heading = 'Recent Connections';
     protected static ?int $sort = 7;
 
