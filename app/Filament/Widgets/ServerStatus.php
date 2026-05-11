@@ -22,7 +22,9 @@ class ServerStatus extends BaseWidget
         return $table
             ->query(
                 VpnServer::query()
+                    ->withCount('activeConnections')
                     ->orderByDesc('is_online')
+                    ->orderByDesc('active_connections_count')
                     ->orderBy('name')
             )
 
@@ -74,7 +76,7 @@ class ServerStatus extends BaseWidget
                 |--------------------------------------------------------------------------
                 */
 
-                Tables\Columns\TextColumn::make('online_users')
+                Tables\Columns\TextColumn::make('active_connections_count')
                     ->label('Users')
                     ->badge()
                     ->sortable()
@@ -106,17 +108,17 @@ class ServerStatus extends BaseWidget
                 | LAST POLL
                 |--------------------------------------------------------------------------
                 */
-                
+
                 Tables\Columns\TextColumn::make('last_sync_at')
                     ->label('Last Poll')
                     ->since()
                     ->sortable()
                     ->color(function ($state) {
-                
+
                         if (! $state) {
                             return 'danger';
                         }
-                
+
                         return now()->diffInSeconds($state) < 30
                             ? 'success'
                             : 'warning';
@@ -150,10 +152,10 @@ class ServerStatus extends BaseWidget
                     ->icon('heroicon-o-eye')
                     ->label('View')
                     ->url(fn (VpnServer $record) =>
-                    \App\Filament\Resources\VpnServerResource::getUrl('edit', [
-                        'record' => $record,
-                    ])
-                ),
+                        \App\Filament\Resources\VpnServerResource::getUrl('edit', [
+                            'record' => $record,
+                        ])
+                    ),
 
             ])
 
