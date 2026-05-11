@@ -36,6 +36,44 @@ class WireGuardService
             return $peer;
         }
 
+        // Revive existing revoked peer for this (server,user) to avoid duplicate rows
+        $revokedPeer = WireguardPeer::where('vpn_server_id', $server->id)
+            ->where('vpn_user_id', $vpnUser->id)
+            ->where('revoked', true)
+            ->first();
+
+        if ($revokedPeer) {
+            $clientIp = strtok((string) $vpnUser->wireguard_address, '/');
+            if (! $clientIp) {
+                throw new InvalidArgumentException("Invalid wireguard_address on user {$vpnUser->id}");
+            }
+
+            try {
+                $encryptedPrivate = Crypt::encryptString((string) $vpnUser->wireguard_private_key);
+            } catch (\Throwable $e) {
+                Log::error('❌ WG: Failed to encrypt private key for revoked peer restore', [
+                    'vpn_user_id' => $vpnUser->id,
+                    'server_id'   => $server->id,
+                    'peer_id'     => $revokedPeer->id,
+                    'error'       => $e->getMessage(),
+                ]);
+                throw new InvalidArgumentException("Could not encrypt WireGuard private key.");
+            }
+
+            $revokedPeer->forceFill([
+                'public_key'            => (string) $vpnUser->wireguard_public_key,
+                'private_key_encrypted' => $encryptedPrivate,
+                'ip_address'            => $clientIp,
+                'allowed_ips'           => $clientIp . '/32',
+                'dns'                   => $server->dns ?: null,
+                'revoked'               => false,
+            ])->save();
+
+            $this->addPeerOnServer($server, $revokedPeer);
+
+            return $revokedPeer;
+        }
+
         // Use the user's WG address (/32) as peer IP on this server
         $clientIp = strtok((string) $vpnUser->wireguard_address, '/');
         if (! $clientIp) {

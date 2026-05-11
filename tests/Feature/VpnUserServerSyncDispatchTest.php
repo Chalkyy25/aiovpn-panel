@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Jobs\SyncOpenVPNCredentials;
+use App\Jobs\ReconcileWireGuardServer;
 use App\Models\VpnServer;
 use App\Models\VpnUser;
+use App\Models\WireguardPeer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
@@ -51,5 +53,49 @@ class VpnUserServerSyncDispatchTest extends TestCase
 
         $jobFromInt = new SyncOpenVPNCredentials(123);
         $this->assertSame(123, $jobFromInt->vpnServerId);
+    }
+
+    public function test_sync_vpn_servers_detach_queues_openvpn_sync_and_wg_reconcile_and_revokes_peer(): void
+    {
+        Bus::fake();
+
+        /** @var VpnUser $user */
+        $user = VpnUser::factory()->create();
+
+        /** @var VpnServer $server */
+        $server = VpnServer::factory()->create([
+            'wg_public_key' => 'test-server-public-key',
+            'wg_port' => 51820,
+        ]);
+
+        $user->vpnServers()->attach($server->id);
+
+        WireguardPeer::query()->create([
+            'vpn_server_id' => $server->id,
+            'vpn_user_id' => $user->id,
+            'public_key' => 'test-user-public-key',
+            'private_key_encrypted' => encrypt('test-user-private-key'),
+            'ip_address' => '10.7.0.2',
+            'allowed_ips' => '10.7.0.2/32',
+            'revoked' => false,
+        ]);
+
+        $changes = $user->syncVpnServers([], context: 'test.detach');
+
+        $this->assertSame([(int) $server->id], array_values(array_map('intval', $changes['detached'] ?? [])));
+        $this->assertTrue(
+            WireguardPeer::query()
+                ->where('vpn_server_id', $server->id)
+                ->where('vpn_user_id', $user->id)
+                ->where('revoked', true)
+                ->exists(),
+            'Expected detached server WireGuard peer to be revoked.'
+        );
+
+        Bus::assertDispatched(SyncOpenVPNCredentials::class, function (SyncOpenVPNCredentials $job) use ($server): bool {
+            return $job->vpnServerId === (int) $server->id;
+        });
+
+        Bus::assertDispatched(ReconcileWireGuardServer::class);
     }
 }

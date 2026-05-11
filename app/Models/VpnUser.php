@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Jobs\RemoveOpenVPNUser;
 use App\Jobs\ReconcileWireGuardServer;
 use App\Jobs\SyncOpenVPNCredentials;
+use App\Models\WireguardPeer;
+use App\Services\WireGuardService;
 use App\Services\WireGuardIpAllocator;
 use App\Traits\ExecutesRemoteCommands;
 use Carbon\CarbonInterface;
@@ -347,17 +349,39 @@ class VpnUser extends Authenticatable
 
     public function syncVpnServers(array $serverIds, ?string $context = null): array
     {
-        $ids = array_values(array_filter(array_map('intval', $serverIds), fn ($id) => $id > 0));
+        $ids = array_values(array_unique(array_filter(array_map('intval', $serverIds), fn ($id) => $id > 0)));
 
         $changes = $this->vpnServers()->sync($ids);
 
         $ctx = $context ? " context={$context}" : '';
+        $wgEnsureFailed = [];
+        $wgReconcileFailed = [];
+
+        Log::channel('vpn')->info(sprintf(
+            'VPN_USER_SERVERS: sync result vpn_user_id=%d username=%s attached=[%s] detached=[%s] updated=[%s]%s',
+            (int) $this->id,
+            (string) $this->username,
+            implode(',', array_map('intval', $changes['attached'] ?? [])),
+            implode(',', array_map('intval', $changes['detached'] ?? [])),
+            implode(',', array_map('intval', $changes['updated'] ?? [])),
+            $ctx
+        ));
 
         if (! empty($changes['attached'])) {
             $servers = VpnServer::query()->whereIn('id', $changes['attached'])->get();
+            /** @var WireGuardService $wg */
+            $wg = app(WireGuardService::class);
 
             foreach ($servers as $server) {
                 SyncOpenVPNCredentials::dispatch((int) $server->id);
+                Log::channel('vpn')->info(sprintf(
+                    'VPN_USER_SERVERS: OpenVPN credential sync queued vpn_user_id=%d username=%s server_id=%d server=%s action=attach%s',
+                    (int) $this->id,
+                    (string) $this->username,
+                    (int) $server->id,
+                    (string) $server->name,
+                    $ctx
+                ));
 
                 Log::channel('vpn')->info(sprintf(
                     'VPN_USER_SERVERS: attached vpn_user_id=%d username=%s server_id=%d server=%s%s',
@@ -367,10 +391,87 @@ class VpnUser extends Authenticatable
                     (string) $server->name,
                     $ctx
                 ));
+
+                if (! $server->supportsWireGuard()) {
+                    continue;
+                }
+
+                try {
+                    $wg->ensurePeerForUser($server, $this);
+
+                    Log::channel('vpn')->info(sprintf(
+                        'VPN_USER_SERVERS: WG peer ensured vpn_user_id=%d username=%s server_id=%d server=%s%s',
+                        (int) $this->id,
+                        (string) $this->username,
+                        (int) $server->id,
+                        (string) $server->name,
+                        $ctx
+                    ));
+                } catch (\Throwable $e) {
+                    $wgEnsureFailed[] = (int) $server->id;
+
+                    Log::channel('vpn')->error(sprintf(
+                        'VPN_USER_SERVERS: WG ensure failed vpn_user_id=%d username=%s server_id=%d server=%s error=%s%s',
+                        (int) $this->id,
+                        (string) $this->username,
+                        (int) $server->id,
+                        (string) $server->name,
+                        $e->getMessage(),
+                        $ctx
+                    ));
+                }
             }
         }
 
         if (! empty($changes['detached'])) {
+            $servers = VpnServer::query()->whereIn('id', $changes['detached'])->get();
+
+            foreach ($servers as $server) {
+                SyncOpenVPNCredentials::dispatch((int) $server->id);
+                Log::channel('vpn')->info(sprintf(
+                    'VPN_USER_SERVERS: OpenVPN credential sync queued vpn_user_id=%d username=%s server_id=%d server=%s action=detach%s',
+                    (int) $this->id,
+                    (string) $this->username,
+                    (int) $server->id,
+                    (string) $server->name,
+                    $ctx
+                ));
+
+                if (! $server->supportsWireGuard()) {
+                    continue;
+                }
+
+                try {
+                    WireguardPeer::query()
+                        ->where('vpn_server_id', $server->id)
+                        ->where('vpn_user_id', $this->id)
+                        ->update(['revoked' => true]);
+
+                    ReconcileWireGuardServer::dispatch($server);
+
+                    Log::channel('vpn')->info(sprintf(
+                        'VPN_USER_SERVERS: WG reconcile/remove queued vpn_user_id=%d username=%s server_id=%d server=%s%s',
+                        (int) $this->id,
+                        (string) $this->username,
+                        (int) $server->id,
+                        (string) $server->name,
+                        $ctx
+                    ));
+                } catch (\Throwable $e) {
+                    $wgReconcileFailed[] = (int) $server->id;
+
+                    Log::channel('vpn')->error(sprintf(
+                        'VPN_USER_SERVERS: WG reconcile queue failed vpn_user_id=%d username=%s server_id=%d server=%s error=%s%s',
+                        (int) $this->id,
+                        (string) $this->username,
+                        (int) $server->id,
+                        (string) $server->name,
+                        $e->getMessage(),
+                        $ctx
+                    ));
+                }
+            }
+
             Log::channel('vpn')->info(sprintf(
                 'VPN_USER_SERVERS: detached vpn_user_id=%d username=%s server_ids=[%s]%s',
                 (int) $this->id,
@@ -388,6 +489,9 @@ class VpnUser extends Authenticatable
                 $ctx
             ));
         }
+
+        $changes['wg_ensure_failed'] = array_values(array_unique($wgEnsureFailed));
+        $changes['wg_reconcile_failed'] = array_values(array_unique($wgReconcileFailed));
 
         return $changes;
     }
