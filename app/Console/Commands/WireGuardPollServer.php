@@ -210,3 +210,4 @@ class WireGuardPollServer extends Command
         "📡 {$server->name}: {$onlineUsers} WG users online"
     );
 }
+}
