@@ -159,7 +159,7 @@ class WireGuardPollServer extends Command
 
             $isOnline =
 
-                $secondsAgo <= 180 &&
+                $secondsAgo <= 60 &&
 
                 ($rx > 0 || $tx > 0);
 
@@ -329,7 +329,7 @@ if (
 
                   '<',
 
-                  now()->subSeconds(180)
+                  now()->subSeconds(60)
 
               );
 
