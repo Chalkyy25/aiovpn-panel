@@ -37,9 +37,9 @@ class WireGuardPollServer extends Command
     protected $signature = 'vpn:poll-wireguard {--interval=10}';
 
     /**
-     * LEGACY/DEBUG ONLY — WireGuard state is managed by WireGuardEventController.
+     * LEGACY/DEBUG ONLY -- WireGuard state is managed by WireGuardEventController.
      */
-    protected $description = '[LEGACY/DEBUG ONLY] Poll WireGuard peers — do NOT run in production';
+    protected $description = '[LEGACY/DEBUG ONLY] Poll WireGuard peers -- do NOT run in production';
 
     public function handle(): int
     {
