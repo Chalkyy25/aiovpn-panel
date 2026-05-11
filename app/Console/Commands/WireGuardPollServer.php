@@ -19,12 +19,11 @@ class WireGuardPollServer extends Command
 
     public function handle(): int
     {
-        $interval = (int) $this->option('interval');
+        $interval = max(1, (int) $this->option('interval'));
 
         $this->info("🚀 Starting WireGuard poller ({$interval}s)");
 
         while (true) {
-
             $servers = VpnServer::query()
                 ->where('deployment_status', 'success')
                 ->where(function ($q) {
@@ -34,16 +33,15 @@ class WireGuardPollServer extends Command
                 ->get();
 
             foreach ($servers as $server) {
-
                 try {
-
                     $this->pollServer($server);
-
                 } catch (\Throwable $e) {
-
                     Log::error("WG poll failed for {$server->name}", [
+                        'server_id' => $server->id,
                         'error' => $e->getMessage(),
                     ]);
+
+                    $this->error("❌ {$server->name}: {$e->getMessage()}");
                 }
             }
 
@@ -52,279 +50,168 @@ class WireGuardPollServer extends Command
     }
 
     protected function pollServer(VpnServer $server): void
+    {
+        $res = $this->executeRemoteCommand(
+            $server,
+            'bash -lc ' . escapeshellarg('wg show all dump')
+        );
 
-{
+        $output = implode("\n", $res['output'] ?? []);
 
-    $cmd = 'wg show all dump';
-
-    $res = $this->executeRemoteCommand(
-
-        $server,
-
-        'bash -lc ' . escapeshellarg($cmd)
-
-    );
-
-    $output = implode("\n", $res['output'] ?? []);
-
-    if (blank($output)) {
-
-        return;
-
-    }
-
-    $lines = explode("\n", trim($output));
-
-    foreach ($lines as $line) {
-
-        $parts = preg_split('/\s+/', trim($line));
-
-        /*
-
-        |--------------------------------------------------------------------------
-
-        | Skip interface row
-
-        |--------------------------------------------------------------------------
-
-        */
-
-        if (count($parts) < 9) {
-
-            continue;
-
+        if (blank($output)) {
+            return;
         }
 
-        $publicKey = $parts[1] ?? null;
+        $now = now();
 
-        $endpoint = $parts[3] ?? null;
+        foreach (explode("\n", trim($output)) as $line) {
+            $parts = preg_split('/\s+/', trim($line));
 
-        $allowedIps = $parts[4] ?? null;
+            /*
+            |--------------------------------------------------------------------------
+            | Skip interface row
+            |--------------------------------------------------------------------------
+            |
+            | Peer rows have 9 columns in `wg show all dump`.
+            |
+            */
 
-        $latestHandshake = (int) ($parts[5] ?? 0);
+            if (count($parts) < 9) {
+                continue;
+            }
 
-        $rx = (int) ($parts[6] ?? 0);
+            $publicKey = $parts[1] ?? null;
+            $endpoint = $parts[3] ?? null;
+            $allowedIps = $parts[4] ?? null;
+            $latestHandshake = (int) ($parts[5] ?? 0);
+            $rx = (int) ($parts[6] ?? 0);
+            $tx = (int) ($parts[7] ?? 0);
 
-        $tx = (int) ($parts[7] ?? 0);
+            if (! $publicKey) {
+                continue;
+            }
 
-        if (! $publicKey) {
+            $vpnUser = VpnUser::query()
+                ->where('wireguard_public_key', $publicKey)
+                ->first();
 
-            continue;
+            if (! $vpnUser) {
+                $this->warn("No VPN user found for {$publicKey}");
+                continue;
+            }
 
+            /*
+            |--------------------------------------------------------------------------
+            | WireGuard freshness detection
+            |--------------------------------------------------------------------------
+            |
+            | WireGuard has no explicit disconnect event.
+            | A peer is treated as live only when the latest handshake is fresh.
+            | We do NOT mark stale peers inactive here.
+            |
+            | Stale expiry belongs to vpn:cleanup-stale-connections.
+            |
+            */
+
+            $isFresh = false;
+
+            if ($latestHandshake > 0) {
+                $secondsAgo = $now->timestamp - $latestHandshake;
+
+                $isFresh = $secondsAgo <= VpnConnection::WIREGUARD_STALE_SECONDS;
+            }
+
+            $connection = VpnConnection::firstOrNew([
+                'vpn_server_id' => $server->id,
+                'wg_public_key' => $publicKey,
+            ]);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Preserve first-seen session start
+            |--------------------------------------------------------------------------
+            */
+
+            if (! $connection->exists || ! $connection->connected_at) {
+                $connection->connected_at = $now;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Update peer metadata
+            |--------------------------------------------------------------------------
+            */
+
+            $connection->vpn_user_id = $vpnUser->id;
+            $connection->protocol = 'WIREGUARD';
+            $connection->session_key = "wg:{$server->id}:{$publicKey}";
+
+            $connection->client_ip = $endpoint
+                ? explode(':', $endpoint)[0]
+                : null;
+
+            $connection->virtual_ip = $allowedIps
+                ? str_replace('/32', '', $allowedIps)
+                : null;
+
+            $connection->endpoint = $endpoint;
+            $connection->bytes_in = $rx;
+            $connection->bytes_out = $tx;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Heartbeat handling
+            |--------------------------------------------------------------------------
+            |
+            | last_seen_at is the authoritative WireGuard online signal.
+            |
+            | We only mark active when fresh.
+            | We do NOT mark inactive here, because that creates poller races.
+            |
+            */
+
+            if ($isFresh) {
+                $connection->last_seen_at = $now;
+
+                // Legacy compatibility. Dashboard truth should still use live().
+                $connection->is_active = true;
+
+                $connection->disconnected_at = null;
+            }
+
+            $connection->save();
         }
 
         /*
-
         |--------------------------------------------------------------------------
-
-        | Find VPN user
-
+        | Server heartbeat
         |--------------------------------------------------------------------------
-
         */
 
-        $vpnUser = VpnUser::query()
-
-            ->where('wireguard_public_key', $publicKey)
-
-            ->first();
-
-        if (! $vpnUser) {
-
-            $this->warn(
-
-                "No VPN user found for {$publicKey}"
-
-            );
-
-            continue;
-
-        }
-
-        /*
-
-        |--------------------------------------------------------------------------
-
-        | Online detection
-
-        |--------------------------------------------------------------------------
-
-        */
-
-        // WireGuard does not send explicit disconnect/connect packets; the only
-        // reliable signal is the latest-handshake timestamp from `wg show dump`.
-        // A peer is considered "online" when its handshake occurred within the
-        // canonical WIREGUARD_STALE_SECONDS window AND it has transferred data.
-        $isOnline = false;
-
-        if ($latestHandshake > 0) {
-
-            $secondsAgo = now()->timestamp - $latestHandshake;
-
-            $isOnline =
-
-                $secondsAgo <= VpnConnection::WIREGUARD_STALE_SECONDS &&
-
-                ($rx > 0 || $tx > 0);
-
-        }
-
-        /*
-
-        |--------------------------------------------------------------------------
-
-        | Load existing connection
-
-        |--------------------------------------------------------------------------
-
-        */
-
-        $connection = VpnConnection::firstOrNew([
-
-            'vpn_server_id' => $server->id,
-
-            'wg_public_key' => $publicKey,
-
+        $server->update([
+            'last_sync_at' => $now,
+            'is_online' => true,
         ]);
 
         /*
-
         |--------------------------------------------------------------------------
-
-        | Preserve original connection time
-
+        | Legacy write-through cache
         |--------------------------------------------------------------------------
-
+        |
+        | Dashboards must NOT read vpn_servers.online_users.
+        | They should use VpnConnection::live() / activeConnections().
+        |
         */
 
-        if (! $connection->exists || ! $connection->connected_at) {
+        $liveCount = VpnConnection::query()
+            ->where('vpn_server_id', $server->id)
+            ->live($now)
+            ->count();
 
-            $connection->connected_at = now();
+        $server->update([
+            'online_users' => $liveCount,
+        ]);
 
-        }
-
-        /*
-
-        |--------------------------------------------------------------------------
-
-        | Detect reconnects
-
-        |--------------------------------------------------------------------------
-
-        */
-
-        $wasOffline = ! $connection->is_active;
-
-        if ($isOnline && $wasOffline) {
-        
-            $connection->connected_at = now();
-        }
-
-        /*
-
-        |--------------------------------------------------------------------------
-
-        | Update connection
-
-        |--------------------------------------------------------------------------
-
-        */
-
-        $connection->vpn_user_id = $vpnUser->id;
-
-        $connection->protocol = 'WIREGUARD';
-
-        $connection->session_key =
-
-            "wg:{$server->id}:{$publicKey}";
-
-        $connection->client_ip = $endpoint
-
-            ? explode(':', $endpoint)[0]
-
-            : null;
-
-        $connection->virtual_ip = $allowedIps
-
-            ? str_replace('/32', '', $allowedIps)
-
-            : null;
-
-        $connection->endpoint = $endpoint;
-
-        $connection->bytes_in = $rx;
-
-        $connection->bytes_out = $tx;
-
-        $connection->is_active = $isOnline;
-
-        /*
-
-        |--------------------------------------------------------------------------
-
-        | Heartbeat handling
-
-        |--------------------------------------------------------------------------
-
-        */
-
-        if ($isOnline) {
-
-            $connection->last_seen_at = now();
-
-            $connection->disconnected_at = null;
-
-        } else {
-
-            $connection->disconnected_at = now();
-
-        }
-
-        $connection->save();
-
+        $this->info("📡 {$server->name}: {$liveCount} WG users online");
     }
-
-    
-
-    /*
-
-    |--------------------------------------------------------------------------
-
-    | Update server stats
-
-    |--------------------------------------------------------------------------
-
-    */
-
-    $server->update([
-
-        'last_sync_at' => now(),
-
-        'is_online' => true,
-
-    ]);
-
-    // Write-through cache: keep vpn_servers.online_users in sync for legacy API
-    // consumers, matching the same cache maintained by WireGuardEventController.
-    // Dashboards must NOT read online_users — they derive counts from
-    // VpnConnection::live() / activeConnections().
-    //
-    // WireGuard has no true disconnect event; the peer simply stops sending
-    // handshakes.  Online state is inferred from last_seen_at freshness
-    // (WIREGUARD_STALE_SECONDS threshold).  Stale cleanup is intentional
-    // behaviour, not exact disconnect timing.
-    $liveCount = VpnConnection::query()
-        ->where('vpn_server_id', $server->id)
-        ->live()
-        ->count();
-
-    $server->update(['online_users' => $liveCount]);
-
-    $this->info(
-
-        "📡 {$server->name}: {$liveCount} WG users online"
-
-    );
-
-}
 }
