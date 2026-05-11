@@ -120,25 +120,40 @@ class WireGuardPollServer extends Command
     }
 
     VpnConnection::updateOrCreate(
-        [
-            'vpn_server_id' => $server->id,
-            'vpn_user_id' => $vpnUser->id,
-            'protocol' => 'WIREGUARD',
-            'session_key' => $publicKey,
-        ],
-        [
-            'wg_public_key' => $publicKey,
-            'endpoint' => $endpoint,
-            'virtual_ip' => $allowedIps,
-            'bytes_in' => $rx,
-            'bytes_out' => $tx,
-            'is_active' => $isOnline,
-            'last_seen_at' => $isOnline ? now() : null,
-            'connected_at' => $isOnline ? now() : null,
-            'disconnected_at' => $isOnline ? null : now(),
-        ]
-    );
-}
+    [
+        'vpn_server_id' => $server->id,
+        'wg_public_key' => $publicKey,
+    ],
+    [
+        'vpn_user_id' => $vpnUser->id,
+
+        'protocol' => 'WIREGUARD',
+
+        'session_key' => $publicKey,
+
+        'endpoint' => $endpoint,
+
+        'virtual_ip' => $allowedIps,
+
+        'bytes_in' => $rx,
+
+        'bytes_out' => $tx,
+
+        'is_active' => $isOnline,
+
+        'last_seen_at' => $isOnline
+            ? now()
+            : null,
+
+        'connected_at' => $isOnline
+            ? now()
+            : null,
+
+        'disconnected_at' => $isOnline
+            ? null
+            : now(),
+    ]
+);
 
         $onlineUsers = VpnConnection::query()
             ->where('vpn_server_id', $server->id)
