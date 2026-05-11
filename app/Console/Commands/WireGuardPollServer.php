@@ -120,6 +120,9 @@ class WireGuardPollServer extends Command
 
                 $isFresh = $secondsAgo <= VpnConnection::WIREGUARD_STALE_SECONDS;
             }
+            if (! $isFresh) {
+                continue;
+            }
 
             $connection = VpnConnection::firstOrNew([
                 'vpn_server_id' => $server->id,
