@@ -105,8 +105,8 @@ class WireGuardEventController extends Controller
                     'session_key'   => $sessionKey,
                 ]);
 
-                $wasLive  = $row->exists ? $row->isLive($now) : false;
-                $previousConnectedAt = $row->connected_at;
+                $wasLive             = $row->exists ? $row->isLive($now) : false;
+                $previousConnectedAt    = $row->connected_at;
                 $previousDisconnectedAt = $row->disconnected_at;
 
                 $bytesIn  = (int)($p['bytes_received'] ?? $p['bytes_in']  ?? 0);

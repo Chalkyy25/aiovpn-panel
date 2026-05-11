@@ -64,7 +64,7 @@ class VpnConnection extends Model
         $now ??= now();
 
         $ovpnCutoff = $now->copy()->subSeconds(self::OPENVPN_STALE_SECONDS);
-        $wgCutoff   = $now->copy()->subSeconds(self::WIREGUARD_STALE_SECONDS);
+        $wgCutoff = $now->copy()->subSeconds(self::WIREGUARD_STALE_SECONDS);
 
         return $query
             ->whereNotNull('last_seen_at')
