@@ -105,7 +105,7 @@ class WireGuardEventController extends Controller
                     'session_key'   => $sessionKey,
                 ]);
 
-                $wasOnline = (bool)($row->is_active ?? false);
+                $wasLive  = $row->exists ? $row->isLive($now) : false;
                 $previousConnectedAt = $row->connected_at;
                 $previousDisconnectedAt = $row->disconnected_at;
 
@@ -129,7 +129,7 @@ class WireGuardEventController extends Controller
 
                     'last_seen_at'    => $lastSeen,
                     'is_active'       => $isOnline ? 1 : 0,
-                    'disconnected_at' => $isOnline ? null : ($wasOnline ? $now : $row->disconnected_at),
+                    'disconnected_at' => $isOnline ? null : ($wasLive ? $now : $row->disconnected_at),
                 ]);
 
                 // Only set connected_at for truly new sessions.
@@ -141,7 +141,7 @@ class WireGuardEventController extends Controller
 
                     // Offline -> online flaps happen for WG when handshakes are sparse.
                     // Preserve connected_at unless it was offline for a long time.
-                    if ($wasOnline === false && $previousConnectedAt) {
+                    if ($wasLive === false && $previousConnectedAt) {
                         if ($previousDisconnectedAt && $previousDisconnectedAt->lte($now->copy()->subSeconds(self::RECONNECT_RESET_SECONDS))) {
                             $row->connected_at = $now;
                         } else {
