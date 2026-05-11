@@ -187,6 +187,29 @@ class WireGuardPollServer extends Command
         'last_sync_at' => now(),
         'is_online' => true,
     ]);
+    
+    broadcast(new \App\Events\ServerMgmtEvent(
+    $server->id,
+    now()->toIso8601String(),
+    VpnConnection::query()
+        ->where('vpn_server_id', $server->id)
+        ->where('protocol', 'WIREGUARD')
+        ->where('is_active', true)
+        ->get()
+        ->map(function ($connection) {
+            return [
+                'username' => $connection->vpnUser?->username,
+                'endpoint' => $connection->endpoint,
+                'virtual_ip' => $connection->virtual_ip,
+                'bytes_in' => $connection->bytes_in,
+                'bytes_out' => $connection->bytes_out,
+            ];
+        })
+        ->values()
+        ->toArray(),
+    null,
+    'wireguard'
+));
 
     $this->info(
         "📡 {$server->name}: {$onlineUsers} WG users online"
