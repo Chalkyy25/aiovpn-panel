@@ -371,13 +371,31 @@ class VpnUser extends Authenticatable
         }
 
         if (! empty($changes['detached'])) {
-            Log::channel('vpn')->info(sprintf(
-                'VPN_USER_SERVERS: detached vpn_user_id=%d username=%s server_ids=[%s]%s',
-                (int) $this->id,
-                (string) $this->username,
-                implode(',', array_map('intval', $changes['detached'])),
-                $ctx
-            ));
+            $detachedServers = VpnServer::query()->whereIn('id', $changes['detached'])->get();
+
+            foreach ($detachedServers as $server) {
+                Log::channel('vpn')->info(sprintf(
+                    'VPN_USER_SERVERS: detached vpn_user_id=%d username=%s server_id=%d server=%s%s',
+                    (int) $this->id,
+                    (string) $this->username,
+                    (int) $server->id,
+                    (string) $server->name,
+                    $ctx
+                ));
+
+                if ($server->supportsWireGuard()) {
+                    ReconcileWireGuardServer::dispatch($server);
+
+                    Log::channel('vpn')->info(sprintf(
+                        'VPN_USER_SERVERS: WG reconcile queued vpn_user_id=%d username=%s server_id=%d server=%s%s',
+                        (int) $this->id,
+                        (string) $this->username,
+                        (int) $server->id,
+                        (string) $server->name,
+                        $ctx
+                    ));
+                }
+            }
         }
 
         if (empty($changes['attached']) && empty($changes['detached']) && empty($changes['updated'])) {
