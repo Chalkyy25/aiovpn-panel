@@ -134,41 +134,40 @@ class WireGuardPollServer extends Command
         */
 
         VpnConnection::updateOrCreate(
-            [
-                'vpn_server_id' => $server->id,
-                'wg_public_key' => $publicKey,
-            ],
-            [
-                'vpn_user_id' => $vpnUser->id,
+    [
+        'vpn_server_id' => $server->id,
+        'wg_public_key' => $publicKey,
+    ],
+    [
+        'vpn_user_id' => $vpnUser->id,
 
-                'protocol' => 'WIREGUARD',
+        'protocol' => 'WIREGUARD',
 
-                'session_key' => $publicKey,
+        'session_key' => "wg:{$server->id}:{$publicKey}",
 
-                'endpoint' => $endpoint,
+        'client_ip' => $endpoint
+            ? explode(':', $endpoint)[0]
+            : null,
 
-                'virtual_ip' => $allowedIps,
+        'virtual_ip' => str_replace('/32', '', $allowedIps),
 
-                'bytes_in' => $rx,
+        'endpoint' => $endpoint,
 
-                'bytes_out' => $tx,
+        'bytes_in' => $rx,
 
-                'is_active' => $isOnline,
+        'bytes_out' => $tx,
 
-                'last_seen_at' => $isOnline
-                    ? now()
-                    : null,
+        'last_seen_at' => $isOnline
+            ? now()
+            : null,
 
-                'connected_at' => $isOnline
-                    ? now()
-                    : null,
+        'is_active' => $isOnline,
 
-                'disconnected_at' => $isOnline
-                    ? null
-                    : now(),
-            ]
-        );
-    }
+        'disconnected_at' => $isOnline
+            ? null
+            : now(),
+    ]
+);
 
     /*
     |--------------------------------------------------------------------------
