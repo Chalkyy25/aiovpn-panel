@@ -11,6 +11,8 @@ class ResellerStats extends BaseWidget
 {
     protected static ?int $sort = 1;
 
+    protected static ?string $pollingInterval = '10s';
+
     protected int | string | array $columnSpan = [
         'default' => 'full',
         'xl' => 3,

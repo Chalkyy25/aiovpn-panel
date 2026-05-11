@@ -11,6 +11,8 @@ class ExpiringSoonUsers extends BaseWidget
 {
     protected static ?int $sort = 40;
 
+    protected static ?string $pollingInterval = '10s';
+
     protected int | string | array $columnSpan = [
         'default' => 'full',
         'xl' => 2,

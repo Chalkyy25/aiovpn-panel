@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 class ServerStatus extends BaseWidget
 {
-    protected static ?string $pollingInterval = '30s';
+    protected static ?string $pollingInterval = '10s';
     protected static ?string $heading = 'Server Status';
     protected static ?int $sort = 70;
 

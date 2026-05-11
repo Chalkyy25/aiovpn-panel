@@ -2,9 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\VpnConnection;
-use App\Models\VpnServer;
-use App\Models\VpnUser;
+use App\Services\DashboardStatsService;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
@@ -12,75 +10,19 @@ class AdminStats extends BaseWidget
 {
     protected static ?int $sort = 1;
 
+    // All stats widgets share the same 10-second poll so the dashboard
+    // refreshes consistently from the DashboardStatsService cache.
     protected static ?string $pollingInterval = '10s';
 
     protected int|string|array $columnSpan = 'full';
 
     protected function getStats(): array
     {
-        $now = now();
+        // Dashboard metrics are centralised in DashboardStatsService.
+        // Do NOT add ad-hoc DB queries here; extend the service instead.
+        $stats = app(DashboardStatsService::class)->snapshot();
 
-        /*
-        |--------------------------------------------------------------------------
-        | SERVERS
-        |--------------------------------------------------------------------------
-        */
-
-        $serversTotal = VpnServer::count();
-
-        $serversOnline = VpnServer::query()
-            ->where('is_online', true)
-            ->count();
-
-        $serversOffline = max(0, $serversTotal - $serversOnline);
-
-        /*
-        |--------------------------------------------------------------------------
-        | USERS
-        |--------------------------------------------------------------------------
-        */
-
-        $vpnUsersTotal = VpnUser::query()->count();
-
-        $vpnUsersActive = VpnUser::query()
-            ->where('is_active', true)
-            ->count();
-
-        /*
-        |--------------------------------------------------------------------------
-        | CONNECTIONS
-        |--------------------------------------------------------------------------
-        */
-
-        $liveConnections = VpnConnection::query()
-            ->live($now)
-            ->count();
-
-        $usersOnline = VpnConnection::query()
-            ->live($now)
-            ->distinct('vpn_user_id')
-            ->count('vpn_user_id');
-
-        /*
-        |--------------------------------------------------------------------------
-        | STALE CONNECTIONS
-        |--------------------------------------------------------------------------
-        */
-
-        $staleConnections = VpnConnection::query()
-            ->stale($now)
-            ->count();
-
-        /*
-        |--------------------------------------------------------------------------
-        | ACTIVE USERS TODAY
-        |--------------------------------------------------------------------------
-        */
-        
-        $connectionsToday = VpnConnection::query()
-            ->whereDate('last_seen_at', today())
-            ->distinct('vpn_user_id')
-            ->count('vpn_user_id');
+        $serversOffline = max(0, $stats['servers_total'] - $stats['servers_online']);
 
         return [
 
@@ -90,7 +32,7 @@ class AdminStats extends BaseWidget
             |--------------------------------------------------------------------------
             */
 
-            Stat::make('Users Online', number_format($usersOnline))
+            Stat::make('Users Online', number_format($stats['users_online']))
                 ->description('Currently connected users')
                 ->descriptionIcon('heroicon-m-signal')
                 ->color('success'),
@@ -101,7 +43,7 @@ class AdminStats extends BaseWidget
             |--------------------------------------------------------------------------
             */
 
-            Stat::make('Live Connections', number_format($liveConnections))
+            Stat::make('Live Connections', number_format($stats['live_connections']))
                 ->description('Active VPN sessions')
                 ->descriptionIcon('heroicon-m-globe-alt')
                 ->color('success'),
@@ -114,7 +56,7 @@ class AdminStats extends BaseWidget
 
             Stat::make(
                 'Servers Online',
-                "{$serversOnline} / {$serversTotal}"
+                "{$stats['servers_online']} / {$stats['servers_total']}"
             )
                 ->description(
                     $serversOffline > 0
@@ -140,10 +82,10 @@ class AdminStats extends BaseWidget
 
             Stat::make(
                 'Total VPN Users',
-                number_format($vpnUsersTotal)
+                number_format($stats['total_users'])
             )
                 ->description(
-                    number_format($vpnUsersActive) . ' enabled'
+                    number_format($stats['enabled_users']) . ' enabled'
                 )
                 ->descriptionIcon('heroicon-m-users')
                 ->color('info'),
@@ -156,9 +98,10 @@ class AdminStats extends BaseWidget
 
             Stat::make(
                     'Users Connected Today',
-                    number_format($connectionsToday)
+                    number_format($stats['users_today'])
                 )
-                    ->description('Unique VPN users active today')            ->descriptionIcon('heroicon-m-bolt')
+                    ->description('Unique VPN users active today')
+                    ->descriptionIcon('heroicon-m-bolt')
                     ->color('primary'),
 
             /*
@@ -169,20 +112,20 @@ class AdminStats extends BaseWidget
 
             Stat::make(
                 'Stale Connections',
-                number_format($staleConnections)
+                number_format($stats['stale_connections'])
             )
                 ->description(
-                    $staleConnections > 0
+                    $stats['stale_connections'] > 0
                         ? 'Connections require cleanup'
                         : 'No stale sessions'
                 )
                 ->descriptionIcon(
-                    $staleConnections > 0
+                    $stats['stale_connections'] > 0
                         ? 'heroicon-m-x-circle'
                         : 'heroicon-m-check-badge'
                 )
                 ->color(
-                    $staleConnections > 0
+                    $stats['stale_connections'] > 0
                         ? 'danger'
                         : 'success'
                 ),
