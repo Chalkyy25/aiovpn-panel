@@ -90,6 +90,10 @@ class VpnConnection extends Model
             'WIREGUARD' => $this->last_seen_at->greaterThanOrEqualTo(
                 $now->copy()->subSeconds(self::WIREGUARD_STALE_SECONDS)
             ),
+            'OPENVPN' => $this->last_seen_at->greaterThanOrEqualTo(
+                $now->copy()->subSeconds(self::OPENVPN_STALE_SECONDS)
+            ),
+            // Unknown protocols fall back to the OpenVPN threshold as a safe default.
             default => $this->last_seen_at->greaterThanOrEqualTo(
                 $now->copy()->subSeconds(self::OPENVPN_STALE_SECONDS)
             ),

@@ -56,8 +56,13 @@ class RecentConnections extends BaseWidget
                     ->badge()
                     ->toggleable(),
 
+                Tables\Columns\TextColumn::make('connected_at')
+                    ->label('Connected')
+                    ->since()
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('last_seen_at')
-                    ->label('Last Active')
+                    ->label('Seen')
                     ->since()
                     ->sortable()
                     ->toggleable(),

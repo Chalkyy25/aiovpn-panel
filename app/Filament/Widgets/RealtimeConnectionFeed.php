@@ -60,6 +60,11 @@ class RealtimeConnectionFeed extends BaseWidget
                 ->label('Live')
                 ->boolean(),
 
+            Tables\Columns\TextColumn::make('connected_at')
+                ->label('Connected')
+                ->since()
+                ->sortable(),
+
             Tables\Columns\TextColumn::make('last_seen_at')
                 ->label('Last Active')
                 ->since()

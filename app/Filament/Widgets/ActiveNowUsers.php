@@ -31,6 +31,7 @@ class ActiveNowUsers extends BaseWidget
             ->select([
                 'vpn_user_id',
                 DB::raw('COUNT(*) as live_connections'),
+                DB::raw('MIN(connected_at) as live_connected_at'),
                 DB::raw('MAX(last_seen_at) as live_last_seen_at'),
             ])
             ->groupBy('vpn_user_id');
@@ -39,12 +40,15 @@ class ActiveNowUsers extends BaseWidget
             ->query(
                 VpnUser::query()
                     ->joinSub($livePerUser, 'live', fn ($join) => $join->on('vpn_users.id', '=', 'live.vpn_user_id'))
-                    ->select('vpn_users.*', 'live.live_connections', 'live.live_last_seen_at')
+                    ->select('vpn_users.*', 'live.live_connections', 'live.live_connected_at', 'live.live_last_seen_at')
                     ->with([
                         'sessionConnections' => fn ($q) => $q
                             ->live($now)
                             ->with('vpnServer:id,name,country_code'),
                     ])
+                    // Longest-connected first: oldest connected_at first (NULLs last)
+                    ->orderByRaw('live.live_connected_at IS NULL')
+                    ->orderBy('live.live_connected_at')
                     ->orderByDesc('live.live_last_seen_at')
             )
             ->columns([
@@ -97,11 +101,10 @@ class ActiveNowUsers extends BaseWidget
                     ->badge()
                     ->sortable(),
 
-                Tables\Columns\TextColumn::make('last_active')
-                    ->label('Last Active')
-                    ->state(fn (VpnUser $u) => $u->getAttribute('live_last_seen_at'))
+                Tables\Columns\TextColumn::make('online_since')
+                    ->label('Online Since')
+                    ->state(fn (VpnUser $u) => $u->getAttribute('live_connected_at'))
                     ->since()
-                    ->sortable(query: fn ($q, $dir) => $q->orderBy('live.live_last_seen_at', $dir))
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('live_last_seen_at')
