@@ -211,25 +211,33 @@ class WireGuardPollServer extends Command
 
         $wasOffline = ! $connection->is_active;
 
-        $previousEndpoint = $connection->endpoint;
+$previousEndpoint = $connection->endpoint;
 
-        if (
+$lastSeenTooOld =
 
-            $isOnline &&
+    ! $connection->last_seen_at ||
 
-            (
+    $connection->last_seen_at->lt(now()->subMinutes(5));
 
-                $wasOffline ||
+if (
 
-                $previousEndpoint !== $endpoint
+    $isOnline &&
 
-            )
+    (
 
-        ) {
+        $wasOffline ||
 
-            $connection->connected_at = now();
+        $previousEndpoint !== $endpoint ||
 
-        }
+        $lastSeenTooOld
+
+    )
+
+) {
+
+    $connection->connected_at = now();
+
+}
 
         /*
 
