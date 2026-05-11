@@ -110,43 +110,61 @@ class WireGuardPollServer extends Command
                 $isOnline = $secondsAgo <= 180;
             }
 
-            VpnConnection::updateOrCreate(
-                [
-                    'vpn_server_id' => $server->id,
-                    'wg_public_key' => $publicKey,
-                ],
-                [
-                    'vpn_user_id' => $vpnUser->id,
-
-                    'protocol' => 'WIREGUARD',
-
-                    'session_key' => "wg:{$server->id}:{$publicKey}",
-
-                    'client_ip' => $endpoint
-                        ? explode(':', $endpoint)[0]
-                        : null,
-
-                    'virtual_ip' => str_replace('/32', '', $allowedIps),
-
-                    'endpoint' => $endpoint,
-
-                    'bytes_in' => $rx,
-
-                    'bytes_out' => $tx,
-
-                    'last_seen_at' => $isOnline
-                        ? now()
-                        : null,
-
-                    'is_active' => $isOnline,
-
-                    'disconnected_at' => $isOnline
-                        ? null
-                        : now(),
-                ]
-            );
+            $connection = VpnConnection::firstOrNew([
+            'vpn_server_id' => $server->id,
+            'wg_public_key' => $publicKey,
+        ]);
+        
+        /*
+        |--------------------------------------------------------------------------
+        | Preserve original session start
+        |--------------------------------------------------------------------------
+        */
+        
+        if (! $connection->exists || ! $connection->connected_at) {
+        
+            $connection->connected_at = now();
         }
-
+        
+        $connection->vpn_user_id = $vpnUser->id;
+        
+        $connection->protocol = 'WIREGUARD';
+        
+        $connection->session_key = "wg:{$server->id}:{$publicKey}";
+        
+        $connection->client_ip = $endpoint
+            ? explode(':', $endpoint)[0]
+            : null;
+        
+        $connection->virtual_ip = str_replace('/32', '', $allowedIps);
+        
+        $connection->endpoint = $endpoint;
+        
+        $connection->bytes_in = $rx;
+        
+        $connection->bytes_out = $tx;
+        
+        $connection->is_active = $isOnline;
+        
+        /*
+        |--------------------------------------------------------------------------
+        | Only update heartbeat if online
+        |--------------------------------------------------------------------------
+        */
+        
+        if ($isOnline) {
+        
+            $connection->last_seen_at = now();
+        
+            $connection->disconnected_at = null;
+        
+        } else {
+        
+            $connection->disconnected_at = now();
+        }
+        
+        $connection->save();
+        
         $onlineUsers = VpnConnection::query()
             ->where('vpn_server_id', $server->id)
             ->where('protocol', 'WIREGUARD')
