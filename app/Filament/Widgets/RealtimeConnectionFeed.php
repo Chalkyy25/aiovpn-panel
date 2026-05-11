@@ -21,52 +21,52 @@ class RealtimeConnectionFeed extends BaseWidget
     ];
 
     public function table(Table $table): Table
-    {
-        return $table
-            ->query(
-                VpnConnection::query()
-                    ->with(['vpnUser', 'vpnServer'])
-                    ->where('is_active', 1)
-                    ->whereNotNull('last_seen_at')
-                    ->where('last_seen_at', '>=', now()->subMinutes(5))
-                    ->latest('last_seen_at')
-            )
-            ->columns([
+{
+    return $table
+        ->query(
+            VpnConnection::query()
+                ->with(['vpnUser', 'vpnServer'])
+                ->where('is_active', 1)
+                ->whereNotNull('last_seen_at')
+                ->where('last_seen_at', '>=', now()->subMinutes(5))
+                ->latest('connected_at')
+        )
+        ->columns([
 
-                Tables\Columns\TextColumn::make('vpnUser.username')
-                    ->label('User')
-                    ->searchable()
-                    ->weight('bold')
-                    ->placeholder('Unknown'),
+            Tables\Columns\TextColumn::make('vpnUser.username')
+                ->label('User')
+                ->searchable()
+                ->weight('bold')
+                ->placeholder('Unknown'),
 
-                Tables\Columns\TextColumn::make('vpnServer.name')
-                    ->label('Server')
-                    ->badge()
-                    ->color('gray')
-                    ->placeholder('Unknown'),
+            Tables\Columns\TextColumn::make('vpnServer.name')
+                ->label('Server')
+                ->badge()
+                ->color('gray')
+                ->placeholder('Unknown'),
 
-                Tables\Columns\TextColumn::make('protocol')
-                    ->badge()
-                    ->color(fn (string $state): string => match (strtoupper($state)) {
-                        'WIREGUARD' => 'success',
-                        'OPENVPN'   => 'warning',
-                        default     => 'gray',
-                    }),
+            Tables\Columns\TextColumn::make('protocol')
+                ->badge()
+                ->color(fn (string $state): string => match (strtoupper($state)) {
+                    'WIREGUARD' => 'success',
+                    'OPENVPN'   => 'warning',
+                    default     => 'gray',
+                }),
 
-                Tables\Columns\TextColumn::make('client_ip')
-                    ->label('Client IP')
-                    ->copyable()
-                    ->placeholder('N/A'),
+            Tables\Columns\TextColumn::make('client_ip')
+                ->label('Client IP')
+                ->copyable()
+                ->placeholder('N/A'),
 
-                Tables\Columns\IconColumn::make('is_active')
-                    ->label('Live')
-                    ->boolean(),
+            Tables\Columns\IconColumn::make('is_active')
+                ->label('Live')
+                ->boolean(),
 
-                Tables\Columns\TextColumn::make('last_seen_at')
-                    ->label('Last Seen')
-                    ->since()
-                    ->sortable(),
-            ])
-            ->paginated(false);
-    }
+            Tables\Columns\TextColumn::make('connected_at')
+                ->label('Connected')
+                ->since()
+                ->sortable(),
+        ])
+        ->paginated(false);
+}
 }
