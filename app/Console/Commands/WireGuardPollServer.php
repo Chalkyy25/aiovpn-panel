@@ -284,45 +284,7 @@ class WireGuardPollServer extends Command
 
     }
 
-    /*
-
-    |--------------------------------------------------------------------------
-
-    | Mark stale sessions offline
-
-    |--------------------------------------------------------------------------
-
-    */
-
-    VpnConnection::query()
-
-        ->where('vpn_server_id', $server->id)
-
-        ->where('protocol', 'WIREGUARD')
-
-        ->where(function ($q) {
-
-            $q->whereNull('last_seen_at')
-
-              ->orWhere(
-
-                  'last_seen_at',
-
-                  '<',
-
-                  now()->subSeconds(VpnConnection::WIREGUARD_STALE_SECONDS)
-
-              );
-
-        })
-
-        ->update([
-
-            'is_active' => false,
-
-            'disconnected_at' => now(),
-
-        ]);
+    
 
     /*
 
