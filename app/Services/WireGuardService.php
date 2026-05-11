@@ -43,10 +43,7 @@ class WireGuardService
             ->first();
 
         if ($revokedPeer) {
-            $clientIp = strtok((string) $vpnUser->wireguard_address, '/');
-            if (! $clientIp) {
-                throw new InvalidArgumentException("Invalid wireguard_address on user {$vpnUser->id}");
-            }
+            $clientIp = $this->extractClientIpFromUser($vpnUser);
 
             try {
                 $encryptedPrivate = Crypt::encryptString((string) $vpnUser->wireguard_private_key);
@@ -75,10 +72,7 @@ class WireGuardService
         }
 
         // Use the user's WG address (/32) as peer IP on this server
-        $clientIp = strtok((string) $vpnUser->wireguard_address, '/');
-        if (! $clientIp) {
-            throw new InvalidArgumentException("Invalid wireguard_address on user {$vpnUser->id}");
-        }
+        $clientIp = $this->extractClientIpFromUser($vpnUser);
 
         // Encrypt private key for storage on peer (future-proof)
         try {
@@ -422,5 +416,15 @@ class WireGuardService
         }
 
         return (string) $p->getOutput();
+    }
+
+    private function extractClientIpFromUser(VpnUser $vpnUser): string
+    {
+        $clientIp = strtok((string) $vpnUser->wireguard_address, '/');
+        if (! $clientIp) {
+            throw new InvalidArgumentException("Invalid wireguard_address on user {$vpnUser->id}");
+        }
+
+        return $clientIp;
     }
 }

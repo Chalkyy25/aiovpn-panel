@@ -353,7 +353,7 @@ class VpnUser extends Authenticatable
 
     public function syncVpnServers(array $serverIds, ?string $context = null): array
     {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $serverIds), fn ($id) => $id > 0)));
+        $ids = $this->normalizeServerIds($serverIds);
 
         $changes = $this->vpnServers()->sync($ids);
 
@@ -498,6 +498,22 @@ class VpnUser extends Authenticatable
         $changes['wg_reconcile_failed'] = array_values(array_unique($wgReconcileFailed));
 
         return $changes;
+    }
+
+    /**
+     * @param  array<int|string>  $serverIds
+     * @return array<int>
+     */
+    private function normalizeServerIds(array $serverIds): array
+    {
+        return array_values(
+            array_unique(
+                array_filter(
+                    array_map('intval', $serverIds),
+                    fn ($id) => $id > 0
+                )
+            )
+        );
     }
 
     /* =========================

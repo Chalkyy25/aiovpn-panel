@@ -57,7 +57,7 @@ class EditVpnUser extends EditRecord
             Notification::make()
                 ->warning()
                 ->title('VPN user updated with WireGuard warnings')
-                ->body("WG ensure failures: {$wgEnsureFailures}, WG reconcile failures: {$wgReconcileFailures}. Check logs.")
+                ->body("Some WireGuard operations failed ({$wgEnsureFailures} peer ensure, {$wgReconcileFailures} reconcile). Please review the application logs for details.")
                 ->send();
         }
     }
