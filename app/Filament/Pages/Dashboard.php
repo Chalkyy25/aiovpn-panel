@@ -10,8 +10,8 @@ class Dashboard extends BaseDashboard
     {
         return [
             'default' => 1,
-            'md'      => 2,
-            'xl'      => 3,
+            'md' => 2,
+            'xl' => 3,
         ];
     }
 
@@ -26,6 +26,7 @@ class Dashboard extends BaseDashboard
             \App\Filament\Widgets\ConnectionsTrend::class,
             \App\Filament\Widgets\TopServers::class,
             \App\Filament\Widgets\RealtimeConnectionFeed::class,
+            \App\Filament\Widgets\MultiSessionUsers::class,
             \App\Filament\Widgets\NodeHealth::class,
 
             // Infrastructure
