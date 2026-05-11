@@ -46,7 +46,6 @@ class UpdateVpnStatus extends Command
                     $this->broadcastUsers($server->id, []);
                     // Optional: keep counters fresh
                     $server->forceFill([
-                        'online_users' => 0,
                         'last_sync_at' => now(),
                     ])->saveQuietly();
                     continue;
@@ -77,7 +76,6 @@ class UpdateVpnStatus extends Command
 
                 // persist quick counters (quietly)
                 $server->forceFill([
-                    'online_users' => count($users),
                     'last_sync_at' => now(),
                 ])->saveQuietly();
 
