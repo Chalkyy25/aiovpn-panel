@@ -45,6 +45,14 @@ class MultiSessionUsers extends BaseWidget
                     ->with([
                         'sessionConnections' => fn ($q) => $q
                             ->live($now)
+                            ->select([
+                                'id',
+                                'vpn_user_id',
+                                'vpn_server_id',
+                                'protocol',
+                                'client_ip',
+                                'last_seen_at',
+                            ])
                             ->with('vpnServer:id,name')
                             ->orderByDesc('last_seen_at'),
                     ])
