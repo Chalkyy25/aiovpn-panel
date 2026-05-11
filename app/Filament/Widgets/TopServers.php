@@ -25,11 +25,9 @@ class TopServers extends BaseWidget
         return $table
             ->query(
                 VpnServer::query()
-                ->withCount([
-                    'connections as live_users_count' => fn ($q) => $q->live(),
-                ])
-                ->orderByDesc('live_users_count')
-                        ->columns([
+                    ->orderByDesc('online_users')
+            )
+            ->columns([
 
                 Tables\Columns\TextColumn::make('name')
                     ->weight('bold')
@@ -43,7 +41,7 @@ class TopServers extends BaseWidget
                         default => 'gray',
                     }),
 
-                Tables\Columns\TextColumn::make('online_users')
+                Tables\Columns\TextColumn::make('live_users_count')
                     ->label('Users')
                     ->badge()
                     ->color('success')
