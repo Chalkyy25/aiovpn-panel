@@ -73,13 +73,14 @@ class AdminStats extends BaseWidget
 
         /*
         |--------------------------------------------------------------------------
-        | TODAY CONNECTIONS
+        | ACTIVE USERS TODAY
         |--------------------------------------------------------------------------
         */
-
+        
         $connectionsToday = VpnConnection::query()
-            ->whereDate('created_at', today())
-            ->count();
+            ->whereDate('last_seen_at', today())
+            ->distinct('vpn_user_id')
+            ->count('vpn_user_id');
 
         return [
 
@@ -154,12 +155,11 @@ class AdminStats extends BaseWidget
             */
 
             Stat::make(
-                'Connections Today',
-                number_format($connectionsToday)
-            )
-                ->description('New sessions started today')
-                ->descriptionIcon('heroicon-m-bolt')
-                ->color('primary'),
+                    'Users Connected Today',
+                    number_format($connectionsToday)
+                )
+                    ->description('Unique VPN users active today')            ->descriptionIcon('heroicon-m-bolt')
+                    ->color('primary'),
 
             /*
             |--------------------------------------------------------------------------
