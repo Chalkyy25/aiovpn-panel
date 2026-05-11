@@ -122,15 +122,24 @@ class DeployEventController extends Controller
                     'disconnected_at' => null,
                 ]);
 
-                // Preserve the original connected_at for this session_key.
-                // Only update it if we learn an EARLIER timestamp (some sources jitter).
-                if ($connectedAt) {
-                    if (!$row->connected_at || $connectedAt->lt($row->connected_at)) {
+                    /*
+                    |--------------------------------------------------------------------------
+                    | OpenVPN connected_at handling
+                    |--------------------------------------------------------------------------
+                    |
+                    | OpenVPN gives us a real Connected Since timestamp from the status file.
+                    | If that timestamp changes, it means this is a new OpenVPN session.
+                    |
+                    | Do NOT preserve an old connected_at forever, otherwise stale historic
+                    | sessions show as "connected 2 months ago".
+                    |
+                    */
+                    
+                    if ($connectedAt) {
                         $row->connected_at = $connectedAt;
+                    } elseif (! $row->connected_at) {
+                        $row->connected_at = $now;
                     }
-                } elseif (!$row->connected_at) {
-                    $row->connected_at = $now;
-                }
 
                 $row->save();
             }
