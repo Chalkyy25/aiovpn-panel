@@ -19,6 +19,8 @@ class VpnServer extends Model
 {
     use ExecutesRemoteCommands, HasFactory;
 
+    protected static ?bool $hasEnabledColumn = null;
+
     /** Virtuals appended when casting to array/json */
     protected $appends = ['is_online', 'display_location', 'country_name'];
 
@@ -169,7 +171,9 @@ class VpnServer extends Model
 
     public function scopeEnabled($q)
     {
-        if (! Schema::hasColumn($this->getTable(), 'enabled')) {
+        self::$hasEnabledColumn ??= Schema::hasColumn($this->getTable(), 'enabled');
+
+        if (! self::$hasEnabledColumn) {
             return $q;
         }
 
@@ -179,6 +183,15 @@ class VpnServer extends Model
     public function scopeDeployed($q)
     {
         return $q->whereIn($this->qualifyColumn('deployment_status'), ['deployed', 'success']);
+    }
+
+    public function isAvailableForApp(): bool
+    {
+        self::$hasEnabledColumn ??= Schema::hasColumn($this->getTable(), 'enabled');
+
+        $isEnabled = self::$hasEnabledColumn ? (bool) ($this->enabled ?? false) : true;
+
+        return $isEnabled && in_array((string) $this->deployment_status, ['deployed', 'success'], true);
     }
 
     /* ========= Mutators / Helpers ========= */

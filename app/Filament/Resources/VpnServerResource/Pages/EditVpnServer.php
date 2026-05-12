@@ -7,6 +7,7 @@ use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class EditVpnServer extends EditRecord
@@ -58,9 +59,13 @@ class EditVpnServer extends EditRecord
 
                     try {
                         $this->record->forceFill($updates)->save();
-                    } catch (QueryException) {
+                    } catch (QueryException $exception) {
                         // Legacy enum schemas may not support "offline" and still expect "inactive".
                         if (array_key_exists('status', $updates)) {
+                            Log::warning('Failed to set VPN server status to offline during disable; retrying with inactive.', [
+                                'server_id' => $this->record->id,
+                                'error' => $exception->getMessage(),
+                            ]);
                             $updates['status'] = 'inactive';
                             $this->record->forceFill($updates)->save();
                         }

@@ -142,7 +142,7 @@ class MobileProfileController extends Controller
         /** @var VpnServer $vpnServer */
         $vpnServer = VpnServer::findOrFail($data['server_id']);
 
-        if (! ($vpnServer->enabled ?? false) || ! in_array($vpnServer->deployment_status, ['deployed', 'success'], true)) {
+        if (! $vpnServer->isAvailableForApp()) {
             return response('Server is disabled.', 403);
         }
 
