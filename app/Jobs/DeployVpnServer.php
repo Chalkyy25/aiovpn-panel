@@ -2,31 +2,32 @@
 
 namespace App\Jobs;
 
-use Throwable;
-use App\Models\VpnUser;
-use App\Models\VpnServer;
 use App\Models\DeployKey;
-use Illuminate\Bus\Queueable;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use App\Jobs\SyncOpenVPNCredentials;
-use App\Services\GeoIpService; // 👈
+use App\Models\VpnServer;
+use App\Models\VpnUser;
+use App\Services\GeoIpService;
 use App\Services\WireGuardService;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema; // 👈
+use Throwable;
 
 class DeployVpnServer implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public $timeout = 900;
+
     public $tries = 2;
 
     public VpnServer $vpnServer;
 
     private ?string $lastKeyPath = null;
+
     private ?string $lastKeyFingerprint = null;
 
     public function __construct(VpnServer $vpnServer)
@@ -38,49 +39,53 @@ class DeployVpnServer implements ShouldQueue
     {
         Log::info("🚀 DeployVpnServer: starting for #{$this->vpnServer->id}");
 
-            $hasIsDeploying = Schema::hasColumn('vpn_servers', 'is_deploying');
+        $hasIsDeploying = Schema::hasColumn('vpn_servers', 'is_deploying');
 
-            if ($hasIsDeploying && ($this->vpnServer->is_deploying ?? false)) {
+        if ($hasIsDeploying && ($this->vpnServer->is_deploying ?? false)) {
             Log::warning("⚠️ DeployVpnServer: already deploying #{$this->vpnServer->id}");
+
             return;
         }
 
-        $panelUrl   = rtrim((string) config('services.panel.base'), '/');
+        $panelUrl = rtrim((string) config('services.panel.base'), '/');
         $panelToken = (string) config('services.panel.token');
 
         if ($panelUrl === '' || $panelToken === '') {
             $this->failWith('❌ PANEL config missing: set PANEL_BASE_URL and PANEL_TOKEN in .env then php artisan config:cache');
+
             return;
         }
 
-        $ip   = (string) $this->vpnServer->ip_address;
+        $ip = (string) $this->vpnServer->ip_address;
         $port = (int) ($this->vpnServer->ssh_port ?: 22);
         $user = (string) ($this->vpnServer->ssh_user ?: 'root');
 
         if ($ip === '' || $user === '') {
             $this->failWith('❌ Server IP or SSH user is missing');
+
             return;
         }
 
         // Model’s preferred proto/port (still respected for the UDP instance)
         $modelProto = strtolower((string) ($this->vpnServer->protocol ?: 'udp'));
-        $vpnProto   = $modelProto === 'tcp' ? 'tcp' : 'udp';
-        $vpnPort    = (int) ($this->vpnServer->port ?: 1194);
+        $vpnProto = $modelProto === 'tcp' ? 'tcp' : 'udp';
+        $vpnPort = (int) ($this->vpnServer->port ?: 1194);
 
         $mgmtHost = '127.0.0.1';
         $mgmtPort = (int) ($this->vpnServer->mgmt_port ?: 7505);
-        $wgPort   = 51820;
+        $wgPort = 51820;
 
         // Prefer new script name; fallback to legacy path for compatibility
         $scriptPath = base_path('resources/scripts/deploy-vpn.sh');
-        if (!is_file($scriptPath)) {
+        if (! is_file($scriptPath)) {
             $legacy = base_path('resources/scripts/deploy-openvpn.sh');
             if (is_file($legacy)) {
                 $scriptPath = $legacy;
             }
         }
-        if (!is_file($scriptPath)) {
+        if (! is_file($scriptPath)) {
             $this->failWith("❌ Missing deployment script at {$scriptPath}");
+
             return;
         }
         $script = file_get_contents($scriptPath);
@@ -97,21 +102,16 @@ class DeployVpnServer implements ShouldQueue
         }
 
         $startPayload = [
-    'is_deploying'      => true,
-    'deployment_status' => 'running',
-    'deployment_log'    => "🚀 Starting deployment on {$ip}…\n",
-];
+            'is_deploying' => true,
+            'deployment_status' => 'running',
+            'deployment_log' => "🚀 Starting deployment on {$ip}…\n",
+        ];
 
-if (! $hasIsDeploying) {
-    unset($startPayload['is_deploying']);
-}
+        if (! $hasIsDeploying) {
+            unset($startPayload['is_deploying']);
+        }
 
-$this->vpnServer->forceFill($startPayload)->save();
-
-            if (! $hasIsDeploying) {
-                unset($startPayload['is_deploying']);
-            }
-            $this->vpnServer->forceFill($startPayload)->save();
+        $this->vpnServer->forceFill($startPayload)->save();
 
         try {
             $sshCmdBase = $this->buildSshBase($user, $ip, $port);
@@ -120,7 +120,7 @@ $this->vpnServer->forceFill($startPayload)->save();
             }
 
             // Quick SSH sanity
-            $testCmd = $sshCmdBase . ' ' . escapeshellarg('echo CONNECTION_OK') . ' 2>&1';
+            $testCmd = $sshCmdBase.' '.escapeshellarg('echo CONNECTION_OK').' 2>&1';
             $testOutput = [];
             $testStatus = 0;
             exec($testCmd, $testOutput, $testStatus);
@@ -129,7 +129,7 @@ $this->vpnServer->forceFill($startPayload)->save();
             if ($this->lastKeyFingerprint) {
                 Log::info("🧪 Using key fingerprint: {$this->lastKeyFingerprint}");
             }
-            Log::info("🧪 SSH test out:\n" . $testText);
+            Log::info("🧪 SSH test out:\n".$testText);
 
             if ($testStatus !== 0 || strpos($testText, 'CONNECTION_OK') === false) {
                 if (str_contains($testText, 'Permission denied (publickey)')) {
@@ -138,37 +138,42 @@ $this->vpnServer->forceFill($startPayload)->save();
                     $legacyBase = $this->buildLegacySshBase($user, $ip, $port, $this->lastKeyPath);
                     if ($legacyBase) {
                         $deployPriv = $this->lastKeyPath ?? '';
-                        if ($deployPriv === '' || !is_file($deployPriv)) {
+                        if ($deployPriv === '' || ! is_file($deployPriv)) {
                             $this->failWith('❌ DeployKey private path unknown; cannot seed.');
+
                             return;
                         }
-                        if (!$this->trySeedDeployKey($legacyBase, $deployPriv)) {
+                        if (! $this->trySeedDeployKey($legacyBase, $deployPriv)) {
                             $this->failWith("❌ Could not seed DeployKey to {$ip} using legacy access.");
+
                             return;
                         }
 
                         $retryOut = [];
-                        $retryRc  = 0;
+                        $retryRc = 0;
                         exec($testCmd, $retryOut, $retryRc);
                         $retryText = trim(implode("\n", $retryOut));
-                        Log::info("🧪 SSH retry out:\n" . $retryText);
+                        Log::info("🧪 SSH retry out:\n".$retryText);
                         if ($retryRc !== 0 || strpos($retryText, 'CONNECTION_OK') === false) {
                             $this->failWith("❌ SSH connection still failing to {$ip} after seeding.\n{$retryText}");
+
                             return;
                         }
                         Log::info('✅ SSH retry with DeployKey succeeded after seeding');
                     } else {
-                        $pubPath    = $this->lastKeyPath ? ($this->lastKeyPath . '.pub') : '(unknown)';
-                        $pubPreview = (is_file($pubPath) ? substr(trim(file_get_contents($pubPath)), 0, 80) . '…' : '');
-                        $hint       = "\n🛠 Fix:\n"
-                            . "  1) Add this public key to /root/.ssh/authorized_keys on {$ip}\n"
-                            . "     {$pubPath}\n     {$pubPreview}\n"
-                            . "  2) Permissions: chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys\n";
+                        $pubPath = $this->lastKeyPath ? ($this->lastKeyPath.'.pub') : '(unknown)';
+                        $pubPreview = (is_file($pubPath) ? substr(trim(file_get_contents($pubPath)), 0, 80).'…' : '');
+                        $hint = "\n🛠 Fix:\n"
+                            ."  1) Add this public key to /root/.ssh/authorized_keys on {$ip}\n"
+                            ."     {$pubPath}\n     {$pubPreview}\n"
+                            ."  2) Permissions: chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys\n";
                         $this->failWith("❌ SSH connection failed to {$ip}\n{$testText}{$hint}");
+
                         return;
                     }
                 } else {
                     $this->failWith("❌ SSH connection failed to {$ip}\n{$testText}");
+
                     return;
                 }
             }
@@ -176,15 +181,15 @@ $this->vpnServer->forceFill($startPayload)->save();
 
             // Ensure our DeployKey is present
             try {
-                $pubPath = $this->lastKeyPath ? $this->lastKeyPath . '.pub' : null;
+                $pubPath = $this->lastKeyPath ? $this->lastKeyPath.'.pub' : null;
                 if ($pubPath && is_file($pubPath)) {
                     $pub = trim((string) file_get_contents($pubPath));
                     if ($pub !== '') {
-                        $ensureCmd = "set -e; install -d -m 700 /root/.ssh; "
-                            . "touch /root/.ssh/authorized_keys; chmod 600 /root/.ssh/authorized_keys; "
-                            . "grep -qxF " . escapeshellarg($pub) . " /root/.ssh/authorized_keys || echo "
-                            . escapeshellarg($pub) . " >> /root/.ssh/authorized_keys";
-                        @exec($sshCmdBase . ' ' . escapeshellarg($ensureCmd));
+                        $ensureCmd = 'set -e; install -d -m 700 /root/.ssh; '
+                            .'touch /root/.ssh/authorized_keys; chmod 600 /root/.ssh/authorized_keys; '
+                            .'grep -qxF '.escapeshellarg($pub).' /root/.ssh/authorized_keys || echo '
+                            .escapeshellarg($pub).' >> /root/.ssh/authorized_keys';
+                        @exec($sshCmdBase.' '.escapeshellarg($ensureCmd));
                         Log::info('🔑 Ensured DeployKey is present on target');
                     }
                 }
@@ -195,16 +200,16 @@ $this->vpnServer->forceFill($startPayload)->save();
             // (Optional) peek authorized_keys first few lines
             try {
                 $ak = [];
-                exec($sshCmdBase . ' ' . escapeshellarg('head -n 5 /root/.ssh/authorized_keys || true'), $ak);
-                if (!empty($ak)) {
-                    Log::info("📥 Server authorized_keys (first 5):\n" . implode("\n", array_map('trim', $ak)));
+                exec($sshCmdBase.' '.escapeshellarg('head -n 5 /root/.ssh/authorized_keys || true'), $ak);
+                if (! empty($ak)) {
+                    Log::info("📥 Server authorized_keys (first 5):\n".implode("\n", array_map('trim', $ak)));
                 }
             } catch (\Throwable) {
                 // ignore
             }
 
             // ── Build environment for the new deploy script
-            $vpnIp  = $this->vpnServer->vpn_ip  ?? '10.8.0.1';
+            $vpnIp = $this->vpnServer->vpn_ip ?? '10.8.0.1';
             $vpnNet = $this->vpnServer->vpn_net ?? '10.8.0.0/24';
             $vpnDev = 'tun0';
 
@@ -221,52 +226,52 @@ $this->vpnServer->forceFill($startPayload)->save();
             $enableTcpStealth = $this->vpnServer->enable_tcp_stealth ?? true;
 
             $env = [
-                'PANEL_URL'   => $panelUrl,
+                'PANEL_URL' => $panelUrl,
                 'PANEL_TOKEN' => $panelToken,
-                'SERVER_ID'   => (string) $this->vpnServer->id,
+                'SERVER_ID' => (string) $this->vpnServer->id,
 
                 // Management
-                'MGMT_HOST'   => $mgmtHost,
-                'MGMT_PORT'   => (string) $mgmtPort,
+                'MGMT_HOST' => $mgmtHost,
+                'MGMT_PORT' => (string) $mgmtPort,
 
                 // WireGuard
-                'WG_PORT'     => (string) $wgPort,
+                'WG_PORT' => (string) $wgPort,
 
                 // OpenVPN
-                'OVPN_PORT'          => (string) $vpnPort,
-                'OVPN_PROTO'         => $vpnProto,
+                'OVPN_PORT' => (string) $vpnPort,
+                'OVPN_PROTO' => $vpnProto,
                 'OVPN_ENDPOINT_HOST' => $ovpnEndpoint,
 
                 // Stealth TCP/443 instance
                 'ENABLE_TCP_STEALTH' => $enableTcpStealth ? '1' : '0',
-                'TCP_PORT'           => '443',
-                'TCP_SUBNET'         => '10.8.100.0/24',
+                'TCP_PORT' => '443',
+                'TCP_SUBNET' => '10.8.100.0/24',
 
                 // Auth seeding
                 'VPN_USER' => $vpnUser,
                 'VPN_PASS' => $vpnPass,
 
                 // Status push
-                'STATUS_PATH'          => '/run/openvpn/server.status',
+                'STATUS_PATH' => '/run/openvpn/server.status',
                 'STATUS_PUSH_INTERVAL' => $interval,
-                'PANEL_CALLBACKS'      => '1',
-                'PUSH_MGMT'            => '0',
+                'PANEL_CALLBACKS' => '1',
+                'PUSH_MGMT' => '0',
 
                 // DNS + misc
                 'ENABLE_PRIVATE_DNS' => $enablePrivateDns,
-                'VPN_IP'             => $vpnIp,
-                'VPN_NET'            => $vpnNet,
-                'VPN_DEV'            => $vpnDev,
+                'VPN_IP' => $vpnIp,
+                'VPN_NET' => $vpnNet,
+                'VPN_DEV' => $vpnDev,
             ];
 
             $assigns = implode(' ', array_map(
-                fn ($k, $v) => $k . '=' . escapeshellarg($v),
+                fn ($k, $v) => $k.'='.escapeshellarg($v),
                 array_keys($env),
                 array_values($env)
             ));
 
             $maskedAssigns = str_replace([$panelToken, $vpnPass], ['***TOKEN***', '***PASS***'], $assigns);
-            Log::info('🔧 Remote env header (masked): ' . $maskedAssigns . ' [ssh …]');
+            Log::info('🔧 Remote env header (masked): '.$maskedAssigns.' [ssh …]');
 
             $remoteBash = <<<BASH
 set -e
@@ -277,7 +282,7 @@ SCRIPT_EOF
 echo EXIT_CODE:$?
 BASH;
 
-            $remoteCmd = $sshCmdBase . ' ' . escapeshellarg('bash -lc ' . escapeshellarg($remoteBash));
+            $remoteCmd = $sshCmdBase.' '.escapeshellarg('bash -lc '.escapeshellarg($remoteBash));
 
             [$exitCode, $combined] = $this->runAndStream($remoteCmd);
 
@@ -285,7 +290,7 @@ BASH;
                 $exitCode = (int) $m[1];
             }
 
-            $status   = $exitCode === 0 ? 'success' : 'failed';
+            $status = $exitCode === 0 ? 'success' : 'failed';
             $finalLog = $this->stripNoise($combined);
 
             if ($exitCode === 0) {
@@ -294,19 +299,19 @@ BASH;
                 // GeoIP update after successful deploy
                 try {
                     $freshServer = $this->vpnServer->fresh();
-                    $geoUpdated  = $geo->updateServer($freshServer);
+                    $geoUpdated = $geo->updateServer($freshServer);
 
                     if ($geoUpdated) {
                         $finalLog .= "\n🗺 GeoIP: location updated to "
-                            . ($freshServer->country_code ?? '??')
-                            . ' / '
-                            . ($freshServer->city ?? 'Unknown');
+                            .($freshServer->country_code ?? '??')
+                            .' / '
+                            .($freshServer->city ?? 'Unknown');
                     } else {
                         $finalLog .= "\n🗺 GeoIP: no changes (already set or lookup failed)";
                     }
                 } catch (\Throwable $geoE) {
-                    Log::warning('⚠️ GeoIP update failed for server #' . $this->vpnServer->id . ': ' . $geoE->getMessage());
-                    $finalLog .= "\n⚠️ GeoIP update error: " . $geoE->getMessage();
+                    Log::warning('⚠️ GeoIP update failed for server #'.$this->vpnServer->id.': '.$geoE->getMessage());
+                    $finalLog .= "\n⚠️ GeoIP update error: ".$geoE->getMessage();
                 }
 
                 $existingUsers = VpnUser::where('is_active', true)->get();
@@ -316,8 +321,8 @@ BASH;
                 }
 
                 // Start status timer + one-shot push
-                @exec($sshCmdBase . ' ' . escapeshellarg('systemctl start ovpn-status-push.timer || true'));
-                @exec($sshCmdBase . ' ' . escapeshellarg('/usr/local/bin/ovpn-status-push.sh || true'));
+                @exec($sshCmdBase.' '.escapeshellarg('systemctl start ovpn-status-push.timer || true'));
+                @exec($sshCmdBase.' '.escapeshellarg('/usr/local/bin/ovpn-status-push.sh || true'));
 
                 // OpenVPN user/pass sync
                 SyncOpenVPNCredentials::dispatch($this->vpnServer->id);
@@ -329,8 +334,8 @@ BASH;
                         $resynced = $this->resyncWireGuardPeers();
                         $finalLog .= "\n🔁 WG resync queued for {$resynced} user(s)";
                     } catch (\Throwable $wgE) {
-                        Log::warning('⚠️ WG resync threw: ' . $wgE->getMessage());
-                        $finalLog .= "\n⚠️ WG resync warning: " . $wgE->getMessage();
+                        Log::warning('⚠️ WG resync threw: '.$wgE->getMessage());
+                        $finalLog .= "\n⚠️ WG resync warning: ".$wgE->getMessage();
                     }
                 }
 
@@ -341,32 +346,27 @@ BASH;
             }
 
             $finishPayload = [
-    'is_deploying'      => false,
-    'deployment_status' => $status,
-    'deployment_log'    => $finalLog,
-    'status'            => $exitCode === 0 ? 'online' : 'offline',
-];
+                'is_deploying' => false,
+                'deployment_status' => $status,
+                'deployment_log' => $finalLog,
+                'status' => $exitCode === 0 ? 'online' : 'offline',
+            ];
 
-if (! $hasIsDeploying) {
-    unset($finishPayload['is_deploying']);
-}
+            if (! $hasIsDeploying) {
+                unset($finishPayload['is_deploying']);
+            }
 
-$this->vpnServer->forceFill($finishPayload)->save();
-
-                if (! $hasIsDeploying) {
-                    unset($finishPayload['is_deploying']);
-                }
-                $this->vpnServer->forceFill($finishPayload)->save();
+            $this->vpnServer->forceFill($finishPayload)->save();
 
             Log::info("✅ DeployVpnServer: done for #{$this->vpnServer->id} (exit={$exitCode})");
         } catch (Throwable $e) {
-            $this->failWith('❌ Exception during deployment: ' . $e->getMessage(), $e);
+            $this->failWith('❌ Exception during deployment: '.$e->getMessage(), $e);
         }
     }
 
     public function failed(Throwable $e): void
     {
-        $this->failWith('❌ Job failed with exception: ' . $e->getMessage(), $e);
+        $this->failWith('❌ Job failed with exception: '.$e->getMessage(), $e);
     }
 
     private function buildSshBase(string $user, string $ip, int $port): ?string
@@ -380,20 +380,22 @@ $this->vpnServer->forceFill($finishPayload)->save();
             '-o ConnectTimeout=10',
             '-o ServerAliveInterval=15',
             '-o ServerAliveCountMax=3',
-            '-p ' . $port,
+            '-p '.$port,
         ]);
 
         $dk = $this->vpnServer->deployKey ?: DeployKey::active()->first();
         if ($dk) {
             $keyPath = $dk->privateAbsolutePath();
-            if (!is_file($keyPath)) {
+            if (! is_file($keyPath)) {
                 $this->failWith("❌ DeployKey not found at {$keyPath} (name={$dk->name})");
+
                 return null;
             }
             @chmod($keyPath, 0600);
 
             $this->captureKeyDiagnostics($keyPath, 'DeployKey');
-            return 'ssh -i ' . escapeshellarg($keyPath) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+
+            return 'ssh -i '.escapeshellarg($keyPath).' '.$sshOpts.' '.escapeshellarg("{$user}@{$ip}");
         }
 
         return $this->buildLegacySshBase($user, $ip, $port);
@@ -408,18 +410,18 @@ $this->vpnServer->forceFill($finishPayload)->save();
             '-o ConnectTimeout=10',
             '-o ServerAliveInterval=15',
             '-o ServerAliveCountMax=3',
-            '-p ' . $port,
+            '-p '.$port,
         ]);
 
         $legacyName = (string) ($this->vpnServer->ssh_key ?: '');
         $legacyPath = $legacyName
             ? (str_starts_with($legacyName, '/') || str_contains($legacyName, ':\\')
                 ? $legacyName
-                : storage_path('app/ssh_keys/' . $legacyName))
+                : storage_path('app/ssh_keys/'.$legacyName))
             : '';
 
         $useKey = function (?string $path) use ($excludeKeyPath, $sshOpts, $user, $ip) {
-            if (!$path || !is_file($path)) {
+            if (! $path || ! is_file($path)) {
                 return null;
             }
             if ($excludeKeyPath && realpath($path) === realpath($excludeKeyPath)) {
@@ -427,36 +429,38 @@ $this->vpnServer->forceFill($finishPayload)->save();
             }
             @chmod($path, 0600);
             Log::warning("🪪 Using legacy key as fallback: {$path}");
-            return 'ssh -i ' . escapeshellarg($path) . ' ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+
+            return 'ssh -i '.escapeshellarg($path).' '.$sshOpts.' '.escapeshellarg("{$user}@{$ip}");
         };
 
         if ($cmd = $useKey($legacyPath)) {
             return $cmd;
         }
 
-        $dir        = storage_path('app/ssh_keys');
+        $dir = storage_path('app/ssh_keys');
         $candidates = [];
         if (is_dir($dir)) {
             foreach (['id_rsa', 'id_ecdsa', 'id_ed25519'] as $base) {
-                $p = $dir . '/' . $base;
+                $p = $dir.'/'.$base;
                 if (is_file($p)) {
                     $candidates[] = $p;
                 }
             }
-            foreach (glob($dir . '/*') ?: [] as $p) {
-                if (is_file($p) && !preg_match('/\.pub$/', $p) && !in_array($p, $candidates, true)) {
+            foreach (glob($dir.'/*') ?: [] as $p) {
+                if (is_file($p) && ! preg_match('/\.pub$/', $p) && ! in_array($p, $candidates, true)) {
                     $candidates[] = $p;
                 }
             }
             $candidates = array_values(array_filter($candidates, function ($p) use ($excludeKeyPath) {
-                return !$excludeKeyPath || realpath($p) !== realpath($excludeKeyPath);
+                return ! $excludeKeyPath || realpath($p) !== realpath($excludeKeyPath);
             }));
             usort($candidates, function ($a, $b) {
-                $rank = fn($x) => str_ends_with($x, 'id_rsa')
+                $rank = fn ($x) => str_ends_with($x, 'id_rsa')
                     ? 0
                     : (str_ends_with($x, 'id_ecdsa')
                         ? 1
                         : (str_ends_with($x, 'id_ed25519') ? 2 : 3));
+
                 return $rank($a) <=> $rank($b);
             });
             foreach ($candidates as $p) {
@@ -468,11 +472,12 @@ $this->vpnServer->forceFill($finishPayload)->save();
 
         $sshType = (string) ($this->vpnServer->ssh_type ?: 'key');
         if ($sshType === 'password') {
-            $sshPass      = (string) $this->vpnServer->ssh_password;
-            $haveSshpass  = trim((string) shell_exec('command -v sshpass || true'));
+            $sshPass = (string) $this->vpnServer->ssh_password;
+            $haveSshpass = trim((string) shell_exec('command -v sshpass || true'));
             if ($sshPass !== '' && $haveSshpass !== '') {
                 Log::warning('🪪 Using password SSH as legacy fallback');
-                return 'sshpass -p ' . escapeshellarg($sshPass) . ' ssh ' . $sshOpts . ' ' . escapeshellarg("{$user}@{$ip}");
+
+                return 'sshpass -p '.escapeshellarg($sshPass).' ssh '.$sshOpts.' '.escapeshellarg("{$user}@{$ip}");
             }
         }
 
@@ -481,36 +486,40 @@ $this->vpnServer->forceFill($finishPayload)->save();
 
     private function trySeedDeployKey(string $legacySshBase, string $deployPrivKeyPath): bool
     {
-        $pubPath = str_ends_with($deployPrivKeyPath, '.pub') ? $deployPrivKeyPath : $deployPrivKeyPath . '.pub';
-        if (!is_file($pubPath)) {
+        $pubPath = str_ends_with($deployPrivKeyPath, '.pub') ? $deployPrivKeyPath : $deployPrivKeyPath.'.pub';
+        if (! is_file($pubPath)) {
             $pub = @shell_exec(sprintf('ssh-keygen -y -f %s 2>/dev/null', escapeshellarg($deployPrivKeyPath))) ?: '';
             $pub = trim($pub);
             if ($pub === '') {
                 Log::error('❌ Could not derive .pub from DeployKey');
+
                 return false;
             }
-            file_put_contents($pubPath, $pub . PHP_EOL);
+            file_put_contents($pubPath, $pub.PHP_EOL);
             @chmod($pubPath, 0644);
         }
         $pub = trim((string) file_get_contents($pubPath));
         if ($pub === '') {
             Log::error('❌ Empty DeployKey .pub');
+
             return false;
         }
 
-        $seedCmd = "set -e;"
-            . " install -d -m 700 /root/.ssh;"
-            . " touch /root/.ssh/authorized_keys; chmod 600 /root/.ssh/authorized_keys;"
-            . " grep -qxF " . escapeshellarg($pub) . " /root/.ssh/authorized_keys || echo "
-            . escapeshellarg($pub) . " >> /root/.ssh/authorized_keys";
+        $seedCmd = 'set -e;'
+            .' install -d -m 700 /root/.ssh;'
+            .' touch /root/.ssh/authorized_keys; chmod 600 /root/.ssh/authorized_keys;'
+            .' grep -qxF '.escapeshellarg($pub).' /root/.ssh/authorized_keys || echo '
+            .escapeshellarg($pub).' >> /root/.ssh/authorized_keys';
 
-        $cmd = $legacySshBase . ' ' . escapeshellarg($seedCmd);
+        $cmd = $legacySshBase.' '.escapeshellarg($seedCmd);
         exec($cmd, $o, $rc);
         if ($rc === 0) {
             Log::info('🔑 Seeded DeployKey public key into authorized_keys via legacy session');
+
             return true;
         }
         Log::error("❌ Failed to seed DeployKey via legacy session (rc={$rc})");
+
         return false;
     }
 
@@ -518,13 +527,13 @@ $this->vpnServer->forceFill($finishPayload)->save();
     {
         $this->lastKeyPath = $privateKeyPath;
 
-        $pubPath = str_ends_with($privateKeyPath, '.pub') ? $privateKeyPath : $privateKeyPath . '.pub';
+        $pubPath = str_ends_with($privateKeyPath, '.pub') ? $privateKeyPath : $privateKeyPath.'.pub';
 
-        if (!is_file($pubPath)) {
+        if (! is_file($pubPath)) {
             $pub = @shell_exec(sprintf('ssh-keygen -y -f %s 2>/dev/null', escapeshellarg($privateKeyPath))) ?: '';
             $pub = trim($pub);
             if ($pub !== '') {
-                file_put_contents($pubPath, $pub . PHP_EOL);
+                file_put_contents($pubPath, $pub.PHP_EOL);
                 @chmod($pubPath, 0644);
             }
         }
@@ -554,8 +563,9 @@ $this->vpnServer->forceFill($finishPayload)->save();
             2 => ['pipe', 'w'],
         ];
         $proc = proc_open($remoteCmd, $descriptors, $pipes, base_path());
-        if (!is_resource($proc)) {
+        if (! is_resource($proc)) {
             $this->failWith('❌ Failed to open SSH process');
+
             return [1, ''];
         }
 
@@ -563,9 +573,9 @@ $this->vpnServer->forceFill($finishPayload)->save();
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
 
-        $out         = '';
-        $err         = '';
-        $start       = time();
+        $out = '';
+        $err = '';
+        $start = time();
         $maxDuration = max(60, ($this->timeout ?? 900) - 10);
 
         while (true) {
@@ -591,7 +601,7 @@ $this->vpnServer->forceFill($finishPayload)->save();
             }
 
             $status = proc_get_status($proc);
-            if (($status === false || !$status['running']) && feof($pipes[1]) && feof($pipes[2])) {
+            if (($status === false || ! $status['running']) && feof($pipes[1]) && feof($pipes[2])) {
                 break;
             }
 
@@ -600,8 +610,8 @@ $this->vpnServer->forceFill($finishPayload)->save();
                 break;
             }
 
-            $read   = [$pipes[1], $pipes[2]];
-            $write  = $except = null;
+            $read = [$pipes[1], $pipes[2]];
+            $write = $except = null;
             @stream_select($read, $write, $except, 1);
         }
 
@@ -612,10 +622,11 @@ $this->vpnServer->forceFill($finishPayload)->save();
         }
 
         $exitCode = proc_close($proc);
-        return [$exitCode, ($this->vpnServer->deployment_log ?? '') . $out . $err];
+
+        return [$exitCode, ($this->vpnServer->deployment_log ?? '').$out.$err];
     }
 
-    private function failWith(string $message, Throwable $e = null): void
+    private function failWith(string $message, ?Throwable $e = null): void
     {
         Log::error($message);
         if ($e) {
@@ -623,17 +634,17 @@ $this->vpnServer->forceFill($finishPayload)->save();
         }
 
         $this->vpnServer->update([
-            'is_deploying'      => false,
+            'is_deploying' => false,
             'deployment_status' => 'failed',
-            'deployment_log'    => trim(($this->vpnServer->deployment_log ?? '') . "\n" . $message),
-            'status'            => 'offline',
+            'deployment_log' => trim(($this->vpnServer->deployment_log ?? '')."\n".$message),
+            'status' => 'offline',
         ]);
     }
 
     private function stripNoise(string $log): string
     {
         $lines = explode("\n", $log);
-        $keep  = [];
+        $keep = [];
         foreach ($lines as $line) {
             $t = trim($line);
             if ($t === '') {
@@ -644,6 +655,7 @@ $this->vpnServer->forceFill($finishPayload)->save();
             }
             $keep[] = $t;
         }
+
         return implode("\n", $keep);
     }
 
@@ -658,12 +670,12 @@ $this->vpnServer->forceFill($finishPayload)->save();
     private function syncWireGuardPublicKey(string $sshCmdBase, string &$finalLog): void
     {
         try {
-            $cmd = $sshCmdBase . ' ' . escapeshellarg(
+            $cmd = $sshCmdBase.' '.escapeshellarg(
                 'test -f /etc/wireguard/server_public_key && cat /etc/wireguard/server_public_key 2>/dev/null || echo ""'
             );
 
             $out = [];
-            $rc  = 0;
+            $rc = 0;
             exec($cmd, $out, $rc);
 
             $pub = trim(implode("\n", $out));
@@ -671,12 +683,14 @@ $this->vpnServer->forceFill($finishPayload)->save();
             if ($rc !== 0 || $pub === '') {
                 Log::warning("⚠️ [WG] Could not read server_public_key for #{$this->vpnServer->id} (rc={$rc})");
                 $finalLog .= "\n⚠️ [WG] Could not read server_public_key via SSH (rc={$rc})";
+
                 return;
             }
 
             if ($pub === 'N/A') {
                 Log::warning("⚠️ [WG] server_public_key on #{$this->vpnServer->id} is 'N/A' – not saving");
                 $finalLog .= "\n⚠️ [WG] server_public_key is 'N/A' on host – not saved";
+
                 return;
             }
 
@@ -691,8 +705,8 @@ $this->vpnServer->forceFill($finishPayload)->save();
                 $finalLog .= "\nℹ️ [WG] WireGuard public key already up to date";
             }
         } catch (\Throwable $e) {
-            Log::warning("⚠️ [WG] Exception while syncing public key for #{$this->vpnServer->id}: " . $e->getMessage());
-            $finalLog .= "\n⚠️ [WG] Error syncing WireGuard public key: " . $e->getMessage();
+            Log::warning("⚠️ [WG] Exception while syncing public key for #{$this->vpnServer->id}: ".$e->getMessage());
+            $finalLog .= "\n⚠️ [WG] Error syncing WireGuard public key: ".$e->getMessage();
         }
     }
 
@@ -701,24 +715,24 @@ $this->vpnServer->forceFill($finishPayload)->save();
         $server = $this->vpnServer->fresh();
 
         $endpoint = $server->wg_endpoint_host ?: $server->ip_address;
-        $dirty    = false;
+        $dirty = false;
 
-        if (!$server->wg_endpoint_host && $endpoint) {
+        if (! $server->wg_endpoint_host && $endpoint) {
             $server->wg_endpoint_host = $endpoint;
             $dirty = true;
         }
-        if (!$server->wg_port) {
+        if (! $server->wg_port) {
             $server->wg_port = 51820;
-            $dirty           = true;
+            $dirty = true;
         }
         if (blank($server->wg_subnet)) {
             $server->wg_subnet = '10.66.66.0/24';
-            $dirty             = true;
+            $dirty = true;
         }
 
         if (blank($server->dns)) {
             $server->dns = '10.66.66.1';
-            $dirty       = true;
+            $dirty = true;
         }
 
         if ($dirty) {
@@ -745,6 +759,7 @@ $this->vpnServer->forceFill($finishPayload)->save();
 
         if ($users->isEmpty()) {
             Log::info("🔁 No active users to WG-sync on server #{$server->id}");
+
             return 0;
         }
 
@@ -752,7 +767,7 @@ $this->vpnServer->forceFill($finishPayload)->save();
         Log::info("🔧 Starting WG sync for {$users->count()} users across {$serversCount} server(s)...");
 
         $resynced = 0;
-        $failed   = 0;
+        $failed = 0;
 
         /** @var WireGuardService $wg */
         $wg = app(WireGuardService::class);
@@ -764,7 +779,7 @@ $this->vpnServer->forceFill($finishPayload)->save();
                 $resynced++;
             } catch (\Throwable $e) {
                 $failed++;
-                Log::warning("⚠️ [WG] Failed to ensure peer for user #{$u->id} on server #{$server->id}: " . $e->getMessage());
+                Log::warning("⚠️ [WG] Failed to ensure peer for user #{$u->id} on server #{$server->id}: ".$e->getMessage());
             }
         }
 
