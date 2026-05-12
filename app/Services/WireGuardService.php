@@ -93,16 +93,12 @@ class WireGuardService
         // vpn_users.wireguard_address is globally unique and reused across all servers assigned to that VPN user.
         try {
             $wireGuardAddress = WireGuardIpAllocator::next();
-        } catch (\Exception $e) {
+        } catch (\RuntimeException $e) {
             throw new InvalidArgumentException(
                 "Could not allocate global WireGuard address for user {$vpnUser->id}: {$e->getMessage()}",
                 0,
                 $e
             );
-        }
-
-        if (! str_contains($wireGuardAddress, '/')) {
-            $wireGuardAddress .= '/32';
         }
 
         $vpnUser->forceFill([
