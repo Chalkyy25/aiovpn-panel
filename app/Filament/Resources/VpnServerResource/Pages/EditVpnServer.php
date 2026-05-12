@@ -35,25 +35,26 @@ class EditVpnServer extends EditRecord
                 ->modalHeading('Disable server?')
                 ->modalDescription('This keeps history but removes the server from active use.')
                 ->action(function (): void {
+                    $columns = array_flip(Schema::getColumnListing('vpn_servers'));
                     $updates = [];
 
-                    if (Schema::hasColumn('vpn_servers', 'status')) {
+                    if (isset($columns['status'])) {
                         $updates['status'] = 'offline';
                     }
 
-                    if (Schema::hasColumn('vpn_servers', 'is_online')) {
+                    if (isset($columns['is_online'])) {
                         $updates['is_online'] = false;
                     }
 
-                    if (Schema::hasColumn('vpn_servers', 'enabled')) {
+                    if (isset($columns['enabled'])) {
                         $updates['enabled'] = false;
                     }
 
-                    if (Schema::hasColumn('vpn_servers', 'monitoring_enabled')) {
+                    if (isset($columns['monitoring_enabled'])) {
                         $updates['monitoring_enabled'] = false;
                     }
 
-                    if (Schema::hasColumn('vpn_servers', 'online_users')) {
+                    if (isset($columns['online_users'])) {
                         $updates['online_users'] = 0;
                     }
 
