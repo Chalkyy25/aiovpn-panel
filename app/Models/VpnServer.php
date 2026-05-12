@@ -143,9 +143,11 @@ class VpnServer extends Model
 
     public function supportsWireGuard(): bool
     {
+        $hasWireGuardFacts = ! empty($this->wg_public_key) && ! empty($this->wg_port);
+
         return (bool) ($this->supports_wireguard ?? false)
             || $this->protocolContains('wireguard')
-            || $this->hasWireGuard();
+            || $hasWireGuardFacts;
     }
 
     public function supportsStealth(): bool
@@ -172,11 +174,15 @@ class VpnServer extends Model
     {
         $transport = strtolower((string) ($this->transport ?? ''));
         $port = (int) ($this->port ?? 0);
+        $protocol = strtolower((string) $this->protocol);
         $supportsOpenVpn = $this->supportsOpenVpn();
+        $protocolImpliesUdpOpenVpn = str_contains($protocol, 'openvpn')
+            && ! str_contains($protocol, 'stealth')
+            && ! str_contains($protocol, 'tcp');
 
         return ($supportsOpenVpn && $transport === 'udp')
             || ($supportsOpenVpn && $port === 1194)
-            || $this->protocolContains('openvpn');
+            || $protocolImpliesUdpOpenVpn;
     }
 
     public function supportsTcpOpenVpn(): bool
