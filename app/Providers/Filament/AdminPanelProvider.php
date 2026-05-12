@@ -45,8 +45,9 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Purple,
             ])
+            ->viteTheme('resources/css/filament/admin/theme.css')
 
-                        // Theme plugin
+            // Theme plugin
             ->plugins([
                 ThemesPlugin::make()
                     ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin'),
