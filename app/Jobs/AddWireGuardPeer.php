@@ -14,6 +14,10 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @deprecated Legacy provisioning path. Prefer WireGuardService::ensurePeerForUser()
+ *             so WireGuard identity/peer provisioning stays centralized.
+ */
 class AddWireGuardPeer implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ExecutesRemoteCommands, Batchable;
