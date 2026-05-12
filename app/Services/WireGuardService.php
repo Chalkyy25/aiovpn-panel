@@ -76,7 +76,7 @@ class WireGuardService
 
     /**
      * Ensure the user has a WireGuard identity stored on vpn_users.
-     * Generates keypair locally + allocates next free IP on that server.
+     * Generates keypair locally + allocates globally unique vpn_users.wireguard_address.
      */
     protected function ensureIdentity(VpnServer $server, VpnUser $vpnUser): void
     {
@@ -90,16 +90,21 @@ class WireGuardService
         $private = trim($this->runLocal(['wg', 'genkey']));
         $public  = trim($this->runLocalWithInput(['wg', 'pubkey'], $private . "\n"));
 
-        // 2) Detect server subnet from wg0.conf (Address = x.x.x.x/yy)
-        $subnetCidr = $this->detectServerSubnetCidr($server); // e.g. 10.7.0.0/24
-
-        // 3) Allocate next free client IP from existing peers
-        $clientIp = $this->nextFreeIpForServer($server, $subnetCidr);
+        // vpn_users.wireguard_address is globally unique and reused across all servers assigned to that VPN user.
+        try {
+            $wireGuardAddress = WireGuardIpAllocator::next();
+        } catch (\RuntimeException $e) {
+            throw new InvalidArgumentException(
+                "Could not allocate global WireGuard address for user {$vpnUser->id}: {$e->getMessage()}",
+                0,
+                $e
+            );
+        }
 
         $vpnUser->forceFill([
             'wireguard_private_key' => $private,
             'wireguard_public_key'  => $public,
-            'wireguard_address'     => $clientIp . '/32',
+            'wireguard_address'     => $wireGuardAddress,
         ])->save();
 
         Log::info('✅ WG: Generated identity for user', [
