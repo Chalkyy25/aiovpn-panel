@@ -92,6 +92,9 @@ class WireGuardService
 
         // vpn_users.wireguard_address is globally unique and reused across all servers assigned to that VPN user.
         $wireGuardAddress = WireGuardIpAllocator::next();
+        if (! str_contains($wireGuardAddress, '/')) {
+            $wireGuardAddress .= '/32';
+        }
 
         $vpnUser->forceFill([
             'wireguard_private_key' => $private,
