@@ -25,7 +25,8 @@ class WireGuardConfigController extends Controller
     }
 
     $servers = VpnServer::query()
-        ->where('enabled', true)
+        ->enabled()
+        ->deployed()
         ->where('is_online', true)
         ->whereNotNull('wg_public_key')
         ->whereNotNull('wg_endpoint_host')
@@ -75,7 +76,8 @@ class WireGuardConfigController extends Controller
 
         /** @var VpnServer $server */
         $server = VpnServer::query()
-            ->where('enabled', true)
+            ->enabled()
+            ->deployed()
             ->whereKey($serverId)
             ->firstOrFail();
 

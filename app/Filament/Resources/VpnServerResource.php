@@ -238,11 +238,14 @@ class VpnServerResource extends Resource
                     ->badge()
                     ->label('Status')
                     ->formatStateUsing(fn ($record) =>
-                        $record->is_online ? 'ONLINE' : 'OFFLINE'
+                        ($record->enabled ?? true)
+                            ? ($record->is_online ? 'ONLINE' : 'OFFLINE')
+                            : 'DISABLED'
                     )
                     ->colors([
-                        'success' => fn ($record) => $record->is_online,
-                        'danger'  => fn ($record) => ! $record->is_online,
+                        'gray'    => fn ($record) => ($record->enabled ?? true) === false,
+                        'success' => fn ($record) => ($record->enabled ?? true) && $record->is_online,
+                        'danger'  => fn ($record) => ($record->enabled ?? true) && ! $record->is_online,
                     ]),
 
                 Tables\Columns\TextColumn::make('active_connections_count')
@@ -314,15 +317,7 @@ class VpnServerResource extends Resource
 
             ])
 
-            ->bulkActions([
-
-                Tables\Actions\BulkActionGroup::make([
-
-                    Tables\Actions\DeleteBulkAction::make(),
-
-                ]),
-
-            ]);
+            ->bulkActions([]);
     }
 
     public static function getEloquentQuery(): Builder

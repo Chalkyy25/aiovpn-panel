@@ -138,7 +138,7 @@ protected static ?int $navigationSort     = 3;
                                         ->live()
                                         ->afterStateUpdated(function (bool $state, callable $set): void {
                                             if ($state) {
-                                                $set('vpn_server_ids', VpnServer::query()->orderBy('name')->pluck('id')->map(fn ($id) => (int) $id)->all());
+                                                $set('vpn_server_ids', VpnServer::query()->enabled()->orderBy('name')->pluck('id')->map(fn ($id) => (int) $id)->all());
                                             }
                                         }),
 
@@ -150,7 +150,7 @@ protected static ?int $navigationSort     = 3;
                                         ->native(false)
                                         ->required()
                                         ->dehydrated(false) // virtual; synced in Pages
-                                        ->options(fn (): array => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
+                                        ->options(fn (): array => VpnServer::query()->enabled()->orderBy('name')->pluck('name', 'id')->all())
                                         ->visible(fn (Get $get) => ! (bool) $get('all_servers')),
                                 ]),
                         ]),

@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 
 class VpnServer extends Model
@@ -156,6 +157,19 @@ public function supportsWireGuard(): bool
     public function scopeOpenVpn($q)   { return $q->where('protocol', 'openvpn'); }
     public function scopeWireGuard($q) { return $q->where('protocol', 'wireguard'); }
     public function scopeOnline($q)    { return $q->where('status', 'online'); } // adjust if you persist differently
+    public function scopeEnabled($q)
+    {
+        if (! Schema::hasColumn($this->getTable(), 'enabled')) {
+            return $q;
+        }
+
+        return $q->where($this->qualifyColumn('enabled'), true);
+    }
+
+    public function scopeDeployed($q)
+    {
+        return $q->whereIn($this->qualifyColumn('deployment_status'), ['deployed', 'success']);
+    }
 
     /* ========= Mutators / Helpers ========= */
 

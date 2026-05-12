@@ -11,7 +11,8 @@ class ServerController extends Controller
     public function index(): JsonResponse
     {
         $servers = VpnServer::query()
-            ->where('enabled', true)
+            ->enabled()
+            ->deployed()
             ->where('is_online', true)
             ->where('supports_wireguard', true)
             ->orderBy('name')

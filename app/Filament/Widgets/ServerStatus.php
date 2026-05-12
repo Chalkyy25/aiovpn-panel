@@ -61,13 +61,18 @@ class ServerStatus extends BaseWidget
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
-                    ->state(fn (VpnServer $record) => $record->is_online)
-                    ->formatStateUsing(fn (bool $state) =>
-                        $state ? 'ONLINE' : 'OFFLINE'
+                    ->state(fn (VpnServer $record) =>
+                        ($record->enabled ?? true)
+                            ? ($record->is_online ? 'ONLINE' : 'OFFLINE')
+                            : 'DISABLED'
                     )
                     ->badge()
-                    ->color(fn (bool $state) =>
-                        $state ? 'success' : 'danger'
+                    ->color(fn (string $state) =>
+                        match ($state) {
+                            'ONLINE' => 'success',
+                            'DISABLED' => 'gray',
+                            default => 'danger',
+                        }
                     ),
 
                 /*

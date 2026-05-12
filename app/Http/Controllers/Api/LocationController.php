@@ -10,7 +10,8 @@ class LocationController extends Controller
     public function index()
     {
         $servers = VpnServer::query()
-            ->where('enabled', true)
+            ->enabled()
+            ->deployed()
             ->orderBy('country_code')
             ->orderBy('city')
             ->get();

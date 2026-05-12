@@ -20,7 +20,10 @@ class GenericStealthConfigController extends Controller
      */
     public function servers(Request $request): JsonResponse
     {
-        $servers = VpnServer::where('status', 'active')
+        $servers = VpnServer::query()
+            ->enabled()
+            ->deployed()
+            ->where('status', 'active')
             ->select(['id', 'name', 'hostname', 'country', 'city', 'server_type'])
             ->orderBy('country')
             ->orderBy('name')
@@ -45,7 +48,10 @@ class GenericStealthConfigController extends Controller
      */
     public function config(Request $request, int $serverId)
     {
-        $server = VpnServer::where('id', $serverId)
+        $server = VpnServer::query()
+            ->enabled()
+            ->deployed()
+            ->where('id', $serverId)
             ->where('status', 'active')
             ->first();
 
@@ -81,7 +87,10 @@ class GenericStealthConfigController extends Controller
      */
     public function configInfo(Request $request, int $serverId): JsonResponse
     {
-        $server = VpnServer::where('id', $serverId)
+        $server = VpnServer::query()
+            ->enabled()
+            ->deployed()
+            ->where('id', $serverId)
             ->where('status', 'active')
             ->first();
 

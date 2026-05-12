@@ -23,10 +23,10 @@ class MobileProfileController extends Controller
 
         // If you assign all servers to all users, the pivot may be empty.
         // Fall back to returning all enabled servers.
-        $serverQuery = $user->vpnServers()->where('vpn_servers.enabled', true);
+        $serverQuery = $user->vpnServers()->enabled()->deployed();
 
         if ($serverQuery->count() === 0) {
-            $serverQuery = VpnServer::query()->where('enabled', true);
+            $serverQuery = VpnServer::query()->enabled()->deployed();
         }
 
         $servers = $serverQuery
@@ -88,12 +88,12 @@ class MobileProfileController extends Controller
         /** @var VpnServer|null $server */
         if ($serverId) {
             // If all servers are available to all users, allow selecting any enabled server.
-            $server = VpnServer::query()->where('enabled', true)->whereKey($serverId)->first();
+            $server = VpnServer::query()->enabled()->deployed()->whereKey($serverId)->first();
         } else {
-            $server = $user->vpnServers()->where('vpn_servers.enabled', true)->first();
+            $server = $user->vpnServers()->enabled()->deployed()->first();
 
             if (!$server) {
-                $server = VpnServer::query()->where('enabled', true)->first();
+                $server = VpnServer::query()->enabled()->deployed()->first();
             }
         }
 
@@ -142,7 +142,7 @@ class MobileProfileController extends Controller
         /** @var VpnServer $vpnServer */
         $vpnServer = VpnServer::findOrFail($data['server_id']);
 
-        if (!($vpnServer->enabled ?? false)) {
+        if (!($vpnServer->enabled ?? false) || !in_array($vpnServer->deployment_status, ['deployed', 'success'], true)) {
             return response('Server is disabled.', 403);
         }
 

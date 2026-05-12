@@ -138,6 +138,7 @@ class VpnUserResource extends Resource
                                             $set(
                                                 'vpn_server_ids',
                                                 VpnServer::query()
+                                                    ->enabled()
                                                     ->orderBy('name')
                                                     ->pluck('id')
                                                     ->map(fn ($id) => (int) $id)
@@ -154,7 +155,7 @@ class VpnUserResource extends Resource
                                         ->native(false)
                                         ->required()
                                         ->dehydrated(false)
-                                        ->options(fn (): array => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
+                                        ->options(fn (): array => VpnServer::query()->enabled()->orderBy('name')->pluck('name', 'id')->all())
                                         ->visible(fn (Get $get) => ! (bool) $get('all_servers'))
                                         ->helperText('Controls which servers this user can connect to.'),
                                 ]),
