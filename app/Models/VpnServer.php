@@ -172,9 +172,10 @@ class VpnServer extends Model
     {
         $transport = strtolower((string) ($this->transport ?? ''));
         $port = (int) ($this->port ?? 0);
+        $supportsOpenVpn = $this->supportsOpenVpn();
 
-        return ($this->supportsOpenVpn() && $transport === 'udp')
-            || $port === 1194
+        return ($supportsOpenVpn && $transport === 'udp')
+            || ($supportsOpenVpn && $port === 1194)
             || $this->protocolContains('openvpn');
     }
 
@@ -182,11 +183,12 @@ class VpnServer extends Model
     {
         $transport = strtolower((string) ($this->transport ?? ''));
         $port = (int) ($this->port ?? 0);
+        $supportsOpenVpn = $this->supportsOpenVpn();
 
-        return ($this->supportsOpenVpn() && ! empty($this->tcp_mgmt_port ?? null))
+        return ($supportsOpenVpn && ! empty($this->tcp_mgmt_port ?? null))
             || $this->protocolContains('stealth')
-            || ($this->supportsOpenVpn() && $transport === 'tcp')
-            || $port === 443;
+            || ($supportsOpenVpn && $transport === 'tcp')
+            || ($supportsOpenVpn && $port === 443);
     }
 
     public function displayCapabilities(): array
@@ -223,7 +225,7 @@ class VpnServer extends Model
 
     private function protocolContains(string $needle): bool
     {
-        return str_contains(strtolower((string) $this->protocol), strtolower($needle));
+        return str_contains(strtolower((string) $this->protocol), $needle);
     }
 
     public function connections(): HasMany
