@@ -14,17 +14,23 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * @deprecated Legacy provisioning path. Prefer WireGuardService::ensurePeerForUser()
+ *             so WireGuard identity/peer provisioning stays centralized.
+ */
 class AddWireGuardPeer implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, ExecutesRemoteCommands, Batchable;
+    use Batchable, Dispatchable, ExecutesRemoteCommands, InteractsWithQueue, Queueable, SerializesModels;
 
     protected VpnUser $vpnUser;
+
     protected ?VpnServer $server;
 
     /** summary-only logging by default */
     protected bool $quiet = true;
 
-    public int $tries   = 2;
+    public int $tries = 2;
+
     public int $timeout = 120;
 
     public function __construct(VpnUser $vpnUser, ?VpnServer $server = null)
@@ -34,13 +40,14 @@ class AddWireGuardPeer implements ShouldQueue
 
         // Only eager-load servers when none is provided
         $this->vpnUser = $server ? $vpnUser : $vpnUser->load('vpnServers');
-        $this->server  = $server;
+        $this->server = $server;
     }
 
     /** Allow callers to switch verbosity */
     public function setQuiet(bool $quiet = true): self
     {
         $this->quiet = $quiet;
+
         return $this;
     }
 
@@ -48,29 +55,31 @@ class AddWireGuardPeer implements ShouldQueue
     {
         return [
             'wg',
-            'user:' . $this->vpnUser->id,
-            'server:' . ($this->server ? $this->server->id : 'all'), // ← fix null deref
+            'user:'.$this->vpnUser->id,
+            'server:'.($this->server ? $this->server->id : 'all'), // ← fix null deref
         ];
     }
 
     public function handle(): void
     {
-        $u    = $this->vpnUser;
-        $pub  = $u->wireguard_public_key ?: null;
-        $addr = $u->wireguard_address ? trim((string)$u->wireguard_address) : null;
+        $u = $this->vpnUser;
+        $pub = $u->wireguard_public_key ?: null;
+        $addr = $u->wireguard_address ? trim((string) $u->wireguard_address) : null;
 
-        if (!$pub || !$addr) {
+        if (! $pub || ! $addr) {
             Log::warning("⚠️ [WG] Skipping {$u->username}: missing public_key or address.");
+
             return;
         }
 
         /** @var Collection<int,VpnServer> $servers */
         $servers = $this->server ? collect([$this->server]) : collect($u->vpnServers ?? []);
         $servers = $servers->filter();               // drop nulls just in case
-        $total   = $servers->count();
+        $total = $servers->count();
 
         if ($total === 0) {
             Log::warning("⚠️ [WG] No servers linked to {$u->username}.");
+
             return;
         }
 
@@ -80,18 +89,18 @@ class AddWireGuardPeer implements ShouldQueue
         }
 
         // Single summary line per user
-        //if ($ok === $total) {
-            //Log::info("✅ [WG] {$u->username}: {$ok}/{$total} server(s) updated.");
-      //  } else {
-            //Log::warning("⚠️ [WG] {$u->username}: partial success {$ok}/{$total}.");
-        //}
+        // if ($ok === $total) {
+        // Log::info("✅ [WG] {$u->username}: {$ok}/{$total} server(s) updated.");
+        //  } else {
+        // Log::warning("⚠️ [WG] {$u->username}: partial success {$ok}/{$total}.");
+        // }
     }
 
     protected function addPeerToServer(VpnServer $server, string $publicKey, string $address): bool
     {
         // Normalize to /32
         $ipOnly = preg_replace('/\/\d+$/', '', $address);
-        $ip32   = "{$ipOnly}/32";
+        $ip32 = "{$ipOnly}/32";
 
         $script = $this->buildAddPeerScript($publicKey, $ip32);
 
@@ -99,12 +108,13 @@ class AddWireGuardPeer implements ShouldQueue
         $res = $this->executeRemoteCommand($server, $script);
 
         if (($res['status'] ?? 1) !== 0) {
-            $out = trim(implode("\n", (array)($res['output'] ?? [])));
+            $out = trim(implode("\n", (array) ($res['output'] ?? [])));
             Log::error("❌ [WG] Add/update failed on {$server->name} ({$server->ip_address}). exit={$res['status']}\n{$out}");
+
             return false;
         }
 
-        if (!$this->quiet) {
+        if (! $this->quiet) {
             Log::info("✅ [WG] {$this->vpnUser->username} on {$server->name} ({$ip32})");
         }
 
@@ -112,11 +122,11 @@ class AddWireGuardPeer implements ShouldQueue
     }
 
     private function buildAddPeerScript(string $publicKey, string $ip32): string
-{
-    $PUB = escapeshellarg($publicKey);
-    $IP  = escapeshellarg($ip32);
+    {
+        $PUB = escapeshellarg($publicKey);
+        $IP = escapeshellarg($ip32);
 
-    return <<<BASH
+        return <<<BASH
 set -euo pipefail
 IFACE="wg0"
 PUB={$PUB}
@@ -146,5 +156,5 @@ wg-quick save "\$IFACE"
 
 echo "OK"
 BASH;
-}
+    }
 }
