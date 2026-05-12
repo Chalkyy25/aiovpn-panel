@@ -225,9 +225,11 @@ class VpnServerResource extends Resource
 
                 Tables\Columns\TextColumn::make('protocol')
                     ->badge()
-                    ->color(fn (string $state) => match ($state) {
-                        'wireguard' => 'success',
-                        'openvpn' => 'warning',
+                    ->state(fn (VpnServer $record) => $record->displayCapabilitiesLabel())
+                    ->color(fn (VpnServer $record) => match (true) {
+                        $record->supportsWireGuard() && $record->supportsOpenVpn() => 'primary',
+                        $record->supportsWireGuard() => 'success',
+                        $record->supportsOpenVpn() => 'warning',
                         default => 'gray',
                     }
                     ),

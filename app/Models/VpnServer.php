@@ -36,6 +36,9 @@ class VpnServer extends Model
         'ssh_user',
         'port',            // OpenVPN port (udp/tcp)
         'mgmt_port',
+        'tcp_mgmt_port',
+        'supports_openvpn',
+        'supports_wireguard',
         'transport',       // 'udp' | 'tcp' (null for WireGuard)
         'dns',
         'enable_ipv6',
@@ -93,6 +96,9 @@ class VpnServer extends Model
         'wg_port' => 'integer',
         'port' => 'integer',
         'mgmt_port' => 'integer',
+        'tcp_mgmt_port' => 'integer',
+        'supports_openvpn' => 'boolean',
+        'supports_wireguard' => 'boolean',
         // @deprecated  Read via withCount('activeConnections') in UI instead.
         'online_users' => 'integer',
         'protocol' => 'string',
@@ -129,10 +135,103 @@ class VpnServer extends Model
         return $this->hasMany(\App\Models\WireguardPeer::class, 'vpn_server_id');
     }
 
+    public function supportsOpenVpn(): bool
+    {
+        return (bool) ($this->supports_openvpn ?? false)
+            || $this->protocolContains('openvpn');
+    }
+
     public function supportsWireGuard(): bool
     {
-        // "Has WG facts" = server can be used for WG
-        return ! empty($this->wg_public_key) && ! empty($this->wg_port);
+        $hasWireGuardFacts = ! empty($this->wg_public_key) && ! empty($this->wg_port);
+
+        return (bool) ($this->supports_wireguard ?? false)
+            || $this->protocolContains('wireguard')
+            || $hasWireGuardFacts;
+    }
+
+    public function supportsStealth(): bool
+    {
+        if ($this->protocolContains('stealth')) {
+            return true;
+        }
+
+        if (! empty($this->tcp_mgmt_port ?? null)) {
+            return true;
+        }
+
+        if (! $this->supportsOpenVpn()) {
+            return false;
+        }
+
+        $transport = strtolower((string) ($this->transport ?? ''));
+        $port = (int) ($this->port ?? 0);
+
+        return $transport === 'tcp' || $port === 443;
+    }
+
+    public function supportsUdpOpenVpn(): bool
+    {
+        $transport = strtolower((string) ($this->transport ?? ''));
+        $port = (int) ($this->port ?? 0);
+        $protocol = strtolower((string) $this->protocol);
+        $supportsOpenVpn = $this->supportsOpenVpn();
+        $protocolImpliesUdpOpenVpn = str_contains($protocol, 'openvpn')
+            && ! str_contains($protocol, 'stealth')
+            && ! str_contains($protocol, 'tcp');
+
+        return ($supportsOpenVpn && $transport === 'udp')
+            || ($supportsOpenVpn && $port === 1194)
+            || $protocolImpliesUdpOpenVpn;
+    }
+
+    public function supportsTcpOpenVpn(): bool
+    {
+        $transport = strtolower((string) ($this->transport ?? ''));
+        $port = (int) ($this->port ?? 0);
+        $supportsOpenVpn = $this->supportsOpenVpn();
+
+        return ($supportsOpenVpn && ! empty($this->tcp_mgmt_port ?? null))
+            || $this->protocolContains('stealth')
+            || ($supportsOpenVpn && $transport === 'tcp')
+            || ($supportsOpenVpn && $port === 443);
+    }
+
+    public function displayCapabilities(): array
+    {
+        $capabilities = [];
+
+        if ($this->supportsWireGuard()) {
+            $capabilities[] = 'WireGuard';
+        }
+
+        if ($this->supportsUdpOpenVpn()) {
+            $capabilities[] = 'OpenVPN UDP';
+        }
+
+        if ($this->supportsTcpOpenVpn()) {
+            $capabilities[] = 'OpenVPN TCP/Stealth';
+        }
+
+        return $capabilities;
+    }
+
+    public function displayCapabilitiesLabel(): string
+    {
+        $labels = array_map(function (string $capability): string {
+            if ($capability === 'OpenVPN TCP/Stealth') {
+                return $this->supportsStealth() ? 'Stealth' : 'OpenVPN TCP';
+            }
+
+            return $capability;
+        }, $this->displayCapabilities());
+
+        return implode(' + ', $labels);
+    }
+
+    private function protocolContains(string $needle): bool
+    {
+        return str_contains(strtolower((string) $this->protocol), $needle);
     }
 
     public function connections(): HasMany
@@ -214,11 +313,13 @@ class VpnServer extends Model
 
     public function isWireGuard(): bool
     {
+        // @legacy Prefer supportsWireGuard() for capability-based checks.
         return strtolower((string) $this->protocol) === 'wireguard';
     }
 
     public function isOpenVPN(): bool
     {
+        // @legacy Prefer supportsOpenVpn() for capability-based checks.
         return strtolower((string) $this->protocol) === 'openvpn';
     }
 
