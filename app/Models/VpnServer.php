@@ -175,12 +175,12 @@ class VpnServer extends Model
             return $q;
         }
 
-        return $q->where($this->qualifyColumn('enabled'), true);
+        return $q->where($q->getModel()->qualifyColumn('enabled'), true);
     }
 
     public function scopeDeployed($q)
     {
-        return $q->whereIn($this->qualifyColumn('deployment_status'), ['deployed', 'success']);
+        return $q->whereIn($q->getModel()->qualifyColumn('deployment_status'), ['deployed', 'success']);
     }
 
     public function isAvailableForApp(): bool
