@@ -17,40 +17,40 @@ class WireGuardConfigController extends Controller
      * List WireGuard-capable servers (for app server picker).
      */
     public function servers(Request $request)
-{
-    $authUser = $request->user();
+    {
+        $authUser = $request->user();
 
-    if (!($authUser instanceof VpnUser)) {
-        return response()->json(['error' => 'Unauthorized'], 401);
+        if (! ($authUser instanceof VpnUser)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $servers = VpnServer::query()
+            ->enabled()
+            ->deployed()
+            ->where('is_online', true)
+            ->whereNotNull('wg_public_key')
+            ->whereNotNull('wg_endpoint_host')
+            ->orderBy('country_code')
+            ->orderBy('city')
+            ->get()
+            ->map(fn (VpnServer $s) => [
+                'id' => (int) $s->id,
+                'name' => $s->name,
+                'ip' => $s->wg_endpoint_host ?: $s->ip_address,
+                'country_code' => $s->country_code,
+                'city' => $s->city,
+                'label' => $s->display_location,
+                'endpoint' => $s->wgEndpoint(),
+                'port' => (int) ($s->wg_port ?: 51820),
+                'mtu' => (int) ($s->mtu ?: 1340),
+                'tags' => $s->tags,
+            ])
+            ->values();
+
+        return response()->json([
+            'data' => $servers,
+        ]);
     }
-
-    $servers = VpnServer::query()
-        ->enabled()
-        ->deployed()
-        ->where('is_online', true)
-        ->whereNotNull('wg_public_key')
-        ->whereNotNull('wg_endpoint_host')
-        ->orderBy('country_code')
-        ->orderBy('city')
-        ->get()
-        ->map(fn (VpnServer $s) => [
-            'id'           => (int) $s->id,
-            'name'         => $s->name,
-            'ip'           => $s->wg_endpoint_host ?: $s->ip_address,
-            'country_code' => $s->country_code,
-            'city'         => $s->city,
-            'label'        => $s->display_location,
-            'endpoint'     => $s->wgEndpoint(),
-            'port'         => (int) ($s->wg_port ?: 51820),
-            'mtu'          => (int) ($s->mtu ?: 1340),
-            'tags'         => $s->tags,
-        ])
-        ->values();
-
-    return response()->json([
-        'data' => $servers,
-    ]);
-}
 
     /**
      * Return a ready-to-import WireGuard config for the authenticated user.
@@ -60,11 +60,11 @@ class WireGuardConfigController extends Controller
     public function config(Request $request)
     {
         $authUser = $request->user();
-        if (!($authUser instanceof VpnUser)) {
+        if (! ($authUser instanceof VpnUser)) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        if (!$authUser->is_active || $authUser->isExpired()) {
+        if (! $authUser->is_active || $authUser->isExpired()) {
             return response()->json(['error' => 'Account inactive or expired'], 403);
         }
 
@@ -81,7 +81,7 @@ class WireGuardConfigController extends Controller
             ->whereKey($serverId)
             ->firstOrFail();
 
-        if (!$server->hasWireGuard()) {
+        if (! $server->hasWireGuard()) {
             return response()->json(['error' => 'Server has no WireGuard enabled'], 422);
         }
 
@@ -93,8 +93,8 @@ class WireGuardConfigController extends Controller
         $config = $this->wg->buildClientConfig($server, $peer);
 
         return response($config, 200, [
-            'Content-Type'        => 'text/plain',
-            'Content-Disposition' => 'attachment; filename="aiovpn-wg-' . $server->id . '.conf"',
+            'Content-Type' => 'text/plain',
+            'Content-Disposition' => 'attachment; filename="aiovpn-wg-'.$server->id.'.conf"',
         ]);
     }
 }

@@ -20,10 +20,13 @@ class VpnUserResource extends Resource
 {
     protected static ?string $model = VpnUser::class;
 
-    protected static ?string $navigationIcon  = 'heroicon-o-key';
+    protected static ?string $navigationIcon = 'heroicon-o-key';
+
     protected static ?string $navigationLabel = 'VPN Users';
+
     protected static ?string $navigationGroup = null;
-    protected static ?int    $navigationSort  = 2;
+
+    protected static ?int $navigationSort = 2;
 
     public static function getEloquentQuery(): Builder
     {
@@ -71,8 +74,8 @@ class VpnUserResource extends Resource
                                             ->get()
                                             ->mapWithKeys(function (Package $p): array {
                                                 $months = (int) $p->duration_months;
-                                                $dev    = (int) $p->max_connections;
-                                                $total  = (int) $p->price_credits;
+                                                $dev = (int) $p->max_connections;
+                                                $total = (int) $p->price_credits;
 
                                                 return [
                                                     $p->id => sprintf(
@@ -168,7 +171,9 @@ class VpnUserResource extends Resource
                                 ->label('Expires')
                                 ->content(function (Get $get): string {
                                     $expires = $get('expires_at');
-                                    if (blank($expires)) return 'Never';
+                                    if (blank($expires)) {
+                                        return 'Never';
+                                    }
 
                                     try {
                                         return \Carbon\Carbon::parse($expires)->format('d M Y');
@@ -179,18 +184,22 @@ class VpnUserResource extends Resource
 
                             Forms\Components\Placeholder::make('credits_current')
                                 ->label('Current credits')
-                                ->content(fn (): string => (string) ((int) (auth()->user()?->credits ?? 0)) . ' credits'),
+                                ->content(fn (): string => (string) ((int) (auth()->user()?->credits ?? 0)).' credits'),
 
                             Forms\Components\Placeholder::make('credits_deducting')
                                 ->label('Deducting')
                                 ->content(function (Get $get): string {
                                     $packageId = (int) ($get('package_id') ?? 0);
-                                    if ($packageId <= 0) return '—';
+                                    if ($packageId <= 0) {
+                                        return '—';
+                                    }
 
                                     $package = Package::query()->find($packageId);
-                                    if (! $package) return '—';
+                                    if (! $package) {
+                                        return '—';
+                                    }
 
-                                    return (string) ((int) $package->price_credits) . ' credits';
+                                    return (string) ((int) $package->price_credits).' credits';
                                 }),
 
                             Forms\Components\Placeholder::make('credits_remaining')
@@ -198,12 +207,14 @@ class VpnUserResource extends Resource
                                 ->content(function (Get $get): string {
                                     $current = (int) (auth()->user()?->credits ?? 0);
                                     $packageId = (int) ($get('package_id') ?? 0);
-                                    if ($packageId <= 0) return (string) $current . ' credits';
+                                    if ($packageId <= 0) {
+                                        return (string) $current.' credits';
+                                    }
 
                                     $package = Package::query()->find($packageId);
                                     $cost = (int) ($package?->price_credits ?? 0);
 
-                                    return (string) ($current - $cost) . ' credits';
+                                    return (string) ($current - $cost).' credits';
                                 }),
                         ]),
                 ]),
@@ -242,7 +253,7 @@ class VpnUserResource extends Resource
                         $days = now()->diffInDays($expires, false);
 
                         if ($days > 0) {
-                            return "Expires in {$days} day" . ($days === 1 ? '' : 's');
+                            return "Expires in {$days} day".($days === 1 ? '' : 's');
                         }
 
                         if ($days === 0) {
@@ -250,7 +261,8 @@ class VpnUserResource extends Resource
                         }
 
                         $days = abs($days);
-                        return "Expired {$days} day" . ($days === 1 ? '' : 's') . ' ago';
+
+                        return "Expired {$days} day".($days === 1 ? '' : 's').' ago';
                     }),
 
                 Tables\Columns\TextColumn::make('plain_password')
@@ -351,8 +363,8 @@ class VpnUserResource extends Resource
                                 ->get()
                                 ->mapWithKeys(function (Package $p): array {
                                     $months = (int) $p->duration_months;
-                                    $dev    = (int) $p->max_connections;
-                                    $total  = (int) $p->price_credits;
+                                    $dev = (int) $p->max_connections;
+                                    $total = (int) $p->price_credits;
 
                                     return [
                                         $p->id => sprintf(
@@ -386,7 +398,7 @@ class VpnUserResource extends Resource
 
                         $record->update([
                             'max_connections' => (int) $package->max_connections,
-                            'expires_at'      => $months <= 0 ? null : $base->copy()->addMonthsNoOverflow($months),
+                            'expires_at' => $months <= 0 ? null : $base->copy()->addMonthsNoOverflow($months),
                         ]);
 
                         Notification::make()
@@ -410,9 +422,9 @@ class VpnUserResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListVpnUsers::route('/'),
+            'index' => Pages\ListVpnUsers::route('/'),
             'create' => Pages\CreateVpnUser::route('/create'),
-            'edit'   => Pages\EditVpnUser::route('/{record}/edit'),
+            'edit' => Pages\EditVpnUser::route('/{record}/edit'),
         ];
     }
 }

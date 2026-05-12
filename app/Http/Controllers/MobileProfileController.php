@@ -35,39 +35,39 @@ class MobileProfileController extends Controller
                 $raw = strtolower((string) $s->protocol); // "udp", "tcp", "wireguard", etc.
 
                 // Normalise the protocol type for the app
-                $type      = in_array($raw, ['udp', 'tcp'], true) ? 'openvpn' : ($raw ?: 'openvpn');
+                $type = in_array($raw, ['udp', 'tcp'], true) ? 'openvpn' : ($raw ?: 'openvpn');
                 $transport = in_array($raw, ['udp', 'tcp'], true) ? $raw : null;
 
                 // Geo fields from vpn_servers
                 $countryCode = $s->country_code ?: null;
-                $city        = $s->city ?: null;
+                $city = $s->city ?: null;
 
                 $countryName = $countryCode
                     ? $this->mapCountryName($countryCode)
                     : null;
 
                 return [
-                    'id'           => (int) $s->id,
-                    'name'         => $s->name ?? ('Server ' . $s->id),
-                    'ip'           => $s->ip_address ?? $s->ip ?? null,
-                    'protocol'     => $type,
-                    'transport'    => $transport,
+                    'id' => (int) $s->id,
+                    'name' => $s->name ?? ('Server '.$s->id),
+                    'ip' => $s->ip_address ?? $s->ip ?? null,
+                    'protocol' => $type,
+                    'transport' => $transport,
 
                     // geo
                     'country_code' => $countryCode,   // e.g. "GB"
                     'country_name' => $countryName,   // e.g. "United Kingdom"
-                    'country'      => $countryName,   // alias used by the app
-                    'city'         => $city,
+                    'country' => $countryName,   // alias used by the app
+                    'city' => $city,
                 ];
             })
             ->values();
 
         return response()->json([
-            'id'       => (int) $user->id,
+            'id' => (int) $user->id,
             'username' => $user->username,
-            'expires'  => $user->expires_at,
+            'expires' => $user->expires_at,
             'max_conn' => (int) $user->max_connections,
-            'servers'  => $servers,
+            'servers' => $servers,
         ]);
     }
 
@@ -92,20 +92,20 @@ class MobileProfileController extends Controller
         } else {
             $server = $user->vpnServers()->enabled()->deployed()->first();
 
-            if (!$server) {
+            if (! $server) {
                 $server = VpnServer::query()->enabled()->deployed()->first();
             }
         }
 
-        if (!$server) {
-            return response("No VPN server assigned to this user", 404);
+        if (! $server) {
+            return response('No VPN server assigned to this user', 404);
         }
 
         try {
             $config = VpnConfigBuilder::generateOpenVpnConfigString($user, $server);
         } catch (\Throwable $e) {
             return response(
-                "Could not build config from {$server->ip_address}: " . $e->getMessage(),
+                "Could not build config from {$server->ip_address}: ".$e->getMessage(),
                 502
             );
         }
@@ -113,9 +113,9 @@ class MobileProfileController extends Controller
         $filename = "aio-{$user->username}-{$server->id}.ovpn";
 
         return response($config, 200, [
-            'Content-Type'        => 'application/x-openvpn-profile',
+            'Content-Type' => 'application/x-openvpn-profile',
             'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-            'Cache-Control'       => 'no-store',
+            'Cache-Control' => 'no-store',
         ]);
     }
 
@@ -126,14 +126,14 @@ class MobileProfileController extends Controller
     public function ovpn(Request $request): Response
     {
         $data = $request->validate([
-            'user_id'   => 'required|integer',
+            'user_id' => 'required|integer',
             'server_id' => 'required|integer',
-            'variant'   => 'nullable|string|in:unified,stealth,udp', // Support variant selection
+            'variant' => 'nullable|string|in:unified,stealth,udp', // Support variant selection
         ]);
 
         /** @var VpnUser|null $authed */
         $authed = $request->user();
-        if (!$authed || (int) $authed->id !== (int) $data['user_id']) {
+        if (! $authed || (int) $authed->id !== (int) $data['user_id']) {
             return response('Unauthorized', 401);
         }
 
@@ -142,7 +142,7 @@ class MobileProfileController extends Controller
         /** @var VpnServer $vpnServer */
         $vpnServer = VpnServer::findOrFail($data['server_id']);
 
-        if (!($vpnServer->enabled ?? false) || !in_array($vpnServer->deployment_status, ['deployed', 'success'], true)) {
+        if (! ($vpnServer->enabled ?? false) || ! in_array($vpnServer->deployment_status, ['deployed', 'success'], true)) {
             return response('Server is disabled.', 403);
         }
 
@@ -156,10 +156,10 @@ class MobileProfileController extends Controller
             $ovpn = VpnConfigBuilder::generateOpenVpnConfigString($vpnUser, $vpnServer, $variant);
         } catch (\Throwable $e) {
             Log::error('OVPN build failed', [
-                'u'       => $vpnUser->id,
-                's'       => $vpnServer->id,
+                'u' => $vpnUser->id,
+                's' => $vpnServer->id,
                 'variant' => $variant,
-                'err'     => $e->getMessage(),
+                'err' => $e->getMessage(),
             ]);
 
             return response('Failed to generate config', 502);
@@ -167,27 +167,27 @@ class MobileProfileController extends Controller
 
         // quick sanity checks (also visible in server logs)
         $checks = [
-            'bytes'      => strlen($ovpn),
+            'bytes' => strlen($ovpn),
             'has_remote' => (bool) preg_match('/^remote\s+\S+\s+\d+/mi', $ovpn),
-            'has_ca'     => str_contains($ovpn, '<ca>'),
-            'has_ta'     => str_contains($ovpn, '<tls-auth>'),
-            'key_dir'    => str_contains($ovpn, 'key-direction'),
-            'auth_up'    => str_contains($ovpn, 'auth-user-pass'),
+            'has_ca' => str_contains($ovpn, '<ca>'),
+            'has_ta' => str_contains($ovpn, '<tls-auth>'),
+            'key_dir' => str_contains($ovpn, 'key-direction'),
+            'auth_up' => str_contains($ovpn, 'auth-user-pass'),
         ];
 
         Log::info('OVPN served', ['u' => $vpnUser->id, 's' => $vpnServer->id] + $checks);
 
         return response($ovpn, 200, [
-            'Content-Type'  => 'text/plain; charset=utf-8',
+            'Content-Type' => 'text/plain; charset=utf-8',
             'Cache-Control' => 'no-cache, no-store, must-revalidate',
-            'Pragma'        => 'no-cache',
-            'Expires'       => '0',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
         ]);
     }
 
     private function mapCountryName(?string $code): ?string
     {
-        if (!$code) {
+        if (! $code) {
             return null;
         }
 
