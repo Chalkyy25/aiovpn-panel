@@ -58,8 +58,8 @@ class CreateVpnUser extends CreateRecord
 
                     Log::channel('vpn')->info('FILAMENT_CREATE_VPN_USER: WG peer ensured', [
                         'vpn_user_id' => $this->record->id,
-                        'username'    => $this->record->username,
-                        'server_id'   => $server->id,
+                        'username' => $this->record->username,
+                        'server_id' => $server->id,
                         'server_name' => $server->name,
                     ]);
                 } catch (\Throwable $e) {
@@ -67,10 +67,10 @@ class CreateVpnUser extends CreateRecord
 
                     Log::channel('vpn')->error('FILAMENT_CREATE_VPN_USER: WG peer provisioning failed', [
                         'vpn_user_id' => $this->record->id,
-                        'username'    => $this->record->username,
-                        'server_id'   => $server->id,
+                        'username' => $this->record->username,
+                        'server_id' => $server->id,
                         'server_name' => $server->name,
-                        'error'       => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }
@@ -88,7 +88,7 @@ class CreateVpnUser extends CreateRecord
         Notification::make()
             ->success()
             ->title('VPN user created')
-            ->body("Username: {$this->record->username}\nPassword: " . ($this->record->plain_password ?? '******'))
+            ->body("Username: {$this->record->username}\nPassword: ".($this->record->plain_password ?? '******'))
             ->send();
     }
 
