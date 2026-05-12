@@ -31,6 +31,15 @@ class EditVpnServer extends EditRecord
                 ->label('Disable Server')
                 ->icon('heroicon-o-pause-circle')
                 ->color('warning')
+                ->visible(function (): bool {
+                    $columns = array_flip(Schema::getColumnListing('vpn_servers'));
+
+                    if (! isset($columns['enabled'])) {
+                        return true;
+                    }
+
+                    return (bool) ($this->record->enabled ?? false);
+                })
                 ->requiresConfirmation()
                 ->modalHeading('Disable server?')
                 ->modalDescription('This keeps history but removes the server from active use.')
@@ -92,6 +101,74 @@ class EditVpnServer extends EditRecord
                         ->success()
                         ->title('Server disabled')
                         ->body('The server is now archived from active use while history is preserved.')
+                        ->send();
+                }),
+
+            Actions\Action::make('enableServer')
+                ->label('Enable Server')
+                ->icon('heroicon-o-play-circle')
+                ->color('success')
+                ->visible(function (): bool {
+                    $columns = array_flip(Schema::getColumnListing('vpn_servers'));
+
+                    if (! isset($columns['enabled'])) {
+                        return false;
+                    }
+
+                    return ! (bool) ($this->record->enabled ?? false);
+                })
+                ->requiresConfirmation()
+                ->modalHeading('Enable server?')
+                ->modalDescription('This makes the server available to apps and user assignments again. Monitoring will confirm live status.')
+                ->action(function (): void {
+                    $columns = array_flip(Schema::getColumnListing('vpn_servers'));
+                    $updates = [];
+
+                    if (isset($columns['enabled'])) {
+                        $updates['enabled'] = true;
+                    }
+
+                    if (isset($columns['monitoring_enabled'])) {
+                        $updates['monitoring_enabled'] = true;
+                    }
+
+                    if (isset($columns['status'])) {
+                        $updates['status'] = 'online';
+                    }
+
+                    try {
+                        $this->record->forceFill($updates)->save();
+                    } catch (QueryException $exception) {
+                        // Legacy enum schemas may not support "online" and still expect "active".
+                        $isStatusEnumFailure = str_contains(strtolower($exception->getMessage()), 'status')
+                            && str_contains(strtolower($exception->getMessage()), 'online');
+
+                        if (array_key_exists('status', $updates) && $isStatusEnumFailure) {
+                            Log::warning('Failed to set VPN server status to online during enable; retrying with active.', [
+                                'server_id' => $this->record->id,
+                                'error' => $exception->getMessage(),
+                            ]);
+                            $updates['status'] = 'active';
+
+                            try {
+                                $this->record->forceFill($updates)->save();
+                            } catch (QueryException $fallbackException) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Failed to enable server')
+                                    ->body('The server state could not be updated. Please try again.')
+                                    ->send();
+
+                                throw $fallbackException;
+                            }
+                        } else {
+                            throw $exception;
+                        }
+                    }
+
+                    Notification::make()
+                        ->success()
+                        ->title('Server enabled.')
                         ->send();
                 }),
         ];
