@@ -68,7 +68,18 @@ class EditVpnServer extends EditRecord
                                 'error' => $exception->getMessage(),
                             ]);
                             $updates['status'] = 'inactive';
-                            $this->record->forceFill($updates)->save();
+
+                            try {
+                                $this->record->forceFill($updates)->save();
+                            } catch (QueryException $fallbackException) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Failed to disable server')
+                                    ->body('The server state could not be updated. Please try again.')
+                                    ->send();
+
+                                throw $fallbackException;
+                            }
                         }
                     }
 

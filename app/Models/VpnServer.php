@@ -171,9 +171,7 @@ class VpnServer extends Model
 
     public function scopeEnabled($q)
     {
-        self::$hasEnabledColumn ??= Schema::hasColumn($this->getTable(), 'enabled');
-
-        if (! self::$hasEnabledColumn) {
+        if (! self::hasEnabledColumn()) {
             return $q;
         }
 
@@ -187,11 +185,16 @@ class VpnServer extends Model
 
     public function isAvailableForApp(): bool
     {
-        self::$hasEnabledColumn ??= Schema::hasColumn($this->getTable(), 'enabled');
-
-        $isEnabled = self::$hasEnabledColumn ? (bool) ($this->enabled ?? false) : true;
+        $isEnabled = self::hasEnabledColumn() ? (bool) ($this->enabled ?? false) : true;
 
         return $isEnabled && in_array((string) $this->deployment_status, ['deployed', 'success'], true);
+    }
+
+    protected static function hasEnabledColumn(): bool
+    {
+        self::$hasEnabledColumn ??= Schema::hasColumn((new self)->getTable(), 'enabled');
+
+        return self::$hasEnabledColumn;
     }
 
     /* ========= Mutators / Helpers ========= */
