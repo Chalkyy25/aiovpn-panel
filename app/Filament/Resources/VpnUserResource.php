@@ -21,9 +21,12 @@ class VpnUserResource extends Resource
     protected static ?string $model = VpnUser::class;
 
     protected static ?string $navigationGroup = 'Customers';
-protected static ?string $navigationLabel = 'VPN Users';
-protected static ?string $navigationIcon  = 'heroicon-o-key';
-protected static ?int $navigationSort     = 3;
+
+    protected static ?string $navigationLabel = 'VPN Users';
+
+    protected static ?string $navigationIcon = 'heroicon-o-key';
+
+    protected static ?int $navigationSort = 3;
 
     public static function form(Form $form): Form
     {
@@ -85,7 +88,9 @@ protected static ?int $navigationSort     = 3;
                                         ->live()
                                         ->afterStateUpdated(function ($state, callable $set): void {
                                             $package = Package::query()->find((int) $state);
-                                            if (! $package) return;
+                                            if (! $package) {
+                                                return;
+                                            }
 
                                             $set('max_connections', (int) $package->max_connections);
 
@@ -138,7 +143,7 @@ protected static ?int $navigationSort     = 3;
                                         ->live()
                                         ->afterStateUpdated(function (bool $state, callable $set): void {
                                             if ($state) {
-                                                $set('vpn_server_ids', VpnServer::query()->orderBy('name')->pluck('id')->map(fn ($id) => (int) $id)->all());
+                                                $set('vpn_server_ids', VpnServer::query()->enabled()->orderBy('name')->pluck('id')->map(fn ($id) => (int) $id)->all());
                                             }
                                         }),
 
@@ -150,7 +155,7 @@ protected static ?int $navigationSort     = 3;
                                         ->native(false)
                                         ->required()
                                         ->dehydrated(false) // virtual; synced in Pages
-                                        ->options(fn (): array => VpnServer::query()->orderBy('name')->pluck('name', 'id')->all())
+                                        ->options(fn (): array => VpnServer::query()->enabled()->orderBy('name')->pluck('name', 'id')->all())
                                         ->visible(fn (Get $get) => ! (bool) $get('all_servers')),
                                 ]),
                         ]),
@@ -164,9 +169,14 @@ protected static ?int $navigationSort     = 3;
                                 ->label('Expires')
                                 ->content(function (Get $get): string {
                                     $expires = $get('expires_at');
-                                    if (blank($expires)) return 'Never';
-                                    try { return \Carbon\Carbon::parse($expires)->format('d M Y'); }
-                                    catch (\Throwable) { return (string) $expires; }
+                                    if (blank($expires)) {
+                                        return 'Never';
+                                    }
+                                    try {
+                                        return \Carbon\Carbon::parse($expires)->format('d M Y');
+                                    } catch (\Throwable) {
+                                        return (string) $expires;
+                                    }
                                 }),
 
                             Forms\Components\Placeholder::make('admin_bypass')
@@ -209,7 +219,7 @@ protected static ?int $navigationSort     = 3;
                         $days = now()->diffInDays($expires, false);
 
                         if ($days > 0) {
-                            return "Expires in {$days} day" . ($days === 1 ? '' : 's');
+                            return "Expires in {$days} day".($days === 1 ? '' : 's');
                         }
 
                         if ($days === 0) {
@@ -217,7 +227,8 @@ protected static ?int $navigationSort     = 3;
                         }
 
                         $days = abs($days);
-                        return "Expired {$days} day" . ($days === 1 ? '' : 's') . ' ago';
+
+                        return "Expired {$days} day".($days === 1 ? '' : 's').' ago';
                     }),
 
                 Tables\Columns\TextColumn::make('plain_password')
@@ -227,12 +238,12 @@ protected static ?int $navigationSort     = 3;
                     ->copyMessage('Password copied')
                     ->state(fn (VpnUser $u) => filled($u->plain_password) ? (string) $u->plain_password : 'Missing')
                     ->toggleable(),
-                    
+
                 Tables\Columns\TextColumn::make('login_copy')
                     ->label('Login')
                     ->state(function (VpnUser $u): string {
                         $password = filled($u->plain_password) ? (string) $u->plain_password : 'Missing';
-                
+
                         return "Username: {$u->username}\nPassword: {$password}";
                     })
                     ->formatStateUsing(fn () => 'Copy login')
@@ -387,7 +398,7 @@ protected static ?int $navigationSort     = 3;
 
                         $record->update([
                             'max_connections' => (int) $package->max_connections,
-                            'expires_at'      => $months <= 0 ? null : $base->copy()->addMonthsNoOverflow($months),
+                            'expires_at' => $months <= 0 ? null : $base->copy()->addMonthsNoOverflow($months),
                         ]);
 
                         Notification::make()
@@ -416,9 +427,9 @@ protected static ?int $navigationSort     = 3;
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListVpnUsers::route('/'),
+            'index' => Pages\ListVpnUsers::route('/'),
             'create' => Pages\CreateVpnUser::route('/create'),
-            'edit'   => Pages\EditVpnUser::route('/{record}/edit'),
+            'edit' => Pages\EditVpnUser::route('/{record}/edit'),
         ];
     }
 }

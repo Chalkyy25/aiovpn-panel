@@ -61,13 +61,16 @@ class ServerStatus extends BaseWidget
 
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
-                    ->state(fn (VpnServer $record) => $record->is_online)
-                    ->formatStateUsing(fn (bool $state) =>
-                        $state ? 'ONLINE' : 'OFFLINE'
+                    ->state(fn (VpnServer $record) => ($record->enabled ?? true)
+                            ? ($record->is_online ? 'ONLINE' : 'OFFLINE')
+                            : 'DISABLED'
                     )
                     ->badge()
-                    ->color(fn (bool $state) =>
-                        $state ? 'success' : 'danger'
+                    ->color(fn (string $state) => match ($state) {
+                        'ONLINE' => 'success',
+                        'DISABLED' => 'gray',
+                        default => 'danger',
+                    }
                     ),
 
                 /*
@@ -80,8 +83,7 @@ class ServerStatus extends BaseWidget
                     ->label('Users')
                     ->badge()
                     ->sortable()
-                    ->color(fn ($state) =>
-                        $state > 0 ? 'success' : 'gray'
+                    ->color(fn ($state) => $state > 0 ? 'success' : 'gray'
                     ),
 
                 /*
@@ -92,15 +94,13 @@ class ServerStatus extends BaseWidget
 
                 Tables\Columns\TextColumn::make('protocol')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state) =>
-                        strtoupper($state ?? 'unknown')
+                    ->formatStateUsing(fn (?string $state) => strtoupper($state ?? 'unknown')
                     )
-                    ->color(fn (?string $state) =>
-                        match ($state) {
-                            'wireguard' => 'success',
-                            'openvpn'   => 'warning',
-                            default     => 'gray',
-                        }
+                    ->color(fn (?string $state) => match ($state) {
+                        'wireguard' => 'success',
+                        'openvpn' => 'warning',
+                        default => 'gray',
+                    }
                     ),
 
                 /*
@@ -133,15 +133,14 @@ class ServerStatus extends BaseWidget
                 Tables\Columns\TextColumn::make('deployment_status')
                     ->label('Deploy')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state) =>
-                        strtoupper($state ?? 'UNKNOWN')
+                    ->formatStateUsing(fn (?string $state) => strtoupper($state ?? 'UNKNOWN')
                     )
                     ->colors([
                         'warning' => 'queued',
-                        'info'    => 'running',
+                        'info' => 'running',
                         'success' => ['success', 'deployed'],
-                        'danger'  => 'failed',
-                        'gray'    => 'pending',
+                        'danger' => 'failed',
+                        'gray' => 'pending',
                     ]),
 
             ])
@@ -151,10 +150,9 @@ class ServerStatus extends BaseWidget
                 Tables\Actions\Action::make('view')
                     ->icon('heroicon-o-eye')
                     ->label('View')
-                    ->url(fn (VpnServer $record) =>
-                        \App\Filament\Resources\VpnServerResource::getUrl('edit', [
-                            'record' => $record,
-                        ])
+                    ->url(fn (VpnServer $record) => \App\Filament\Resources\VpnServerResource::getUrl('edit', [
+                        'record' => $record,
+                    ])
                     ),
 
             ])

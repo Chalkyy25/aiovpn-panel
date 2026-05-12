@@ -10,14 +10,15 @@ class LocationController extends Controller
     public function index()
     {
         $servers = VpnServer::query()
-            ->where('enabled', true)
+            ->enabled()
+            ->deployed()
             ->orderBy('country_code')
             ->orderBy('city')
             ->get();
 
         // Group by country_code + city so each city = one location item
         $grouped = $servers->groupBy(function (VpnServer $s) {
-            return ($s->country_code ?? 'XX') . '|' . ($s->city ?? '');
+            return ($s->country_code ?? 'XX').'|'.($s->city ?? '');
         });
 
         $locations = $grouped->map(function ($group, $key) {
@@ -28,14 +29,14 @@ class LocationController extends Controller
             $first = $group->first();
 
             $countryName = $first->country_name;      // accessor on model
-            $label       = $first->display_location;  // accessor on model
+            $label = $first->display_location;  // accessor on model
 
             return [
                 'country_code' => $code ?: null,
                 'country_name' => $countryName,
-                'city'         => $city ?: null,
-                'label'        => $label,
-                'servers'      => $group->map(function (VpnServer $s) {
+                'city' => $city ?: null,
+                'label' => $label,
+                'servers' => $group->map(function (VpnServer $s) {
                     // Primary protocol (for backwards compatibility)
                     $primaryProtocol = $s->protocol;
 
@@ -43,9 +44,9 @@ class LocationController extends Controller
                     $openvpn = null;
                     if ($s->isOpenVPN()) {
                         $openvpn = [
-                            'transport'   => $s->displayTransport(), // udp/tcp
-                            'port'        => $s->displayPort(),      // 1194 / 443 etc.
-                            'cipher'      => $s->ovpn_cipher,
+                            'transport' => $s->displayTransport(), // udp/tcp
+                            'port' => $s->displayPort(),      // 1194 / 443 etc.
+                            'cipher' => $s->ovpn_cipher,
                             'compression' => $s->ovpn_compression,
                         ];
                     }
@@ -54,10 +55,10 @@ class LocationController extends Controller
                     $wireguard = null;
                     if ($s->hasWireGuard()) {
                         $wireguard = [
-                            'endpoint'   => $s->wgEndpoint(),        // host:port
-                            'host'       => $s->wg_endpoint_host,
-                            'port'       => $s->wg_port ?: 51820,
-                            'subnet'     => $s->wg_subnet,
+                            'endpoint' => $s->wgEndpoint(),        // host:port
+                            'host' => $s->wg_endpoint_host,
+                            'port' => $s->wg_port ?: 51820,
+                            'subnet' => $s->wg_subnet,
                             'public_key' => $s->wg_public_key,
                             // NEVER send private key to the app
                         ];
@@ -73,20 +74,20 @@ class LocationController extends Controller
                     }
 
                     return [
-                        'id'              => (int) $s->id,
-                        'name'            => $s->name,
-                        'ip'              => $s->ip_address,
+                        'id' => (int) $s->id,
+                        'name' => $s->name,
+                        'ip' => $s->ip_address,
                         'primaryProtocol' => $primaryProtocol,  // "openvpn" or "wireguard"
-                        'protocols'       => $protocols,        // ["openvpn","wireguard"] etc.
+                        'protocols' => $protocols,        // ["openvpn","wireguard"] etc.
 
                         // OpenVPN info (nullable)
-                        'openvpn'         => $openvpn,
+                        'openvpn' => $openvpn,
 
                         // WireGuard info (nullable)
-                        'wireguard'       => $wireguard,
+                        'wireguard' => $wireguard,
 
                         // Tags from DB (cast to array on model)
-                        'tags'            => $s->tags,
+                        'tags' => $s->tags,
                     ];
                 })->values(),
             ];

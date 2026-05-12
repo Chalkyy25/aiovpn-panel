@@ -7,7 +7,6 @@ use App\Models\VpnServer;
 use App\Services\VpnConfigBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 
 class GenericStealthConfigController extends Controller
 {
@@ -20,7 +19,10 @@ class GenericStealthConfigController extends Controller
      */
     public function servers(Request $request): JsonResponse
     {
-        $servers = VpnServer::where('status', 'active')
+        $servers = VpnServer::query()
+            ->enabled()
+            ->deployed()
+            ->where('status', 'active')
             ->select(['id', 'name', 'hostname', 'country', 'city', 'server_type'])
             ->orderBy('country')
             ->orderBy('name')
@@ -36,7 +38,7 @@ class GenericStealthConfigController extends Controller
                     'type' => $server->server_type,
                     'hostname' => $server->hostname,
                 ];
-            })
+            }),
         ]);
     }
 
@@ -45,33 +47,36 @@ class GenericStealthConfigController extends Controller
      */
     public function config(Request $request, int $serverId)
     {
-        $server = VpnServer::where('id', $serverId)
+        $server = VpnServer::query()
+            ->enabled()
+            ->deployed()
+            ->where('id', $serverId)
             ->where('status', 'active')
             ->first();
 
-        if (!$server) {
+        if (! $server) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Server not found or inactive'
+                'message' => 'Server not found or inactive',
             ], 404);
         }
 
         try {
             $config = $this->configBuilder->generateGenericStealthConfig($server);
-            
+
             $safeName = preg_replace('/[^\w\-]+/u', '_', $server->name);
             $filename = "aio_stealth_{$safeName}.ovpn";
 
             return response($config, 200, [
                 'Content-Type' => 'application/x-openvpn-profile',
                 'Content-Disposition' => "attachment; filename=\"{$filename}\"",
-                'Cache-Control' => 'no-cache, no-store, must-revalidate'
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to generate config: ' . $e->getMessage()
+                'message' => 'Failed to generate config: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -81,14 +86,17 @@ class GenericStealthConfigController extends Controller
      */
     public function configInfo(Request $request, int $serverId): JsonResponse
     {
-        $server = VpnServer::where('id', $serverId)
+        $server = VpnServer::query()
+            ->enabled()
+            ->deployed()
+            ->where('id', $serverId)
             ->where('status', 'active')
             ->first();
 
-        if (!$server) {
+        if (! $server) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Server not found or inactive'
+                'message' => 'Server not found or inactive',
             ], 404);
         }
 
@@ -104,8 +112,8 @@ class GenericStealthConfigController extends Controller
                 'type' => 'stealth',
                 'cipher' => 'AES-128-GCM',
                 'auth' => 'SHA256',
-                'notes' => 'ISP bypass optimized - appears as HTTPS traffic'
-            ]
+                'notes' => 'ISP bypass optimized - appears as HTTPS traffic',
+            ],
         ]);
     }
 }

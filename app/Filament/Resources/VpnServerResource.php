@@ -18,9 +18,12 @@ class VpnServerResource extends Resource
     protected static ?string $model = VpnServer::class;
 
     protected static ?string $navigationGroup = 'VPN';
+
     protected static ?string $navigationLabel = 'Servers';
-    protected static ?string $navigationIcon  = 'heroicon-o-server-stack';
-    protected static ?int $navigationSort     = 1;
+
+    protected static ?string $navigationIcon = 'heroicon-o-server-stack';
+
+    protected static ?int $navigationSort = 1;
 
     public static function form(Form $form): Form
     {
@@ -62,7 +65,7 @@ class VpnServerResource extends Resource
                                     Forms\Components\Select::make('protocol')
                                         ->options([
                                             'wireguard' => 'WireGuard',
-                                            'openvpn'   => 'OpenVPN',
+                                            'openvpn' => 'OpenVPN',
                                         ])
                                         ->default('wireguard')
                                         ->required(),
@@ -91,7 +94,7 @@ class VpnServerResource extends Resource
 
                                     Forms\Components\Select::make('ssh_type')
                                         ->options([
-                                            'key'      => 'SSH Key',
+                                            'key' => 'SSH Key',
                                             'password' => 'Password',
                                         ])
                                         ->default('key')
@@ -166,27 +169,23 @@ class VpnServerResource extends Resource
 
                                     Forms\Components\Placeholder::make('deployment_status')
                                         ->label('Deployment Status')
-                                        ->content(fn ($record) =>
-                                            $record?->deployment_status ?? 'pending'
+                                        ->content(fn ($record) => $record?->deployment_status ?? 'pending'
                                         ),
 
                                     Forms\Components\Placeholder::make('status')
                                         ->label('Online Status')
-                                        ->content(fn ($record) =>
-                                            $record?->is_online
+                                        ->content(fn ($record) => $record?->is_online
                                                 ? 'ONLINE'
                                                 : 'OFFLINE'
                                         ),
 
                                     Forms\Components\Placeholder::make('active_connections_count')
                                         ->label('Live Users')
-                                        ->content(fn ($record) =>
-                                            $record ? $record->activeConnections()->count() : 0
+                                        ->content(fn ($record) => $record ? $record->activeConnections()->count() : 0
                                         ),
 
                                     Forms\Components\Placeholder::make('last_sync_at')
-                                        ->content(fn ($record) =>
-                                            $record?->last_sync_at?->diffForHumans() ?? 'Never'
+                                        ->content(fn ($record) => $record?->last_sync_at?->diffForHumans() ?? 'Never'
                                         ),
 
                                 ]),
@@ -226,23 +225,24 @@ class VpnServerResource extends Resource
 
                 Tables\Columns\TextColumn::make('protocol')
                     ->badge()
-                    ->color(fn (string $state) =>
-                        match ($state) {
-                            'wireguard' => 'success',
-                            'openvpn'   => 'warning',
-                            default     => 'gray',
-                        }
+                    ->color(fn (string $state) => match ($state) {
+                        'wireguard' => 'success',
+                        'openvpn' => 'warning',
+                        default => 'gray',
+                    }
                     ),
 
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->label('Status')
-                    ->formatStateUsing(fn ($record) =>
-                        $record->is_online ? 'ONLINE' : 'OFFLINE'
+                    ->formatStateUsing(fn ($record) => ($record->enabled ?? true)
+                            ? ($record->is_online ? 'ONLINE' : 'OFFLINE')
+                            : 'DISABLED'
                     )
                     ->colors([
-                        'success' => fn ($record) => $record->is_online,
-                        'danger'  => fn ($record) => ! $record->is_online,
+                        'gray' => fn ($record) => ($record->enabled ?? true) === false,
+                        'success' => fn ($record) => ($record->enabled ?? true) && $record->is_online,
+                        'danger' => fn ($record) => ($record->enabled ?? true) && ! $record->is_online,
                     ]),
 
                 Tables\Columns\TextColumn::make('active_connections_count')
@@ -267,7 +267,7 @@ class VpnServerResource extends Resource
                 Tables\Filters\SelectFilter::make('protocol')
                     ->options([
                         'wireguard' => 'WireGuard',
-                        'openvpn'   => 'OpenVPN',
+                        'openvpn' => 'OpenVPN',
                     ]),
 
                 Tables\Filters\TernaryFilter::make('is_online')
@@ -302,27 +302,17 @@ class VpnServerResource extends Resource
                 Tables\Actions\Action::make('logs')
                     ->label('Logs')
                     ->icon('heroicon-o-document-text')
-                    ->modalHeading(fn (VpnServer $record) =>
-                        "Deployment Logs — {$record->name}"
+                    ->modalHeading(fn (VpnServer $record) => "Deployment Logs — {$record->name}"
                     )
                     ->modalSubmitAction(false)
-                    ->modalContent(fn (VpnServer $record) =>
-                        view('filament.modals.server-deployment-log', [
-                            'serverId' => $record->id,
-                        ])
+                    ->modalContent(fn (VpnServer $record) => view('filament.modals.server-deployment-log', [
+                        'serverId' => $record->id,
+                    ])
                     ),
 
             ])
 
-            ->bulkActions([
-
-                Tables\Actions\BulkActionGroup::make([
-
-                    Tables\Actions\DeleteBulkAction::make(),
-
-                ]),
-
-            ]);
+            ->bulkActions([]);
     }
 
     public static function getEloquentQuery(): Builder
@@ -333,9 +323,9 @@ class VpnServerResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListVpnServers::route('/'),
+            'index' => Pages\ListVpnServers::route('/'),
             'create' => Pages\CreateVpnServer::route('/create'),
-            'edit'   => Pages\EditVpnServer::route('/{record}/edit'),
+            'edit' => Pages\EditVpnServer::route('/{record}/edit'),
         ];
     }
 }
