@@ -62,7 +62,10 @@ class EditVpnServer extends EditRecord
                         $this->record->forceFill($updates)->save();
                     } catch (QueryException $exception) {
                         // Legacy enum schemas may not support "offline" and still expect "inactive".
-                        if (array_key_exists('status', $updates)) {
+                        $isStatusEnumFailure = str_contains(strtolower($exception->getMessage()), 'status')
+                            && str_contains(strtolower($exception->getMessage()), 'offline');
+
+                        if (array_key_exists('status', $updates) && $isStatusEnumFailure) {
                             Log::warning('Failed to set VPN server status to offline during disable; retrying with inactive.', [
                                 'server_id' => $this->record->id,
                                 'error' => $exception->getMessage(),
@@ -80,6 +83,8 @@ class EditVpnServer extends EditRecord
 
                                 throw $fallbackException;
                             }
+                        } else {
+                            throw $exception;
                         }
                     }
 
