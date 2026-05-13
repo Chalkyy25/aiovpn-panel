@@ -11,8 +11,9 @@ use App\Filament\Widgets\DashboardLinks;
 use App\Filament\Widgets\ExpiringSoonUsers;
 use App\Filament\Widgets\RecentConnections;
 use App\Filament\Widgets\ServerStatus;
-use App\Http\Middleware\SetSessionCookieForHost;
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\SetSessionCookieForHost;
+use App\Http\Middleware\VerifyCsrfToken;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -20,11 +21,10 @@ use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Hasnayeen\Themes\ThemesPlugin;
 use Hasnayeen\Themes\Http\Middleware\SetTheme;
+use Hasnayeen\Themes\ThemesPlugin;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
-use App\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
@@ -45,8 +45,9 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Purple,
             ])
+            ->viteTheme('resources/css/filament/admin/theme.css')
 
-                        // Theme plugin
+            // Theme plugin
             ->plugins([
                 ThemesPlugin::make()
                     ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin'),
