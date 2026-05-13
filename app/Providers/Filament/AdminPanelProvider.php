@@ -21,8 +21,6 @@ use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Hasnayeen\Themes\Http\Middleware\SetTheme;
-use Hasnayeen\Themes\ThemesPlugin;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Routing\Middleware\SubstituteBindings;
@@ -38,19 +36,12 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
 
-            // Use a panel-specific login so redirects + access rules are clean
             ->login(AdminLogin::class)
 
             ->authGuard('web')
+
             ->colors([
                 'primary' => Color::Purple,
-            ])
-            ->viteTheme('resources/css/filament/admin/theme.css')
-
-            // Theme plugin
-            ->plugins([
-                ThemesPlugin::make()
-                    ->canViewThemesPage(fn () => auth('web')->user()?->role === 'admin'),
             ])
 
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
@@ -79,9 +70,6 @@ class AdminPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
-
-                // Themes must be in middleware stack
-                SetTheme::class,
             ])
 
             ->authMiddleware([
