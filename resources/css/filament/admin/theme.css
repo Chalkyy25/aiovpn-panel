@@ -198,134 +198,72 @@
 }
 
 @media (max-width: 640px) {
-    :root {
-        --aio-admin-table-min-width-mobile: 42rem;
-    }
-
-    .fi-body {
-        overflow-x: hidden;
-    }
-
-    .fi-main,
-    .fi-main-ctn,
-    .fi-page,
-    .fi-page-content {
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-
-    .fi-main {
-        padding: 0.85rem 0.85rem calc(5rem + env(safe-area-inset-bottom)) !important;
-    }
-
-    .fi-header-heading {
-        font-size: 2rem !important;
-        line-height: 1.05 !important;
-        letter-spacing: -0.04em;
-    }
-
-    .fi-topbar {
-        min-height: 3.25rem !important;
-        border-radius: 0 !important;
-        border-inline: 0 !important;
-        border-top: 0 !important;
-    }
-
-    .fi-sidebar {
-        width: min(82vw, 18rem) !important;
-        max-width: min(82vw, 18rem) !important;
-        box-shadow: 20px 0 55px rgba(0, 0, 0, 0.55);
-    }
-
-    .fi-sidebar-header {
-        min-height: 4.25rem !important;
-        padding-inline: 1.1rem !important;
-    }
-
-    .fi-logo {
-        font-size: 1.35rem !important;
-    }
-
-    .fi-sidebar-nav {
-        padding: 1rem 0.9rem 6rem !important;
-    }
-
-    .fi-sidebar-item-button {
-        min-height: 2.8rem !important;
-        padding-inline: 0.95rem !important;
-        border-radius: 0.95rem !important;
-    }
-
     .fi-wi-stats-overview {
         display: grid;
         grid-template-columns: 1fr;
-        gap: 0.85rem !important;
+        gap: 0.85rem;
     }
 
     .fi-wi-stats-overview-stat {
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
-        box-sizing: border-box !important;
-        min-height: auto !important;
-        padding: 1rem 1.05rem !important;
-        border-radius: 1.05rem !important;
+        min-width: 0;
+        padding: 0.95rem 1rem;
+        border-radius: var(--aio-admin-radius-md);
     }
 
     .fi-wi-stats-overview-stat-label {
-        font-size: 0.86rem !important;
-        margin-bottom: 0.35rem !important;
+        font-size: 0.84rem;
+        margin-bottom: 0.3rem;
     }
 
     .fi-wi-stats-overview-stat-value {
-        font-size: 1.35rem !important;
-        line-height: 1.1 !important;
+        font-size: 1.25rem;
+        line-height: 1.15;
     }
 
     .fi-wi-stats-overview-stat-description {
-        font-size: 0.86rem !important;
-        margin-top: 0.45rem !important;
-        line-height: 1.25 !important;
+        font-size: 0.84rem;
+        margin-top: 0.4rem;
+        line-height: 1.25;
     }
 
     .fi-section,
     .fi-ta-ctn,
     .fi-modal-content {
-        border-radius: 1.05rem !important;
+        border-radius: var(--aio-admin-radius-md);
     }
 
     .fi-section-content {
-        padding: 1rem !important;
+        padding: 0.9rem;
     }
 
     .fi-ta-content {
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
+        overflow-x: auto;
+        overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
     }
 
     .fi-ta-table {
-        min-width: var(--aio-admin-table-min-width-mobile) !important;
+        min-width: var(--aio-admin-table-min-width-mobile);
     }
 
     .fi-ta-cell,
     .fi-ta-header-cell {
-        padding-top: 0.65rem !important;
-        padding-bottom: 0.65rem !important;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
     }
 
     .fi-fo-component-ctn {
-        gap: 0.85rem !important;
+        gap: 0.8rem;
     }
 
     .fi-input-wrp,
     .fi-select-input,
     .fi-textarea {
-        border-radius: 0.85rem !important;
+        border-radius: var(--aio-admin-radius-md);
     }
 
     .fi-btn {
-        min-height: 2.65rem !important;
-        border-radius: 0.85rem !important;
+        min-height: 2.5rem;
+        border-radius: var(--aio-admin-radius-md);
     }
 }
