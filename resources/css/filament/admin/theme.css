@@ -98,6 +98,31 @@
     border-top-color: transparent;
 }
 
+.fi-layout {
+    width: 100%;
+    min-width: 0;
+}
+
+.fi-main-ctn,
+.fi-main,
+.fi-page,
+.fi-page-content {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.fi-main-ctn,
+.fi-main {
+    flex: 1 1 auto;
+}
+
+.fi-wi-stats-overview,
+.fi-wi-stats-overview-stat {
+    min-width: 0;
+    box-sizing: border-box;
+}
+
 .fi-wi-stats-overview-stat {
     position: relative;
     overflow: hidden;
@@ -202,8 +227,9 @@
         --aio-admin-table-min-width-mobile: 42rem;
     }
 
-    .fi-body {
-        overflow-x: hidden;
+    .fi-layout {
+        width: 100% !important;
+        min-width: 0 !important;
     }
 
     .fi-main,
@@ -212,6 +238,24 @@
     .fi-page-content {
         width: 100% !important;
         max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .fi-main-ctn {
+        margin-left: 0 !important;
+    }
+
+    .fi-sidebar {
+        position: fixed !important;
+        inset-block: 0 !important;
+        left: 0 !important;
+        z-index: 50 !important;
+    }
+
+    .fi-sidebar-close-overlay {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 40 !important;
     }
 
     .fi-main {
