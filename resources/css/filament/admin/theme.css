@@ -21,6 +21,9 @@
     --aio-admin-radius-lg: 0.95rem;
     --aio-admin-shadow: 0 14px 34px -20px rgba(2, 6, 16, 0.9);
     --aio-admin-shadow-soft: 0 10px 24px -20px rgba(168, 85, 247, 0.55);
+    --aio-admin-heading-pink-mix: 70%;
+    --aio-admin-table-min-width: 44rem;
+    --aio-admin-table-min-width-mobile: 36rem;
 }
 
 .fi-body {
@@ -159,7 +162,7 @@
 .fi-section-header-heading,
 .fi-ta-header-heading,
 .fi-wi-stats-overview-stat-label {
-    color: color-mix(in srgb, var(--aio-admin-accent-2) 70%, #ffd5ea);
+    color: color-mix(in srgb, var(--aio-admin-accent-2) var(--aio-admin-heading-pink-mix), #ffd5ea);
 }
 
 .fi-wi-stats-overview-stat-value {
@@ -179,7 +182,7 @@
 }
 
 .fi-ta-table {
-    min-width: 44rem;
+    min-width: var(--aio-admin-table-min-width);
 }
 
 .fi-wi-chart .fi-section-content,
@@ -216,7 +219,7 @@
     }
 
     .fi-ta-table {
-        min-width: 36rem;
+        min-width: var(--aio-admin-table-min-width-mobile);
     }
 
     .fi-ta-cell,
