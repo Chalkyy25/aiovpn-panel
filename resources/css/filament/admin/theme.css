@@ -3,7 +3,7 @@
 @config 'tailwind.config.js';
 
 .fi-body {
-    background: #09090b !important;
+    background: #ff00ff !important;
     color: white !important;
 }
 
