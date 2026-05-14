@@ -2,164 +2,77 @@
 
 @config '../../../../tailwind.config.js';
 
-/* AIO VPN — Filament v3 brand polish */
-
 :root {
-    --aio-bg: #0a0a0f;
-    --aio-surface: #15151d;
-    --aio-surface-light: #1b1b24;
+    --aio-bg: #09090b;
+    --aio-sidebar: #0f1115;
+    --aio-card: #28292c;
 
     --aio-primary: #8b5cf6;
-    --aio-primary-soft: #a78bfa;
 
-    --aio-text: #f8fafc;
-    --aio-text-muted: #94a3b8;
+    --aio-text: #f9fafb;
+    --aio-muted: #9ca3af;
 
     --aio-border: rgba(255,255,255,0.06);
-
-    --aio-success: #22c55e;
-    --aio-danger: #ef4444;
 }
 
-/* Page background */
+/* Main page */
 .fi-body {
-    background:
-        radial-gradient(circle at top left,
-        rgba(139, 92, 246, 0.08),
-        transparent 30%),
-        var(--aio-bg);
-}
-
-.fi-topbar{
-    background: #0d0d14;
-    box-shadow: none;
-    ring: 0;
-}
-
-/* Main surfaces */
-.fi-section,
-.fi-ta-ctn,
-.fi-wi-stats-overview-stat,
-.fi-modal-content,
-.fi-dropdown-panel {
-    background: linear-gradient(180deg, var(--aio-card), var(--aio-card-deep));
-    border: 1px solid var(--aio-border);
-    border-radius: 1rem;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.035),
-        0 14px 34px rgba(0, 0, 0, 0.24);
-}
-
-/* Headings */
-.fi-header-heading {
-    letter-spacing: -0.04em;
-    font-weight: 750;
-}
-
-.fi-section-header-heading,
-.fi-ta-header-heading {
-    letter-spacing: -0.025em;
-    font-weight: 700;
-}
-
-/* Visible brand accents */
-.fi-header-heading,
-.fi-section-header-heading,
-.fi-ta-header-heading {
+    background: var(--aio-bg);
     color: var(--aio-text);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-
-/* Stats */
-.fi-wi-stats-overview-stat {
-    position: relative;
-    overflow: hidden;
-    border-left: 3px solid rgba(168, 85, 247, 0.8);
-}
-
-.fi-wi-stats-overview-stat:nth-child(2n) {
-    border-left-color: rgba(20, 184, 166, 0.8);
-}
-
-.fi-wi-stats-overview-stat:nth-child(3n) {
-    border-left: 3px solid var(--aio-primary);
-}
-
-.fi-wi-stats-overview-stat::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.08), transparent 38%);
-    pointer-events: none;
-}
-
-.fi-wi-stats-overview-stat-value {
-    letter-spacing: -0.035em;
 }
 
 /* Sidebar */
 .fi-sidebar {
-    background: rgba(139, 92, 246, 0.16);
+    background: #11131a;
+    border-right: 1px solid rgba(255,255,255,0.05);
 }
 
-.fi-sidebar-item-button {
-    border-radius: 0.8rem;
-    transition:
-        background-color 0.16s ease,
-        border-color 0.16s ease,
-        color 0.16s ease;
+/* Topbar */
+.fi-topbar {
+    background: var(--aio-sidebar);
+    border-bottom: 1px solid var(--aio-border);
 }
 
-.fi-sidebar-item-button:hover {
-    background: rgba(255, 255, 255, 0.035);
+/* Cards / sections */
+.fi-section,
+.fi-ta-ctn,
+.fi-modal-content,
+.fi-dropdown-panel,
+.fi-wi-stats-overview-stat {
+    background: var(--aio-card);
+    border: 1px solid var(--aio-border);
+    border-radius: 10px;
 }
 
+/* Active sidebar item */
 .fi-sidebar-item-active .fi-sidebar-item-button {
-    background: linear-gradient(90deg, rgba(168, 85, 247, 0.22), rgba(236, 72, 153, 0.12));
-    border: 1px solid rgba(168, 85, 247, 0.24);
-    color: #ffffff;
+    background: rgba(139, 92, 246, 0.18);
+    color: white;
 }
 
-/* Tables */
-.fi-ta-content {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+.fi-input,
+.fi-select-input,
+.fi-ta-search-field input,
+.fi-pagination select {
+    background: #0f1218 !important;
+    color: white !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
 }
 
-.fi-ta-header-cell {
-    color: #c4b5fd;
-    opacity: 0.86;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.045em;
+/* Hover */
+.fi-sidebar-item-button:hover {
+    background: rgba(255,255,255,0.04);
 }
 
-.fi-ta-row:hover {
-    background: rgba(255, 255, 255, 0.025);
-}
-
-/* Badges */
-.fi-badge {
-    border-radius: 999px;
+/* Headings */
+.fi-header-heading,
+.fi-section-header-heading,
+.fi-ta-header-heading {
+    color: white;
     font-weight: 700;
 }
 
-/* Mobile */
-@media (max-width: 640px) {
-    .fi-wi-stats-overview {
-        display: grid;
-        grid-template-columns: 1fr;
-    }
-
-    .fi-wi-stats-overview-stat {
-        padding: 1.15rem;
-    }
-
-    .fi-section,
-    .fi-ta-ctn,
-    .fi-wi-stats-overview-stat {
-        border-radius: 0.95rem;
-    }
+/* Table hover */
+.fi-ta-row:hover {
+    background: rgba(255,255,255,0.02);
 }
