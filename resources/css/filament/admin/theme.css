@@ -25,7 +25,7 @@
 }
 
 .fi-topbar{
-    @apply --aio-bg-soft shadow-none ring-0
+    @apply --aio-purple shadow-none ring-0
 }
 
 /* Main surfaces */
