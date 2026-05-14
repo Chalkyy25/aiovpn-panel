@@ -1,7 +1,9 @@
 {
     "name": "AIOVPN Laravel",
 
-    "image": "mcr.microsoft.com/devcontainers/php:8.2-bookworm",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
 
     "features": {
         "ghcr.io/devcontainers/features/node:1": {
@@ -9,7 +11,7 @@
         }
     },
 
-    "postCreateCommand": "sudo install-php-extensions intl zip pcntl && composer install && npm install",
+    "postCreateCommand": "composer install && npm install",
 
     "forwardPorts": [8000, 5173]
 }
