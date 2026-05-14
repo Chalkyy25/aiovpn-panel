@@ -13,8 +13,14 @@
     font-weight: 700;
 }
 
+.fi-section,
+.fi-ta-ctn,
 .fi-wi-stats-overview-stat {
     border-radius: 1rem;
+}
+
+.fi-sidebar-item-button {
+    border-radius: 0.75rem;
 }
 
 .fi-sidebar-item-active .fi-sidebar-item-button {
