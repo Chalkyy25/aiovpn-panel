@@ -2,77 +2,25 @@
 
 @config '../../../../tailwind.config.js';
 
-:root {
-    --aio-bg: #09090b;
-    --aio-sidebar: #0f1115;
-    --aio-card: #28292c;
-
-    --aio-primary: #8b5cf6;
-
-    --aio-text: #f9fafb;
-    --aio-muted: #9ca3af;
-
-    --aio-border: rgba(255,255,255,0.06);
-}
-
-/* Main page */
-.fi-body {
-    background: var(--aio-bg);
-    color: var(--aio-text);
-}
-
-/* Sidebar */
 .fi-sidebar {
-    background: #11131a;
-    border-right: 1px solid rgba(255,255,255,0.05);
+    @apply bg-gray-950 border-r border-white/5;
 }
 
-/* Topbar */
 .fi-topbar {
-    background: var(--aio-sidebar);
-    border-bottom: 1px solid var(--aio-border);
+    @apply bg-gray-950 border-b border-white/5;
 }
 
-/* Cards / sections */
 .fi-section,
 .fi-ta-ctn,
 .fi-modal-content,
-.fi-dropdown-panel,
 .fi-wi-stats-overview-stat {
-    background: var(--aio-card);
-    border: 1px solid var(--aio-border);
-    border-radius: 10px;
+    @apply bg-gray-900 border border-white/5 rounded-xl;
 }
 
-/* Active sidebar item */
 .fi-sidebar-item-active .fi-sidebar-item-button {
-    background: rgba(139, 92, 246, 0.18);
-    color: white;
+    @apply bg-violet-500/15 text-white;
 }
 
-.fi-input,
-.fi-select-input,
-.fi-ta-search-field input,
-.fi-pagination select {
-    background: #0f1218 !important;
-    color: white !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-}
-
-/* Hover */
-.fi-sidebar-item-button:hover {
-    background: rgba(255,255,255,0.04);
-}
-
-/* Headings */
-.fi-header-heading,
-.fi-section-header-heading,
-.fi-ta-header-heading {
-    color: white;
-    font-weight: 700;
-}
-
-/* Table hover */
 .fi-ta-row:hover {
-    background: rgba(255,255,255,0.02);
+    @apply bg-white/5;
 }
