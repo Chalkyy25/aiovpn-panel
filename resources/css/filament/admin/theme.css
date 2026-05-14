@@ -2,4 +2,6 @@
 
 @config '../../../../tailwind.config.js';
 
-/* Add your custom styles here */
+.fi-body {
+    @apply bg-gray-950;
+}
