@@ -4,15 +4,13 @@ import laravel from 'laravel-vite-plugin';
 export default defineConfig({
     server: {
         host: '0.0.0.0',
-        port: 5173,
-        strictPort: true,
 
-        hmr: {
-            protocol: 'wss',
-            host: process.env.CODESPACE_NAME
-                ? `${process.env.CODESPACE_NAME}-5173.app.github.dev`
-                : 'localhost',
-        },
+        hmr: process.env.CODESPACE_NAME
+            ? {
+                  protocol: 'wss',
+                  host: `${process.env.CODESPACE_NAME}-5173.app.github.dev`,
+              }
+            : undefined,
     },
 
     plugins: [
