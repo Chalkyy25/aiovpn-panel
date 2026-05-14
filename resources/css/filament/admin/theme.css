@@ -25,7 +25,8 @@
 }
 
 .fi-topbar{
-    @apply --aio-purple shadow-none ring-0
+    background: #0d0d14;
+    box-shadow: none;
 }
 
 /* Main surfaces */
