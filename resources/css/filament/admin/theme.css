@@ -2,26 +2,4 @@
 
 @config '../../../../tailwind.config.js';
 
-.fi-sidebar {
-    @apply bg-gray-950 border-r border-white/5;
-}
-
-.fi-topbar {
-    @apply bg-gray-950 border-b border-white/5;
-}
-
-.fi-section,
-.fi-ta-ctn,
-.fi-modal-content,
-.fi-wi-stats-overview-stat {
-    @apply bg-gray-900 border border-white/5 rounded-xl;
-}
-
-.fi-sidebar-item-active .fi-sidebar-item-button {
-    background: rgba(139, 92, 246, 0.15);
-    @apply text-white;
-}
-
-.fi-ta-row:hover {
-    @apply bg-white/5;
-}
+/* Add your custom styles here */
