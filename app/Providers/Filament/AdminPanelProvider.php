@@ -36,8 +36,6 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
 
-            ->viteTheme('resources/css/filament/admin/theme.css')
-
             ->login(AdminLogin::class)
             ->brandName('AIO VPN')
             ->passwordreset()
