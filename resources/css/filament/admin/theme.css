@@ -15,6 +15,8 @@
     @apply bg-zinc-950 border-r border-white/5;
 }
 
-.fi-topbar {
-    background: #ff00ff !important;
+.fi-topbar nav {
+    background: #111827 !important;
+    border-bottom: 1px solid rgba(255,255,255,.05) !important;
+    box-shadow: none !important;
 }
