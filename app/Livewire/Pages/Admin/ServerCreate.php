@@ -10,7 +10,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Rule;
 use Livewire\Component;
 
-#[Layout('layouts.app')]
+
 class ServerCreate extends Component
 {
     // ===== Required / core fields =====

@@ -134,7 +134,9 @@
             🌓 Theme
           </button>
 
-          <x-user-menu/>
+          @if (!request()->is('admin*'))
+              <x-user-menu/>
+          @endif
         </div>
       </header>
 

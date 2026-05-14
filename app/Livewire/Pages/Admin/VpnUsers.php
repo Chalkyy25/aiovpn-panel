@@ -7,7 +7,7 @@ use App\Models\VpnUser;
 use Livewire\Attributes\Layout;
 use App\Jobs\RemoveWireGuardPeer;
 
-#[Layout('layouts.app')]
+
 class VpnUsers extends Component
 {
     public $users;

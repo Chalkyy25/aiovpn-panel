@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-#[Layout('layouts.app')]
+
 class CreateTrialLine extends Component
 {
     public string $username = '';

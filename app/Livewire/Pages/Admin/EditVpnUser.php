@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-#[Layout('layouts.app')]
+
 class EditVpnUser extends Component
 {
     public VpnUser $vpnUser;

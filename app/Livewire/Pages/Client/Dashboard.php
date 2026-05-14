@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-#[Layout('layouts.client')]
+
 class Dashboard extends Component
 {
     public VpnUser $user;

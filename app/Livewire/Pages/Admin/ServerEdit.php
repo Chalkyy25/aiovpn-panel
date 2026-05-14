@@ -7,7 +7,6 @@ use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-#[Layout('layouts.app')]
 class ServerEdit extends Component
 {
     public VpnServer $vpnServer;

@@ -6,7 +6,7 @@ use Livewire\Component;
 use Livewire\Attributes\Layout;
 use App\Models\User;
 
-#[Layout('layouts.app')]
+
 class UserList extends Component
 {
     public $search = '';

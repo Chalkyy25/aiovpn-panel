@@ -10,7 +10,6 @@ use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
-#[Layout('layouts.app')]
 class AppBuilds extends Component
 {
     use WithFileUploads;

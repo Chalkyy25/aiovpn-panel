@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-#[Layout('layouts.client')]
+
 class DownloadConfig extends Component
 {
     public VpnUser $vpnUser;

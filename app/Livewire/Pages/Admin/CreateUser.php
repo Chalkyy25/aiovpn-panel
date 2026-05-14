@@ -11,7 +11,7 @@ use Illuminate\View\View;
 use Livewire\Component;
 use Livewire\Attributes\Layout;
 
-#[Layout('layouts.app')]
+
 class CreateUser extends Component
 {
     // Form inputs

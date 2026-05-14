@@ -12,7 +12,7 @@ use App\Jobs\SyncOpenVPNCredentials; // ✅ Import the SyncOpenVPNCredentials jo
 use App\Jobs\GenerateVpnConfig; // ✅ Import the GenerateVpnConfig job
 use Log;
 
-#[Layout('layouts.app')]
+
 class VpnServerList extends Component
 {
     public $servers;

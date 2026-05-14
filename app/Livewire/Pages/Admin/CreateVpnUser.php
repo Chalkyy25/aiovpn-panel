@@ -13,7 +13,7 @@ use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
-#[Layout('layouts.app')]
+
 class CreateVpnUser extends Component
 {
     public ?string $username = null;

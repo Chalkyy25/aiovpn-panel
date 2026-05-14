@@ -8,7 +8,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
 
-#[Layout('layouts.app')]
+
 class ManageCredits extends Component
 {
     use WithPagination;

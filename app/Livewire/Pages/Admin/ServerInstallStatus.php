@@ -7,7 +7,7 @@ use App\Models\VpnServer;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Computed;
 
-#[Layout('layouts.app')]
+
 class ServerInstallStatus extends Component
 {
     public VpnServer $vpnServer;

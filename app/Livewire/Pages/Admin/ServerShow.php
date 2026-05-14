@@ -11,7 +11,7 @@ use phpseclib3\Net\SSH2;
 use RuntimeException;
 use Throwable;
 
-#[Layout('layouts.app')]
+
 class ServerShow extends Component
 {
     public VpnServer $vpnServer;
