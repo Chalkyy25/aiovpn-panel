@@ -2,21 +2,88 @@
 
 @config 'tailwind.config.js';
 
+/* -------------------------------------------------
+ | AIO VPN — Filament Theme
+ * ------------------------------------------------- */
 
-.fi-section,
-.fi-wi-stats-overview-stat,
-.fi-ta-ctn {
-    @apply bg-zinc-900;
+@theme {
+    --color-primary: rgb(139 92 246);     /* Violet */
+    --color-secondary: rgb(6 182 212);   /* Cyan */
+    --color-success: rgb(16 185 129);    /* Emerald */
+
+    --color-bg: rgb(9 9 11);             /* Zinc 950 */
+    --color-surface: rgb(24 24 27);      /* Zinc 900 */
 }
 
-.fi-sidebar-item-active .fi-sidebar-item-button {
-    @apply bg-violet-500/10 text-violet-300;
+/* -------------------------------------------------
+ | Base Layout
+ * ------------------------------------------------- */
+
+.fi-body {
+    @apply bg-black text-white;
+}
+
+.fi-sidebar {
+    @apply bg-zinc-950 border-r border-white/5;
+}
+
+.fi-topbar {
+    @apply bg-zinc-950 border-b border-white/5 shadow-none ring-0;
+}
+
+/* -------------------------------------------------
+ | Cards / Tables / Panels
+ * ------------------------------------------------- */
+
+.fi-section,
+.fi-ta-ctn,
+.fi-modal-content,
+.fi-dropdown-panel,
+.fi-wi-stats-overview-stat {
+    @apply bg-zinc-900 border border-white/5 rounded-2xl;
+}
+
+/* -------------------------------------------------
+ | Sidebar
+ * ------------------------------------------------- */
+
+.fi-sidebar-item-button {
+    @apply rounded-xl transition-colors duration-150;
 }
 
 .fi-sidebar-item-button:hover {
     @apply bg-white/5;
 }
 
-.fi-topbar {
-    @apply border-b border-white/5 bg-zinc-950 ring-0 shadow-none;
+.fi-sidebar-item-active .fi-sidebar-item-button {
+    background: rgba(139, 92, 246, 0.10);
+    @apply text-violet-300;
+}
+
+/* -------------------------------------------------
+ | Tables
+ * ------------------------------------------------- */
+
+.fi-ta-row:hover {
+    @apply bg-white/5;
+}
+
+.fi-ta-header-cell {
+    @apply text-zinc-400;
+}
+
+/* -------------------------------------------------
+ | Stats Widgets
+ * ------------------------------------------------- */
+
+.fi-wi-stats-overview-stat-value {
+    @apply text-white;
+}
+
+/* -------------------------------------------------
+ | Badges
+ * ------------------------------------------------- */
+
+.fi-badge {
+    @apply rounded-full;
 }
