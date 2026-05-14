@@ -6,8 +6,8 @@
 
 :root {
     --aio-bg: #09090f;
-    --aio-bg-soft: #0d0d14;
-    --aio-card: rgba(24, 24, 32, 0.96);
+    --aio-bg-soft: #171722;
+    --aio-card: rgba(33, 33, 53, 0.96);
     --aio-card-deep: rgba(17, 17, 24, 0.98);
     --aio-purple: #a855f7;
     --aio-violet: #8b5cf6;
@@ -95,7 +95,7 @@
 
 /* Sidebar */
 .fi-sidebar {
-    background: linear-gradient(180deg, rgba(17, 17, 24, 0.98), rgba(10, 10, 16, 0.99));
+    background: linear-gradient(180deg, var(--aio-card), var(--aio-card-deep));
 }
 
 .fi-sidebar-item-button {
