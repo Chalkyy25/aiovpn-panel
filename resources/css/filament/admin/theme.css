@@ -5,7 +5,48 @@
 /* AIO VPN — light Filament polish only */
 
 .fi-body {
-    background: linear-gradient(180deg, #09090f 0%, #0d0d14 100%);
+    background:
+        radial-gradient(circle at top left, rgba(139, 92, 246, 0.08), transparent 30%),
+        linear-gradient(180deg, #09090f 0%, #0d0d14 100%);
+}
+
+.fi-section,
+.fi-ta-ctn,
+.fi-wi-stats-overview-stat,
+.fi-modal-content,
+.fi-dropdown-panel {
+    background: linear-gradient(
+        180deg,
+        rgba(24, 24, 32, 0.96),
+        rgba(17, 17, 24, 0.98)
+    );
+
+    border: 1px solid rgba(139, 92, 246, 0.08);
+
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.03) inset,
+        0 10px 30px rgba(0,0,0,0.22);
+
+    border-radius: 1rem;
+}
+
+.fi-sidebar {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(17,17,24,0.96),
+            rgba(10,10,16,0.98)
+        );
+}
+
+.fi-sidebar-item-active .fi-sidebar-item-button {
+    background: rgba(139, 92, 246, 0.14);
+    border: 1px solid rgba(139, 92, 246, 0.22);
+    color: white;
+}
+
+.fi-sidebar-item-button:hover {
+    background: rgba(255,255,255,0.03);
 }
 
 .fi-header-heading {
@@ -13,24 +54,19 @@
     font-weight: 700;
 }
 
-.fi-section,
-.fi-ta-ctn,
-.fi-wi-stats-overview-stat {
-    border-radius: 1rem;
+.fi-wi-stats-overview-stat-value {
+    letter-spacing: -0.03em;
 }
 
-.fi-sidebar-item-button {
-    border-radius: 0.75rem;
+.fi-ta-header-cell {
+    opacity: 0.72;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
-.fi-sidebar-item-active .fi-sidebar-item-button {
-    background: rgba(168, 85, 247, 0.12);
-    border: 1px solid rgba(168, 85, 247, 0.18);
-}
-
-.fi-ta-content {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+.fi-badge {
+    border-radius: 999px;
 }
 
 @media (max-width: 640px) {
