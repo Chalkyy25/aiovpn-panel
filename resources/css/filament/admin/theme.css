@@ -2,73 +2,139 @@
 
 @config '../../../../tailwind.config.js';
 
-/* AIO VPN — light Filament polish only */
+/* AIO VPN — Filament v3 brand polish */
 
-.fi-body {
-    background:
-        radial-gradient(circle at top left, rgba(139, 92, 246, 0.08), transparent 30%),
-        linear-gradient(180deg, #09090f 0%, #0d0d14 100%);
+:root {
+    --aio-bg: #09090f;
+    --aio-bg-soft: #0d0d14;
+    --aio-card: rgba(24, 24, 32, 0.96);
+    --aio-card-deep: rgba(17, 17, 24, 0.98);
+    --aio-purple: #a855f7;
+    --aio-violet: #8b5cf6;
+    --aio-pink: #ec4899;
+    --aio-teal: #14b8a6;
+    --aio-border: rgba(139, 92, 246, 0.12);
 }
 
+/* Page background */
+.fi-body {
+    background:
+        radial-gradient(circle at top left, rgba(139, 92, 246, 0.1), transparent 32%),
+        radial-gradient(circle at top right, rgba(236, 72, 153, 0.06), transparent 28%),
+        linear-gradient(180deg, var(--aio-bg) 0%, var(--aio-bg-soft) 100%);
+}
+
+/* Main surfaces */
 .fi-section,
 .fi-ta-ctn,
 .fi-wi-stats-overview-stat,
 .fi-modal-content,
 .fi-dropdown-panel {
-    background: linear-gradient(
-        180deg,
-        rgba(24, 24, 32, 0.96),
-        rgba(17, 17, 24, 0.98)
-    );
-
-    border: 1px solid rgba(139, 92, 246, 0.08);
-
-    box-shadow:
-        0 1px 0 rgba(255,255,255,0.03) inset,
-        0 10px 30px rgba(0,0,0,0.22);
-
+    background: linear-gradient(180deg, var(--aio-card), var(--aio-card-deep));
+    border: 1px solid var(--aio-border);
     border-radius: 1rem;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.035),
+        0 14px 34px rgba(0, 0, 0, 0.24);
 }
 
-.fi-sidebar {
-    background:
-        linear-gradient(
-            180deg,
-            rgba(17,17,24,0.96),
-            rgba(10,10,16,0.98)
-        );
-}
-
-.fi-sidebar-item-active .fi-sidebar-item-button {
-    background: rgba(139, 92, 246, 0.14);
-    border: 1px solid rgba(139, 92, 246, 0.22);
-    color: white;
-}
-
-.fi-sidebar-item-button:hover {
-    background: rgba(255,255,255,0.03);
-}
-
+/* Headings */
 .fi-header-heading {
     letter-spacing: -0.04em;
+    font-weight: 750;
+}
+
+.fi-section-header-heading,
+.fi-ta-header-heading {
+    letter-spacing: -0.025em;
     font-weight: 700;
 }
 
+/* Visible brand accents */
+.fi-header-heading,
+.fi-section-header-heading,
+.fi-ta-header-heading {
+    background: linear-gradient(90deg, #ffffff 0%, #c084fc 62%, #ec4899 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Stats */
+.fi-wi-stats-overview-stat {
+    position: relative;
+    overflow: hidden;
+    border-left: 3px solid rgba(168, 85, 247, 0.8);
+}
+
+.fi-wi-stats-overview-stat:nth-child(2n) {
+    border-left-color: rgba(20, 184, 166, 0.8);
+}
+
+.fi-wi-stats-overview-stat:nth-child(3n) {
+    border-left-color: rgba(236, 72, 153, 0.75);
+}
+
+.fi-wi-stats-overview-stat::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at top right, rgba(168, 85, 247, 0.08), transparent 38%);
+    pointer-events: none;
+}
+
 .fi-wi-stats-overview-stat-value {
-    letter-spacing: -0.03em;
+    letter-spacing: -0.035em;
+}
+
+/* Sidebar */
+.fi-sidebar {
+    background: linear-gradient(180deg, rgba(17, 17, 24, 0.98), rgba(10, 10, 16, 0.99));
+}
+
+.fi-sidebar-item-button {
+    border-radius: 0.8rem;
+    transition:
+        background-color 0.16s ease,
+        border-color 0.16s ease,
+        color 0.16s ease;
+}
+
+.fi-sidebar-item-button:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.fi-sidebar-item-active .fi-sidebar-item-button {
+    background: linear-gradient(90deg, rgba(168, 85, 247, 0.22), rgba(236, 72, 153, 0.12));
+    border: 1px solid rgba(168, 85, 247, 0.24);
+    color: #ffffff;
+}
+
+/* Tables */
+.fi-ta-content {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .fi-ta-header-cell {
-    opacity: 0.72;
+    color: #c4b5fd;
+    opacity: 0.86;
     font-size: 0.78rem;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.045em;
 }
 
+.fi-ta-row:hover {
+    background: rgba(255, 255, 255, 0.025);
+}
+
+/* Badges */
 .fi-badge {
     border-radius: 999px;
+    font-weight: 700;
 }
 
+/* Mobile */
 @media (max-width: 640px) {
     .fi-wi-stats-overview {
         display: grid;
@@ -77,5 +143,11 @@
 
     .fi-wi-stats-overview-stat {
         padding: 1.15rem;
+    }
+
+    .fi-section,
+    .fi-ta-ctn,
+    .fi-wi-stats-overview-stat {
+        border-radius: 0.95rem;
     }
 }
