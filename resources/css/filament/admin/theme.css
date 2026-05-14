@@ -1,3 +1,22 @@
 @import '../../../../vendor/filament/filament/resources/css/theme.css';
 
 @config 'tailwind.config.js';
+
+
+.fi-section,
+.fi-wi-stats-overview-stat,
+.fi-ta-ctn {
+    @apply bg-zinc-900;
+}
+
+.fi-sidebar-item-active .fi-sidebar-item-button {
+    @apply bg-violet-500/10 text-violet-300;
+}
+
+.fi-sidebar-item-button:hover {
+    @apply bg-white/5;
+}
+
+.fi-topbar {
+    @apply border-b border-white/5 bg-zinc-950 ring-0 shadow-none;
+}
