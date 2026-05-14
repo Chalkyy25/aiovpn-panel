@@ -11,6 +11,16 @@
     color: white !important;
 }
 
+.fi-main {
+    background:
+        radial-gradient(
+            circle at top left,
+            rgba(139,92,246,.08),
+            transparent 30%
+        ),
+        #09090b;
+}
+
 .fi-main-ctn {
     background: #09090b !important;
 }
