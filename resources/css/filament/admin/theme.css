@@ -18,7 +18,8 @@
 }
 
 .fi-sidebar-item-active .fi-sidebar-item-button {
-    @apply bg-violet-500/15 text-white;
+    background: rgba(139, 92, 246, 0.15);
+    @apply text-white;
 }
 
 .fi-ta-row:hover {
