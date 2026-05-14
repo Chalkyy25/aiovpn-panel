@@ -24,6 +24,10 @@
         linear-gradient(180deg, var(--aio-bg) 0%, var(--aio-bg-soft) 100%);
 }
 
+.fi-topbar{
+    @apply --aio-bg-soft shadow-none ring-0
+}
+
 /* Main surfaces */
 .fi-section,
 .fi-ta-ctn,
