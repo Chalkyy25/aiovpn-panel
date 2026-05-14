@@ -37,6 +37,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
 
             ->login(AdminLogin::class)
+            ->brandName('AIO VPN')
             ->passwordreset()
             ->emailverification()
 

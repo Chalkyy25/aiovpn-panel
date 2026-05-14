@@ -42,6 +42,16 @@
         </form>
     </div>
 
+<div class="mt-4 text-centre">
+    <a href="{{ url('admin/login') }}"
+    class="inline-flex items-centre justify-centre px-4 py-2 rounded-lg
+    bg-slate-800 hover:bg-late-700
+    text-white text-sm font-medium
+    transition duration-200">
+    Admin Portal
+    </a>
+</div>
+
     <p class="mt-4 text-center text-xs text-[var(--aio-sub)]">
         Having trouble? Contact support.
     </p>
