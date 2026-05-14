@@ -5,23 +5,29 @@
 /* AIO VPN — Filament v3 brand polish */
 
 :root {
-    --aio-bg: #09090f;
-    --aio-bg-soft: #171722;
-    --aio-card: rgba(33, 33, 53, 0.96);
-    --aio-card-deep: rgba(17, 17, 24, 0.98);
-    --aio-purple: #a855f7;
-    --aio-violet: #8b5cf6;
-    --aio-pink: #ec4899;
-    --aio-teal: #14b8a6;
-    --aio-border: rgba(139, 92, 246, 0.12);
+    --aio-bg: #0a0a0f;
+    --aio-surface: #15151d;
+    --aio-surface-light: #1b1b24;
+
+    --aio-primary: #8b5cf6;
+    --aio-primary-soft: #a78bfa;
+
+    --aio-text: #f8fafc;
+    --aio-text-muted: #94a3b8;
+
+    --aio-border: rgba(255,255,255,0.06);
+
+    --aio-success: #22c55e;
+    --aio-danger: #ef4444;
 }
 
 /* Page background */
 .fi-body {
     background:
-        radial-gradient(circle at top left, rgba(139, 92, 246, 0.1), transparent 32%),
-        radial-gradient(circle at top right, rgba(236, 72, 153, 0.06), transparent 28%),
-        linear-gradient(180deg, var(--aio-bg) 0%, var(--aio-bg-soft) 100%);
+        radial-gradient(circle at top left,
+        rgba(139, 92, 246, 0.08),
+        transparent 30%),
+        var(--aio-bg);
 }
 
 .fi-topbar{
@@ -60,7 +66,7 @@
 .fi-header-heading,
 .fi-section-header-heading,
 .fi-ta-header-heading {
-    background: linear-gradient(90deg, #ffffff 0%, #c084fc 62%, #ec4899 100%);
+    color: var(--aio-text);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -78,7 +84,7 @@
 }
 
 .fi-wi-stats-overview-stat:nth-child(3n) {
-    border-left-color: rgba(236, 72, 153, 0.75);
+    border-left: 3px solid var(--aio-primary);
 }
 
 .fi-wi-stats-overview-stat::after {
@@ -95,7 +101,7 @@
 
 /* Sidebar */
 .fi-sidebar {
-    background: linear-gradient(180deg, var(--aio-card), var(--aio-card-deep));
+    background: rgba(139, 92, 246, 0.16);
 }
 
 .fi-sidebar-item-button {
