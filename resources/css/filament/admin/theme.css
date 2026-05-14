@@ -16,5 +16,5 @@
 }
 
 .fi-topbar {
-    @apply bg-zinc-950 border-b border-white/5;
+    background: #a855f7 !important;
 }
