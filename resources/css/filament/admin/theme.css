@@ -3,26 +3,35 @@
 @config 'tailwind.config.js';
 
 /* -------------------------------------------------
- | Base
+ | AIO VPN — Sleek Dark Theme
  * ------------------------------------------------- */
 
 .fi-body {
-    background: #09090b !important;
-    color: white !important;
+    background: #07090f !important;
+    color: #f8fafc !important;
 }
+
+/* -------------------------------------------------
+ | Main Content
+ * ------------------------------------------------- */
 
 .fi-main {
     background:
         radial-gradient(
             circle at top left,
-            rgba(139,92,246,.08),
-            transparent 30%
+            rgba(139, 92, 246, 0.06),
+            transparent 28%
         ),
-        #09090b;
+        radial-gradient(
+            circle at top right,
+            rgba(6, 182, 212, 0.05),
+            transparent 24%
+        ),
+        #07090f !important;
 }
 
 .fi-main-ctn {
-    background: #09090b !important;
+    background: transparent !important;
 }
 
 /* -------------------------------------------------
@@ -30,7 +39,10 @@
  * ------------------------------------------------- */
 
 .fi-sidebar {
-    @apply bg-zinc-950 border-r border-white/5;
+    background: rgba(10, 12, 18, 0.92) !important;
+    backdrop-filter: blur(16px) !important;
+
+    border-right: 1px solid rgba(255,255,255,.05) !important;
 }
 
 /* -------------------------------------------------
@@ -38,22 +50,33 @@
  * ------------------------------------------------- */
 
 .fi-topbar nav {
-    background: #7E30C9 !important;
-    border-bottom: 0px !important;
+    background: rgba(10, 12, 18, 0.75) !important;
+    backdrop-filter: blur(14px) !important;
+
+    border-bottom: 1px solid rgba(255,255,255,.04) !important;
+
     box-shadow: none !important;
 }
 
 /* -------------------------------------------------
- | Cards / Tables
+ | Cards / Tables / Panels
  * ------------------------------------------------- */
 
 .fi-section,
 .fi-ta-ctn,
 .fi-wi-stats-overview-stat,
 .fi-modal-content {
-    background: #18181b !important;
+    background: rgba(20, 22, 31, 0.88) !important;
+
+    backdrop-filter: blur(12px) !important;
+
     border: 1px solid rgba(255,255,255,.05) !important;
-    border-radius: 18px !important;
+
+    border-radius: 20px !important;
+
+    box-shadow:
+        0 4px 20px rgba(0,0,0,.25),
+        inset 0 1px 0 rgba(255,255,255,.02) !important;
 }
 
 /* -------------------------------------------------
@@ -61,17 +84,31 @@
  * ------------------------------------------------- */
 
 .fi-sidebar-item-button {
-    border-radius: 12px;
-    transition: background .15s ease;
+    border-radius: 14px !important;
+
+    transition:
+        background .18s ease,
+        color .18s ease,
+        transform .18s ease !important;
 }
 
 .fi-sidebar-item-button:hover {
-    background: rgba(255,255,255,.04);
+    background: rgba(255,255,255,.04) !important;
+
+    transform: translateX(2px);
 }
 
 .fi-sidebar-item-active .fi-sidebar-item-button {
-    background: rgba(139,92,246,.15);
-    color: #c4b5fd;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(139,92,246,.20),
+            rgba(6,182,212,.10)
+        ) !important;
+
+    color: #d8b4fe !important;
+
+    border: 1px solid rgba(139,92,246,.18) !important;
 }
 
 /* -------------------------------------------------
@@ -79,5 +116,89 @@
  * ------------------------------------------------- */
 
 .fi-ta-row:hover {
-    background: rgba(255,255,255,.03);
+    background: rgba(255,255,255,.025) !important;
+}
+
+.fi-ta-header-cell {
+    color: #94a3b8 !important;
+}
+
+/* -------------------------------------------------
+ | Inputs
+ * ------------------------------------------------- */
+
+.fi-input,
+.fi-select-input,
+.fi-textarea {
+    background: rgba(15, 17, 24, 0.95) !important;
+
+    border: 1px solid rgba(255,255,255,.06) !important;
+
+    color: #ffffff !important;
+
+    border-radius: 14px !important;
+}
+
+.fi-input:focus,
+.fi-select-input:focus,
+.fi-textarea:focus {
+    border-color: rgba(139,92,246,.45) !important;
+
+    box-shadow:
+        0 0 0 1px rgba(139,92,246,.35),
+        0 0 18px rgba(139,92,246,.12) !important;
+}
+
+/* -------------------------------------------------
+ | Buttons
+ * ------------------------------------------------- */
+
+.fi-btn {
+    border-radius: 14px !important;
+}
+
+.fi-btn-color-primary {
+    background:
+        linear-gradient(
+            135deg,
+            #8b5cf6,
+            #7c3aed
+        ) !important;
+
+    border: 1px solid rgba(255,255,255,.05) !important;
+}
+
+.fi-btn-color-primary:hover {
+    background:
+        linear-gradient(
+            135deg,
+            #9f67ff,
+            #8b5cf6
+        ) !important;
+
+    transform: translateY(-1px);
+}
+
+/* -------------------------------------------------
+ | Dropdowns
+ * ------------------------------------------------- */
+
+.fi-dropdown-panel {
+    background: rgba(18,20,28,.96) !important;
+
+    backdrop-filter: blur(18px) !important;
+
+    border: 1px solid rgba(255,255,255,.05) !important;
+
+    border-radius: 18px !important;
+}
+
+/* -------------------------------------------------
+ | Modals
+ * ------------------------------------------------- */
+
+.fi-modal-window {
+    border-radius: 24px !important;
+
+    overflow: hidden !important;
 }
