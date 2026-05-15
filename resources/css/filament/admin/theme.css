@@ -44,7 +44,7 @@
 
     backdrop-filter: blur(14px) !important;
 
-    border-bottom: 1px solid rgba(255,255,255,.04) !important;
+    border-bottom: 0px shadow-none;
 }
 /* -------------------------------------------------
  | Topbar
