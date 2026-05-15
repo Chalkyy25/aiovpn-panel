@@ -32,12 +32,23 @@ class MobileProfileController extends Controller
         $servers = $serverQuery
             ->get()
             ->map(function (VpnServer $s) {
-                $raw = strtolower((string) $s->protocol); // "udp", "tcp", "wireguard", etc.
+                $raw = strtolower((string) $s->protocol);
 
-                // Normalise the protocol type for the app
-                $type = in_array($raw, ['udp', 'tcp'], true) ? 'openvpn' : ($raw ?: 'openvpn');
-                $transport = in_array($raw, ['udp', 'tcp'], true) ? $raw : null;
-
+// Normalize all hybrid/custom protocols for mobile app compatibility
+if (str_contains($raw, 'wireguard')) {
+    $type = 'wireguard';
+    $transport = 'udp';
+} elseif (str_contains($raw, 'openvpn')) {
+    $type = 'openvpn';
+    $transport = 'tcp';
+} elseif (in_array($raw, ['udp', 'tcp'], true)) {
+    $type = 'openvpn';
+    $transport = $raw;
+} else {
+    // Safe fallback
+    $type = 'openvpn';
+    $transport = 'udp';
+}
                 // Geo fields from vpn_servers
                 $countryCode = $s->country_code ?: null;
                 $city = $s->city ?: null;
