@@ -38,13 +38,14 @@
  | Sidebar
  * ------------------------------------------------- */
 
-.fi-sidebar {
-    background: rgba(10, 12, 18, 0.92) !important;
-    backdrop-filter: blur(16px) !important;
+.fi-topbar nav,
+.fi-sidebar-header {
+    background: rgba(10, 12, 18, 0.75) !important;
 
-    border-right: 1px solid rgba(255,255,255,.05) !important;
+    backdrop-filter: blur(14px) !important;
+
+    border-bottom: 1px solid rgba(255,255,255,.04) !important;
 }
-
 /* -------------------------------------------------
  | Topbar
  * ------------------------------------------------- */
