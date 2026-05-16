@@ -286,7 +286,13 @@
 ========================================================= */
 
 .fi-logo {
-    height: 2.8rem !important;
+    height: 4rem !important;
+
+    width: auto !important;
+}
+
+.fi-simple-header .fi-logo {
+    height: 5rem !important;
 }
 
 /* =========================================================
