@@ -35,6 +35,29 @@
     background: transparent !important;
 }
 
+
+/* -------------------------------------------------
+
+ | Auth Page Layout
+
+ * ------------------------------------------------- */
+
+.fi-simple-layout {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    min-height: 100vh;
+
+    padding-top: 2rem !important;
+
+    padding-bottom: 2rem !important;
+
+}
+
 /* -------------------------------------------------
  | Sidebar
  * ------------------------------------------------- */
