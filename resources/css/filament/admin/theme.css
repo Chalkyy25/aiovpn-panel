@@ -63,10 +63,10 @@
     align-items: center;
     justify-content: center;
 
-    min-height: 100vh;
+    min-height: auto !important;
 
-    padding-top: 2rem !important;
-    padding-bottom: 2rem !important;
+    padding-top: 4rem !important;
+    padding-bottom: 4rem !important;
 }
 
 /* =================================================
@@ -82,6 +82,10 @@
     border: none !important;
 
     box-shadow: none !important;
+    
+    padding-top: 1.25rem !important;
+
+    padding-bottom: 1rem !important;
 }
 
 /* =================================================
@@ -257,7 +261,7 @@
 ================================================= */
 
 .fi-logo {
-    height: 2.75rem !important;
+    height: 2.80rem !important;
 }
 
 /* =================================================
