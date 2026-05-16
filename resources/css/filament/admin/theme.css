@@ -2,18 +2,37 @@
 
 @config 'tailwind.config.js';
 
-/* -------------------------------------------------
- | AIO VPN — Sleek Dark Theme
- * ------------------------------------------------- */
+/* =================================================
+| AIO VPN — Premium Glass Dark Theme
+================================================= */
 
-.fi-body {
-    background: #07090f !important;
-    color: #f8fafc !important;
+:root {
+    --aio-bg: #07090f;
+    --aio-surface: rgba(20, 22, 31, 0.88);
+
+    --aio-violet: #8b5cf6;
+    --aio-violet-soft: rgba(139, 92, 246, 0.18);
+
+    --aio-cyan: #06b6d4;
+    --aio-cyan-soft: rgba(6, 182, 212, 0.10);
+
+    --aio-border: rgba(255,255,255,.05);
+    --aio-text: #f8fafc;
+    --aio-text-muted: #94a3b8;
 }
 
-/* -------------------------------------------------
- | Main Content
- * ------------------------------------------------- */
+/* =================================================
+| Base
+================================================= */
+
+.fi-body {
+    background: var(--aio-bg) !important;
+    color: var(--aio-text) !important;
+}
+
+/* =================================================
+| Main Layout Background
+================================================= */
 
 .fi-sidebar-nav,
 .fi-main {
@@ -28,67 +47,69 @@
             rgba(6, 182, 212, 0.05),
             transparent 24%
         ),
-        #07090f !important;
+        var(--aio-bg) !important;
 }
 
 .fi-main-ctn {
     background: transparent !important;
 }
 
-
-/* -------------------------------------------------
-
- | Auth Page Layout
-
- * ------------------------------------------------- */
+/* =================================================
+| Auth Layout
+================================================= */
 
 .fi-simple-layout {
-
     display: flex;
-
     align-items: center;
-
     justify-content: center;
 
     min-height: 100vh;
 
     padding-top: 2rem !important;
-
     padding-bottom: 2rem !important;
-
 }
 
-/* -------------------------------------------------
- | Sidebar
- * ------------------------------------------------- */
+/* =================================================
+| Topbar + Sidebar Header
+================================================= */
 
 .fi-topbar nav,
 .fi-sidebar-header {
     background: rgba(10, 12, 18, 0.75) !important;
 
-    backdrop-filter: blur(14px) !important;
-
-    box-shadow: none !important;
+    backdrop-filter: blur(16px) !important;
 
     border: none !important;
-}
-/* -------------------------------------------------
- | Topbar
- * ------------------------------------------------- */
 
-/* -------------------------------------------------
- | Cards / Tables / Panels
- * ------------------------------------------------- */
+    box-shadow: none !important;
+}
+
+/* =================================================
+| Sidebar
+================================================= */
+
+.fi-sidebar {
+    background: rgba(8, 10, 18, 0.92) !important;
+
+    border-right: 1px solid var(--aio-border) !important;
+
+    backdrop-filter: blur(16px) !important;
+}
+
+/* =================================================
+| Cards / Tables / Panels
+================================================= */
 
 .fi-section,
 .fi-ta-ctn,
 .fi-wi-stats-overview-stat,
-.fi-modal-content {
-    background: rgba(20, 22, 31, 0.88) !important;
+.fi-modal-content,
+.fi-dropdown-panel {
+    background: var(--aio-surface) !important;
 
-    backdrop-filter: blur(12px) !important;
+    backdrop-filter: blur(14px) !important;
 
-    border: 1px solid rgba(255,255,255,.05) !important;
+    border: 1px solid var(--aio-border) !important;
 
     border-radius: 20px !important;
 
@@ -97,9 +118,9 @@
         inset 0 1px 0 rgba(255,255,255,.02) !important;
 }
 
-/* -------------------------------------------------
- | Sidebar Navigation
- * ------------------------------------------------- */
+/* =================================================
+| Sidebar Navigation
+================================================= */
 
 .fi-sidebar-item-button {
     border-radius: 14px !important;
@@ -111,7 +132,7 @@
 }
 
 .fi-sidebar-item-button:hover {
-    background: rgba(139, 92, 246, 0.10) !important;
+    background: rgba(139, 92, 246, 0.04) !important;
 
     transform: translateX(2px);
 }
@@ -120,46 +141,51 @@
     background:
         linear-gradient(
             135deg,
-            rgba(139,92,246,.20),
-            rgba(6,182,212,.10)
+            var(--aio-violet-soft),
+            var(--aio-cyan-soft)
         ) !important;
 
     color: #d8b4fe !important;
 
     border: 1px solid rgba(139,92,246,.18) !important;
+
+    box-shadow:
+        0 0 20px rgba(139,92,246,.08);
 }
 
-/* -------------------------------------------------
- | Tables
- * ------------------------------------------------- */
+/* =================================================
+| Tables
+================================================= */
 
 .fi-ta-row:hover {
     background: rgba(255,255,255,.025) !important;
 }
 
 .fi-ta-header-cell {
-    color: #94a3b8 !important;
+    color: var(--aio-text-muted) !important;
 }
 
-/* -------------------------------------------------
- | Inputs
- * ------------------------------------------------- */
+/* =================================================
+| Inputs
+================================================= */
 
 .fi-input,
 .fi-select-input,
-.fi-textarea {
+.fi-textarea,
+.fi-input-wrp {
     background: rgba(15, 17, 24, 0.95) !important;
 
     border: 1px solid rgba(255,255,255,.06) !important;
 
-    color: #ffffff !important;
+    color: white !important;
 
     border-radius: 14px !important;
 }
 
 .fi-input:focus,
 .fi-select-input:focus,
-.fi-textarea:focus {
+.fi-textarea:focus,
+.fi-input-wrp:focus-within {
     border-color: rgba(139,92,246,.45) !important;
 
     box-shadow:
@@ -167,12 +193,16 @@
         0 0 18px rgba(139,92,246,.12) !important;
 }
 
-/* -------------------------------------------------
- | Buttons
- * ------------------------------------------------- */
+/* =================================================
+| Buttons
+================================================= */
 
 .fi-btn {
     border-radius: 14px !important;
+
+    transition:
+        transform .15s ease,
+        filter .15s ease !important;
 }
 
 .fi-btn-color-primary {
@@ -184,6 +214,9 @@
         ) !important;
 
     border: 1px solid rgba(255,255,255,.05) !important;
+
+    box-shadow:
+        0 8px 25px rgba(139,92,246,.20) !important;
 }
 
 .fi-btn-color-primary:hover {
@@ -195,28 +228,50 @@
         ) !important;
 
     transform: translateY(-1px);
+
+    filter: brightness(1.05);
 }
 
-/* -------------------------------------------------
- | Dropdowns
- * ------------------------------------------------- */
+/* =================================================
+| Dropdowns
+================================================= */
 
 .fi-dropdown-panel {
     background: rgba(18,20,28,.96) !important;
 
     backdrop-filter: blur(18px) !important;
-
-    border: 1px solid rgba(255,255,255,.05) !important;
-
-    border-radius: 18px !important;
 }
 
-/* -------------------------------------------------
- | Modals
- * ------------------------------------------------- */
+/* =================================================
+| Modals
+================================================= */
 
 .fi-modal-window {
     border-radius: 24px !important;
 
     overflow: hidden !important;
+}
+
+/* =================================================
+| Logo
+================================================= */
+
+.fi-logo {
+    height: 2.75rem !important;
+}
+
+/* =================================================
+| Stats Widgets
+================================================= */
+
+.fi-wi-stats-overview-stat-value {
+    color: white !important;
+}
+
+/* =================================================
+| Badges
+================================================= */
+
+.fi-badge {
+    border-radius: 999px !important;
 }
