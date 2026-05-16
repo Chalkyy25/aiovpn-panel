@@ -39,7 +39,7 @@ class AdminPanelProvider extends PanelProvider
             ->viteTheme('resources/css/filament/admin/theme.css')
 
             ->login(AdminLogin::class)
-            ->brandName('AIO VPN')
+            ->brandLogo(asset('images/AIO-Logo.svg'))
             ->passwordreset()
             ->emailverification()
 
