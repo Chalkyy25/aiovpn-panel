@@ -39,7 +39,7 @@ class AdminPanelProvider extends PanelProvider
             ->viteTheme('resources/css/filament/admin/theme.css')
 
             ->login(AdminLogin::class)
-            ->brandLogo(asset('images/Logo1.svg'))
+            ->brandLogo(asset('images/AIO-Logo-Banner.svg'))
             ->passwordreset()
             ->emailverification()
 
