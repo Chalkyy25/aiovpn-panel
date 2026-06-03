@@ -40,6 +40,7 @@ class AdminPanelProvider extends PanelProvider
 
             ->login(AdminLogin::class)
             ->brandLogo(asset('images/AIO-Logo-Banner.svg'))
+            ->favicon(asset('images/fav-aio.svg'))
             ->passwordreset()
             ->emailverification()
 
