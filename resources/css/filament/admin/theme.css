@@ -107,6 +107,20 @@
     box-shadow: none !important;
 }
 
+.fi-topbar,
+.fi-topbar nav {
+    overflow: visible !important;
+}
+
+.fi-topbar {
+    z-index: 40 !important;
+}
+
+.fi-user-menu {
+    position: relative;
+    z-index: 60 !important;
+}
+
 /* =========================================================
 | Sidebar
 ========================================================= */
@@ -269,6 +283,8 @@
     background: rgba(18,20,28,.96) !important;
 
     backdrop-filter: blur(18px) !important;
+
+    z-index: 70 !important;
 }
 
 /* =========================================================

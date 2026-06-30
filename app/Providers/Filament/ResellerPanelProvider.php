@@ -9,11 +9,10 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\MenuItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Hasnayeen\Themes\ThemesPlugin;
-use Hasnayeen\Themes\Http\Middleware\SetTheme;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use App\Http\Middleware\VerifyCsrfToken;
@@ -35,6 +34,15 @@ class ResellerPanelProvider extends PanelProvider
             ->login(ResellerLogin::class)
             ->brandLogo(asset('images/AIOLogo.svg'))
             ->favicon(asset('images/fav-aio.svg'))
+            ->passwordReset()
+            ->emailVerification()
+            ->profile()
+
+            ->userMenuItems([
+                'profile' => MenuItem::make()
+                    ->label('Account')
+                    ->url(route('profile.edit')),
+            ])
 
             ->authGuard('web')
             ->colors([
@@ -44,11 +52,6 @@ class ResellerPanelProvider extends PanelProvider
                 'warning' => Color::Amber,
                 'info' => Color::Sky,
             ])
-
-            ->plugin(
-                ThemesPlugin::make()
-                    ->canViewThemesPage(fn () => in_array(auth('web')->user()?->role, ['admin', 'reseller'], true))
-            )
 
             ->discoverResources(in: app_path('Filament/Reseller/Resources'), for: 'App\\Filament\\Reseller\\Resources')
             ->discoverPages(in: app_path('Filament/Reseller/Pages'), for: 'App\\Filament\\Reseller\\Pages')
@@ -65,8 +68,6 @@ class ResellerPanelProvider extends PanelProvider
                 SubstituteBindings::class,
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
-
-                SetTheme::class,
             ])
 
             ->authMiddleware([
