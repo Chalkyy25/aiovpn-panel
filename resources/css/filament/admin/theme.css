@@ -113,12 +113,25 @@
 }
 
 .fi-topbar {
-    z-index: 40 !important;
+    position: relative;
+    isolation: isolate;
+    z-index: 120 !important;
+}
+
+.fi-topbar nav {
+    position: relative;
+    z-index: 121 !important;
 }
 
 .fi-user-menu {
     position: relative;
-    z-index: 60 !important;
+    z-index: 130 !important;
+}
+
+.fi-topbar .fi-user-menu,
+.fi-topbar .fi-user-menu button,
+.fi-topbar .fi-user-menu-trigger {
+    pointer-events: auto !important;
 }
 
 /* =========================================================
@@ -284,7 +297,7 @@
 
     backdrop-filter: blur(18px) !important;
 
-    z-index: 70 !important;
+    z-index: 9999 !important;
 }
 
 /* =========================================================
