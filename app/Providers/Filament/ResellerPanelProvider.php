@@ -9,7 +9,6 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Navigation\MenuItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -37,12 +36,6 @@ class ResellerPanelProvider extends PanelProvider
             ->passwordReset()
             ->emailVerification()
             ->profile()
-
-            ->userMenuItems([
-                'profile' => MenuItem::make()
-                    ->label('Account')
-                    ->url(route('profile.edit')),
-            ])
 
             ->authGuard('web')
             ->colors([
