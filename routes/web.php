@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 
 /*
 |--------------------------------------------------------------------------
@@ -165,6 +167,14 @@ Route::middleware('guest:web')->group(function () {
 Route::post('/staff/logout', [AdminLogin::class, 'logout'])
     ->middleware('auth:web')
     ->name('staff.logout');
+
+Route::get('/panel/logout', function (Request $request) {
+    Auth::guard('web')->logout();
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
+
+    return redirect('/admin/login');
+})->middleware('auth:web')->name('panel.logout');
 
 /*
 |--------------------------------------------------------------------------

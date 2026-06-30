@@ -55,6 +55,10 @@ class ResellerPanelProvider extends PanelProvider
                 NavigationItem::make('Account')
                     ->icon('heroicon-o-user-circle')
                     ->url('/reseller/profile')
+                    ->sort(998),
+                NavigationItem::make('Logout')
+                    ->icon('heroicon-o-arrow-left-on-rectangle')
+                    ->url('/panel/logout')
                     ->sort(999),
             ])
 

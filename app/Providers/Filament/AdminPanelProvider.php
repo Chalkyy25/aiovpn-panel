@@ -64,6 +64,10 @@ class AdminPanelProvider extends PanelProvider
                 NavigationItem::make('Account')
                     ->icon('heroicon-o-user-circle')
                     ->url('/admin/profile')
+                    ->sort(998),
+                NavigationItem::make('Logout')
+                    ->icon('heroicon-o-arrow-left-on-rectangle')
+                    ->url('/panel/logout')
                     ->sort(999),
             ])
 
