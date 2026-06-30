@@ -29,12 +29,20 @@ class ResellerPanelProvider extends PanelProvider
             ->id('reseller')
             ->path('reseller')
 
+            ->viteTheme('resources/css/filament/admin/theme.css')
+
             // panel-specific login
             ->login(ResellerLogin::class)
+            ->brandLogo(asset('images/AIOLogo.svg'))
+            ->favicon(asset('images/fav-aio.svg'))
 
             ->authGuard('web')
             ->colors([
-                'primary' => Color::Purple,
+                'primary' => Color::Violet,
+                'success' => Color::Emerald,
+                'danger' => Color::Rose,
+                'warning' => Color::Amber,
+                'info' => Color::Sky,
             ])
 
             ->plugin(
