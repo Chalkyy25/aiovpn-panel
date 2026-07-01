@@ -91,12 +91,10 @@ class DownloadConfig extends Component
             return null;
         }
     }
+public function render()
+{
+    return view('livewire.pages.client.download-config')
+        ->layout('layouts.client');
+}
 
-    public function render()
-    {
-        return view('livewire.pages.client.download-config', [
-            'configs' => $this->availableConfigs,
-            'user'    => $this->vpnUser,
-        ]);
-    }
 }

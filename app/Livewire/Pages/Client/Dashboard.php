@@ -30,11 +30,10 @@ class Dashboard extends Component
             ->get();
     }
 
-    public function render()
-    {
-        return view('livewire.pages.client.dashboard', [
-            'user'       => $this->user,
-            'vpnServers' => $this->vpnServers,
-        ]);
-    }
+public function render()
+{
+    return view('livewire.pages.client.dashboard')
+        ->layout('layouts.client');
+}
+
 }

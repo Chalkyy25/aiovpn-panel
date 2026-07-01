@@ -7,8 +7,8 @@
       Main
     </div>
 
-    <x-nav-link href="{{ route('admin.dashboard') }}"
-                :active="request()->routeIs('admin.dashboard')"
+    <x-nav-link href="{{ url('admin') }}"
+                :active="request()->is('admin*')"
                 icon="o-home">
       Dashboard
     </x-nav-link>
